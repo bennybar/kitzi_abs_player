@@ -123,6 +123,9 @@ class PlaybackRepository {
   static const _minSendGap = Duration(milliseconds: 500);
   static const _seekDebounce = Duration(milliseconds: 700);
 
+  // suppress first send until resume is settled
+  bool _resumeSettled = false;
+
   // lifecycle hook to send on background/exit
   late final WidgetsBindingObserver _lifecycleHook = _LifecycleHook(
     onPauseOrDetach: () => _sendProgressImmediate(),
@@ -191,10 +194,12 @@ class PlaybackRepository {
     _setNowPlaying(np);
     _progressItemId = libraryItemId;
 
-    // Prepare first track (we'll seek after resume source is chosen)
+    _resumeSettled = false; // block early sends
+
+    // Prepare first track (we'll seek after choosing resume)
     await _playTrackAt(0);
 
-    // --- RESUME ORDER: SERVER -> LOCAL ---
+    // --- RESUME ORDER: SERVER -> LOCAL (per-server key) -> LEGACY KEY ---
     double? resumeSec;
     bool serverTried = false;
     try {
@@ -204,8 +209,7 @@ class PlaybackRepository {
       _log('fetchServerProgress error (will use local if any): $e');
     }
 
-    if ((resumeSec == null || resumeSec <= 0)) {
-      // try local per-server key
+    if (resumeSec == null || resumeSec <= 0) {
       final prefs = await SharedPreferences.getInstance();
       final localKey = _progressKey(libraryItemId, episodeId: episodeId);
       final localSec = prefs.getDouble(localKey);
@@ -213,7 +217,14 @@ class PlaybackRepository {
         resumeSec = localSec;
         _log('Using LOCAL resume $resumeSec (serverTried=$serverTried)');
       } else {
-        _log('No resume position available (serverTried=$serverTried)');
+        // legacy (pre-namespaced) key, just in case
+        final legacy = prefs.getDouble('$_kLocalProgPrefix$libraryItemId');
+        if (legacy != null && legacy > 0) {
+          resumeSec = legacy;
+          _log('Using LEGACY LOCAL resume $resumeSec');
+        } else {
+          _log('No resume position available (serverTried=$serverTried)');
+        }
       }
     } else {
       _log('Using SERVER resume $resumeSec');
@@ -224,6 +235,8 @@ class PlaybackRepository {
       await _playTrackAt(map.index);
       await player.seek(Duration(milliseconds: (map.offsetSec * 1000).round()));
     }
+
+    _resumeSettled = true;
 
     _startProgressSync(libraryItemId, episodeId: episodeId);
 
@@ -242,7 +255,10 @@ class PlaybackRepository {
     });
 
     await player.play();
-    await _sendProgressImmediate(); // initial ping (global)
+    // Send only if > 0.5s to avoid “reset to 0” on first open
+    if ((player.position.inMilliseconds / 1000.0) > 0.5) {
+      await _sendProgressImmediate();
+    }
   }
 
   Future<void> pause() async {
@@ -304,6 +320,7 @@ class PlaybackRepository {
     _progressItemId = null;
     _metaTotalDurationSec = null;
     _sumTrackDurationsSec = null;
+    _resumeSettled = false;
   }
 
   // ---- Progress sync ----
@@ -350,7 +367,8 @@ class PlaybackRepository {
   }
 
   /// Always try to send at least `currentTime`. Include `progress`
-  /// only when we know the total. Throttled to avoid bursts.
+  /// only when we know the total. Throttled to avoid bursts and protected
+  /// against the initial 0s overwrite before resume settles.
   Future<void> _sendProgressImmediate({
     double? overrideTrackPosSec,
     bool finished = false,
@@ -374,6 +392,12 @@ class PlaybackRepository {
         : (_computeGlobalPositionSec() ?? _trackOnlyPosSec());
 
     if (cur == null) return;
+
+    // Guard: don't send an early 0s that could reset server progress
+    if (!_resumeSettled && cur <= 0.5 && !finished) {
+      _log('Suppressing initial 0s send until resume settles');
+      return;
+    }
 
     // Persist locally with per-server key so switching servers won't mix states
     try {

@@ -1975,12 +1975,40 @@ class AuthRepository {
   ApiClient get api => _api;
 }
 
+=== ./lib/core/player_gate.dart ===
+// somewhere central, e.g. lib/core/player_gate.dart
+import 'package:flutter/widgets.dart';
+
+class PlayerGate {
+  static final PlayerGate I = PlayerGate._();
+  PlayerGate._();
+
+  bool _open = false;
+
+  Future<void> openOnce(BuildContext context, Widget page) async {
+    if (_open) return;
+    _open = true;
+    try {
+      await Navigator.of(context).push(
+        PageRouteBuilder(
+          opaque: true,
+          pageBuilder: (_, __, ___) => page,
+        ),
+      );
+    } finally {
+      _open = false;
+    }
+  }
+}
+
 === ./lib/core/downloads_repository.dart ===
+// lib/core/downloads_repository.dart
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:background_downloader/background_downloader.dart';
+import 'package:flutter/foundation.dart'; // debugPrint
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -2010,6 +2038,9 @@ class DownloadsRepository {
 
   static const _wifiOnlyKey = 'downloads_wifi_only';
 
+  // Tiny logger
+  void _d(String m) => debugPrint('[DL] $m');
+
   // Plugin updates -> broadcast for UI
   Stream<TaskUpdate>? _broadcastUpdates;
   Stream<TaskUpdate> progressStream() {
@@ -2022,12 +2053,23 @@ class DownloadsRepository {
   StreamSubscription<TaskUpdate>? _muxSub;
 
   Future<void> init() async {
-    // v8.9.x: no explicit initialize/notification config required.
+    try {
+      // Simple, cross-version notification templates
+      FileDownloader().configureNotification(
+        running: const TaskNotification('Downloading', '{filename}'),
+        complete: const TaskNotification('Download finished', '{filename}'),
+        error: const TaskNotification('Download failed', '{filename}'),
+        progressBar: true,
+      );
+      await FileDownloader().start();
+      _d('BackgroundDownloader started & notifications configured.');
+    } catch (e) {
+      _d('init/start/configureNotification failed: $e');
+    }
   }
 
   /// Start (or get) an aggregated progress stream for a specific book.
   Stream<ItemProgress> watchItemProgress(String libraryItemId) {
-    // Create controller if needed
     final ctrl = _itemCtrls.putIfAbsent(
       libraryItemId,
           () => StreamController<ItemProgress>.broadcast(onListen: () async {
@@ -2036,7 +2078,6 @@ class DownloadsRepository {
       }),
     );
 
-    // Lazily attach one mux subscription to plugin updates
     _muxSub ??= progressStream().listen((u) async {
       final meta = u.task.metaData ?? '';
       final id = _extractItemId(meta);
@@ -2051,32 +2092,96 @@ class DownloadsRepository {
     return ctrl.stream;
   }
 
-  /// Queue all tracks of an item for download (Wi-Fi rule taken from prefs).
+  /// Queue all tracks for download; filenames include book title for clearer notifications.
   Future<void> enqueueItemDownloads(
       String libraryItemId, {
         String? episodeId,
       }) async {
-    final tracks =
-    await _playback.getPlayableTracks(libraryItemId, episodeId: episodeId);
+    // Always fetch REMOTE stream tracks (local-first list will mislead us)
+    final tracks = await _playback.getRemoteStreamTracks(
+      libraryItemId,
+      episodeId: episodeId,
+    );
+
+    // Only remote
+    final remoteTracks = tracks.where((t) => !t.isLocal).toList();
+    if (remoteTracks.isEmpty) {
+      _d('No remote tracks to download for $libraryItemId (already local?).');
+      final c = _itemCtrls[libraryItemId];
+      if (c != null && !c.isClosed) {
+        c.add(await _computeItemProgress(libraryItemId));
+      }
+      return;
+    }
+
+    // Fetch book title for notifications/filenames
+    final title = await _fetchItemTitle(libraryItemId);
+    final titleSlug = _sanitize(title ?? 'book');
 
     final prefs = await SharedPreferences.getInstance();
     final wifiOnly = prefs.getBool(_wifiOnlyKey) ?? true;
 
-    for (final t in tracks) {
+    for (final t in remoteTracks) {
+      // Validate URL
+      final parsed = Uri.tryParse(t.url);
+      if (parsed == null ||
+          !parsed.hasScheme ||
+          (parsed.scheme != 'http' && parsed.scheme != 'https')) {
+        _d('Skipping invalid url: ${t.url}');
+        continue;
+      }
+      final safeUrl = parsed.toString();
+
       final filename =
-          'track_${t.index.toString().padLeft(3, '0')}.${_extFromMime(t.mimeType)}';
+          '${titleSlug}_track_${t.index.toString().padLeft(3, '0')}.${_extFromMime(t.mimeType)}';
+
       final task = DownloadTask(
-        url: t.url,
+        url: safeUrl,
         filename: filename,
         directory: 'abs/$libraryItemId',
         baseDirectory: BaseDirectory.applicationDocuments,
         updates: Updates.statusAndProgress,
         requiresWiFi: wifiOnly,
         allowPause: true,
-        // Keep the book id *plain* in meta so we can match quickly
         metaData: jsonEncode({'libraryItemId': libraryItemId}),
       );
-      await FileDownloader().download(task);
+
+      try {
+        _d('Queueing $safeUrl -> $filename (wifiOnly=$wifiOnly)');
+        final ok = await FileDownloader().enqueue(task);
+        if (!ok) {
+          _d('Failed to enqueue task ${task.taskId} for $safeUrl');
+          continue;
+        }
+
+        // Wiretap: print progress / status / errors live
+        final sub = progressStream()
+            .where((u) => u.task.taskId == task.taskId)
+            .listen((u) {
+          if (u is TaskProgressUpdate) {
+            _d('task ${u.task.taskId} progress: ${(u.progress * 100).toStringAsFixed(1)}% '
+                '${u.hasNetworkSpeed ? 'speed: ${u.networkSpeedAsString}' : ''} '
+                '${u.hasTimeRemaining ? 'eta: ${u.timeRemainingAsString}' : ''}');
+          } else if (u is TaskStatusUpdate) {
+            _d('task ${u.task.taskId} status: ${u.status}'
+                '${u.exception != null ? ' ex: ${u.exception}' : ''}');
+          }
+        });
+
+        // Auto-cancel this wiretap on terminal status
+        progressStream()
+            .where((u) =>
+        u.task.taskId == task.taskId &&
+            u is TaskStatusUpdate &&
+            (u.status == TaskStatus.complete ||
+                u.status == TaskStatus.failed ||
+                u.status == TaskStatus.canceled ||
+                u.status == TaskStatus.notFound))
+            .first
+            .then((_) => sub.cancel());
+      } catch (e) {
+        _d('Download enqueue failed for $safeUrl: $e');
+      }
     }
 
     // Kick initial emission for this item
@@ -2086,7 +2191,7 @@ class DownloadsRepository {
     }
   }
 
-  /// Cancel all queued/running tasks for a book.
+  /// Cancel all queued/running tasks for a book. (UI hook for "Cancel download")
   Future<void> cancelForItem(String libraryItemId) async {
     final recs = await _recordsForItem(libraryItemId);
     for (final r in recs) {
@@ -2132,7 +2237,6 @@ class DownloadsRepository {
   Future<ItemProgress> _computeItemProgress(String libraryItemId) async {
     final recs = await _recordsForItem(libraryItemId);
     if (recs.isEmpty) {
-      // If there are *no tasks* but local files exist, treat as complete
       final local = await hasLocalDownloads(libraryItemId);
       return ItemProgress(
         libraryItemId: libraryItemId,
@@ -2202,6 +2306,45 @@ class DownloadsRepository {
     final docs = await getApplicationDocumentsDirectory();
     return Directory('${docs.path}/abs/$libraryItemId');
   }
+
+  // ---- helpers for title/filenames ----
+  Future<String?> _fetchItemTitle(String libraryItemId) async {
+    try {
+      final baseStr = _auth.api.baseUrl ?? '';
+      final base = Uri.parse(baseStr);
+      final token = await _auth.api.accessToken();
+
+      Uri meta = base.resolve('api/items/$libraryItemId');
+      if (token != null && token.isNotEmpty) {
+        meta = meta.replace(
+          queryParameters: <String, String>{
+            ...meta.queryParameters,
+            'token': token,
+          },
+        );
+      }
+      final r = await HttpClient().getUrl(meta).then((rq) => rq.close());
+      if (r.statusCode != 200) return null;
+      final body = await utf8.decodeStream(r);
+      final j = jsonDecode(body);
+      final m = (j['item'] as Map?)?.cast<String, dynamic>() ??
+          j.cast<String, dynamic>();
+      final t = (m['title'] as String?) ??
+          (m['media']?['metadata']?['title'] as String?) ??
+          (m['book']?['title'] as String?);
+      return t;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _sanitize(String s) {
+    final r = s
+        .replaceAll(RegExp(r'[^\w\s\-\.\(\)\[\]]+', unicode: true), '')
+        .replaceAll(RegExp(r'\s+'), '_')
+        .trim();
+    return r.isEmpty ? 'book' : r;
+  }
 }
 
 === ./lib/core/playback_repository.dart ===
@@ -2215,16 +2358,18 @@ import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'auth_repository.dart';
 
-const _kProgressPing = Duration(seconds: 15); // periodic server update cadence
+const _kProgressPing = Duration(seconds: 15);
+const _kLocalProgPrefix = 'abs_progress:';
 
 class PlaybackTrack {
   final int index;
-  final String url;       // stream URL or local file path
+  final String url;
   final String mimeType;
-  final double duration;  // seconds (best-effort; 0 if unknown for local)
+  final double duration; // seconds (0 if unknown)
   final bool isLocal;
   PlaybackTrack({
     required this.index,
@@ -2257,7 +2402,7 @@ class NowPlaying {
   final List<PlaybackTrack> tracks;
   final int currentIndex;
   final List<Chapter> chapters;
-  final String? episodeId; // optional for podcast-like items
+  final String? episodeId;
 
   const NowPlaying({
     required this.libraryItemId,
@@ -2289,8 +2434,15 @@ class PlaybackRepository {
   }
 
   final AuthRepository _auth;
-
   final AudioPlayer player = AudioPlayer();
+
+  // ---- logging (opt-in UI can subscribe) ----
+  final StreamController<String> _debugLogCtr = StreamController.broadcast();
+  Stream<String> get debugLogStream => _debugLogCtr.stream;
+  void _log(String msg) {
+    debugPrint("[ABS] $msg");
+    _debugLogCtr.add(msg);
+  }
 
   // Now Playing state
   final StreamController<NowPlaying?> _nowPlayingCtr =
@@ -2311,6 +2463,19 @@ class PlaybackRepository {
   double? _metaTotalDurationSec; // from item metadata (seconds)
   double? _sumTrackDurationsSec; // sum of tracks (seconds) if known
 
+  // Track duration learned at runtime from ExoPlayer
+  final Map<int, double> _observedDurationsSec = {};
+
+  // Debounce/throttle progress signaling
+  Timer? _debounceSeekTimer;
+  bool _userSeekActive = false;
+  DateTime? _lastSentAt;
+  static const _minSendGap = Duration(milliseconds: 500);
+  static const _seekDebounce = Duration(milliseconds: 700);
+
+  // suppress first send until resume is settled
+  bool _resumeSettled = false;
+
   // lifecycle hook to send on background/exit
   late final WidgetsBindingObserver _lifecycleHook = _LifecycleHook(
     onPauseOrDetach: () => _sendProgressImmediate(),
@@ -2318,43 +2483,38 @@ class PlaybackRepository {
 
   // ---- Public API ----
 
+  /// Prefer local files when available (used by player UI).
   Future<List<PlaybackTrack>> getPlayableTracks(String libraryItemId,
-      {String? episodeId}) {
-    return _getTracksPreferLocal(libraryItemId, episodeId: episodeId);
-  }
+      {String? episodeId}) =>
+      _getTracksPreferLocal(libraryItemId, episodeId: episodeId);
+
+  /// Always fetch REMOTE streaming tracks (needed by downloader).
+  Future<List<PlaybackTrack>> getRemoteStreamTracks(String libraryItemId,
+      {String? episodeId}) =>
+      _streamTracks(libraryItemId, episodeId: episodeId);
 
   /// Query server for last known position (seconds). Returns null if none.
   Future<double?> fetchServerProgress(String libraryItemId) async {
     final api = _auth.api;
     final resp = await api.request('GET', '/api/me/progress/$libraryItemId');
     if (resp.statusCode != 200) return null;
-
     try {
       final data = jsonDecode(resp.body);
       if (data is Map<String, dynamic>) {
-        if (data.containsKey('currentTime')) {
-          final v = data['currentTime'];
-          if (v is num) return v.toDouble();
-          if (v is String) return double.tryParse(v);
-        }
-        if (data.containsKey('progress') && data.containsKey('duration')) {
-          final p = (data['progress'] as num?)?.toDouble();
-          final d = (data['duration'] as num?)?.toDouble();
-          if (p != null && d != null && d > 0) return (p * d);
-        }
-        // Sometimes shape: { itemId: { currentTime: x, duration: y, ... } }
-        final first =
-            data.values.whereType<Map>().cast<Map<String, dynamic>?>().firstOrNull;
+        if (data['currentTime'] is num) return (data['currentTime'] as num).toDouble();
+        if (data['currentTime'] is String) return double.tryParse(data['currentTime'] as String);
+        final first = _firstMapValue(data);
         if (first != null) {
           final v = first['currentTime'];
           if (v is num) return v.toDouble();
+          if (v is String) return double.tryParse(v);
         }
       }
     } catch (_) {}
     return null;
   }
 
-  /// Starts playback. Will resume from server progress if available.
+  /// Server-first resume, else local fallback if offline or server has none.
   Future<void> playItem(String libraryItemId, {String? episodeId}) async {
     final session = await AudioSession.instance;
     await session.configure(const AudioSessionConfiguration.music());
@@ -2367,7 +2527,8 @@ class PlaybackRepository {
     // Prefer local, but merge remote durations if local durations are unknown
     var tracks =
     await _getTracksPreferLocal(libraryItemId, episodeId: episodeId);
-    tracks = await _ensureDurations(tracks, libraryItemId, episodeId: episodeId);
+    tracks =
+    await _ensureDurations(tracks, libraryItemId, episodeId: episodeId);
     _sumTrackDurationsSec = _sumDurations(tracks);
 
     final np = NowPlaying(
@@ -2383,17 +2544,49 @@ class PlaybackRepository {
     _setNowPlaying(np);
     _progressItemId = libraryItemId;
 
-    // Prepare first track
+    _resumeSettled = false; // block early sends
+
+    // Prepare first track (we'll seek after choosing resume)
     await _playTrackAt(0);
 
-    // Try to resume from server (global seconds)
-    final resumeSec = await fetchServerProgress(libraryItemId);
+    // --- RESUME ORDER: SERVER -> LOCAL (per-server key) -> LEGACY KEY ---
+    double? resumeSec;
+    bool serverTried = false;
+    try {
+      resumeSec = await fetchServerProgress(libraryItemId);
+      serverTried = true;
+    } catch (e) {
+      _log('fetchServerProgress error (will use local if any): $e');
+    }
+
+    if (resumeSec == null || resumeSec <= 0) {
+      final prefs = await SharedPreferences.getInstance();
+      final localKey = _progressKey(libraryItemId, episodeId: episodeId);
+      final localSec = prefs.getDouble(localKey);
+      if (localSec != null && localSec > 0) {
+        resumeSec = localSec;
+        _log('Using LOCAL resume $resumeSec (serverTried=$serverTried)');
+      } else {
+        // legacy (pre-namespaced) key, just in case
+        final legacy = prefs.getDouble('$_kLocalProgPrefix$libraryItemId');
+        if (legacy != null && legacy > 0) {
+          resumeSec = legacy;
+          _log('Using LEGACY LOCAL resume $resumeSec');
+        } else {
+          _log('No resume position available (serverTried=$serverTried)');
+        }
+      }
+    } else {
+      _log('Using SERVER resume $resumeSec');
+    }
+
     if (resumeSec != null && resumeSec > 0) {
-      // Map global seconds -> track index + offset
       final map = _mapGlobalSecondsToTrack(resumeSec, tracks);
       await _playTrackAt(map.index);
       await player.seek(Duration(milliseconds: (map.offsetSec * 1000).round()));
     }
+
+    _resumeSettled = true;
 
     _startProgressSync(libraryItemId, episodeId: episodeId);
 
@@ -2412,7 +2605,10 @@ class PlaybackRepository {
     });
 
     await player.play();
-    await _sendProgressImmediate(); // initial ping (global)
+    // Send only if > 0.5s to avoid “reset to 0” on first open
+    if ((player.position.inMilliseconds / 1000.0) > 0.5) {
+      await _sendProgressImmediate();
+    }
   }
 
   Future<void> pause() async {
@@ -2425,22 +2621,20 @@ class PlaybackRepository {
     await _sendProgressImmediate();
   }
 
-  /// Seek to [pos] (track-local). If [reportNow] is true, report immediately
-  /// using the requested track position mapped into global item position.
+  /// Seek to [pos] but **debounce** the server update (prevents PATCH spam).
   Future<void> seek(Duration pos, {bool reportNow = true}) async {
     await player.seek(pos);
-    if (reportNow) {
-      await _sendProgressImmediate(overrideTrackPosSec: pos.inMilliseconds / 1000.0);
-    }
+    _debouncedProgress();
   }
 
-  /// Convenience: move by +/- seconds (track-local) and report immediately.
+  /// Convenience: move by +/- seconds. Also debounced.
   Future<void> nudgeSeconds(int delta) async {
     final total = player.duration ?? Duration.zero;
     var target = player.position + Duration(seconds: delta);
     if (target < Duration.zero) target = Duration.zero;
     if (target > total) target = total;
-    await seek(target, reportNow: true);
+    await player.seek(target);
+    _debouncedProgress();
   }
 
   /// Manually trigger a progress push (e.g. from UI)
@@ -2476,6 +2670,7 @@ class PlaybackRepository {
     _progressItemId = null;
     _metaTotalDurationSec = null;
     _sumTrackDurationsSec = null;
+    _resumeSettled = false;
   }
 
   // ---- Progress sync ----
@@ -2492,14 +2687,17 @@ class PlaybackRepository {
 
     // Big jumps / finish detection (GLOBAL seconds)
     player.positionStream.listen((_) {
-      final cur = _computeGlobalPositionSec();
+      final cur = _computeGlobalPositionSec() ?? _trackOnlyPosSec();
       final total = _computeTotalDurationSec();
-      if (cur == null || total == null || total <= 0) return;
+      if (cur == null) return;
 
-      final progress = cur / total;
       final bigJump = (_lastSentSec - cur).abs() >= 30;
-      if (bigJump || progress >= 0.999) {
-        _sendProgressImmediate(finished: progress >= 0.999);
+      final isDone =
+      (total != null && total > 0) ? (cur / total) >= 0.999 : false;
+
+      // Don't auto-send while user is actively scrubbing
+      if (!_userSeekActive && (bigJump || isDone)) {
+        _sendProgressImmediate(finished: isDone);
       }
     });
   }
@@ -2509,9 +2707,18 @@ class PlaybackRepository {
     _progressTimer = null;
   }
 
-  /// Push to server using GLOBAL item position.
-  /// If [overrideTrackPosSec] is provided, it is interpreted as the position
-  /// within the *current track* and mapped to global seconds.
+  void _debouncedProgress() {
+    _userSeekActive = true;
+    _debounceSeekTimer?.cancel();
+    _debounceSeekTimer = Timer(_seekDebounce, () {
+      _userSeekActive = false;
+      _sendProgressImmediate();
+    });
+  }
+
+  /// Always try to send at least `currentTime`. Include `progress`
+  /// only when we know the total. Throttled to avoid bursts and protected
+  /// against the initial 0s overwrite before resume settles.
   Future<void> _sendProgressImmediate({
     double? overrideTrackPosSec,
     bool finished = false,
@@ -2520,68 +2727,82 @@ class PlaybackRepository {
     final np = _nowPlaying;
     if (itemId == null || np == null) return;
 
+    // Throttle
+    final now = DateTime.now();
+    if (_lastSentAt != null &&
+        now.difference(_lastSentAt!) < _minSendGap &&
+        !finished) {
+      return;
+    }
+    _lastSentAt = now;
+
     final total = _computeTotalDurationSec();
     final cur = (overrideTrackPosSec != null)
         ? _computeGlobalFromTrackPos(overrideTrackPosSec)
-        : _computeGlobalPositionSec();
+        : (_computeGlobalPositionSec() ?? _trackOnlyPosSec());
 
-    if (total == null || total <= 0 || cur == null) return;
+    if (cur == null) return;
+
+    // Guard: don't send an early 0s that could reset server progress
+    if (!_resumeSettled && cur <= 0.5 && !finished) {
+      _log('Suppressing initial 0s send until resume settles');
+      return;
+    }
+
+    // Persist locally with per-server key so switching servers won't mix states
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble(
+          _progressKey(itemId, episodeId: np.episodeId), cur);
+    } catch (_) {}
 
     _lastSentSec = cur;
-    await _sendProgressWithFallback(
-      libraryItemId: itemId,
-      episodeId: np.episodeId,
-      currentTime: cur,
-      duration: total,
-      isFinished: finished,
-    );
-  }
 
-  Future<void> _sendProgressWithFallback({
-    required String libraryItemId,
-    String? episodeId,
-    required double currentTime,
-    required double duration,
-    required bool isFinished,
-  }) async {
     final api = _auth.api;
-    final path = (episodeId == null)
-        ? '/api/me/progress/$libraryItemId'
-        : '/api/me/progress/$libraryItemId/$episodeId';
+    final path = (np.episodeId == null)
+        ? '/api/me/progress/$itemId'
+        : '/api/me/progress/$itemId/${np.episodeId}';
 
-    final bodyMap = {
-      'duration': duration,                 // total ITEM duration (sec)
-      'currentTime': currentTime,           // global ITEM position (sec)
-      'progress': (currentTime / duration).clamp(0.0, 1.0),
-      'isFinished': isFinished,
+    // Let server-side item duration drive UI; send progress only.
+    final bodyMap = <String, dynamic>{
+      'currentTime': cur,
+      'isFinished':
+      finished || (total != null && total > 0 && (cur / total) >= 0.995),
+      if (total != null && total > 0)
+        'progress': (cur / total).clamp(0.0, 1.0),
     };
-    final body = jsonEncode(bodyMap);
 
-    http.Response resp;
+    http.Response? resp;
+    _log("Sending progress: cur=$cur, total=$total, finished=${bodyMap['isFinished']}");
 
-    // Try PATCH first
     try {
       resp = await api.request('PATCH', path,
-          headers: {'Content-Type': 'application/json'}, body: body);
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode(bodyMap));
+      _log("PATCH ${resp.statusCode} ${resp.reasonPhrase}");
       if (resp.statusCode == 200 || resp.statusCode == 204) return;
-    } catch (_) {}
+    } catch (e) {
+      _log("PATCH error: $e");
+    }
 
-    // Try PUT
     try {
       resp = await api.request('PUT', path,
-          headers: {'Content-Type': 'application/json'}, body: body);
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode(bodyMap));
+      _log("PUT ${resp.statusCode} ${resp.reasonPhrase}");
       if (resp.statusCode == 200 || resp.statusCode == 204) return;
-    } catch (_) {}
+    } catch (e) {
+      _log("PUT error: $e");
+    }
 
-    // Try POST
     try {
       resp = await api.request('POST', path,
-          headers: {'Content-Type': 'application/json'}, body: body);
-      if (resp.statusCode == 200 || resp.statusCode == 204) return;
-    } catch (_) {}
-
-    // ignore: avoid_print
-    print('ABS progress update failed');
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode(bodyMap));
+      _log("POST ${resp.statusCode} ${resp.reasonPhrase}");
+    } catch (e) {
+      _log("POST error: $e");
+    }
   }
 
   // ---- Internals ----
@@ -2595,12 +2816,37 @@ class PlaybackRepository {
   Future<void> _playTrackAt(int index) async {
     final cur = _nowPlaying!;
     final track = cur.tracks[index];
+
     if (track.isLocal) {
       await player.setFilePath(track.url, preload: true);
     } else {
       await player.setUrl(track.url, preload: true);
     }
     _setNowPlaying(cur.copyWith(currentIndex: index));
+
+    // Learn this track's actual duration from the player
+    final sub = player.durationStream.listen((d) {
+      final ms = d?.inMilliseconds ?? 0;
+      if (ms > 0) {
+        final sec = ms / 1000.0;
+        _observedDurationsSec[index] = sec;
+
+        // Patch track duration if unknown
+        final np = _nowPlaying;
+        if (np != null) {
+          final patched = [...np.tracks];
+          if (patched[index].duration <= 0) {
+            patched[index] = patched[index].copyWith(duration: sec);
+            _setNowPlaying(np.copyWith(tracks: patched));
+          }
+        }
+
+        _sumTrackDurationsSec = _sumDurations(_nowPlaying?.tracks ?? const []);
+      }
+    });
+
+    // Avoid leak
+    Future.delayed(const Duration(seconds: 5), () => sub.cancel());
   }
 
   Future<List<PlaybackTrack>> _getTracksPreferLocal(String libraryItemId,
@@ -2635,9 +2881,10 @@ class PlaybackRepository {
   Future<List<PlaybackTrack>> _streamTracks(String libraryItemId,
       {String? episodeId}) async {
     final api = _auth.api;
-    final token = await api.accessToken();
-    final tokenQs =
-    (token != null && token.isNotEmpty) ? '?token=$token' : '';
+    final token = await _auth.api.accessToken();
+    final baseStr = api.baseUrl ?? '';
+    final base = Uri.parse(baseStr);
+
     final path = episodeId == null
         ? '/api/items/$libraryItemId/play'
         : '/api/items/$libraryItemId/play/$episodeId';
@@ -2646,31 +2893,42 @@ class PlaybackRepository {
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'deviceInfo': {'clientVersion': 'kitzi-android-0.1.0'},
-          'supportedMimeTypes': [
-            'audio/mpeg',
-            'audio/mp4',
-            'audio/aac',
-            'audio/flac'
-          ]
+          'supportedMimeTypes': ['audio/mpeg', 'audio/mp4', 'audio/aac', 'audio/flac']
         }));
 
     if (resp.statusCode != 200) {
-      throw Exception('Failed to start playback: ${resp.statusCode}');
+      throw Exception('Failed to get tracks: ${resp.statusCode}');
     }
+
     final data = jsonDecode(resp.body) as Map<String, dynamic>;
-    final base = api.baseUrl ?? '';
     final tracks = (data['audioTracks'] as List?) ?? const [];
     return tracks.map((t) {
       final m = (t as Map).cast<String, dynamic>();
       final idx = (m['index'] as num?)?.toInt() ?? 0;
       final dur = (m['duration'] as num?)?.toDouble() ?? 0.0; // seconds
       final mime = (m['mimeType'] ?? 'audio/mpeg').toString();
-      final contentUrl =
-      (m['contentUrl'] ?? '').toString(); // /s/item/<id>/file.mp3
-      final abs =
-          '$base$contentUrl${tokenQs.isNotEmpty ? (contentUrl.contains('?') ? '&' : '?') + tokenQs.substring(1) : ''}';
+      final contentUrl = (m['contentUrl'] ?? '').toString();
+
+      Uri abs = Uri.tryParse(contentUrl) ?? Uri(path: contentUrl);
+      if (!abs.hasScheme) {
+        final rel =
+        contentUrl.startsWith('/') ? contentUrl.substring(1) : contentUrl;
+        abs = base.resolve(rel);
+      }
+      if (token != null && token.isNotEmpty) {
+        abs = abs.replace(queryParameters: {
+          ...abs.queryParameters,
+          'token': token,
+        });
+      }
+
       return PlaybackTrack(
-          index: idx, url: abs, mimeType: mime, duration: dur, isLocal: false);
+        index: idx,
+        url: abs.toString(),
+        mimeType: mime,
+        duration: dur,
+        isLocal: false,
+      );
     }).toList()
       ..sort((a, b) => a.index.compareTo(b.index));
   }
@@ -2710,10 +2968,21 @@ class PlaybackRepository {
   }
 
   Future<Map<String, dynamic>> _getItemMeta(String libraryItemId) async {
-    final base = _auth.api.baseUrl ?? '';
+    final baseStr = _auth.api.baseUrl ?? '';
+    final base = Uri.parse(baseStr);
     final token = await _auth.api.accessToken();
-    final qs = (token != null && token.isNotEmpty) ? '?token=$token' : '';
-    final r = await http.get(Uri.parse('$base/api/items/$libraryItemId$qs'));
+
+    Uri meta = base.resolve('api/items/$libraryItemId');
+    if (token != null && token.isNotEmpty) {
+      meta = meta.replace(
+        queryParameters: <String, String>{
+          ...meta.queryParameters,
+          'token': token,
+        },
+      );
+    }
+
+    final r = await http.get(meta);
     try {
       final j = jsonDecode(r.body) as Map<String, dynamic>;
       return (j['item'] as Map?)?.cast<String, dynamic>() ??
@@ -2724,57 +2993,20 @@ class PlaybackRepository {
   }
 
   Future<String?> _coverUrl(String libraryItemId) async {
-    final base = _auth.api.baseUrl ?? '';
+    final baseStr = _auth.api.baseUrl ?? '';
+    final base = Uri.parse(baseStr);
     final token = await _auth.api.accessToken();
-    final qs = (token != null && token.isNotEmpty) ? '?token=$token' : '';
-    return '$base/api/items/$libraryItemId/cover$qs';
-  }
 
-  List<Chapter> _extractChapters(Map<String, dynamic> meta) {
-    final m = (meta['media'] as Map?)?.cast<String, dynamic>() ?? const {};
-    final md = (m['metadata'] as Map?)?.cast<String, dynamic>() ?? const {};
-    final ch = (md['chapters'] as List?) ?? const [];
-    final out = <Chapter>[];
-    for (final c in ch) {
-      if (c is Map) {
-        final cc = c.cast<String, dynamic>();
-        final title = (cc['title'] ?? '').toString();
-        final start = (cc['start'] is num)
-            ? Duration(
-            milliseconds:
-            ((cc['start'] as num).toDouble() * 1000).round())
-            : Duration.zero;
-        if (title.isNotEmpty) out.add(Chapter(title: title, start: start));
-      }
+    Uri cov = base.resolve('api/items/$libraryItemId/cover');
+    if (token != null && token.isNotEmpty) {
+      cov = cov.replace(
+        queryParameters: <String, String>{
+          ...cov.queryParameters,
+          'token': token,
+        },
+      );
     }
-    return out;
-  }
-
-  double? _extractMetaDurationSec(Map<String, dynamic> meta) {
-    final media =
-        (meta['media'] as Map?)?.cast<String, dynamic>() ?? const {};
-    final dur = media['duration'];
-    if (dur is num) return dur.toDouble(); // seconds
-    return null;
-  }
-
-  String? _titleFromMeta(Map<String, dynamic> meta) {
-    final m = (meta['media'] as Map?)?.cast<String, dynamic>() ?? const {};
-    final md = (m['metadata'] as Map?)?.cast<String, dynamic>() ?? const {};
-    return (meta['title'] ?? md['title'])?.toString();
-  }
-
-  String? _authorFromMeta(Map<String, dynamic> meta) {
-    final m = (meta['media'] as Map?)?.cast<String, dynamic>() ?? const {};
-    final md = (m['metadata'] as Map?)?.cast<String, dynamic>() ?? const {};
-    return (meta['author'] ?? md['authorName'] ?? md['author'])?.toString();
-  }
-
-  Future<void> dispose() async {
-    _stopProgressSync();
-    WidgetsBinding.instance.removeObserver(_lifecycleHook);
-    await player.dispose();
-    await _nowPlayingCtr.close();
+    return cov.toString();
   }
 
   void _setNowPlaying(NowPlaying? np) {
@@ -2782,42 +3014,48 @@ class PlaybackRepository {
     _nowPlayingCtr.add(np);
   }
 
-  // ---- Helpers for GLOBAL position/duration ----
+  // ----- Mapping / helpers -----
 
   double? _computeTotalDurationSec() {
-    // Prefer accurate sum of tracks; else metadata; else current track duration
-    final sum = _sumTrackDurationsSec;
-    if (sum != null && sum > 0) return sum;
-    final meta = _metaTotalDurationSec;
-    if (meta != null && meta > 0) return meta;
-    final track = player.duration;
-    return (track != null) ? track.inMilliseconds / 1000.0 : null;
-  }
+    // 1) Prefer explicit total from metadata if present
+    if (_metaTotalDurationSec != null && _metaTotalDurationSec! > 0) {
+      return _metaTotalDurationSec;
+    }
 
-  double? _computeGlobalPositionSec() {
+    // 2) Sum known/observed per-track durations
     final np = _nowPlaying;
     if (np == null) return null;
-    final idx = np.currentIndex;
-    final posTrackSec = player.position.inMilliseconds / 1000.0;
-    return _elapsedBeforeIndex(idx) + posTrackSec;
-  }
 
-  double _computeGlobalFromTrackPos(double trackPosSec) {
-    final np = _nowPlaying;
-    final idx = np?.currentIndex ?? 0;
-    return _elapsedBeforeIndex(idx) + trackPosSec;
-  }
-
-  double _elapsedBeforeIndex(int idx) {
-    final np = _nowPlaying;
-    if (np == null) return 0.0;
-    double s = 0.0;
-    for (var i = 0; i < idx; i++) {
-      final d = np.tracks[i].duration;
-      if (d > 0) s += d;
+    double sum = 0.0;
+    bool hasUnknown = false;
+    for (var i = 0; i < np.tracks.length; i++) {
+      final t = np.tracks[i];
+      final observed = _observedDurationsSec[i];
+      final d = (t.duration > 0) ? t.duration : (observed ?? 0.0);
+      if (d <= 0) {
+        hasUnknown = true;
+      } else {
+        sum += d;
+      }
     }
-    return s;
+
+    // 3) Only cache if we have a complete total (no unknowns)
+    if (!hasUnknown && sum > 0) {
+      _sumTrackDurationsSec = sum;
+      return sum;
+    }
+
+    // 4) Otherwise, use any previously cached full total
+    if (_sumTrackDurationsSec != null && _sumTrackDurationsSec! > 0) {
+      return _sumTrackDurationsSec;
+    }
+
+    // 5) No reliable total yet
+    return null;
   }
+
+  // track-only pos in seconds (fallback when global mapping impossible)
+  double? _trackOnlyPosSec() => player.position.inMilliseconds / 1000.0;
 
   double _sumDurations(List<PlaybackTrack> tracks) {
     var s = 0.0;
@@ -2827,99 +3065,148 @@ class PlaybackRepository {
     return s;
   }
 
-  /// Map a global seconds position to (track index, offset seconds).
-  _IndexAndOffset _mapGlobalSecondsToTrack(
-      double globalSec, List<PlaybackTrack> tracks) {
-    double acc = 0.0;
-    for (var i = 0; i < tracks.length; i++) {
-      final d = tracks[i].duration;
-      if (d <= 0) break;
-      if (globalSec < acc + d) {
-        return _IndexAndOffset(i, globalSec - acc);
-      }
-      acc += d;
+  double? _computeGlobalPositionSec() {
+    final np = _nowPlaying;
+    if (np == null) return null;
+    final idx = np.currentIndex;
+    final pos = player.position.inMilliseconds / 1000.0;
+    // Sum durations of previous tracks; if any unknown, we cannot compute reliably.
+    double prefix = 0.0;
+    for (int i = 0; i < idx; i++) {
+      final d = np.tracks[i].duration;
+      if (d <= 0) return null;
+      prefix += d;
     }
-    // Fallback: last track
-    final last = tracks.isEmpty ? 0 : tracks.length - 1;
-    final lastDur = tracks.isEmpty ? 0.0 : (tracks.last.duration);
-    final off = (lastDur > 0) ? (globalSec - (acc)) : 0.0;
-    return _IndexAndOffset(last, off.clamp(0.0, lastDur > 0 ? lastDur : off));
+    return prefix + pos;
   }
 
-  // ---- Back-compat API (if used by older UI) ----
-  Timer? _compatTimer;
-  StreamSubscription<double>? _compatSub;
-  double _compatLastSentSec = -1;
-
-  Future<void> startProgressSync({
-    required String libraryItemId,
-    required Stream<double> positionSecondsStream,
-    required double totalDurationSec,
-  }) async {
-    _compatTimer?.cancel();
-    await _compatSub?.cancel();
-    _compatLastSentSec = -1;
-
-    _compatTimer = Timer.periodic(_kProgressPing, (_) async {
-      if (_compatLastSentSec >= 0 && totalDurationSec > 0) {
-        await _sendProgressWithFallback(
-          libraryItemId: libraryItemId,
-          currentTime: _compatLastSentSec,
-          duration: totalDurationSec,
-          isFinished: false,
-        );
-      }
-    });
-
-    _compatSub = positionSecondsStream.listen((sec) {
-      final progress = totalDurationSec > 0 ? (sec / totalDurationSec) : 0.0;
-      final bigJump = (_compatLastSentSec - sec).abs() >= 30;
-      final finished = progress >= 0.999;
-      if (bigJump || finished) {
-        _sendProgressWithFallback(
-          libraryItemId: libraryItemId,
-          currentTime: sec,
-          duration: totalDurationSec,
-          isFinished: finished,
-        );
-      }
-      _compatLastSentSec = sec;
-    });
+  double _computeGlobalFromTrackPos(double trackPosSec) {
+    final np = _nowPlaying!;
+    final idx = np.currentIndex;
+    double prefix = 0.0;
+    for (int i = 0; i < idx; i++) {
+      prefix += (np.tracks[i].duration > 0 ? np.tracks[i].duration : 0.0);
+    }
+    return prefix + trackPosSec;
   }
 
-  Future<void> stopProgressSync() async {
-    _compatTimer?.cancel();
-    _compatTimer = null;
-    await _compatSub?.cancel();
-    _compatSub = null;
-    _compatLastSentSec = -1;
+  _TrackMap _mapGlobalSecondsToTrack(double sec, List<PlaybackTrack> tracks) {
+    double remain = sec;
+    for (int i = 0; i < tracks.length; i++) {
+      final d = tracks[i].duration;
+      if (d <= 0) {
+        // If unknown, assume it's the target track.
+        return _TrackMap(index: i, offsetSec: remain);
+      }
+      if (remain < d) {
+        return _TrackMap(index: i, offsetSec: remain);
+      }
+      remain -= d;
+    }
+    // If beyond total, clamp to last track end.
+    final last = tracks.isNotEmpty ? tracks.length - 1 : 0;
+    return _TrackMap(index: last, offsetSec: tracks.isNotEmpty ? tracks[last].duration : 0.0);
+  }
+
+  String? _titleFromMeta(Map<String, dynamic> meta) {
+    return (meta['title'] as String?) ??
+        (meta['media']?['metadata']?['title'] as String?) ??
+        (meta['book']?['title'] as String?);
+  }
+
+  String? _authorFromMeta(Map<String, dynamic> meta) {
+    final a = (meta['author'] as String?) ??
+        (meta['media']?['metadata']?['author'] as String?);
+    if (a != null) return a;
+    final authors = meta['authors'];
+    if (authors is List && authors.isNotEmpty) {
+      final first = authors.first;
+      if (first is Map && first['name'] is String) return first['name'] as String;
+      if (first is String) return first;
+    }
+    return null;
+  }
+
+  List<Chapter> _extractChapters(Map<String, dynamic> meta) {
+    final chapters = <Chapter>[];
+    final toc = meta['chapters'] ?? meta['tableOfContents'];
+    if (toc is List) {
+      for (final c in toc) {
+        if (c is Map) {
+          final title = (c['title'] ?? c['name'] ?? '').toString();
+          final startMs = (c['start'] is num)
+              ? (c['start'] as num).toDouble() * 1000
+              : (c['startMs'] as num?)?.toDouble();
+          if (startMs != null) {
+            chapters.add(Chapter(
+                title: title, start: Duration(milliseconds: startMs.round())));
+          }
+        }
+      }
+    }
+    return chapters;
+  }
+
+  double? _extractMetaDurationSec(Map<String, dynamic> meta) {
+    num? candidate;
+    final d1 = meta['duration'];
+    final d2 = meta['media'] is Map ? (meta['media'] as Map)['duration'] : null;
+    final d3 = meta['media'] is Map
+        ? ((meta['media'] as Map)['metadata'] is Map
+        ? ((meta['media'] as Map)['metadata'] as Map)['duration']
+        : null)
+        : null;
+    dynamic pick = d1 ?? d2 ?? d3;
+    if (pick is String) {
+      candidate = num.tryParse(pick);
+    } else if (pick is num) {
+      candidate = pick;
+    }
+    if (candidate == null) return null;
+    double sec = candidate.toDouble();
+    if (sec > 1e6) sec = sec / 1000.0; // ms->s heuristic
+    if (sec <= 0) return null;
+    return sec;
+  }
+
+  Map<String, dynamic>? _firstMapValue(Map<String, dynamic> m) {
+    for (final v in m.values) {
+      if (v is Map) {
+        try {
+          return v.cast<String, dynamic>();
+        } catch (_) {}
+      }
+    }
+    return null;
+  }
+
+  String _progressKey(String libraryItemId, {String? episodeId}) {
+    final base = _auth.api.baseUrl ?? '';
+    final host = Uri.tryParse(base)?.host ?? base;
+    final ep = episodeId ?? '';
+    // Per-server (+episode-safe) namespacing
+    return '$_kLocalProgPrefix$host:$libraryItemId:$ep';
   }
 }
 
-class _LifecycleHook with WidgetsBindingObserver {
-  _LifecycleHook({required this.onPauseOrDetach});
+class _LifecycleHook extends WidgetsBindingObserver {
   final Future<void> Function() onPauseOrDetach;
+  _LifecycleHook({required this.onPauseOrDetach});
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.inactive ||
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
-      // Fire and forget
-      // ignore: discarded_futures
       onPauseOrDetach();
     }
   }
 }
 
-class _IndexAndOffset {
+class _TrackMap {
   final int index;
   final double offsetSec;
-  _IndexAndOffset(this.index, this.offsetSec);
-}
-
-extension _FirstOrNull<E> on Iterable<E> {
-  E? get firstOrNull => isEmpty ? null : first;
+  _TrackMap({required this.index, required this.offsetSec});
 }
 
 === ./lib/core/api_client.dart ===
@@ -3336,6 +3623,90 @@ class _AbsAppState extends State<AbsApp> {
               : LoginScreen(auth: services.auth);
         },
       ),
+    );
+  }
+}
+
+=== ./lib/widgets/download_button.dart ===
+// lib/widgets/download_button.dart
+import 'package:flutter/material.dart';
+import '../core/downloads_repository.dart';
+
+class DownloadButton extends StatelessWidget {
+  final String libraryItemId;
+  final DownloadsRepository downloads;
+  final VoidCallback onStart; // call downloads.enqueueItemDownloads(...)
+  final VoidCallback onCancel; // call downloads.cancelForItem(...)
+
+  const DownloadButton({
+    super.key,
+    required this.libraryItemId,
+    required this.downloads,
+    required this.onStart,
+    required this.onCancel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<ItemProgress>(
+      stream: downloads.watchItemProgress(libraryItemId),
+      builder: (context, snap) {
+        final p = snap.data;
+        final status = p?.status ?? 'none';
+        final frac = (p?.progress ?? 0).clamp(0.0, 1.0);
+
+        if (status == 'complete') {
+          return FilledButton.icon(
+            onPressed: null,
+            icon: const Icon(Icons.check),
+            label: const Text('Downloaded'),
+          );
+        }
+
+        if (status == 'running' || status == 'queued') {
+          return Stack(
+            alignment: Alignment.center,
+            children: [
+              // background
+              FilledButton(
+                onPressed: onCancel,
+                style: FilledButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.surfaceVariant,
+                ),
+                child: const Text('Cancel'),
+              ),
+              // progress overlay
+              Positioned.fill(
+                child: FractionallySizedBox(
+                  alignment: Alignment.centerLeft,
+                  widthFactor: frac,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primary.withOpacity(0.25),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                  ),
+                ),
+              ),
+              // text on top
+              IgnorePointer(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: Text('${(frac * 100).toStringAsFixed(0)}%',
+                      style: Theme.of(context).textTheme.labelLarge),
+                ),
+              ),
+            ],
+          );
+        }
+
+        // default: not downloading
+        return FilledButton.icon(
+          onPressed: onStart,
+          icon: const Icon(Icons.download),
+          label: const Text('Download'),
+        );
+      },
     );
   }
 }
