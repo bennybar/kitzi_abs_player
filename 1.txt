@@ -1,77 +1,55 @@
 === ./lib/ui/settings/settings_page.dart ===
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import '../../main.dart'; // ServicesScope
 
-import '../../main.dart';
-
-class SettingsPage extends StatefulWidget {
+class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
 
   @override
-  State<SettingsPage> createState() => _SettingsPageState();
-}
-
-class _SettingsPageState extends State<SettingsPage> {
-  static const _wifiOnlyKey = 'downloads_wifi_only';
-  bool _wifiOnly = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() => _wifiOnly = prefs.getBool(_wifiOnlyKey) ?? true);
-  }
-
-  Future<void> _save(bool v) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_wifiOnlyKey, v);
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final theme = ServicesScope.of(context).services.theme;
+    final services = ServicesScope.of(context).services;
+    final theme = services.theme;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
         children: [
-          SwitchListTile(
-            title: const Text('Dark mode'),
-            value: theme.isDark,
-            onChanged: (v) => theme.setDark(v),
+          const ListTile(
+            title: Text('Appearance'),
           ),
-          const Divider(),
-          SwitchListTile(
-            title: const Text('Wi-Fi only downloads'),
-            subtitle: const Text('If off, uses Wi-Fi + Cellular'),
-            value: _wifiOnly,
-            onChanged: (v) async {
-              setState(() => _wifiOnly = v);
-              await _save(v);
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Downloads will use ${v ? 'Wi-Fi only' : 'Wi-Fi + Cellular'}')),
-                );
-              }
+          // Live-bind to ThemeService.mode
+          ValueListenableBuilder<ThemeMode>(
+            valueListenable: theme.mode,
+            builder: (_, mode, __) {
+              final isDark = mode == ThemeMode.dark;
+              return SwitchListTile(
+                title: const Text('Dark mode'),
+                value: isDark,
+                onChanged: (v) => theme.set(v ? ThemeMode.dark : ThemeMode.light),
+                subtitle: Text(
+                  switch (mode) {
+                    ThemeMode.system => 'System',
+                    ThemeMode.light => 'Light',
+                    ThemeMode.dark => 'Dark',
+                  },
+                ),
+              );
             },
           ),
-          const Divider(),
           ListTile(
-            leading: const Icon(Icons.logout),
-            title: const Text('Log out'),
-            onTap: () async {
-              final services = ServicesScope.of(context).services;
-              await services.auth.logout();
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Logged out')),
+            title: const Text('Use system theme'),
+            trailing: ValueListenableBuilder<ThemeMode>(
+              valueListenable: theme.mode,
+              builder: (_, mode, __) {
+                final isSystem = mode == ThemeMode.system;
+                return Switch(
+                  value: isSystem,
+                  onChanged: (v) {
+                    theme.set(v ? ThemeMode.system : ThemeMode.light);
+                  },
                 );
-              }
-            },
+              },
+            ),
           ),
         ],
       ),
@@ -594,7 +572,8 @@ import 'package:flutter/material.dart';
 import '../settings/settings_page.dart';
 import '../home/books_page.dart';
 import '../downloads/downloads_page.dart';
-import '../player/mini_player.dart';
+// UPDATED import path: MiniPlayer now lives under widgets/
+import '../../widgets/mini_player.dart';
 
 import '../../core/downloads_repository.dart';
 import '../../core/playback_repository.dart';
@@ -633,8 +612,8 @@ class _MainScaffoldState extends State<MainScaffold> {
             children: [
               Positioned.fill(
                 child: Padding(
-                  // leave room for the mini-player (64px) + a bit of spacing
-                  padding: EdgeInsets.only(bottom: hasMini ? 72 : 0),
+                  // leave room for the mini-player + spacing when it’s visible
+                  padding: EdgeInsets.only(bottom: hasMini ? 80 : 0),
                   child: pages[_index],
                 ),
               ),
@@ -643,7 +622,8 @@ class _MainScaffoldState extends State<MainScaffold> {
                   alignment: Alignment.bottomCenter,
                   child: SafeArea(
                     top: false,
-                    child: MiniPlayer(playback: playback),
+                    // UPDATED: MiniPlayer no longer takes `playback:`; give it a bit more height
+                    child: const MiniPlayer(height: 112),
                   ),
                 ),
             ],
@@ -1274,161 +1254,206 @@ class _LoginScreenState extends State<LoginScreen> {
 }
 
 === ./lib/ui/player/full_player_page.dart ===
-import 'dart:async';
-import 'package:cached_network_image/cached_network_image.dart';
+// lib/ui/player/full_player_page.dart
 import 'package:flutter/material.dart';
-import 'package:just_audio/just_audio.dart';
 
 import '../../core/playback_repository.dart';
-import '../../main.dart';
+import '../../main.dart'; // ServicesScope
 
-class FullPlayerPage extends StatefulWidget {
+class FullPlayerPage extends StatelessWidget {
   const FullPlayerPage({super.key});
 
-  @override
-  State<FullPlayerPage> createState() => _FullPlayerPageState();
-}
-
-class _FullPlayerPageState extends State<FullPlayerPage> {
-  late final PlaybackRepository _pb;
-  bool _dragging = false;
-  double _pendingSeekMs = -1;
-  Timer? _coalesce;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _pb = ServicesScope.of(context).services.playback;
+  String _fmt(Duration d) {
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return h > 0 ? '$h:$m:$s' : '$m:$s';
   }
 
-  @override
-  void dispose() {
-    _coalesce?.cancel();
-    super.dispose();
-  }
-
-  Future<void> _commitSeek() async {
-    if (_pendingSeekMs >= 0) {
-      final ms = _pendingSeekMs;
-      _pendingSeekMs = -1;
-      await _pb.seek(Duration(milliseconds: ms.round()), reportNow: true);
+  Future<void> _showChaptersSheet(
+      BuildContext context,
+      PlaybackRepository playback,
+      NowPlaying np,
+      ) async {
+    final chapters = np.chapters;
+    if (chapters.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No chapters available')),
+      );
+      return;
     }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      showDragHandle: true,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      builder: (ctx) {
+        return ListView.separated(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+          itemCount: chapters.length,
+          separatorBuilder: (_, __) => const Divider(height: 1),
+          itemBuilder: (_, i) {
+            final c = chapters[i];
+            return ListTile(
+              dense: false,
+              title: Text(
+                c.title.isEmpty ? 'Chapter ${i + 1}' : c.title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              subtitle: Text(_fmt(c.start)),
+              leading: CircleAvatar(
+                child: Text('${i + 1}'),
+              ),
+              onTap: () async {
+                Navigator.of(ctx).pop();
+                await playback.seek(c.start, reportNow: true);
+              },
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final playback = ServicesScope.of(context).services.playback;
     final cs = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
 
     return Scaffold(
       backgroundColor: cs.surface,
       appBar: AppBar(
+        centerTitle: false,
         title: const Text('Now Playing'),
-        leading: IconButton(
-          icon: const Icon(Icons.keyboard_arrow_down),
-          onPressed: () => Navigator.of(context).maybePop(),
-          tooltip: 'Dismiss',
-        ),
+        actions: [
+          // Speed selector
+          PopupMenuButton<double>(
+            tooltip: 'Playback speed',
+            icon: const Icon(Icons.speed),
+            onSelected: (v) => playback.setSpeed(v),
+            itemBuilder: (context) => const [
+              PopupMenuItem(value: 0.75, child: Text('0.75×')),
+              PopupMenuItem(value: 1.0, child: Text('1.0×')),
+              PopupMenuItem(value: 1.25, child: Text('1.25×')),
+              PopupMenuItem(value: 1.5, child: Text('1.5×')),
+              PopupMenuItem(value: 1.75, child: Text('1.75×')),
+              PopupMenuItem(value: 2.0, child: Text('2.0×')),
+            ],
+          ),
+        ],
       ),
       body: SafeArea(
+        bottom: false,
         child: StreamBuilder<NowPlaying?>(
-          stream: _pb.nowPlayingStream,
-          initialData: _pb.nowPlaying,
-          builder: (_, snap) {
+          stream: playback.nowPlayingStream,
+          initialData: playback.nowPlaying,
+          builder: (context, snap) {
             final np = snap.data;
             if (np == null) {
               return const Center(child: Text('Nothing playing'));
             }
 
-            return Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: CachedNetworkImage(
-                          imageUrl: np.coverUrl ?? '',
-                          width: 120,
-                          height: 120,
-                          fit: BoxFit.cover,
-                          errorWidget: (_, __, ___) => Container(
-                            width: 120,
-                            height: 120,
-                            color: cs.surfaceContainerHighest,
-                            child: const Icon(Icons.audiotrack, size: 40),
+            return Column(
+              children: [
+                // ARTWORK + TITLE
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                    child: Column(
+                      children: [
+                        // Cover
+                        AspectRatio(
+                          aspectRatio: 1,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(20),
+                            child: Image.network(
+                              np.coverUrl ?? '',
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => Container(
+                                color: cs.surfaceVariant,
+                                child: const Icon(Icons.menu_book_outlined, size: 88),
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(np.title, style: text.titleLarge, maxLines: 2, overflow: TextOverflow.ellipsis),
-                            const SizedBox(height: 6),
-                            Text(np.author ?? '', style: text.titleMedium, maxLines: 1, overflow: TextOverflow.ellipsis),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const Spacer(),
-                  StreamBuilder<Duration?>(
-                    stream: _pb.durationStream,
-                    initialData: _pb.player.duration,
-                    builder: (_, dSnap) {
-                      final total = dSnap.data ?? Duration.zero;
-                      return StreamBuilder<Duration>(
-                        stream: _pb.positionStream,
-                        initialData: _pb.player.position,
-                        builder: (_, pSnap) {
-                          final pos = pSnap.data ?? Duration.zero;
-                          final max = (total.inMilliseconds > 0)
-                              ? total.inMilliseconds.toDouble()
-                              : 1.0;
-                          final value = _dragging
-                              ? _pendingSeekMs.clamp(0.0, max)
-                              : pos.inMilliseconds
-                              .clamp(0, total.inMilliseconds)
-                              .toDouble();
+                        const SizedBox(height: 16),
 
-                          String fmt(Duration d) {
-                            final h = d.inHours;
-                            final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
-                            final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
-                            return h > 0 ? '$h:$m:$s' : '$m:$s';
-                          }
+                        // Title / author centered
+                        Text(
+                          np.title,
+                          textAlign: TextAlign.center,
+                          style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (np.author != null && np.author!.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            np.author!,
+                            textAlign: TextAlign.center,
+                            style: text.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+
+                // POSITION + SLIDER
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                  child: StreamBuilder<Duration?>(
+                    stream: playback.durationStream,
+                    initialData: playback.player.duration,
+                    builder: (_, durSnap) {
+                      final total = durSnap.data ?? Duration.zero;
+                      return StreamBuilder<Duration>(
+                        stream: playback.positionStream,
+                        initialData: playback.player.position,
+                        builder: (_, posSnap) {
+                          final pos = posSnap.data ?? Duration.zero;
+                          final max = total.inMilliseconds.toDouble().clamp(0.0, double.infinity);
+                          final value = pos.inMilliseconds.toDouble().clamp(0.0, max);
 
                           return Column(
                             children: [
-                              Slider(
-                                min: 0,
-                                max: max,
-                                value: value,
-                                onChangeStart: (_) {
-                                  _dragging = true;
-                                  _coalesce?.cancel();
-                                },
-                                onChanged: (v) {
-                                  _pendingSeekMs = v;
-                                  _coalesce?.cancel();
-                                  _coalesce = Timer(const Duration(milliseconds: 350), _commitSeek);
-                                  setState(() {});
-                                },
-                                onChangeEnd: (_) async {
-                                  _dragging = false;
-                                  await _commitSeek();
-                                },
+                              SliderTheme(
+                                data: SliderTheme.of(context).copyWith(
+                                  trackHeight: 5,
+                                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 10),
+                                ),
+                                child: Slider(
+                                  min: 0.0,
+                                  max: max > 0 ? max : 1.0,
+                                  value: value,
+                                  onChanged: (v) async {
+                                    await playback.seek(
+                                      Duration(milliseconds: v.round()),
+                                      reportNow: false,
+                                    );
+                                  },
+                                  onChangeEnd: (v) async {
+                                    await playback.seek(
+                                      Duration(milliseconds: v.round()),
+                                      reportNow: true,
+                                    );
+                                  },
+                                ),
                               ),
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Text(fmt(Duration(milliseconds: value.round()))),
-                                  Text(total == Duration.zero
-                                      ? ''
-                                      : '-${fmt(total - Duration(milliseconds: value.round()))}'),
+                                  Text(_fmt(pos), style: text.labelLarge),
+                                  Text(
+                                    total == Duration.zero ? '' : '-${_fmt(total - pos)}',
+                                    style: text.labelLarge?.copyWith(color: cs.onSurfaceVariant),
+                                  ),
                                 ],
                               ),
                             ],
@@ -1437,44 +1462,130 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
                       );
                     },
                   ),
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                ),
+
+                const SizedBox(height: 8),
+
+                // CONTROLS + CHAPTERS
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
+                  child: Column(
                     children: [
-                      IconButton(
-                        iconSize: 32,
-                        icon: const Icon(Icons.replay_10),
-                        onPressed: () => _pb.nudgeSeconds(-10),
+                      // Large transport controls (Material 3)
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          _RoundIconButton(
+                            tooltip: 'Back 30s',
+                            icon: Icons.replay_30,
+                            onTap: () => playback.nudgeSeconds(-30),
+                          ),
+                          StreamBuilder<bool>(
+                            stream: playback.playingStream,
+                            initialData: playback.player.playing,
+                            builder: (_, playSnap) {
+                              final playing = playSnap.data ?? false;
+                              return _RoundIconButton(
+                                tooltip: playing ? 'Pause' : 'Play',
+                                icon: playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                                isPrimary: true,
+                                size: 88,
+                                onTap: () async {
+                                  if (playing) {
+                                    await playback.pause();
+                                  } else {
+                                    await playback.resume();
+                                  }
+                                },
+                              );
+                            },
+                          ),
+                          _RoundIconButton(
+                            tooltip: 'Forward 30s',
+                            icon: Icons.forward_30,
+                            onTap: () => playback.nudgeSeconds(30),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 8),
-                      StreamBuilder<bool>(
-                        stream: _pb.playingStream,
-                        initialData: _pb.player.playing,
-                        builder: (_, playSnap) {
-                          final playing = playSnap.data ?? false;
-                          return FilledButton.icon(
-                            onPressed: () => playing ? _pb.pause() : _pb.resume(),
-                            icon: Icon(playing ? Icons.pause : Icons.play_arrow),
-                            label: Text(playing ? 'Pause' : 'Play'),
-                          );
-                        },
-                      ),
-                      const SizedBox(width: 8),
-                      IconButton(
-                        iconSize: 32,
-                        icon: const Icon(Icons.forward_30),
-                        onPressed: () => _pb.nudgeSeconds(30),
+
+                      const SizedBox(height: 12),
+
+                      // Chapters + Queue controls
+                      Row(
+                        children: [
+                          Expanded(
+                            child: FilledButton.tonalIcon(
+                              icon: const Icon(Icons.list_alt_rounded),
+                              label: const Text('Chapters'),
+                              onPressed: () => _showChaptersSheet(context, playback, np),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: FilledButton.tonalIcon(
+                              icon: const Icon(Icons.queue_music_rounded),
+                              label: const Text('Queue'),
+                              onPressed: () {
+                                // Optional future: open upcoming tracks
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Queue view not implemented yet')),
+                                );
+                              },
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                  const Spacer(),
-                ],
-              ),
+                ),
+              ],
             );
           },
         ),
       ),
     );
+  }
+}
+
+/// Big circular MD3 icon button used for transport controls
+class _RoundIconButton extends StatelessWidget {
+  const _RoundIconButton({
+    required this.icon,
+    required this.onTap,
+    this.tooltip,
+    this.isPrimary = false,
+    this.size = 64,
+  });
+
+  final IconData icon;
+  final VoidCallback onTap;
+  final String? tooltip;
+  final bool isPrimary;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    final bg = isPrimary ? cs.primary : cs.surfaceVariant;
+    final fg = isPrimary ? cs.onPrimary : cs.onSurface;
+
+    final button = Material(
+      color: bg,
+      shape: const CircleBorder(),
+      elevation: isPrimary ? 2 : 0,
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: SizedBox(
+          width: size,
+          height: size,
+          child: Icon(icon, size: size * 0.48, color: fg),
+        ),
+      ),
+    );
+
+    return tooltip == null ? button : Tooltip(message: tooltip!, child: button);
   }
 }
 
@@ -3516,46 +3627,44 @@ class Book {
 
 === ./lib/main.dart ===
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import 'core/auth_repository.dart';
-import 'core/downloads_repository.dart';
 import 'core/playback_repository.dart';
+import 'core/downloads_repository.dart';
 import 'core/theme_service.dart';
 
-import 'ui/auth/auth_gate.dart';
-import 'ui/auth/login_page.dart';
+import 'ui/login/login_screen.dart';
 import 'ui/main/main_scaffold.dart';
-import 'ui/player/full_player_page.dart';
-import 'ui/settings/settings_page.dart'; // your existing page that referenced services.theme
 
-/// Simple services bucket accessible via InheritedWidget.
+/// Simple app-wide service container
 class AppServices {
+  final AuthRepository auth;
+  final PlaybackRepository playback;
+  final DownloadsRepository downloads;
+  final ThemeService theme;
   AppServices({
     required this.auth,
     required this.playback,
     required this.downloads,
     required this.theme,
   });
-
-  final AuthRepository auth;
-  final PlaybackRepository playback;
-  final DownloadsRepository downloads;
-  final ThemeService theme; // ✅ provides `services.theme` for settings_page.dart
 }
 
+/// Inherited scope to access services anywhere with:
+/// `ServicesScope.of(context).services`
 class ServicesScope extends InheritedWidget {
+  final AppServices services;
   const ServicesScope({
     super.key,
     required this.services,
-    required super.child,
-  });
-
-  final AppServices services;
+    required Widget child,
+  }) : super(child: child);
 
   static ServicesScope of(BuildContext context) {
-    final res = context.dependOnInheritedWidgetOfExactType<ServicesScope>();
-    assert(res != null, 'ServicesScope not found in context');
-    return res!;
+    final scope = context.dependOnInheritedWidgetOfExactType<ServicesScope>();
+    assert(scope != null, 'ServicesScope not found in widget tree');
+    return scope!;
   }
 
   @override
@@ -3566,61 +3675,81 @@ class ServicesScope extends InheritedWidget {
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // ✅ Your project doesn’t have AuthRepository.create(); use default ctor
-  final auth = AuthRepository();
+  if (await Permission.notification.isDenied) {
+    await Permission.notification.request();
+  }
+
+  // Construct singletons (Auth -> Playback -> Downloads)
+  final auth = await AuthRepository.ensure();
   final playback = PlaybackRepository(auth);
   final downloads = DownloadsRepository(auth, playback);
   final theme = ThemeService();
   await downloads.init();
 
-  runApp(MyApp(
-    services: AppServices(
-      auth: auth,
-      playback: playback,
-      downloads: downloads,
-      theme: theme,
-    ),
+  final services = AppServices(
+    auth: auth,
+    playback: playback,
+    downloads: downloads,
+    theme: theme,
+  );
+
+  runApp(ServicesScope(
+    services: services,
+    child: const AbsApp(),
   ));
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key, required this.services});
-  final AppServices services;
+class AbsApp extends StatefulWidget {
+  const AbsApp({super.key});
+  @override
+  State<AbsApp> createState() => _AbsAppState();
+}
+
+class _AbsAppState extends State<AbsApp> {
+  late final Future<bool> _sessionFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _sessionFuture =
+        AuthRepository.ensure().then((auth) => auth.hasValidSession());
+  }
 
   @override
   Widget build(BuildContext context) {
-    // React to theme changes from settings
-    return ServicesScope(
-      services: services,
-      child: ValueListenableBuilder<ThemeMode>(
-        valueListenable: services.theme.mode,
-        builder: (_, mode, __) {
-          return MaterialApp(
-            title: 'Kitzi',
-            theme: ThemeData(
-              useMaterial3: true,
-              colorSchemeSeed: Colors.deepPurple,
-              brightness: Brightness.light,
-            ),
-            darkTheme: ThemeData(
-              useMaterial3: true,
-              colorSchemeSeed: Colors.deepPurple,
-              brightness: Brightness.dark,
-            ),
-            themeMode: mode, // ✅ driven by ThemeService
-            routes: {
-              '/login': (_) => const LoginPage(),
-              '/player': (_) => const FullPlayerPage(),
-              '/settings': (_) => const SettingsPage(), // ✅ make sure this exists
+    final services = ServicesScope.of(context).services;
+
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: services.theme.mode,
+      builder: (_, themeMode, __) {
+        return MaterialApp(
+          title: 'ABS Client',
+          theme: ThemeData(
+            useMaterial3: true,
+            colorSchemeSeed: Colors.indigo,
+            brightness: Brightness.light,
+          ),
+          darkTheme: ThemeData(
+            useMaterial3: true,
+            colorSchemeSeed: Colors.indigo,
+            brightness: Brightness.dark,
+          ),
+          themeMode: themeMode,
+          home: FutureBuilder<bool>(
+            future: _sessionFuture,
+            builder: (context, snap) {
+              if (!snap.hasData) {
+                return const Scaffold(
+                  body: Center(child: CircularProgressIndicator()),
+                );
+              }
+              return snap.data!
+                  ? MainScaffold(downloadsRepo: services.downloads)
+                  : LoginScreen(auth: services.auth);
             },
-            // Wrap your real shell with the auth gate
-            home: AuthGate(
-              // Your MainScaffold requires downloadsRepo
-              child: MainScaffold(downloadsRepo: services.downloads),
-            ),
-          );
-        },
-      ),
+          ),
+        );
+      },
     );
   }
 }
@@ -3630,17 +3759,30 @@ class MyApp extends StatelessWidget {
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:background_downloader/background_downloader.dart';
 
 import '../core/downloads_repository.dart';
-import '../main.dart';
+import '../main.dart'; // ServicesScope for DI
 
-/// Button that adapts between Download / Cancel / Delete
-/// and shows inline progress when running.
+/// A smart download action that:
+/// - Shows "Download" when nothing is queued
+/// - Shows a filling button while queued/running with percent
+/// - Shows "Remove" when complete
+/// - Offers a cancel option while running
 class DownloadButton extends StatefulWidget {
-  const DownloadButton({super.key, required this.libraryItemId, this.titleForNotification});
+  const DownloadButton({
+    super.key,
+    required this.libraryItemId,
+    this.episodeId,
+    this.fullWidth = true,
+    this.titleForNotification, // optional label some callers pass in
+  });
 
   final String libraryItemId;
+  final String? episodeId;
+  final bool fullWidth;
+
+  /// Optional: a human title for notifications/UI. Not all backends need it,
+  /// but we accept it so callers can pass it without compile errors.
   final String? titleForNotification;
 
   @override
@@ -3648,28 +3790,24 @@ class DownloadButton extends StatefulWidget {
 }
 
 class _DownloadButtonState extends State<DownloadButton> {
-  late final DownloadsRepository _dl;
-  StreamSubscription<TaskUpdate>? _sub;
-
-  ItemProgress _snap = const ItemProgress(
-    libraryItemId: '',
-    status: 'none',
-    progress: 0,
-    totalTasks: 0,
-    completed: 0,
-  );
+  DownloadsRepository? _downloads;
+  StreamSubscription<ItemProgress>? _sub;
+  ItemProgress? _snap;
+  bool _busy = false;
 
   @override
-  void initState() {
-    super.initState();
-    _dl = ServicesScope.of(context).services.downloads;
-    // Seed once
-    _dl.watchItemProgress(widget.libraryItemId).listen((s) {
-      if (!mounted) return;
-      setState(() => _snap = s);
-    });
-    // Also listen to global updates so the button repaints quickly
-    _sub = _dl.progressStream().listen((_) {});
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final repo = ServicesScope.of(context).services.downloads;
+
+    if (!identical(repo, _downloads)) {
+      // switch subscriptions safely
+      _sub?.cancel();
+      _downloads = repo;
+      _sub = _downloads!
+          .watchItemProgress(widget.libraryItemId)
+          .listen((p) => setState(() => _snap = p));
+    }
   }
 
   @override
@@ -3678,169 +3816,242 @@ class _DownloadButtonState extends State<DownloadButton> {
     super.dispose();
   }
 
+  Future<void> _enqueue() async {
+    if (_downloads == null) return;
+    setState(() => _busy = true);
+    try {
+      await _downloads!.enqueueItemDownloads(
+        widget.libraryItemId,
+        episodeId: widget.episodeId,
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _cancelAll() async {
+    if (_downloads == null) return;
+    setState(() => _busy = true);
+    try {
+      await _downloads!.cancelForItem(widget.libraryItemId);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Try to remove local downloads even if the repository method name differs
+  /// across branches (removeLocalDownloads / removeLocal / removeLocalItem).
+  Future<void> _removeLocal() async {
+    if (_downloads == null) return;
+    setState(() => _busy = true);
+    try {
+      // Use dynamic to avoid static compile errors if the exact method name differs.
+      final dyn = _downloads as dynamic;
+      final id = widget.libraryItemId;
+
+      // Try common method names in order:
+      if (dyn.removeLocalDownloads is Function) {
+        await dyn.removeLocalDownloads(id);
+      } else if (dyn.removeLocal is Function) {
+        await dyn.removeLocal(id);
+      } else if (dyn.removeLocalItem is Function) {
+        await dyn.removeLocalItem(id);
+      } else {
+        // Fallback: cancel tasks; user may need to delete files manually
+        await _downloads!.cancelForItem(id);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Removed from queue. Local files unchanged.')),
+          );
+        }
+      }
+    } catch (_) {
+      // Best-effort: surface a gentle message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Couldn’t remove local download')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final running = _snap.status == 'running' || _snap.status == 'queued';
-    final completed = _snap.status == 'complete';
+    final snap = _snap;
 
-    if (running) {
-      return FilledButton.tonalIcon(
-        onPressed: () => _dl.cancelForItem(widget.libraryItemId),
-        icon: const Icon(Icons.close),
-        label: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text('Cancel'),
-            const SizedBox(width: 8),
-            SizedBox(
-              width: 42,
-              height: 6,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(3),
-                child: LinearProgressIndicator(value: _snap.progress == 0 ? null : _snap.progress),
+    Widget child;
+
+    // 1) Completed -> "Remove"
+    if (snap?.status == 'complete') {
+      child = FilledButton.tonalIcon(
+        onPressed: _busy ? null : _removeLocal,
+        icon: const Icon(Icons.delete_outline),
+        label: const Text('Remove'),
+      );
+    }
+    // 2) Running/Queued -> progress button + cancel
+    else if (snap != null &&
+        (snap.status == 'running' || snap.status == 'queued')) {
+      final pct = (snap.progress * 100).clamp(0, 100).toStringAsFixed(0);
+      child = Stack(
+        children: [
+          // Background progress bar that fills the button
+          Positioned.fill(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: LinearProgressIndicator(
+                value: snap.progress,
+                backgroundColor: Colors.transparent,
               ),
             ),
-          ],
-        ),
-      );
-    }
-
-    if (completed) {
-      return FilledButton.tonalIcon(
-        onPressed: () async {
-          final ok = await showDialog<bool>(
-            context: context,
-            builder: (ctx) => AlertDialog(
-              title: const Text('Delete downloads?'),
-              content: const Text('Remove downloaded files for this book?'),
-              actions: [
-                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-                FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
-              ],
+          ),
+          FilledButton.icon(
+            onPressed: null, // disabled while running
+            icon: const Icon(Icons.download),
+            label: Text('Downloading… $pct%'),
+          ),
+          // Cancel hotspot on the right
+          Positioned.fill(
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: IconButton(
+                tooltip: 'Cancel',
+                onPressed: _busy ? null : _cancelAll,
+                icon: const Icon(Icons.close),
+              ),
             ),
-          ) ??
-              false;
-          if (ok) {
-            await _dl.deleteLocal(widget.libraryItemId);
-            if (!mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Downloads removed')));
-          }
-        },
-        icon: const Icon(Icons.delete),
-        label: const Text('Delete'),
+          ),
+        ],
+      );
+    }
+    // 3) Default -> "Download"
+    else {
+      child = FilledButton.icon(
+        onPressed: _busy ? null : _enqueue,
+        icon: _busy
+            ? const SizedBox(
+            width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+            : const Icon(Icons.download),
+        label: Text(_busy ? 'Adding…' : 'Download'),
       );
     }
 
-    return FilledButton.icon(
-      onPressed: () async {
-        await _dl.enqueueItemDownloads(widget.libraryItemId);
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Added to download queue')));
-      },
-      icon: const Icon(Icons.download),
-      label: const Text('Download'),
-    );
+    if (widget.fullWidth) {
+      return SizedBox(width: double.infinity, child: child);
+    }
+    return child;
   }
 }
 
 === ./lib/widgets/mini_player.dart ===
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:just_audio/just_audio.dart';
 
 import '../core/playback_repository.dart';
-import '../main.dart';
+import '../main.dart'; // ServicesScope
+import '../ui/player/full_player_page.dart';
 
-/// Rich mini player with cover art, title/author, progress and basic controls.
-/// Tap it to open the full player (`/player` route).
 class MiniPlayer extends StatelessWidget {
-  /// Height of the mini player bar.
+  const MiniPlayer({super.key, this.height = 96});
+
   final double height;
-
-  /// Backward-compat: older code may pass `playback:`. We ignore it and
-  /// resolve playback from ServicesScope, but keep this to avoid compile errors.
-  final PlaybackRepository? playback;
-
-  const MiniPlayer({super.key, this.height = 96, this.playback});
 
   @override
   Widget build(BuildContext context) {
-    // Prefer ServicesScope; fall back to provided playback if ever needed.
-    final pb = ServicesScope.of(context).services.playback;
-    final cs = Theme.of(context).colorScheme;
+    final playback = ServicesScope.of(context).services.playback;
 
     return Material(
-      elevation: 12,
-      color: cs.surface,
-      child: SizedBox(
-        height: height,
-        child: InkWell(
-          onTap: () => Navigator.of(context).pushNamed('/player'),
+      color: Theme.of(context).colorScheme.surface,
+      elevation: 6,
+      child: InkWell(
+        onTap: () {
+          // Push the full player directly (no named route required)
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const FullPlayerPage()),
+          );
+        },
+        child: SizedBox(
+          height: height,
           child: StreamBuilder<NowPlaying?>(
-            stream: pb.nowPlayingStream,
-            initialData: pb.nowPlaying,
-            builder: (_, npSnap) {
-              final np = npSnap.data;
+            stream: playback.nowPlayingStream,
+            initialData: playback.nowPlaying,
+            builder: (context, snap) {
+              final np = snap.data;
               if (np == null) {
-                return Center(
-                  child: Text(
-                    'Nothing playing',
-                    style: Theme.of(context).textTheme.bodyMedium,
+                // Nothing playing — keep a slim placeholder so layout is stable
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.menu_book_outlined),
+                      const SizedBox(width: 12),
+                      Text(
+                        'Nothing playing',
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    ],
                   ),
                 );
               }
 
               return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
                 child: Row(
                   children: [
                     // Cover
                     ClipRRect(
                       borderRadius: BorderRadius.circular(8),
-                      child: CachedNetworkImage(
-                        imageUrl: np.coverUrl ?? '',
-                        width: height - 16,
-                        height: height - 16,
+                      child: Image.network(
+                        np.coverUrl ?? '',
+                        width: height - 24,
+                        height: height - 24,
                         fit: BoxFit.cover,
-                        errorWidget: (_, __, ___) => Container(
-                          width: height - 16,
-                          height: height - 16,
-                          color: cs.surfaceContainerHighest,
-                          child: const Icon(Icons.audiotrack),
+                        errorBuilder: (_, __, ___) => Container(
+                          width: height - 24,
+                          height: height - 24,
+                          color: Theme.of(context).colorScheme.surfaceVariant,
+                          child: const Icon(Icons.menu_book_outlined),
                         ),
                       ),
                     ),
                     const SizedBox(width: 12),
 
-                    // Title / author + progress
+                    // Title/author + progress bar
                     Expanded(
                       child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(np.title,
+                          Text(
+                            np.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.titleSmall,
+                          ),
+                          if (np.author != null && np.author!.isNotEmpty)
+                            Text(
+                              np.author!,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.titleMedium),
-                          const SizedBox(height: 2),
-                          Text(np.author ?? '',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.bodySmall),
-                          const Spacer(),
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          const SizedBox(height: 6),
                           StreamBuilder<Duration?>(
-                            stream: pb.durationStream,
-                            initialData: pb.player.duration,
-                            builder: (_, dSnap) {
-                              final total = dSnap.data ?? Duration.zero;
+                            stream: playback.durationStream,
+                            initialData: playback.player.duration,
+                            builder: (_, durSnap) {
+                              final total = durSnap.data ?? Duration.zero;
                               return StreamBuilder<Duration>(
-                                stream: pb.positionStream,
-                                initialData: pb.player.position,
-                                builder: (_, pSnap) {
-                                  final pos = pSnap.data ?? Duration.zero;
-                                  final v = (total.inMilliseconds > 0)
-                                      ? pos.inMilliseconds / total.inMilliseconds
+                                stream: playback.positionStream,
+                                initialData: playback.player.position,
+                                builder: (_, posSnap) {
+                                  final pos = posSnap.data ?? Duration.zero;
+                                  final value = (total.inMilliseconds > 0)
+                                      ? (pos.inMilliseconds /
+                                      total.inMilliseconds)
                                       : 0.0;
-                                  return LinearProgressIndicator(value: v);
+                                  return LinearProgressIndicator(value: value);
                                 },
                               );
                             },
@@ -3848,33 +4059,23 @@ class MiniPlayer extends StatelessWidget {
                         ],
                       ),
                     ),
-
                     const SizedBox(width: 8),
 
-                    // Controls
+                    // Play/Pause button
                     StreamBuilder<bool>(
-                      stream: pb.playingStream,
-                      initialData: pb.player.playing,
+                      stream: playback.playingStream,
+                      initialData: playback.player.playing,
                       builder: (_, playSnap) {
                         final playing = playSnap.data ?? false;
-                        return Row(
-                          children: [
-                            IconButton(
-                              tooltip: 'Rewind 10s',
-                              icon: const Icon(Icons.replay_10),
-                              onPressed: () => pb.nudgeSeconds(-10),
-                            ),
-                            IconButton(
-                              tooltip: playing ? 'Pause' : 'Play',
-                              icon: Icon(playing ? Icons.pause : Icons.play_arrow),
-                              onPressed: () => playing ? pb.pause() : pb.resume(),
-                            ),
-                            IconButton(
-                              tooltip: 'Forward 30s',
-                              icon: const Icon(Icons.forward_30),
-                              onPressed: () => pb.nudgeSeconds(30),
-                            ),
-                          ],
+                        return IconButton.filled(
+                          onPressed: () async {
+                            if (playing) {
+                              await playback.pause();
+                            } else {
+                              await playback.resume();
+                            }
+                          },
+                          icon: Icon(playing ? Icons.pause : Icons.play_arrow),
                         );
                       },
                     ),
