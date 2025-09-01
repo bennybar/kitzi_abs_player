@@ -1,0 +1,3506 @@
+=== ./lib/ui/settings/settings_page.dart ===
+import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+class SettingsPage extends StatefulWidget {
+  const SettingsPage({super.key});
+
+  @override
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<SettingsPage> {
+  static const _wifiOnlyKey = 'downloads_wifi_only';
+  bool _wifiOnly = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() => _wifiOnly = prefs.getBool(_wifiOnlyKey) ?? true);
+  }
+
+  Future<void> _save(bool v) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_wifiOnlyKey, v);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Settings')),
+      body: ListView(
+        children: [
+          SwitchListTile(
+            title: const Text('Wi-Fi only downloads'),
+            subtitle: const Text('If off, uses Wi-Fi + Cellular'),
+            value: _wifiOnly,
+            onChanged: (v) async {
+              setState(() => _wifiOnly = v);
+              await _save(v);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Downloads will use ${v ? 'Wi-Fi only' : 'Wi-Fi + Cellular'}')),
+                );
+              }
+            },
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.logout),
+            title: const Text('Log out'),
+            onTap: () => Navigator.of(context).pushNamed('/logout'), // wire to your logout flow
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+=== ./lib/ui/home/books_page.dart ===
+import 'dart:async';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../core/books_repository.dart';
+import '../../models/book.dart';
+import '../book_detail/book_detail_page.dart';
+
+enum LibraryView { grid, list }
+enum SortMode { nameAsc, addedDesc }
+
+class BooksPage extends StatefulWidget {
+  const BooksPage({super.key});
+
+  @override
+  State<BooksPage> createState() => _BooksPageState();
+}
+
+class _BooksPageState extends State<BooksPage> {
+  late final Future<BooksRepository> _repoFut;
+  List<Book> _books = [];
+  bool _loading = true;
+  String? _error;
+  Timer? _timer;
+
+  LibraryView _view = LibraryView.grid;
+  SortMode _sort = SortMode.addedDesc;
+  String _query = '';
+
+  static const _viewKey = 'library_view_pref';
+  static const _sortKey = 'library_sort_pref';
+  static const _searchKey = 'library_search_pref';
+
+  final _searchCtrl = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _repoFut = BooksRepository.create();
+    _restorePrefs().then((_) {
+      _refresh(initial: true);
+      _setupAutoRefresh();
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _restorePrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    final v = prefs.getString(_viewKey);
+    final s = prefs.getString(_sortKey);
+    final q = prefs.getString(_searchKey);
+
+    if (v == 'list') _view = LibraryView.list;
+    if (s == 'nameAsc') _sort = SortMode.nameAsc;
+    if (q != null) {
+      _query = q;
+      _searchCtrl.text = q;
+    }
+  }
+
+  Future<void> _saveViewPref(LibraryView v) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_viewKey, v == LibraryView.grid ? 'grid' : 'list');
+  }
+
+  Future<void> _saveSortPref(SortMode s) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+        _sortKey, s == SortMode.nameAsc ? 'nameAsc' : 'addedDesc');
+  }
+
+  Future<void> _saveSearchPref(String q) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_searchKey, q);
+  }
+
+  void _setupAutoRefresh() {
+    _timer = Timer.periodic(const Duration(minutes: 1), (_) => _refresh());
+  }
+
+  Future<void> _refresh({bool initial = false}) async {
+    setState(() {
+      if (initial) _loading = true;
+      _error = null;
+    });
+    try {
+      final repo = await _repoFut;
+      final items = await repo.listBooks();
+      if (!mounted) return;
+      setState(() {
+        _books = items;
+        _loading = false;
+      });
+      _warmCacheCovers(items);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
+    }
+  }
+
+  /// Pre-cache first N covers to disk/memory for snappy grid/list.
+  void _warmCacheCovers(List<Book> items, {int count = 30}) {
+    if (!mounted || items.isEmpty) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      for (final b in items.take(count)) {
+        // Fire-and-forget; CachedNetworkImage handles disk cache
+        precacheImage(CachedNetworkImageProvider(b.coverUrl), context)
+            .catchError((_) {});
+      }
+    });
+  }
+
+  void _openDetails(Book b) {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => BookDetailPage(bookId: b.id)),
+    );
+  }
+
+  List<Book> _visibleBooks() {
+    final q = _query.trim().toLowerCase();
+    List<Book> list = q.isEmpty
+        ? List<Book>.from(_books)
+        : _books.where((b) {
+      final t = b.title.toLowerCase();
+      final a = (b.author ?? '').toLowerCase();
+      return t.contains(q) || a.contains(q);
+    }).toList();
+
+    switch (_sort) {
+      case SortMode.nameAsc:
+        list.sort(
+                (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+        break;
+      case SortMode.addedDesc:
+        list.sort((a, b) {
+          final da = a.updatedAt;
+          final db = b.updatedAt;
+          if (da == null && db == null) return 0;
+          if (da == null) return 1;
+          if (db == null) return -1;
+          return db.compareTo(da);
+        });
+        break;
+    }
+    return list;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final visible = _visibleBooks();
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Books'),
+        actions: [
+          IconButton(
+            tooltip: 'Refresh',
+            onPressed: _loading ? null : () => _refresh(),
+            icon: const Icon(Icons.refresh),
+          ),
+          PopupMenuButton<SortMode>(
+            tooltip: 'Sort',
+            initialValue: _sort,
+            onSelected: (mode) {
+              setState(() => _sort = mode);
+              _saveSortPref(mode);
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: SortMode.addedDesc,
+                child: ListTile(
+                  leading: Icon(Icons.schedule),
+                  title: Text('Added date (newest)'),
+                ),
+              ),
+              PopupMenuItem(
+                value: SortMode.nameAsc,
+                child: ListTile(
+                  leading: Icon(Icons.sort_by_alpha),
+                  title: Text('Name (A–Z)'),
+                ),
+              ),
+            ],
+            icon: const Icon(Icons.sort),
+          ),
+          const SizedBox(width: 8),
+        ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(56),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: SearchBar(
+              controller: _searchCtrl,
+              leading: const Icon(Icons.search),
+              hintText: 'Search title or author',
+              onChanged: (val) {
+                setState(() => _query = val);
+                _saveSearchPref(val);
+              },
+              trailing: [
+                if (_query.isNotEmpty)
+                  IconButton(
+                    tooltip: 'Clear',
+                    onPressed: () {
+                      _searchCtrl.clear();
+                      setState(() => _query = '');
+                      _saveSearchPref('');
+                    },
+                    icon: const Icon(Icons.clear),
+                  ),
+                SegmentedButton<LibraryView>(
+                  segments: const [
+                    ButtonSegment(
+                        value: LibraryView.grid, icon: Icon(Icons.grid_view)),
+                    ButtonSegment(
+                        value: LibraryView.list, icon: Icon(Icons.view_list)),
+                  ],
+                  selected: {_view},
+                  onSelectionChanged: (sel) {
+                    final v = sel.first;
+                    setState(() => _view = v);
+                    _saveViewPref(v);
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      body: RefreshIndicator(
+        onRefresh: _refresh,
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _error != null
+            ? ListView(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text('Error: $_error',
+                  style: TextStyle(color: cs.error)),
+            ),
+          ],
+        )
+            : (_view == LibraryView.grid
+            ? _buildGrid(visible)
+            : _buildList(visible)),
+      ),
+    );
+  }
+
+  Widget _buildGrid(List<Book> list) {
+    return GridView.builder(
+      padding: const EdgeInsets.all(12),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        mainAxisSpacing: 12,
+        crossAxisSpacing: 12,
+        childAspectRatio: 0.66,
+      ),
+      itemCount: list.length,
+      itemBuilder: (context, i) {
+        final b = list[i];
+        return _BookTile(
+          book: b,
+          onTap: () => _openDetails(b),
+        );
+      },
+    );
+  }
+
+  Widget _buildList(List<Book> list) {
+    return ListView.separated(
+      padding: const EdgeInsets.all(8),
+      itemCount: list.length,
+      separatorBuilder: (_, __) => const Divider(height: 1),
+      itemBuilder: (context, i) {
+        final b = list[i];
+        return ListTile(
+          leading: _CoverThumb(url: b.coverUrl, size: 56),
+          title: Text(b.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+          subtitle: Text(b.author ?? 'Unknown'),
+          onTap: () => _openDetails(b),
+        );
+      },
+    );
+  }
+}
+
+class _BookTile extends StatelessWidget {
+  const _BookTile({required this.book, required this.onTap});
+  final Book book;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(child: _CoverThumb(url: book.coverUrl)),
+          const SizedBox(height: 6),
+          Text(
+            book.title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          Text(
+            book.author ?? '',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CoverThumb extends StatelessWidget {
+  const _CoverThumb({required this.url, this.size});
+  final String url;
+  final double? size;
+
+  @override
+  Widget build(BuildContext context) {
+    final radius = BorderRadius.circular(12);
+    final placeholder = DecoratedBox(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: radius,
+      ),
+      child: const Center(child: Icon(Icons.menu_book_outlined)),
+    );
+
+    final img = CachedNetworkImage(
+      imageUrl: url,
+      fit: BoxFit.cover,
+      placeholder: (_, __) => placeholder,
+      errorWidget: (_, __, ___) => placeholder,
+    );
+
+    return ClipRRect(
+      borderRadius: radius,
+      child: size != null
+          ? SizedBox(width: size, height: size, child: img)
+          : img,
+    );
+  }
+}
+
+=== ./lib/ui/main/main_scaffold.dart ===
+import 'package:flutter/material.dart';
+
+import '../settings/settings_page.dart';
+import '../home/books_page.dart';
+import '../downloads/downloads_page.dart';
+import '../player/mini_player.dart';
+
+import '../../core/downloads_repository.dart';
+import '../../core/playback_repository.dart';
+import '../../main.dart';
+
+class MainScaffold extends StatefulWidget {
+  const MainScaffold({super.key, required this.downloadsRepo});
+  final DownloadsRepository downloadsRepo;
+
+  @override
+  State<MainScaffold> createState() => _MainScaffoldState();
+}
+
+class _MainScaffoldState extends State<MainScaffold> {
+  int _index = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final services = ServicesScope.of(context).services;
+    final playback = services.playback;
+
+    final pages = <Widget>[
+      const BooksPage(),
+      DownloadsPage(repo: widget.downloadsRepo),
+      const SettingsPage(),
+    ];
+
+    return StreamBuilder<NowPlaying?>(
+      stream: playback.nowPlayingStream,
+      initialData: playback.nowPlaying,
+      builder: (_, snap) {
+        final hasMini = snap.data != null;
+
+        return Scaffold(
+          body: Stack(
+            children: [
+              Positioned.fill(
+                child: Padding(
+                  // leave room for the mini-player (64px) + a bit of spacing
+                  padding: EdgeInsets.only(bottom: hasMini ? 72 : 0),
+                  child: pages[_index],
+                ),
+              ),
+              if (hasMini)
+                Align(
+                  alignment: Alignment.bottomCenter,
+                  child: SafeArea(
+                    top: false,
+                    child: MiniPlayer(playback: playback),
+                  ),
+                ),
+            ],
+          ),
+          bottomNavigationBar: NavigationBar(
+            selectedIndex: _index,
+            onDestinationSelected: (i) => setState(() => _index = i),
+            destinations: const [
+              NavigationDestination(
+                icon: Icon(Icons.library_books_outlined),
+                label: 'Books',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.download_outlined),
+                label: 'Downloads',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.settings_outlined),
+                label: 'Settings',
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+=== ./lib/ui/book_detail/book_detail_page.dart ===
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/material.dart';
+import 'package:background_downloader/background_downloader.dart';
+import 'package:just_audio/just_audio.dart';
+
+import '../../core/books_repository.dart';
+import '../../models/book.dart';
+import '../../core/downloads_repository.dart';
+import '../../core/playback_repository.dart';
+import '../player/full_player_sheet.dart';
+import '../player/mini_player.dart';
+import '../../main.dart'; // ServicesScope
+
+class BookDetailPage extends StatefulWidget {
+  const BookDetailPage({super.key, required this.bookId});
+  final String bookId;
+
+  @override
+  State<BookDetailPage> createState() => _BookDetailPageState();
+}
+
+class _BookDetailPageState extends State<BookDetailPage> {
+  late final Future<BooksRepository> _repoFut;
+  Future<Book>? _bookFut;
+
+  DownloadsRepository? _downloadsRepo;
+  PlaybackRepository? _playbackRepo;
+  bool _depsInited = false;
+
+  Future<double?>? _serverProgressFut;
+
+  @override
+  void initState() {
+    super.initState();
+    _repoFut = BooksRepository.create();
+    _bookFut = _repoFut.then((r) => r.getBook(widget.bookId));
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_depsInited) return;
+    final services = ServicesScope.of(context).services;
+    _downloadsRepo = services.downloads..init();
+    _playbackRepo = services.playback;
+    _serverProgressFut = _playbackRepo!.fetchServerProgress(widget.bookId);
+    _depsInited = true;
+  }
+
+  void _openFullPlayer(PlaybackRepository pb) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => FullPlayerSheet(playback: pb),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    final playbackRepo = _playbackRepo;
+    final downloadsRepo = _downloadsRepo;
+    if (playbackRepo == null || downloadsRepo == null) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Book')),
+      body: Stack(
+        children: [
+          FutureBuilder<Book>(
+            future: _bookFut,
+            builder: (context, snap) {
+              if (!snap.hasData) {
+                if (snap.hasError) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Text('Error: ${snap.error}', style: TextStyle(color: cs.error)),
+                    ),
+                  );
+                }
+                return const Center(child: CircularProgressIndicator());
+              }
+
+              final b = snap.data!;
+
+              return Padding(
+                // leave room for mini-player if showing
+                padding: const EdgeInsets.only(bottom: 72),
+                child: Column(
+                  children: [
+                    // Scrollable content
+                    Expanded(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: CachedNetworkImage(
+                                    imageUrl: b.coverUrl,
+                                    width: 140,
+                                    height: 210,
+                                    fit: BoxFit.cover,
+                                    errorWidget: (_, __, ___) => Container(
+                                      width: 140,
+                                      height: 210,
+                                      alignment: Alignment.center,
+                                      decoration: BoxDecoration(
+                                        color: cs.surfaceContainerHighest,
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: const Icon(Icons.menu_book_outlined, size: 48),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(b.title, style: Theme.of(context).textTheme.titleLarge),
+                                      const SizedBox(height: 4),
+                                      Text(b.author ?? 'Unknown', style: Theme.of(context).textTheme.bodyMedium),
+                                      const SizedBox(height: 12),
+                                      if (b.durationMs != null)
+                                        Text('Duration: ${(b.durationMs! / 3600000).toStringAsFixed(1)} h'),
+                                      if (b.sizeBytes != null)
+                                        Text('Size: ${(b.sizeBytes! / (1024 * 1024)).toStringAsFixed(1)} MB'),
+                                      if (b.updatedAt != null) Text('Updated: ${b.updatedAt}'),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+
+                            // Listening progress (server + live)
+                            _ListeningProgress(
+                              playback: playbackRepo,
+                              book: b,
+                              serverProgressFuture: _serverProgressFut!,
+                            ),
+
+                            const SizedBox(height: 12),
+
+                            if (b.description != null && b.description!.isNotEmpty) ...[
+                              Text('Description', style: Theme.of(context).textTheme.titleMedium),
+                              const SizedBox(height: 8),
+                              Text(b.description!),
+                            ],
+                            const SizedBox(height: 16),
+
+                            // Inline download progress for this book
+                            StreamBuilder<TaskUpdate>(
+                              stream: downloadsRepo.progressStream(),
+                              builder: (_, snap) {
+                                if (!snap.hasData) return const SizedBox.shrink();
+                                final up = snap.data!;
+                                final metaStr = up.task.metaData ?? '';
+                                final isThisBook = metaStr.contains(b.id);
+                                if (!isThisBook) return const SizedBox.shrink();
+
+                                double? progressValue;
+                                String statusText = 'running';
+
+                                if (up is TaskProgressUpdate) {
+                                  progressValue = up.progress; // 0..1
+                                } else if (up is TaskStatusUpdate) {
+                                  statusText = up.status.name;
+                                  progressValue = null; // indeterminate
+                                }
+
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const SizedBox(height: 8),
+                                    LinearProgressIndicator(value: progressValue),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      progressValue != null
+                                          ? 'Download: $statusText • ${(progressValue * 100).toStringAsFixed(0)}%'
+                                          : 'Download: $statusText',
+                                    ),
+                                  ],
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    // Sticky bottom action bar (moved up so mini-player can show)
+                    SafeArea(
+                      top: false,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: StreamBuilder<NowPlaying?>(
+                                stream: playbackRepo.nowPlayingStream,
+                                initialData: playbackRepo.nowPlaying,
+                                builder: (_, npSnap) {
+                                  final np = npSnap.data;
+                                  final isThis = np?.libraryItemId == b.id;
+
+                                  return StreamBuilder<ProcessingState>(
+                                    stream: playbackRepo.processingStateStream,
+                                    initialData: playbackRepo.player.processingState,
+                                    builder: (_, procSnap) {
+                                      final proc = procSnap.data ?? ProcessingState.idle;
+
+                                      return StreamBuilder<bool>(
+                                        stream: playbackRepo.playingStream,
+                                        initialData: playbackRepo.player.playing,
+                                        builder: (_, playSnap) {
+                                          final isPlaying = playSnap.data ?? false;
+
+                                          // Decide label + state:
+                                          final bool isBuffering = isThis &&
+                                              (proc == ProcessingState.loading ||
+                                                  proc == ProcessingState.buffering);
+
+                                          final String label =
+                                          isThis && isPlaying ? 'Stop'
+                                              : isBuffering ? 'Buffering…'
+                                              : 'Play';
+
+                                          final bool disabled = isBuffering;
+
+                                          return FilledButton.icon(
+                                            onPressed: disabled
+                                                ? null
+                                                : () async {
+                                              if (isThis && isPlaying) {
+                                                await playbackRepo.stop();
+                                              } else {
+                                                await playbackRepo.playItem(b.id);
+                                                if (context.mounted) {
+                                                  _openFullPlayer(playbackRepo);
+                                                }
+                                              }
+                                            },
+                                            icon: Icon(
+                                              isThis && isPlaying
+                                                  ? Icons.stop
+                                                  : Icons.play_arrow,
+                                            ),
+                                            label: Text(label),
+                                          );
+                                        },
+                                      );
+                                    },
+                                  );
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: FilledButton.icon(
+                                onPressed: () async {
+                                  await downloadsRepo.enqueueItemDownloads(b.id);
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('Added to download queue')),
+                                    );
+                                  }
+                                },
+                                icon: const Icon(Icons.download),
+                                label: const Text('Download'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+
+          // Mini-player overlay on this page too
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: SafeArea(
+              top: false,
+              child: MiniPlayer(playback: _playbackRepo!),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------- Widgets ----------
+
+class _ListeningProgress extends StatelessWidget {
+  const _ListeningProgress({
+    required this.playback,
+    required this.book,
+    required this.serverProgressFuture,
+  });
+
+  final PlaybackRepository playback;
+  final Book book;
+  final Future<double?> serverProgressFuture;
+
+  @override
+  Widget build(BuildContext context) {
+    final isThis = playback.nowPlaying?.libraryItemId == book.id;
+
+    // If playing this book now, use live position/duration
+    if (isThis) {
+      return StreamBuilder<Duration?>(
+        stream: playback.durationStream,
+        initialData: playback.player.duration,
+        builder: (_, dSnap) {
+          final total = dSnap.data ?? Duration.zero;
+          return StreamBuilder<Duration>(
+            stream: playback.positionStream,
+            initialData: playback.player.position,
+            builder: (_, pSnap) {
+              final pos = pSnap.data ?? Duration.zero;
+              final v = (total.inMilliseconds > 0)
+                  ? pos.inMilliseconds / total.inMilliseconds
+                  : 0.0;
+              return _progressTile(
+                context,
+                value: v,
+                left: _fmt(pos),
+                right: total == Duration.zero ? '' : '-${_fmt(total - pos)}',
+              );
+            },
+          );
+        },
+      );
+    }
+
+    // Otherwise, show server-stored progress for this book
+    return FutureBuilder<double?>(
+      future: serverProgressFuture,
+      builder: (_, snap) {
+        final sec = snap.data ?? 0.0;
+        final durMs = book.durationMs ?? 0;
+        final totalSec = durMs / 1000.0;
+        final v = (totalSec > 0) ? (sec / totalSec).clamp(0.0, 1.0) : 0.0;
+        return _progressTile(
+          context,
+          value: v,
+          left: _fmt(Duration(milliseconds: (sec * 1000).round())),
+          right: (totalSec > 0)
+              ? '-${_fmt(Duration(milliseconds: (totalSec * 1000 - sec * 1000).round()))}'
+              : '',
+        );
+      },
+    );
+  }
+
+  Widget _progressTile(BuildContext context,
+      {required double value, required String left, required String right}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('Listening progress',
+            style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 6),
+        LinearProgressIndicator(value: value),
+        const SizedBox(height: 4),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(left, style: Theme.of(context).textTheme.labelLarge),
+            Text(right, style: Theme.of(context).textTheme.labelLarge),
+          ],
+        ),
+      ],
+    );
+  }
+
+  String _fmt(Duration d) {
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return h > 0 ? '$h:$m:$s' : '$m:$s';
+  }
+}
+
+=== ./lib/ui/downloads/downloads_page.dart ===
+import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:background_downloader/background_downloader.dart';
+import '../../core/downloads_repository.dart';
+
+class DownloadsPage extends StatefulWidget {
+  const DownloadsPage({super.key, required this.repo});
+  final DownloadsRepository repo;
+
+  @override
+  State<DownloadsPage> createState() => _DownloadsPageState();
+}
+
+class _DownloadsPageState extends State<DownloadsPage> {
+  late final Stream<TaskUpdate> _updates;
+  StreamSubscription<TaskUpdate>? _sub;
+
+  // latest update by taskId so we can show immediate progress
+  final Map<String, TaskUpdate> _latest = {};
+
+  @override
+  void initState() {
+    super.initState();
+    // make sure repo is initialized (no-op if already)
+    widget.repo.init();
+
+    _updates = widget.repo.progressStream();
+    _sub = _updates.listen((u) {
+      _latest[u.task.taskId] = u;
+      if (mounted) setState(() {}); // trigger rebuild
+    });
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // We rebuild on each stream event via setState above.
+    return FutureBuilder<List<TaskRecord>>(
+      future: widget.repo.listAll(),
+      builder: (context, recs) {
+        final items = recs.data ?? const [];
+        if (items.isEmpty) {
+          return const Center(child: Text('No downloads'));
+        }
+        return ListView.separated(
+          itemCount: items.length,
+          separatorBuilder: (_, __) => const Divider(height: 1),
+          itemBuilder: (ctx, i) {
+            final r = items[i];
+            final task = r.task;
+
+            // start with DB snapshot
+            double progress = r.progress ?? 0.0;
+            String status = r.status.name;
+
+            // prefer latest live update if we have it
+            final live = _latest[task.taskId];
+            if (live is TaskProgressUpdate) {
+              progress = live.progress;
+              status = 'running';
+            } else if (live is TaskStatusUpdate) {
+              status = live.status.name;
+            }
+
+            final isTerminal = status == 'complete' || status == 'failed' || status == 'canceled';
+
+            return ListTile(
+              title: Text(task.filename),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  LinearProgressIndicator(value: isTerminal ? 1.0 : progress),
+                  const SizedBox(height: 4),
+                  Text('$status • ${(progress * 100).toStringAsFixed(0)}%'),
+                ],
+              ),
+              trailing: IconButton(
+                icon: const Icon(Icons.cancel),
+                onPressed: () => FileDownloader().cancelTaskWithId(r.taskId),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+
+=== ./lib/ui/login/login_screen.dart ===
+import 'package:flutter/material.dart';
+import '../../core/auth_repository.dart';
+import '../../main.dart';
+import '../main/main_scaffold.dart';
+
+class LoginScreen extends StatefulWidget {
+  const LoginScreen({super.key, required this.auth});
+  final AuthRepository auth;
+
+  @override
+  State<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  final _form = GlobalKey<FormState>();
+  final _serverCtrl = TextEditingController();
+  final _userCtrl = TextEditingController();
+  final _passCtrl = TextEditingController();
+  bool _loading = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _serverCtrl.dispose();
+    _userCtrl.dispose();
+    _passCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (!_form.currentState!.validate()) return;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    String normalizeBaseUrl(String input) {
+      var url = input.trim();
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        url = 'https://$url';
+      }
+      return url.replaceAll(RegExp(r'/+$'), '');
+    }
+
+    final ok = await widget.auth.login(
+      baseUrl: normalizeBaseUrl(_serverCtrl.text),
+      username: _userCtrl.text.trim(),
+      password: _passCtrl.text,
+    );
+
+
+
+
+    if (!mounted) return;
+    setState(() => _loading = false);
+
+    // after a successful login:
+    if (ok) {
+      final services = ServicesScope.of(context).services;
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => MainScaffold(downloadsRepo: services.downloads),
+        ),
+      );
+    } else {
+      setState(() => _error = 'Login failed. Check server URL and credentials.');
+    }
+
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Login')),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Card(
+            elevation: 0,
+            color: cs.surfaceContainerHighest,
+            margin: const EdgeInsets.all(16),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Form(
+                key: _form,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextFormField(
+                      controller: _serverCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Server URL',
+                        hintText: 'https://abs.example.com',
+                      ),
+                      keyboardType: TextInputType.url,
+                      validator: (v) =>
+                      (v == null || v.trim().isEmpty) ? 'Required' : null,
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _userCtrl,
+                      decoration: const InputDecoration(labelText: 'Username'),
+                      validator: (v) =>
+                      (v == null || v.trim().isEmpty) ? 'Required' : null,
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _passCtrl,
+                      decoration: const InputDecoration(labelText: 'Password'),
+                      obscureText: true,
+                      validator: (v) =>
+                      (v == null || v.isEmpty) ? 'Required' : null,
+                    ),
+                    const SizedBox(height: 16),
+                    if (_error != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Text(_error!, style: TextStyle(color: cs.error)),
+                      ),
+                    FilledButton(
+                      onPressed: _loading ? null : _submit,
+                      child: _loading
+                          ? const SizedBox(
+                        height: 18,
+                        width: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                          : const Text('Sign in'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+=== ./lib/ui/player/full_player_sheet.dart ===
+import 'dart:async';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/material.dart';
+
+import '../../core/playback_repository.dart';
+
+class FullPlayerSheet extends StatefulWidget {
+  const FullPlayerSheet({super.key, required this.playback});
+  final PlaybackRepository playback;
+
+  @override
+  State<FullPlayerSheet> createState() => _FullPlayerSheetState();
+}
+
+class _FullPlayerSheetState extends State<FullPlayerSheet> {
+  double _speed = 1.0;
+  Timer? _sleepTimer;
+  String _sleepLabel = 'Sleep';
+
+  @override
+  void initState() {
+    super.initState();
+    _speed = widget.playback.player.speed;
+  }
+
+  @override
+  void dispose() {
+    _sleepTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final pb = widget.playback;
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.92,
+      minChildSize: 0.5,
+      maxChildSize: 0.96,
+      expand: false,
+      builder: (ctx, controller) {
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            color: cs.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+            boxShadow: const [BoxShadow(blurRadius: 18, offset: Offset(0, -4))],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+            child: StreamBuilder<NowPlaying?>(
+              stream: pb.nowPlayingStream,
+              initialData: pb.nowPlaying,
+              builder: (_, snap) {
+                final np = snap.data;
+                if (np == null) {
+                  return const Center(child: Text('Nothing playing'));
+                }
+
+                final hasChapters = np.chapters.isNotEmpty;
+
+                return ListView(
+                  controller: controller,
+                  children: [
+                    Center(
+                      child: Container(
+                        height: 5,
+                        width: 48,
+                        margin: const EdgeInsets.only(bottom: 16),
+                        decoration: BoxDecoration(
+                          color: cs.outlineVariant,
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                      ),
+                    ),
+
+                    // Cover
+                    AspectRatio(
+                      aspectRatio: 1,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: CachedNetworkImage(
+                          imageUrl: np.coverUrl ?? '',
+                          fit: BoxFit.cover,
+                          errorWidget: (_, __, ___) => Container(
+                            color: cs.surfaceContainerHighest,
+                            child: const Center(
+                              child: Icon(Icons.menu_book_outlined, size: 72),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Title/author
+                    if (np.author != null && np.author!.isNotEmpty)
+                      Text(
+                        np.author!,
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodyMedium
+                            ?.copyWith(color: cs.onSurfaceVariant),
+                      ),
+                    const SizedBox(height: 6),
+                    Text(
+                      np.title,
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context)
+                          .textTheme
+                          .headlineSmall
+                          ?.copyWith(fontWeight: FontWeight.w600),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 18),
+
+                    // Slider + timecodes
+                    StreamBuilder<Duration?>(
+                      stream: pb.durationStream,
+                      initialData: pb.player.duration,
+                      builder: (_, dSnap) {
+                        final total = dSnap.data ?? Duration.zero;
+                        return StreamBuilder<Duration>(
+                          stream: pb.positionStream,
+                          initialData: pb.player.position,
+                          builder: (_, pSnap) {
+                            final pos = pSnap.data ?? Duration.zero;
+                            final v = (total.inMilliseconds > 0)
+                                ? pos.inMilliseconds / total.inMilliseconds
+                                : 0.0;
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Slider(
+                                  value: v.clamp(0.0, 1.0),
+                                  onChanged: (nv) {
+                                    final target = Duration(
+                                      milliseconds:
+                                      (total.inMilliseconds * nv).round(),
+                                    );
+                                    pb.seek(target, reportNow: false);
+                                  },
+                                  onChangeEnd: (nv) {
+                                    final target = Duration(
+                                      milliseconds:
+                                      (total.inMilliseconds * nv).round(),
+                                    );
+                                    pb.seek(target, reportNow: true);
+                                  },
+                                ),
+                                Row(
+                                  mainAxisAlignment:
+                                  MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(_fmt(pos),
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .labelLarge),
+                                    Text('-${_fmt(total - pos)}',
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .labelLarge),
+                                  ],
+                                ),
+                              ],
+                            );
+                          },
+                        );
+                      },
+                    ),
+
+                    const SizedBox(height: 12),
+
+                    // Main controls
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        IconButton(
+                          iconSize: 28,
+                          icon: const Icon(Icons.skip_previous),
+                          onPressed: pb.hasPrev ? pb.prevTrack : null,
+                        ),
+                        IconButton.filledTonal(
+                          iconSize: 28,
+                          onPressed: () => pb.nudgeSeconds(-15),
+                          icon: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [Icon(Icons.replay), Text('15')],
+                          ),
+                        ),
+                        StreamBuilder<bool>(
+                          stream: pb.playingStream,
+                          initialData: pb.player.playing,
+                          builder: (_, s) {
+                            final isPlaying = s.data ?? false;
+                            return FilledButton(
+                              style: FilledButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 28, vertical: 10),
+                                  shape: const StadiumBorder()),
+                              onPressed: isPlaying ? pb.pause : pb.resume,
+                              child: Icon(
+                                isPlaying
+                                    ? Icons.pause_rounded
+                                    : Icons.play_arrow_rounded,
+                                size: 36,
+                              ),
+                            );
+                          },
+                        ),
+                        IconButton.filledTonal(
+                          iconSize: 28,
+                          onPressed: () => pb.nudgeSeconds(15),
+                          icon: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [Icon(Icons.forward), Text('15')],
+                          ),
+                        ),
+                        IconButton(
+                          iconSize: 28,
+                          icon: const Icon(Icons.skip_next),
+                          onPressed: pb.hasNext ? pb.nextTrack : null,
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 10),
+
+                    // Chapter controls row
+                    if (np.chapters.isNotEmpty)
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          TextButton.icon(
+                            onPressed: _prevChapter,
+                            icon: const Icon(Icons.skip_previous_rounded),
+                            label: const Text('Chapter'),
+                          ),
+                          FilledButton.tonalIcon(
+                            onPressed: _showChapters,
+                            icon: const Icon(Icons.list),
+                            label: const Text('Chapters'),
+                          ),
+                          TextButton.icon(
+                            onPressed: _nextChapter,
+                            icon: const Icon(Icons.skip_next_rounded),
+                            label: const Text('Chapter'),
+                          ),
+                        ],
+                      ),
+
+                    const SizedBox(height: 12),
+
+                    // Speed / Sleep row
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        TextButton.icon(
+                          onPressed: _pickSpeed,
+                          icon: const Icon(Icons.speed),
+                          label: Text('${_speed.toStringAsFixed(2)}x'),
+                        ),
+                        TextButton.icon(
+                          onPressed: _pickSleep,
+                          icon: const Icon(Icons.nightlight_round),
+                          label: Text(_sleepLabel),
+                        ),
+                      ],
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  String _fmt(Duration d) {
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return h > 0 ? '$h:$m:$s' : '$m:$s';
+  }
+
+  // ------ Speed / Sleep ------
+  Future<void> _pickSpeed() async {
+    final v = await showModalBottomSheet<double>(
+      context: context,
+      builder: (_) => _SpeedSheet(current: _speed),
+    );
+    if (v != null) {
+      setState(() => _speed = v);
+      await widget.playback.setSpeed(v);
+    }
+  }
+
+  Future<void> _pickSleep() async {
+    final v = await showModalBottomSheet<Duration?>(
+      context: context,
+      builder: (_) => const _SleepSheet(),
+    );
+    _sleepTimer?.cancel();
+    if (v != null) {
+      setState(() => _sleepLabel = '${v.inMinutes} min');
+      _sleepTimer = Timer(v, () {
+        widget.playback.pause();
+        if (mounted) setState(() => _sleepLabel = 'Sleep');
+      });
+    } else {
+      if (mounted) setState(() => _sleepLabel = 'Sleep');
+    }
+  }
+
+  // ------ Chapters ------
+  void _showChapters() {
+    final np = widget.playback.nowPlaying;
+    if (np == null || np.chapters.isEmpty) return;
+    showModalBottomSheet(
+      context: context,
+      builder: (_) => ListView.separated(
+        padding: const EdgeInsets.all(12),
+        itemCount: np.chapters.length,
+        separatorBuilder: (_, __) => const Divider(height: 1),
+        itemBuilder: (_, i) {
+          final c = np.chapters[i];
+          return ListTile(
+            leading: Text('${i + 1}'),
+            title: Text(c.title, maxLines: 2, overflow: TextOverflow.ellipsis),
+            trailing: Text(_fmt(c.start)),
+            onTap: () {
+              Navigator.pop(context);
+              widget.playback.seek(c.start);
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  int _currentChapterIndex() {
+    final np = widget.playback.nowPlaying;
+    if (np == null || np.chapters.isEmpty) return -1;
+    final pos = widget.playback.player.position;
+    for (var i = 0; i < np.chapters.length; i++) {
+      final start = np.chapters[i].start;
+      final nextStart =
+      (i + 1 < np.chapters.length) ? np.chapters[i + 1].start : null;
+      if (nextStart == null) {
+        if (pos >= start) return i;
+      } else {
+        if (pos >= start && pos < nextStart) return i;
+      }
+    }
+    return -1;
+  }
+
+  void _prevChapter() {
+    final np = widget.playback.nowPlaying;
+    if (np == null || np.chapters.isEmpty) return;
+    final idx = _currentChapterIndex();
+    final target = (idx > 0) ? idx - 1 : 0;
+    widget.playback.seek(np.chapters[target].start);
+  }
+
+  void _nextChapter() {
+    final np = widget.playback.nowPlaying;
+    if (np == null || np.chapters.isEmpty) return;
+    final idx = _currentChapterIndex();
+    final target =
+    (idx >= 0 && idx + 1 < np.chapters.length) ? idx + 1 : np.chapters.length - 1;
+    widget.playback.seek(np.chapters[target].start);
+  }
+}
+
+class _SpeedSheet extends StatelessWidget {
+  const _SpeedSheet({required this.current});
+  final double current;
+
+  @override
+  Widget build(BuildContext context) {
+    final options = [0.8, 1.0, 1.25, 1.5, 1.75, 2.0];
+    return SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final v in options)
+            RadioListTile<double>(
+              value: v,
+              groupValue: current,
+              title: Text('${v.toStringAsFixed(2)}x'),
+              onChanged: (nv) => Navigator.pop(context, nv),
+            ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
+}
+
+class _SleepSheet extends StatelessWidget {
+  const _SleepSheet();
+
+  @override
+  Widget build(BuildContext context) {
+    final options = const [
+      Duration(minutes: 15),
+      Duration(minutes: 30),
+      Duration(minutes: 45),
+      Duration(hours: 1),
+    ];
+    return SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final d in options)
+            ListTile(
+              leading: const Icon(Icons.nightlight_round),
+              title: Text('${d.inMinutes} minutes'),
+              onTap: () => Navigator.pop(context, d),
+            ),
+          ListTile(
+            leading: const Icon(Icons.cancel_outlined),
+            title: const Text('Cancel timer'),
+            onTap: () => Navigator.pop(context, null),
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
+}
+
+=== ./lib/ui/player/player_controller.dart ===
+// lib/ui/player/player_controller.dart
+import 'dart:async';
+
+import '../../core/playback_repository.dart';
+
+/// Very thin wrapper used by some UI code to start playback via the shared
+/// app player (defined in core/playback_repository.dart).
+class PlayerController {
+  final PlaybackRepository playbackRepo;
+  PlayerController(this.playbackRepo);
+
+  /// Expose a simple seconds stream for legacy callers (derived from
+  /// PlaybackRepository's position stream).
+  Stream<double> get positionSecondsStream =>
+      playbackRepo.positionStream.map((d) => d.inMilliseconds / 1000.0);
+
+  /// Start playback of a library item (or specific episode) using the shared
+  /// player managed by PlaybackRepository.
+  Future<void> playItem(String libraryItemId, {String? episodeId}) {
+    return playbackRepo.playItem(libraryItemId, episodeId: episodeId);
+  }
+
+  /// Pause/resume helpers, if needed by callers.
+  Future<void> pause() => playbackRepo.pause();
+  Future<void> resume() => playbackRepo.resume();
+
+  /// Optional cleanup hook — the shared player lives in PlaybackRepository,
+  /// so there is nothing to dispose here.
+  Future<void> dispose() async {}
+}
+
+=== ./lib/ui/player/mini_player.dart ===
+import 'package:flutter/material.dart';
+import 'package:just_audio/just_audio.dart';
+
+import '../../core/playback_repository.dart';
+import 'full_player_sheet.dart';
+
+class MiniPlayer extends StatelessWidget {
+  const MiniPlayer({super.key, required this.playback});
+  final PlaybackRepository playback;
+
+  void _openFull(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => FullPlayerSheet(playback: playback),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return StreamBuilder<NowPlaying?>(
+      stream: playback.nowPlayingStream,
+      initialData: playback.nowPlaying,
+      builder: (_, snap) {
+        final np = snap.data;
+        if (np == null) return const SizedBox.shrink();
+
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+          child: Material(
+            color: cs.surface,
+            elevation: 3,
+            borderRadius: BorderRadius.circular(16),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(16),
+              onTap: () => _openFull(context),
+              child: SizedBox(
+                height: 68,
+                child: Row(
+                  children: [
+                    const SizedBox(width: 8),
+                    // cover thumb
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.network(
+                        np.coverUrl ?? '',
+                        width: 52,
+                        height: 52,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Container(
+                          width: 52,
+                          height: 52,
+                          color: cs.surfaceContainerHighest,
+                          child: const Icon(Icons.menu_book_outlined),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    // title + chapter
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            np.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.titleSmall,
+                          ),
+                          StreamBuilder<Duration?>(
+                            stream: playback.durationStream,
+                            initialData: playback.player.duration,
+                            builder: (_, dSnap) {
+                              final total = dSnap.data ?? Duration.zero;
+                              return StreamBuilder<Duration>(
+                                stream: playback.positionStream,
+                                initialData: playback.player.position,
+                                builder: (_, pSnap) {
+                                  final pos = pSnap.data ?? Duration.zero;
+                                  final v = (total.inMilliseconds > 0)
+                                      ? pos.inMilliseconds /
+                                      total.inMilliseconds
+                                      : 0.0;
+                                  return LinearProgressIndicator(
+                                    value: v.clamp(0.0, 1.0),
+                                    minHeight: 4,
+                                  );
+                                },
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    // controls
+                    IconButton(
+                      tooltip: 'Back 30s',
+                      icon: const Icon(Icons.replay_30),
+                      onPressed: () => playback.nudgeSeconds(-30),
+                    ),
+                    StreamBuilder<PlayerState>(
+                      stream: playback.playerStateStream,
+                      initialData: playback.player.playerState,
+                      builder: (_, s) {
+                        final playing = s.data?.playing ?? false;
+                        return IconButton.filled(
+                          tooltip: playing ? 'Pause' : 'Play',
+                          onPressed: playing ? playback.pause : playback.resume,
+                          icon: Icon(
+                            playing ? Icons.pause : Icons.play_arrow,
+                          ),
+                        );
+                      },
+                    ),
+                    IconButton(
+                      tooltip: 'Forward 30s',
+                      icon: const Icon(Icons.forward_30),
+                      onPressed: () => playback.nudgeSeconds(30),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+=== ./lib/core/books_repository.dart ===
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+import '../models/book.dart';
+import 'auth_repository.dart';
+
+class BooksRepository {
+  BooksRepository(this._auth, this._prefs);
+  final AuthRepository _auth;
+  final SharedPreferences _prefs;
+
+  static const _etagKey = 'books_list_etag';
+  static const _cacheKey = 'books_list_cache_json';
+  static const _libIdKey = 'books_library_id';
+
+  Future<String> _ensureLibraryId() async {
+    final cached = _prefs.getString(_libIdKey);
+    if (cached != null && cached.isNotEmpty) return cached;
+
+    final api = _auth.api;
+    final token = await api.accessToken();
+    final tokenQS = (token != null && token.isNotEmpty) ? '?token=$token' : '';
+    final resp = await api.request('GET', '/api/libraries$tokenQS');
+
+    if (resp.statusCode != 200) {
+      throw Exception('Failed to list libraries: ${resp.statusCode}');
+    }
+
+    final bodyStr = resp.body;
+    final body = bodyStr.isNotEmpty ? jsonDecode(bodyStr) : null;
+
+    final libs = (body is Map && body['libraries'] is List)
+        ? (body['libraries'] as List)
+        : (body is List ? body : const []);
+
+    if (libs.isEmpty) {
+      throw Exception('No libraries accessible for this user');
+    }
+
+    Map<String, dynamic>? chosen;
+    for (final l in libs) {
+      final m = (l as Map).cast<String, dynamic>();
+      final mt = (m['mediaType'] ?? m['type'] ?? '').toString().toLowerCase();
+      if (mt.contains('book')) {
+        chosen = m;
+        break;
+      }
+    }
+    chosen ??= (libs.first as Map).cast<String, dynamic>();
+
+    final id = (chosen['id'] ?? chosen['_id'] ?? '').toString();
+    if (id.isEmpty) throw Exception('Invalid library id from /api/libraries');
+
+    await _prefs.setString(_libIdKey, id);
+    return id;
+  }
+
+  List<Map<String, dynamic>> _extractItems(dynamic body) {
+    if (body is Map) {
+      // common shapes seen in the wild
+      final keys = ['items', 'libraryItems', 'results', 'data'];
+      for (final k in keys) {
+        final v = body[k];
+        if (v is List) {
+          return v.cast<Map>().map((e) => e.cast<String, dynamic>()).toList();
+        }
+      }
+    }
+    if (body is List) {
+      return body.cast<Map>().map((e) => e.cast<String, dynamic>()).toList();
+    }
+    return const [];
+  }
+
+  Future<List<Book>> listBooks() async {
+    final api = _auth.api;
+    final token = await api.accessToken();
+    final libId = await _ensureLibraryId();
+
+    // Auth via query (robust for GET on some deployments)
+    final tokenQS = (token != null && token.isNotEmpty) ? '&token=$token' : '';
+    final etag = _prefs.getString(_etagKey);
+    final headers = <String, String>{};
+    if (etag != null) headers['If-None-Match'] = etag;
+
+    final path =
+        '/api/libraries/$libId/items?limit=200&sort=updatedAt:desc$tokenQS';
+
+    final http.Response resp = await api.request('GET', path, headers: headers);
+
+    if (resp.statusCode == 304) {
+      final cached = _prefs.getString(_cacheKey);
+      if (cached != null) {
+        final data = jsonDecode(cached);
+        final items = _extractItems(data);
+        return _toBooks(items);
+      }
+      return <Book>[];
+    }
+
+    if (resp.statusCode == 200) {
+      final bodyStr = resp.body;
+      final body = bodyStr.isNotEmpty ? jsonDecode(bodyStr) : null;
+
+      final newEtag = resp.headers['etag'];
+      await _prefs.setString(_cacheKey, bodyStr);
+      if (newEtag != null) await _prefs.setString(_etagKey, newEtag);
+
+      final items = _extractItems(body);
+      if (items.isEmpty && bodyStr.isNotEmpty) {
+        final preview = bodyStr.substring(0, bodyStr.length.clamp(0, 300));
+        throw Exception('Library returned no parseable items. Body preview: $preview');
+      }
+      return _toBooks(items);
+    }
+
+    // Fallback to cache on errors
+    final cached = _prefs.getString(_cacheKey);
+    if (cached != null) {
+      final data = jsonDecode(cached);
+      final items = _extractItems(data);
+      return _toBooks(items);
+    }
+
+    throw Exception('Failed to load books: ${resp.statusCode}');
+  }
+
+  Future<List<Book>> _toBooks(List<Map<String, dynamic>> items) async {
+    final baseUrl = _auth.api.baseUrl ?? '';
+    final token = await _auth.api.accessToken(); // nullable OK
+    return items
+        .map((e) => Book.fromLibraryItemJson(e, baseUrl: baseUrl, token: token))
+        .where((b) => b.title.isNotEmpty)
+        .toList();
+  }
+
+  Future<Book> getBook(String id) async {
+    final api = _auth.api;
+    final baseUrl = _auth.api.baseUrl ?? '';
+    final token = await _auth.api.accessToken();
+    final tokenQS = (token != null && token.isNotEmpty) ? '?token=$token' : '';
+
+    final resp = await api.request('GET', '/api/items/$id$tokenQS');
+    if (resp.statusCode != 200) {
+      throw Exception('Failed to load book $id: ${resp.statusCode}');
+    }
+
+    final bodyStr = resp.body;
+    final body = bodyStr.isNotEmpty ? jsonDecode(bodyStr) : null;
+    final item = (body is Map && body['item'] is Map)
+        ? (body['item'] as Map).cast<String, dynamic>()
+        : (body as Map).cast<String, dynamic>();
+
+    return Book.fromLibraryItemJson(item, baseUrl: baseUrl, token: token);
+  }
+
+  static Future<BooksRepository> create() async {
+    final auth = await AuthRepository.ensure();
+    final prefs = await SharedPreferences.getInstance();
+    return BooksRepository(auth, prefs);
+  }
+}
+
+=== ./lib/core/auth_repository.dart ===
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'api_client.dart';
+
+/// AuthRepository
+/// -------------------------
+/// - Singleton: use `await AuthRepository.ensure()` at startup
+/// - Persists/refreshes tokens via ApiClient
+/// - Exposes simple `login`, `logout`, `hasValidSession`
+class AuthRepository {
+  AuthRepository._(this._prefs, this._secure) : _api = ApiClient(_prefs, _secure);
+
+  final SharedPreferences _prefs;
+  final FlutterSecureStorage _secure;
+  late final ApiClient _api;
+
+  static AuthRepository? _instanceInternal;
+
+  /// Access the initialized singleton.
+  /// Make sure to call `await AuthRepository.ensure()` first.
+  static AuthRepository get instance {
+    final inst = _instanceInternal;
+    if (inst == null) {
+      throw StateError('AuthRepository not initialized. Call AuthRepository.ensure() first.');
+    }
+    return inst;
+  }
+
+  /// Initialize (or return existing) singleton.
+  static Future<AuthRepository> ensure() async {
+    if (_instanceInternal != null) return _instanceInternal!;
+    final prefs = await SharedPreferences.getInstance();
+    const secure = FlutterSecureStorage();
+    _instanceInternal = AuthRepository._(prefs, secure);
+    return _instanceInternal!;
+  }
+
+  /// Returns true if we have a base URL + refresh token and a refresh succeeds.
+  Future<bool> hasValidSession() async {
+    if (_api.baseUrl == null) return false;
+    // Use the *public* wrapper on ApiClient to avoid private access.
+    final ok = await _api.refreshAccessToken();
+    return ok;
+  }
+
+  Future<bool> login({
+    required String baseUrl,
+    required String username,
+    required String password,
+  }) {
+    return _api.login(baseUrl: baseUrl, username: username, password: password);
+  }
+
+  Future<void> logout() => _api.logout();
+
+  ApiClient get api => _api;
+}
+
+=== ./lib/core/downloads_repository.dart ===
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:background_downloader/background_downloader.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'auth_repository.dart';
+import 'playback_repository.dart';
+
+class ItemProgress {
+  final String libraryItemId;
+  final String status; // queued | running | complete | canceled | failed | none
+  final double progress; // 0..1
+  final int totalTasks;
+  final int completed;
+
+  const ItemProgress({
+    required this.libraryItemId,
+    required this.status,
+    required this.progress,
+    required this.totalTasks,
+    required this.completed,
+  });
+}
+
+class DownloadsRepository {
+  DownloadsRepository(this._auth, this._playback);
+  final AuthRepository _auth;
+  final PlaybackRepository _playback;
+
+  static const _wifiOnlyKey = 'downloads_wifi_only';
+
+  // Plugin updates -> broadcast for UI
+  Stream<TaskUpdate>? _broadcastUpdates;
+  Stream<TaskUpdate> progressStream() {
+    _broadcastUpdates ??= FileDownloader().updates.asBroadcastStream();
+    return _broadcastUpdates!;
+  }
+
+  // Per-item aggregated progress streams
+  final Map<String, StreamController<ItemProgress>> _itemCtrls = {};
+  StreamSubscription<TaskUpdate>? _muxSub;
+
+  Future<void> init() async {
+    // v8.9.x: no explicit initialize/notification config required.
+  }
+
+  /// Start (or get) an aggregated progress stream for a specific book.
+  Stream<ItemProgress> watchItemProgress(String libraryItemId) {
+    // Create controller if needed
+    final ctrl = _itemCtrls.putIfAbsent(
+      libraryItemId,
+          () => StreamController<ItemProgress>.broadcast(onListen: () async {
+        final snap = await _computeItemProgress(libraryItemId);
+        (_itemCtrls[libraryItemId]!)..add(snap);
+      }),
+    );
+
+    // Lazily attach one mux subscription to plugin updates
+    _muxSub ??= progressStream().listen((u) async {
+      final meta = u.task.metaData ?? '';
+      final id = _extractItemId(meta);
+      if (id == null) return;
+      if (_itemCtrls.containsKey(id)) {
+        final snap = await _computeItemProgress(id);
+        final c = _itemCtrls[id];
+        if (c != null && !c.isClosed) c.add(snap);
+      }
+    });
+
+    return ctrl.stream;
+  }
+
+  /// Queue all tracks of an item for download (Wi-Fi rule taken from prefs).
+  Future<void> enqueueItemDownloads(
+      String libraryItemId, {
+        String? episodeId,
+      }) async {
+    final tracks =
+    await _playback.getPlayableTracks(libraryItemId, episodeId: episodeId);
+
+    final prefs = await SharedPreferences.getInstance();
+    final wifiOnly = prefs.getBool(_wifiOnlyKey) ?? true;
+
+    for (final t in tracks) {
+      final filename =
+          'track_${t.index.toString().padLeft(3, '0')}.${_extFromMime(t.mimeType)}';
+      final task = DownloadTask(
+        url: t.url,
+        filename: filename,
+        directory: 'abs/$libraryItemId',
+        baseDirectory: BaseDirectory.applicationDocuments,
+        updates: Updates.statusAndProgress,
+        requiresWiFi: wifiOnly,
+        allowPause: true,
+        // Keep the book id *plain* in meta so we can match quickly
+        metaData: jsonEncode({'libraryItemId': libraryItemId}),
+      );
+      await FileDownloader().download(task);
+    }
+
+    // Kick initial emission for this item
+    final c = _itemCtrls[libraryItemId];
+    if (c != null && !c.isClosed) {
+      c.add(await _computeItemProgress(libraryItemId));
+    }
+  }
+
+  /// Cancel all queued/running tasks for a book.
+  Future<void> cancelForItem(String libraryItemId) async {
+    final recs = await _recordsForItem(libraryItemId);
+    for (final r in recs) {
+      await FileDownloader().cancelTaskWithId(r.taskId);
+    }
+    final c = _itemCtrls[libraryItemId];
+    if (c != null && !c.isClosed) {
+      c.add(await _computeItemProgress(libraryItemId));
+    }
+  }
+
+  Future<void> cancelAll() async {
+    final records = await FileDownloader().database.allRecords();
+    final ids = records.map((r) => r.taskId).toList();
+    if (ids.isNotEmpty) {
+      await FileDownloader().cancelTasksWithIds(ids);
+    }
+  }
+
+  Future<List<TaskRecord>> listAll() =>
+      FileDownloader().database.allRecords();
+
+  // === Local files helpers ===
+
+  Future<bool> hasLocalDownloads(String libraryItemId) async {
+    final dir = await _itemDir(libraryItemId);
+    return dir.exists();
+  }
+
+  Future<void> removeLocalDownloads(String libraryItemId) async {
+    final dir = await _itemDir(libraryItemId);
+    if (await dir.exists()) {
+      await dir.delete(recursive: true);
+    }
+    final c = _itemCtrls[libraryItemId];
+    if (c != null && !c.isClosed) {
+      c.add(await _computeItemProgress(libraryItemId));
+    }
+  }
+
+  // === Internal aggregation ===
+
+  Future<ItemProgress> _computeItemProgress(String libraryItemId) async {
+    final recs = await _recordsForItem(libraryItemId);
+    if (recs.isEmpty) {
+      // If there are *no tasks* but local files exist, treat as complete
+      final local = await hasLocalDownloads(libraryItemId);
+      return ItemProgress(
+        libraryItemId: libraryItemId,
+        status: local ? 'complete' : 'none',
+        progress: local ? 1.0 : 0.0,
+        totalTasks: 0,
+        completed: local ? 1 : 0,
+      );
+    }
+
+    int total = recs.length;
+    int done = recs.where((r) => r.status == TaskStatus.complete).length;
+
+    double sum = 0.0;
+    for (final r in recs) {
+      if (r.status == TaskStatus.complete) {
+        sum += 1.0;
+      } else {
+        sum += (r.progress ?? 0.0);
+      }
+    }
+    final avg = sum / total;
+
+    String status = 'running';
+    if (done == total) status = 'complete';
+    if (recs.any((r) => r.status == TaskStatus.failed)) status = 'failed';
+    if (recs.every((r) => r.status == TaskStatus.enqueued)) status = 'queued';
+    if (recs.every((r) => r.status == TaskStatus.canceled)) status = 'canceled';
+
+    return ItemProgress(
+      libraryItemId: libraryItemId,
+      status: status,
+      progress: avg,
+      totalTasks: total,
+      completed: done,
+    );
+  }
+
+  Future<List<TaskRecord>> _recordsForItem(String libraryItemId) async {
+    final all = await FileDownloader().database.allRecords();
+    return all.where((r) {
+      final meta = r.task.metaData ?? '';
+      final id = _extractItemId(meta);
+      return id == libraryItemId;
+    }).toList();
+  }
+
+  String? _extractItemId(String meta) {
+    try {
+      final m = jsonDecode(meta);
+      if (m is Map && m['libraryItemId'] is String) {
+        return m['libraryItemId'] as String;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  static String _extFromMime(String mime) {
+    final m = mime.toLowerCase();
+    if (m.contains('mpeg')) return 'mp3';
+    if (m.contains('mp4') || m.contains('aac')) return 'm4a';
+    if (m.contains('flac')) return 'flac';
+    return 'bin';
+  }
+
+  Future<Directory> _itemDir(String libraryItemId) async {
+    final docs = await getApplicationDocumentsDirectory();
+    return Directory('${docs.path}/abs/$libraryItemId');
+  }
+}
+
+=== ./lib/core/playback_repository.dart ===
+// lib/core/playback_repository.dart
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:audio_session/audio_session.dart';
+import 'package:flutter/widgets.dart';
+import 'package:http/http.dart' as http;
+import 'package:just_audio/just_audio.dart';
+import 'package:path_provider/path_provider.dart';
+
+import 'auth_repository.dart';
+
+const _kProgressPing = Duration(seconds: 15); // periodic server update cadence
+
+class PlaybackTrack {
+  final int index;
+  final String url;       // stream URL or local file path
+  final String mimeType;
+  final double duration;  // seconds (best-effort; 0 if unknown for local)
+  final bool isLocal;
+  PlaybackTrack({
+    required this.index,
+    required this.url,
+    required this.mimeType,
+    required this.duration,
+    this.isLocal = false,
+  });
+
+  PlaybackTrack copyWith({double? duration}) => PlaybackTrack(
+    index: index,
+    url: url,
+    mimeType: mimeType,
+    duration: duration ?? this.duration,
+    isLocal: isLocal,
+  );
+}
+
+class Chapter {
+  final String title;
+  final Duration start;
+  Chapter({required this.title, required this.start});
+}
+
+class NowPlaying {
+  final String libraryItemId;
+  final String title;
+  final String? author;
+  final String? coverUrl;
+  final List<PlaybackTrack> tracks;
+  final int currentIndex;
+  final List<Chapter> chapters;
+  final String? episodeId; // optional for podcast-like items
+
+  const NowPlaying({
+    required this.libraryItemId,
+    required this.title,
+    required this.tracks,
+    required this.currentIndex,
+    required this.chapters,
+    this.author,
+    this.coverUrl,
+    this.episodeId,
+  });
+
+  NowPlaying copyWith({int? currentIndex, List<PlaybackTrack>? tracks}) =>
+      NowPlaying(
+        libraryItemId: libraryItemId,
+        title: title,
+        author: author,
+        coverUrl: coverUrl,
+        tracks: tracks ?? this.tracks,
+        currentIndex: currentIndex ?? this.currentIndex,
+        chapters: chapters,
+        episodeId: episodeId,
+      );
+}
+
+class PlaybackRepository {
+  PlaybackRepository(this._auth) {
+    _init();
+  }
+
+  final AuthRepository _auth;
+
+  final AudioPlayer player = AudioPlayer();
+
+  // Now Playing state
+  final StreamController<NowPlaying?> _nowPlayingCtr =
+  StreamController.broadcast();
+  NowPlaying? _nowPlaying;
+  Stream<NowPlaying?> get nowPlayingStream => _nowPlayingCtr.stream;
+  NowPlaying? get nowPlaying => _nowPlaying;
+
+  // Exposed streams to wire UI
+  Stream<bool> get playingStream => player.playingStream;
+  Stream<Duration> get positionStream => player.createPositionStream();
+  Stream<Duration?> get durationStream => player.durationStream;
+  Stream<PlayerState> get playerStateStream => player.playerStateStream;
+  Stream<ProcessingState> get processingStateStream =>
+      player.processingStateStream;
+
+  String? _progressItemId; // which item we report progress for
+  double? _metaTotalDurationSec; // from item metadata (seconds)
+  double? _sumTrackDurationsSec; // sum of tracks (seconds) if known
+
+  // lifecycle hook to send on background/exit
+  late final WidgetsBindingObserver _lifecycleHook = _LifecycleHook(
+    onPauseOrDetach: () => _sendProgressImmediate(),
+  );
+
+  // ---- Public API ----
+
+  Future<List<PlaybackTrack>> getPlayableTracks(String libraryItemId,
+      {String? episodeId}) {
+    return _getTracksPreferLocal(libraryItemId, episodeId: episodeId);
+  }
+
+  /// Query server for last known position (seconds). Returns null if none.
+  Future<double?> fetchServerProgress(String libraryItemId) async {
+    final api = _auth.api;
+    final resp = await api.request('GET', '/api/me/progress/$libraryItemId');
+    if (resp.statusCode != 200) return null;
+
+    try {
+      final data = jsonDecode(resp.body);
+      if (data is Map<String, dynamic>) {
+        if (data.containsKey('currentTime')) {
+          final v = data['currentTime'];
+          if (v is num) return v.toDouble();
+          if (v is String) return double.tryParse(v);
+        }
+        if (data.containsKey('progress') && data.containsKey('duration')) {
+          final p = (data['progress'] as num?)?.toDouble();
+          final d = (data['duration'] as num?)?.toDouble();
+          if (p != null && d != null && d > 0) return (p * d);
+        }
+        // Sometimes shape: { itemId: { currentTime: x, duration: y, ... } }
+        final first =
+            data.values.whereType<Map>().cast<Map<String, dynamic>?>().firstOrNull;
+        if (first != null) {
+          final v = first['currentTime'];
+          if (v is num) return v.toDouble();
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// Starts playback. Will resume from server progress if available.
+  Future<void> playItem(String libraryItemId, {String? episodeId}) async {
+    final session = await AudioSession.instance;
+    await session.configure(const AudioSessionConfiguration.music());
+
+    // Always pull metadata to get cover/author/chapters + total duration
+    final meta = await _getItemMeta(libraryItemId);
+    final chapters = _extractChapters(meta);
+    _metaTotalDurationSec = _extractMetaDurationSec(meta); // seconds
+
+    // Prefer local, but merge remote durations if local durations are unknown
+    var tracks =
+    await _getTracksPreferLocal(libraryItemId, episodeId: episodeId);
+    tracks = await _ensureDurations(tracks, libraryItemId, episodeId: episodeId);
+    _sumTrackDurationsSec = _sumDurations(tracks);
+
+    final np = NowPlaying(
+      libraryItemId: libraryItemId,
+      title: _titleFromMeta(meta) ?? 'Audiobook',
+      author: _authorFromMeta(meta),
+      coverUrl: await _coverUrl(libraryItemId),
+      tracks: tracks,
+      currentIndex: 0,
+      chapters: chapters,
+      episodeId: episodeId,
+    );
+    _setNowPlaying(np);
+    _progressItemId = libraryItemId;
+
+    // Prepare first track
+    await _playTrackAt(0);
+
+    // Try to resume from server (global seconds)
+    final resumeSec = await fetchServerProgress(libraryItemId);
+    if (resumeSec != null && resumeSec > 0) {
+      // Map global seconds -> track index + offset
+      final map = _mapGlobalSecondsToTrack(resumeSec, tracks);
+      await _playTrackAt(map.index);
+      await player.seek(Duration(milliseconds: (map.offsetSec * 1000).round()));
+    }
+
+    _startProgressSync(libraryItemId, episodeId: episodeId);
+
+    // Auto-next on completion
+    player.processingStateStream.listen((state) async {
+      if (state == ProcessingState.completed) {
+        final cur = _nowPlaying;
+        if (cur == null) return;
+        final next = cur.currentIndex + 1;
+        if (next < cur.tracks.length) {
+          await _playTrackAt(next);
+          await player.play();
+          await _sendProgressImmediate(); // send on track change
+        }
+      }
+    });
+
+    await player.play();
+    await _sendProgressImmediate(); // initial ping (global)
+  }
+
+  Future<void> pause() async {
+    await player.pause();
+    await _sendProgressImmediate();
+  }
+
+  Future<void> resume() async {
+    await player.play();
+    await _sendProgressImmediate();
+  }
+
+  /// Seek to [pos] (track-local). If [reportNow] is true, report immediately
+  /// using the requested track position mapped into global item position.
+  Future<void> seek(Duration pos, {bool reportNow = true}) async {
+    await player.seek(pos);
+    if (reportNow) {
+      await _sendProgressImmediate(overrideTrackPosSec: pos.inMilliseconds / 1000.0);
+    }
+  }
+
+  /// Convenience: move by +/- seconds (track-local) and report immediately.
+  Future<void> nudgeSeconds(int delta) async {
+    final total = player.duration ?? Duration.zero;
+    var target = player.position + Duration(seconds: delta);
+    if (target < Duration.zero) target = Duration.zero;
+    if (target > total) target = total;
+    await seek(target, reportNow: true);
+  }
+
+  /// Manually trigger a progress push (e.g. from UI)
+  Future<void> reportProgressNow() => _sendProgressImmediate();
+
+  Future<void> setSpeed(double speed) => player.setSpeed(speed.clamp(0.5, 3.0));
+  bool get hasPrev => _nowPlaying != null && _nowPlaying!.currentIndex > 0;
+  bool get hasNext =>
+      _nowPlaying != null &&
+          _nowPlaying!.currentIndex + 1 < _nowPlaying!.tracks.length;
+
+  Future<void> prevTrack() async {
+    if (!hasPrev) return;
+    final idx = _nowPlaying!.currentIndex - 1;
+    await _playTrackAt(idx);
+    await player.play();
+    await _sendProgressImmediate();
+  }
+
+  Future<void> nextTrack() async {
+    if (!hasNext) return;
+    final idx = _nowPlaying!.currentIndex + 1;
+    await _playTrackAt(idx);
+    await player.play();
+    await _sendProgressImmediate();
+  }
+
+  Future<void> stop() async {
+    await player.stop();
+    await _sendProgressImmediate(finished: true);
+    _stopProgressSync();
+    _setNowPlaying(null);
+    _progressItemId = null;
+    _metaTotalDurationSec = null;
+    _sumTrackDurationsSec = null;
+  }
+
+  // ---- Progress sync ----
+
+  Timer? _progressTimer;
+  double _lastSentSec = -1;
+
+  void _startProgressSync(String libraryItemId, {String? episodeId}) {
+    _progressTimer?.cancel();
+
+    _progressTimer = Timer.periodic(_kProgressPing, (_) {
+      _sendProgressImmediate();
+    });
+
+    // Big jumps / finish detection (GLOBAL seconds)
+    player.positionStream.listen((_) {
+      final cur = _computeGlobalPositionSec();
+      final total = _computeTotalDurationSec();
+      if (cur == null || total == null || total <= 0) return;
+
+      final progress = cur / total;
+      final bigJump = (_lastSentSec - cur).abs() >= 30;
+      if (bigJump || progress >= 0.999) {
+        _sendProgressImmediate(finished: progress >= 0.999);
+      }
+    });
+  }
+
+  void _stopProgressSync() {
+    _progressTimer?.cancel();
+    _progressTimer = null;
+  }
+
+  /// Push to server using GLOBAL item position.
+  /// If [overrideTrackPosSec] is provided, it is interpreted as the position
+  /// within the *current track* and mapped to global seconds.
+  Future<void> _sendProgressImmediate({
+    double? overrideTrackPosSec,
+    bool finished = false,
+  }) async {
+    final itemId = _progressItemId;
+    final np = _nowPlaying;
+    if (itemId == null || np == null) return;
+
+    final total = _computeTotalDurationSec();
+    final cur = (overrideTrackPosSec != null)
+        ? _computeGlobalFromTrackPos(overrideTrackPosSec)
+        : _computeGlobalPositionSec();
+
+    if (total == null || total <= 0 || cur == null) return;
+
+    _lastSentSec = cur;
+    await _sendProgressWithFallback(
+      libraryItemId: itemId,
+      episodeId: np.episodeId,
+      currentTime: cur,
+      duration: total,
+      isFinished: finished,
+    );
+  }
+
+  Future<void> _sendProgressWithFallback({
+    required String libraryItemId,
+    String? episodeId,
+    required double currentTime,
+    required double duration,
+    required bool isFinished,
+  }) async {
+    final api = _auth.api;
+    final path = (episodeId == null)
+        ? '/api/me/progress/$libraryItemId'
+        : '/api/me/progress/$libraryItemId/$episodeId';
+
+    final bodyMap = {
+      'duration': duration,                 // total ITEM duration (sec)
+      'currentTime': currentTime,           // global ITEM position (sec)
+      'progress': (currentTime / duration).clamp(0.0, 1.0),
+      'isFinished': isFinished,
+    };
+    final body = jsonEncode(bodyMap);
+
+    http.Response resp;
+
+    // Try PATCH first
+    try {
+      resp = await api.request('PATCH', path,
+          headers: {'Content-Type': 'application/json'}, body: body);
+      if (resp.statusCode == 200 || resp.statusCode == 204) return;
+    } catch (_) {}
+
+    // Try PUT
+    try {
+      resp = await api.request('PUT', path,
+          headers: {'Content-Type': 'application/json'}, body: body);
+      if (resp.statusCode == 200 || resp.statusCode == 204) return;
+    } catch (_) {}
+
+    // Try POST
+    try {
+      resp = await api.request('POST', path,
+          headers: {'Content-Type': 'application/json'}, body: body);
+      if (resp.statusCode == 200 || resp.statusCode == 204) return;
+    } catch (_) {}
+
+    // ignore: avoid_print
+    print('ABS progress update failed');
+  }
+
+  // ---- Internals ----
+
+  Future<void> _init() async {
+    final session = await AudioSession.instance;
+    await session.configure(const AudioSessionConfiguration.music());
+    WidgetsBinding.instance.addObserver(_lifecycleHook);
+  }
+
+  Future<void> _playTrackAt(int index) async {
+    final cur = _nowPlaying!;
+    final track = cur.tracks[index];
+    if (track.isLocal) {
+      await player.setFilePath(track.url, preload: true);
+    } else {
+      await player.setUrl(track.url, preload: true);
+    }
+    _setNowPlaying(cur.copyWith(currentIndex: index));
+  }
+
+  Future<List<PlaybackTrack>> _getTracksPreferLocal(String libraryItemId,
+      {String? episodeId}) async {
+    final local = await _localTracks(libraryItemId);
+    if (local.isNotEmpty) return local;
+    return _streamTracks(libraryItemId, episodeId: episodeId);
+  }
+
+  /// If any track durations are unknown (0) for local playback, fetch remote
+  /// stream metadata once and merge durations by index.
+  Future<List<PlaybackTrack>> _ensureDurations(
+      List<PlaybackTrack> tracks, String libraryItemId,
+      {String? episodeId}) async {
+    final missing = tracks.any((t) => t.duration <= 0);
+    if (!missing) return tracks;
+
+    try {
+      final remote = await _streamTracks(libraryItemId, episodeId: episodeId);
+      final byIndex = {for (final t in remote) t.index: t.duration};
+      final patched = tracks
+          .map((t) => t.duration > 0
+          ? t
+          : t.copyWith(duration: (byIndex[t.index] ?? 0.0)))
+          .toList();
+      return patched;
+    } catch (_) {
+      return tracks; // keep as-is if remote metadata fails
+    }
+  }
+
+  Future<List<PlaybackTrack>> _streamTracks(String libraryItemId,
+      {String? episodeId}) async {
+    final api = _auth.api;
+    final token = await api.accessToken();
+    final tokenQs =
+    (token != null && token.isNotEmpty) ? '?token=$token' : '';
+    final path = episodeId == null
+        ? '/api/items/$libraryItemId/play'
+        : '/api/items/$libraryItemId/play/$episodeId';
+
+    final resp = await api.request('POST', path,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'deviceInfo': {'clientVersion': 'kitzi-android-0.1.0'},
+          'supportedMimeTypes': [
+            'audio/mpeg',
+            'audio/mp4',
+            'audio/aac',
+            'audio/flac'
+          ]
+        }));
+
+    if (resp.statusCode != 200) {
+      throw Exception('Failed to start playback: ${resp.statusCode}');
+    }
+    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    final base = api.baseUrl ?? '';
+    final tracks = (data['audioTracks'] as List?) ?? const [];
+    return tracks.map((t) {
+      final m = (t as Map).cast<String, dynamic>();
+      final idx = (m['index'] as num?)?.toInt() ?? 0;
+      final dur = (m['duration'] as num?)?.toDouble() ?? 0.0; // seconds
+      final mime = (m['mimeType'] ?? 'audio/mpeg').toString();
+      final contentUrl =
+      (m['contentUrl'] ?? '').toString(); // /s/item/<id>/file.mp3
+      final abs =
+          '$base$contentUrl${tokenQs.isNotEmpty ? (contentUrl.contains('?') ? '&' : '?') + tokenQs.substring(1) : ''}';
+      return PlaybackTrack(
+          index: idx, url: abs, mimeType: mime, duration: dur, isLocal: false);
+    }).toList()
+      ..sort((a, b) => a.index.compareTo(b.index));
+  }
+
+  Future<List<PlaybackTrack>> _localTracks(String libraryItemId) async {
+    try {
+      final docs = await getApplicationDocumentsDirectory();
+      final dir = Directory('${docs.path}/abs/$libraryItemId');
+      if (!await dir.exists()) return const [];
+      final files =
+      (await dir.list().toList()).whereType<File>().toList()
+        ..sort((a, b) => a.path.compareTo(b.path));
+      if (files.isEmpty) return const [];
+      final list = <PlaybackTrack>[];
+      for (var i = 0; i < files.length; i++) {
+        final f = files[i];
+        final ext = f.path.split('.').last.toLowerCase();
+        final mime = ext == 'mp3'
+            ? 'audio/mpeg'
+            : (ext == 'm4a' || ext == 'aac')
+            ? 'audio/mp4'
+            : ext == 'flac'
+            ? 'audio/flac'
+            : 'audio/mpeg';
+        list.add(PlaybackTrack(
+          index: i,
+          url: f.path,
+          mimeType: mime,
+          duration: 0.0, // unknown for local until we merge from stream meta
+          isLocal: true,
+        ));
+      }
+      return list;
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<Map<String, dynamic>> _getItemMeta(String libraryItemId) async {
+    final base = _auth.api.baseUrl ?? '';
+    final token = await _auth.api.accessToken();
+    final qs = (token != null && token.isNotEmpty) ? '?token=$token' : '';
+    final r = await http.get(Uri.parse('$base/api/items/$libraryItemId$qs'));
+    try {
+      final j = jsonDecode(r.body) as Map<String, dynamic>;
+      return (j['item'] as Map?)?.cast<String, dynamic>() ??
+          j.cast<String, dynamic>();
+    } catch (_) {
+      return <String, dynamic>{};
+    }
+  }
+
+  Future<String?> _coverUrl(String libraryItemId) async {
+    final base = _auth.api.baseUrl ?? '';
+    final token = await _auth.api.accessToken();
+    final qs = (token != null && token.isNotEmpty) ? '?token=$token' : '';
+    return '$base/api/items/$libraryItemId/cover$qs';
+  }
+
+  List<Chapter> _extractChapters(Map<String, dynamic> meta) {
+    final m = (meta['media'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final md = (m['metadata'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final ch = (md['chapters'] as List?) ?? const [];
+    final out = <Chapter>[];
+    for (final c in ch) {
+      if (c is Map) {
+        final cc = c.cast<String, dynamic>();
+        final title = (cc['title'] ?? '').toString();
+        final start = (cc['start'] is num)
+            ? Duration(
+            milliseconds:
+            ((cc['start'] as num).toDouble() * 1000).round())
+            : Duration.zero;
+        if (title.isNotEmpty) out.add(Chapter(title: title, start: start));
+      }
+    }
+    return out;
+  }
+
+  double? _extractMetaDurationSec(Map<String, dynamic> meta) {
+    final media =
+        (meta['media'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final dur = media['duration'];
+    if (dur is num) return dur.toDouble(); // seconds
+    return null;
+  }
+
+  String? _titleFromMeta(Map<String, dynamic> meta) {
+    final m = (meta['media'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final md = (m['metadata'] as Map?)?.cast<String, dynamic>() ?? const {};
+    return (meta['title'] ?? md['title'])?.toString();
+  }
+
+  String? _authorFromMeta(Map<String, dynamic> meta) {
+    final m = (meta['media'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final md = (m['metadata'] as Map?)?.cast<String, dynamic>() ?? const {};
+    return (meta['author'] ?? md['authorName'] ?? md['author'])?.toString();
+  }
+
+  Future<void> dispose() async {
+    _stopProgressSync();
+    WidgetsBinding.instance.removeObserver(_lifecycleHook);
+    await player.dispose();
+    await _nowPlayingCtr.close();
+  }
+
+  void _setNowPlaying(NowPlaying? np) {
+    _nowPlaying = np;
+    _nowPlayingCtr.add(np);
+  }
+
+  // ---- Helpers for GLOBAL position/duration ----
+
+  double? _computeTotalDurationSec() {
+    // Prefer accurate sum of tracks; else metadata; else current track duration
+    final sum = _sumTrackDurationsSec;
+    if (sum != null && sum > 0) return sum;
+    final meta = _metaTotalDurationSec;
+    if (meta != null && meta > 0) return meta;
+    final track = player.duration;
+    return (track != null) ? track.inMilliseconds / 1000.0 : null;
+  }
+
+  double? _computeGlobalPositionSec() {
+    final np = _nowPlaying;
+    if (np == null) return null;
+    final idx = np.currentIndex;
+    final posTrackSec = player.position.inMilliseconds / 1000.0;
+    return _elapsedBeforeIndex(idx) + posTrackSec;
+  }
+
+  double _computeGlobalFromTrackPos(double trackPosSec) {
+    final np = _nowPlaying;
+    final idx = np?.currentIndex ?? 0;
+    return _elapsedBeforeIndex(idx) + trackPosSec;
+  }
+
+  double _elapsedBeforeIndex(int idx) {
+    final np = _nowPlaying;
+    if (np == null) return 0.0;
+    double s = 0.0;
+    for (var i = 0; i < idx; i++) {
+      final d = np.tracks[i].duration;
+      if (d > 0) s += d;
+    }
+    return s;
+  }
+
+  double _sumDurations(List<PlaybackTrack> tracks) {
+    var s = 0.0;
+    for (final t in tracks) {
+      if (t.duration > 0) s += t.duration;
+    }
+    return s;
+  }
+
+  /// Map a global seconds position to (track index, offset seconds).
+  _IndexAndOffset _mapGlobalSecondsToTrack(
+      double globalSec, List<PlaybackTrack> tracks) {
+    double acc = 0.0;
+    for (var i = 0; i < tracks.length; i++) {
+      final d = tracks[i].duration;
+      if (d <= 0) break;
+      if (globalSec < acc + d) {
+        return _IndexAndOffset(i, globalSec - acc);
+      }
+      acc += d;
+    }
+    // Fallback: last track
+    final last = tracks.isEmpty ? 0 : tracks.length - 1;
+    final lastDur = tracks.isEmpty ? 0.0 : (tracks.last.duration);
+    final off = (lastDur > 0) ? (globalSec - (acc)) : 0.0;
+    return _IndexAndOffset(last, off.clamp(0.0, lastDur > 0 ? lastDur : off));
+  }
+
+  // ---- Back-compat API (if used by older UI) ----
+  Timer? _compatTimer;
+  StreamSubscription<double>? _compatSub;
+  double _compatLastSentSec = -1;
+
+  Future<void> startProgressSync({
+    required String libraryItemId,
+    required Stream<double> positionSecondsStream,
+    required double totalDurationSec,
+  }) async {
+    _compatTimer?.cancel();
+    await _compatSub?.cancel();
+    _compatLastSentSec = -1;
+
+    _compatTimer = Timer.periodic(_kProgressPing, (_) async {
+      if (_compatLastSentSec >= 0 && totalDurationSec > 0) {
+        await _sendProgressWithFallback(
+          libraryItemId: libraryItemId,
+          currentTime: _compatLastSentSec,
+          duration: totalDurationSec,
+          isFinished: false,
+        );
+      }
+    });
+
+    _compatSub = positionSecondsStream.listen((sec) {
+      final progress = totalDurationSec > 0 ? (sec / totalDurationSec) : 0.0;
+      final bigJump = (_compatLastSentSec - sec).abs() >= 30;
+      final finished = progress >= 0.999;
+      if (bigJump || finished) {
+        _sendProgressWithFallback(
+          libraryItemId: libraryItemId,
+          currentTime: sec,
+          duration: totalDurationSec,
+          isFinished: finished,
+        );
+      }
+      _compatLastSentSec = sec;
+    });
+  }
+
+  Future<void> stopProgressSync() async {
+    _compatTimer?.cancel();
+    _compatTimer = null;
+    await _compatSub?.cancel();
+    _compatSub = null;
+    _compatLastSentSec = -1;
+  }
+}
+
+class _LifecycleHook with WidgetsBindingObserver {
+  _LifecycleHook({required this.onPauseOrDetach});
+  final Future<void> Function() onPauseOrDetach;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.detached) {
+      // Fire and forget
+      // ignore: discarded_futures
+      onPauseOrDetach();
+    }
+  }
+}
+
+class _IndexAndOffset {
+  final int index;
+  final double offsetSec;
+  _IndexAndOffset(this.index, this.offsetSec);
+}
+
+extension _FirstOrNull<E> on Iterable<E> {
+  E? get firstOrNull => isEmpty ? null : first;
+}
+
+=== ./lib/core/api_client.dart ===
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+class ApiClient {
+  ApiClient(this._prefs, this._secure);
+
+  final SharedPreferences _prefs;
+  final FlutterSecureStorage _secure;
+
+  String? get baseUrl => _prefs.getString('abs_base_url');
+
+  Future<void> setBaseUrl(String url) async {
+    url = url.trim();
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = 'https://$url';
+    }
+    url = url.replaceAll(RegExp(r'/+$'), '');
+    await _prefs.setString('abs_base_url', url);
+  }
+
+  // === Access/Refresh storage ===
+  Future<String?> _getAccessToken() async => _prefs.getString('abs_access');
+  Future<void> _setAccessToken(String token, DateTime expiry) async {
+    await _prefs.setString('abs_access', token);
+    await _prefs.setString('abs_access_exp', expiry.toIso8601String());
+  }
+  DateTime? _getAccessExpiry() {
+    final s = _prefs.getString('abs_access_exp');
+    return s != null ? DateTime.tryParse(s) : null;
+  }
+  Future<String?> _getRefreshToken() => _secure.read(key: 'abs_refresh');
+  Future<void> _setRefreshToken(String token) =>
+      _secure.write(key: 'abs_refresh', value: token);
+
+  /// Public helper: get current access token (nullable).
+  Future<String?> accessToken() => _getAccessToken();
+
+  Future<void> clearTokens() async {
+    await _prefs.remove('abs_access');
+    await _prefs.remove('abs_access_exp');
+    await _secure.delete(key: 'abs_refresh');
+  }
+
+  // === Requests with auto-refresh ===
+  Future<http.Response> request(
+      String method,
+      String path, {
+        Map<String, String>? headers,
+        Object? body,
+        bool auth = true,
+      }) async {
+    final base = baseUrl;
+    if (base == null) throw Exception('Base URL not set');
+    if (auth) {
+      await _ensureAccessValid();
+    }
+
+    final uri = Uri.parse('$base$path');
+    final reqHeaders = <String, String>{
+      'Content-Type': 'application/json',
+      ...?headers,
+    };
+
+    if (auth) {
+      final access = await _getAccessToken();
+      if (access != null) reqHeaders['Authorization'] = 'Bearer $access';
+    }
+
+    Future<http.Response> _send(String m) async {
+      switch (m) {
+        case 'GET':
+          return http.get(uri, headers: reqHeaders);
+        case 'POST':
+          return http.post(uri, headers: reqHeaders, body: body as String?);
+        case 'DELETE':
+          return http.delete(uri, headers: reqHeaders, body: body as String?);
+        case 'PUT':
+          return http.put(uri, headers: reqHeaders, body: body as String?);
+        case 'PATCH':
+          return http.patch(uri, headers: reqHeaders, body: body as String?);
+        default:
+          throw UnimplementedError(m);
+      }
+    }
+
+    var upper = method.toUpperCase();
+    var resp = await _send(upper);
+
+    if (auth && resp.statusCode == 401) {
+      final refreshed = await _refreshAccessToken();
+      if (refreshed) {
+        final retryHeaders = Map<String, String>.from(reqHeaders);
+        retryHeaders['Authorization'] = 'Bearer ${await _getAccessToken()}';
+        resp = await _send(upper);
+      }
+    }
+    return resp;
+  }
+
+  Future<void> _ensureAccessValid() async {
+    final exp = _getAccessExpiry();
+    if (exp == null) return;
+    final now = DateTime.now().toUtc();
+    if (exp.isBefore(now.add(const Duration(seconds: 60)))) {
+      await _refreshAccessToken();
+    }
+  }
+
+  Future<bool> _refreshAccessToken() async {
+    final base = baseUrl;
+    final refresh = await _getRefreshToken();
+    if (base == null || refresh == null) return false;
+
+    final resp = await http.post(
+      Uri.parse('$base/auth/refresh'),
+      headers: {
+        'Content-Type': 'application/json',
+        'x-refresh-token': refresh,
+      },
+    );
+    if (resp.statusCode != 200) return false;
+
+    final data = jsonDecode(resp.body);
+    final user = data['user'] as Map<String, dynamic>?;
+    final access = user?['accessToken'] as String?;
+    final newRefresh = user?['refreshToken'] as String?;
+    if (access == null) return false;
+
+    final assumedExpiry = DateTime.now().toUtc().add(const Duration(hours: 12));
+    await _setAccessToken(access, assumedExpiry);
+    if (newRefresh != null && newRefresh.isNotEmpty) {
+      await _setRefreshToken(newRefresh);
+    }
+    return true;
+  }
+
+  Future<bool> refreshAccessToken() => _refreshAccessToken();
+
+  Future<bool> login({
+    required String baseUrl,
+    required String username,
+    required String password,
+  }) async {
+    await setBaseUrl(baseUrl);
+    final resp = await http.post(
+      Uri.parse('$baseUrl/login'),
+      headers: {
+        'Content-Type': 'application/json',
+        'x-return-tokens': 'true',
+      },
+      body: jsonEncode({'username': username, 'password': password}),
+    );
+
+    if (resp.statusCode != 200) return false;
+
+    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    final user = data['user'] as Map<String, dynamic>?;
+    final access = user?['accessToken'] as String?;
+    final refresh = user?['refreshToken'] as String?;
+    if (access == null || refresh == null) return false;
+
+    final assumedExpiry = DateTime.now().toUtc().add(const Duration(hours: 12));
+    await _setAccessToken(access, assumedExpiry);
+    await _setRefreshToken(refresh);
+    return true;
+  }
+
+  Future<void> logout() async {
+    final base = baseUrl;
+    final refresh = await _getRefreshToken();
+    try {
+      if (base != null && refresh != null) {
+        await http.post(
+          Uri.parse('$base/logout'),
+          headers: {
+            'Content-Type': 'application/json',
+            'x-refresh-token': refresh,
+          },
+        );
+      }
+    } finally {
+      await clearTokens();
+    }
+  }
+}
+
+=== ./lib/core/url_utils.dart ===
+// lib/core/url_utils.dart
+import 'package:flutter/foundation.dart';
+
+String normalizeBase(String input) {
+  var url = input.trim();
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    url = 'https://$url';
+  }
+  // drop trailing slashes
+  url = url.replaceAll(RegExp(r'/+$'), '');
+  return url;
+}
+
+/// Builds a valid ABS URL from a base + (possibly absolute) contentUrl,
+/// adding/merging the token as a query param safely.
+String buildAbsUrl({
+  required String baseUrl,
+  required String contentUrl,
+  String? token,
+}) {
+  final base = Uri.parse(normalizeBase(baseUrl));
+
+  // If contentUrl is already absolute, start from it; else resolve against base.
+  Uri u;
+  final raw = contentUrl.trim();
+  if (raw.isEmpty) {
+    throw ArgumentError('Empty contentUrl');
+  }
+  final parsedContent = Uri.tryParse(raw);
+  if (parsedContent == null) {
+    throw ArgumentError('Unparseable contentUrl: $raw');
+  }
+  if (parsedContent.hasScheme) {
+    u = parsedContent;
+  } else {
+    // Ensure leading slash so resolve() doesn’t drop path segments unexpectedly
+    final rel = raw.startsWith('/') ? raw : '/$raw';
+    u = base.resolve(rel);
+  }
+
+  // Merge token with existing query parameters (no double ??, no spaces)
+  final qp = Map<String, String>.from(u.queryParameters);
+  if (token != null && token.isNotEmpty) {
+    qp['token'] = token;
+  }
+
+  // Rebuild with properly encoded path & query
+  u = u.replace(queryParameters: qp);
+
+  // Quick sanity checks (fail fast in debug)
+  assert(u.hasScheme && u.hasAuthority);
+  assert(!u.toString().contains(' '), 'URL contains spaces');
+
+  return u.toString();
+}
+
+=== ./lib/models/book.dart ===
+class Book {
+  final String id;
+  final String title;
+  final String? author;
+  final String coverUrl; // always a usable URL
+  final String? description;
+  final int? durationMs;
+  final int? sizeBytes;
+  final DateTime? updatedAt;
+
+  Book({
+    required this.id,
+    required this.title,
+    required this.coverUrl,
+    this.author,
+    this.description,
+    this.durationMs,
+    this.sizeBytes,
+    this.updatedAt,
+  });
+
+  /// Build from ABS library item JSON (id + media.metadata.*).
+  factory Book.fromLibraryItemJson(
+      Map<String, dynamic> j, {
+        required String baseUrl,
+        String? token, // <-- nullable now
+      }) {
+    final id = (j['id'] ?? j['_id'] ?? '').toString();
+
+    final media = j['media'] as Map<String, dynamic>? ?? const {};
+    final meta = media['metadata'] as Map<String, dynamic>? ?? const {};
+    final title = (j['title'] ?? meta['title'] ?? '').toString();
+    final author =
+    (j['author'] ?? meta['authorName'] ?? meta['author'] ?? meta['authors']?.toString());
+
+    // Construct cover URL, add ?token= only if provided
+    var coverUrl = '$baseUrl/api/items/$id/cover';
+    if (token != null && token.isNotEmpty) {
+      coverUrl = '$coverUrl?token=$token';
+    }
+
+    final description = (meta['description'] ?? j['description'])?.toString();
+    final durationSecs = media['duration'] is num ? (media['duration'] as num).toDouble() : null;
+    final updatedEpoch = j['updatedAt'] is num ? j['updatedAt'] as num : null;
+    final sizeBytes = media['size'] is num ? (media['size'] as num).toInt() : null;
+
+    return Book(
+      id: id,
+      title: title,
+      author: author,
+      coverUrl: coverUrl,
+      description: description,
+      durationMs: durationSecs != null ? (durationSecs * 1000).round() : null,
+      sizeBytes: sizeBytes,
+      updatedAt: updatedEpoch != null
+          ? DateTime.fromMillisecondsSinceEpoch(updatedEpoch.toInt(), isUtc: true)
+          : null,
+    );
+  }
+}
+
+=== ./lib/main.dart ===
+import 'package:flutter/material.dart';
+import 'core/auth_repository.dart';
+import 'core/playback_repository.dart';
+import 'core/downloads_repository.dart';
+import 'ui/login/login_screen.dart';
+import 'ui/main/main_scaffold.dart';
+import 'package:permission_handler/permission_handler.dart';
+
+/// Simple app-wide service container
+class AppServices {
+  final AuthRepository auth;
+  final PlaybackRepository playback;
+  final DownloadsRepository downloads;
+  AppServices({
+    required this.auth,
+    required this.playback,
+    required this.downloads,
+  });
+}
+
+/// Inherited scope to access services anywhere with:
+/// `ServicesScope.of(context).services`
+class ServicesScope extends InheritedWidget {
+  final AppServices services;
+  const ServicesScope({
+    super.key,
+    required this.services,
+    required Widget child,
+  }) : super(child: child);
+
+  static ServicesScope of(BuildContext context) {
+    final scope = context.dependOnInheritedWidgetOfExactType<ServicesScope>();
+    assert(scope != null, 'ServicesScope not found in widget tree');
+    return scope!;
+  }
+
+  @override
+  bool updateShouldNotify(covariant ServicesScope oldWidget) =>
+      oldWidget.services != services;
+}
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  if (await Permission.notification.isDenied) {
+    await Permission.notification.request();
+  }
+
+  // Construct singletons (Auth -> Playback -> Downloads)
+  final auth = await AuthRepository.ensure();
+  final playback = PlaybackRepository(auth);
+  final downloads = DownloadsRepository(auth, playback);
+  await downloads.init();
+
+  final services = AppServices(
+    auth: auth,
+    playback: playback,
+    downloads: downloads,
+  );
+
+  runApp(ServicesScope(
+    services: services,
+    child: const AbsApp(),
+  ));
+}
+
+class AbsApp extends StatefulWidget {
+  const AbsApp({super.key});
+  @override
+  State<AbsApp> createState() => _AbsAppState();
+}
+
+class _AbsAppState extends State<AbsApp> {
+  late final Future<bool> _sessionFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _sessionFuture =
+        AuthRepository.ensure().then((auth) => auth.hasValidSession());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'ABS Client',
+      theme: ThemeData(
+        useMaterial3: true,
+        colorSchemeSeed: Colors.indigo,
+        brightness: Brightness.light,
+      ),
+      home: FutureBuilder<bool>(
+        future: _sessionFuture,
+        builder: (context, snap) {
+          if (!snap.hasData) {
+            return const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            );
+          }
+          final services = ServicesScope.of(context).services;
+          return snap.data!
+              ? MainScaffold(downloadsRepo: services.downloads)
+              : LoginScreen(auth: services.auth);
+        },
+      ),
+    );
+  }
+}
+
+=== ./.dart_tool/flutter_build/dart_plugin_registrant.dart ===
+//
+// Generated file. Do not edit.
+// This file is generated from template in file `flutter_tools/lib/src/flutter_plugins.dart`.
+//
+
+// @dart = 3.7
+
+import 'dart:io'; // flutter_ignore: dart_io_import.
+import 'package:path_provider_android/path_provider_android.dart';
+import 'package:shared_preferences_android/shared_preferences_android.dart';
+import 'package:sqflite_android/sqflite_android.dart';
+import 'package:path_provider_foundation/path_provider_foundation.dart';
+import 'package:shared_preferences_foundation/shared_preferences_foundation.dart';
+import 'package:sqflite_darwin/sqflite_darwin.dart';
+import 'package:path_provider_linux/path_provider_linux.dart';
+import 'package:shared_preferences_linux/shared_preferences_linux.dart';
+import 'package:path_provider_foundation/path_provider_foundation.dart';
+import 'package:shared_preferences_foundation/shared_preferences_foundation.dart';
+import 'package:sqflite_darwin/sqflite_darwin.dart';
+import 'package:flutter_secure_storage_windows/flutter_secure_storage_windows.dart';
+import 'package:path_provider_windows/path_provider_windows.dart';
+import 'package:shared_preferences_windows/shared_preferences_windows.dart';
+
+@pragma('vm:entry-point')
+class _PluginRegistrant {
+
+  @pragma('vm:entry-point')
+  static void register() {
+    if (Platform.isAndroid) {
+      try {
+        PathProviderAndroid.registerWith();
+      } catch (err) {
+        print(
+          '`path_provider_android` threw an error: $err. '
+          'The app may not function as expected until you remove this plugin from pubspec.yaml'
+        );
+      }
+
+      try {
+        SharedPreferencesAndroid.registerWith();
+      } catch (err) {
+        print(
+          '`shared_preferences_android` threw an error: $err. '
+          'The app may not function as expected until you remove this plugin from pubspec.yaml'
+        );
+      }
+
+      try {
+        SqfliteAndroid.registerWith();
+      } catch (err) {
+        print(
+          '`sqflite_android` threw an error: $err. '
+          'The app may not function as expected until you remove this plugin from pubspec.yaml'
+        );
+      }
+
+    } else if (Platform.isIOS) {
+      try {
+        PathProviderFoundation.registerWith();
+      } catch (err) {
+        print(
+          '`path_provider_foundation` threw an error: $err. '
+          'The app may not function as expected until you remove this plugin from pubspec.yaml'
+        );
+      }
+
+      try {
+        SharedPreferencesFoundation.registerWith();
+      } catch (err) {
+        print(
+          '`shared_preferences_foundation` threw an error: $err. '
+          'The app may not function as expected until you remove this plugin from pubspec.yaml'
+        );
+      }
+
+      try {
+        SqfliteDarwin.registerWith();
+      } catch (err) {
+        print(
+          '`sqflite_darwin` threw an error: $err. '
+          'The app may not function as expected until you remove this plugin from pubspec.yaml'
+        );
+      }
+
+    } else if (Platform.isLinux) {
+      try {
+        PathProviderLinux.registerWith();
+      } catch (err) {
+        print(
+          '`path_provider_linux` threw an error: $err. '
+          'The app may not function as expected until you remove this plugin from pubspec.yaml'
+        );
+      }
+
+      try {
+        SharedPreferencesLinux.registerWith();
+      } catch (err) {
+        print(
+          '`shared_preferences_linux` threw an error: $err. '
+          'The app may not function as expected until you remove this plugin from pubspec.yaml'
+        );
+      }
+
+    } else if (Platform.isMacOS) {
+      try {
+        PathProviderFoundation.registerWith();
+      } catch (err) {
+        print(
+          '`path_provider_foundation` threw an error: $err. '
+          'The app may not function as expected until you remove this plugin from pubspec.yaml'
+        );
+      }
+
+      try {
+        SharedPreferencesFoundation.registerWith();
+      } catch (err) {
+        print(
+          '`shared_preferences_foundation` threw an error: $err. '
+          'The app may not function as expected until you remove this plugin from pubspec.yaml'
+        );
+      }
+
+      try {
+        SqfliteDarwin.registerWith();
+      } catch (err) {
+        print(
+          '`sqflite_darwin` threw an error: $err. '
+          'The app may not function as expected until you remove this plugin from pubspec.yaml'
+        );
+      }
+
+    } else if (Platform.isWindows) {
+      try {
+        FlutterSecureStorageWindows.registerWith();
+      } catch (err) {
+        print(
+          '`flutter_secure_storage_windows` threw an error: $err. '
+          'The app may not function as expected until you remove this plugin from pubspec.yaml'
+        );
+      }
+
+      try {
+        PathProviderWindows.registerWith();
+      } catch (err) {
+        print(
+          '`path_provider_windows` threw an error: $err. '
+          'The app may not function as expected until you remove this plugin from pubspec.yaml'
+        );
+      }
+
+      try {
+        SharedPreferencesWindows.registerWith();
+      } catch (err) {
+        print(
+          '`shared_preferences_windows` threw an error: $err. '
+          'The app may not function as expected until you remove this plugin from pubspec.yaml'
+        );
+      }
+
+    }
+  }
+}
+

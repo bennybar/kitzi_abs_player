@@ -1,0 +1,7 @@
+com.bennybar.kitzi-pngs-0 /Users/bennybarak/StudioProjects/kitzi/android/build/generated/res/pngs/debug
+com.bennybar.kitzi-resValues-1 /Users/bennybarak/StudioProjects/kitzi/android/build/generated/res/resValues/debug
+com.bennybar.kitzi-packageDebugResources-2 /Users/bennybarak/StudioProjects/kitzi/android/build/intermediates/incremental/debug/packageDebugResources/merged.dir
+com.bennybar.kitzi-packageDebugResources-3 /Users/bennybarak/StudioProjects/kitzi/android/build/intermediates/incremental/debug/packageDebugResources/stripped.dir
+com.bennybar.kitzi-debug-4 /Users/bennybarak/StudioProjects/kitzi/android/build/intermediates/merged_res/debug/mergeDebugResources
+com.bennybar.kitzi-debug-5 /Users/bennybarak/StudioProjects/kitzi/android/src/debug/res
+com.bennybar.kitzi-main-6 /Users/bennybarak/StudioProjects/kitzi/android/src/main/res
