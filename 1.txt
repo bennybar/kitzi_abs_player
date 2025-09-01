@@ -2,6 +2,8 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../main.dart';
+
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
 
@@ -31,10 +33,18 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = ServicesScope.of(context).services.theme;
+
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
         children: [
+          SwitchListTile(
+            title: const Text('Dark mode'),
+            value: theme.isDark,
+            onChanged: (v) => theme.setDark(v),
+          ),
+          const Divider(),
           SwitchListTile(
             title: const Text('Wi-Fi only downloads'),
             subtitle: const Text('If off, uses Wi-Fi + Cellular'),
@@ -53,7 +63,15 @@ class _SettingsPageState extends State<SettingsPage> {
           ListTile(
             leading: const Icon(Icons.logout),
             title: const Text('Log out'),
-            onTap: () => Navigator.of(context).pushNamed('/logout'), // wire to your logout flow
+            onTap: () async {
+              final services = ServicesScope.of(context).services;
+              await services.auth.logout();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Logged out')),
+                );
+              }
+            },
           ),
         ],
       ),
@@ -425,6 +443,151 @@ class _CoverThumb extends StatelessWidget {
   }
 }
 
+=== ./lib/ui/auth/login_page.dart ===
+import 'package:flutter/material.dart';
+
+class LoginPage extends StatefulWidget {
+  const LoginPage({super.key, this.onRetryCheck});
+
+  /// Called when user taps "Retry" (lets AuthGate re-check token)
+  final Future<void> Function()? onRetryCheck;
+
+  @override
+  State<LoginPage> createState() => _LoginPageState();
+}
+
+class _LoginPageState extends State<LoginPage> {
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Sign in')),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('You’re signed out', style: text.headlineSmall),
+                const SizedBox(height: 8),
+                Text(
+                  'Please open Settings and sign in to your Audiobookshelf server. '
+                      'When you’re done, return here and tap Retry.',
+                  style: text.bodyMedium,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          // If your app already has a settings route, push it.
+                          // Adjust the route name if different in your app.
+                          Navigator.of(context).pushNamed('/settings');
+                        },
+                        icon: const Icon(Icons.settings),
+                        label: const Text('Open Settings'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: widget.onRetryCheck,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Retry'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+=== ./lib/ui/auth/auth_gate.dart ===
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
+
+import '../../core/auth_repository.dart';
+import '../../main.dart'; // ServicesScope
+import 'login_page.dart';
+
+/// Wrap your real app with [AuthGate]. If there is no valid session, it shows
+/// the LoginPage; otherwise it shows [child].
+class AuthGate extends StatefulWidget {
+  const AuthGate({super.key, required this.child});
+  final Widget child;
+
+  @override
+  State<AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
+  late final AuthRepository _auth;
+  bool? _isLoggedIn;
+  Timer? _poll;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _auth = ServicesScope.of(context).services.auth;
+    _check();
+    _poll ??= Timer.periodic(const Duration(seconds: 15), (_) => _check());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _poll?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      SchedulerBinding.instance.addPostFrameCallback((_) => _check());
+    }
+  }
+
+  Future<void> _check() async {
+    try {
+      final token = await _auth.api.accessToken();
+      final isValid = token != null && token.isNotEmpty;
+      if (!mounted) return;
+      setState(() => _isLoggedIn = isValid);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isLoggedIn = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoggedIn == null) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    if (_isLoggedIn == false) {
+      return LoginPage(onRetryCheck: _check);
+    }
+    return widget.child;
+  }
+}
+
 === ./lib/ui/main/main_scaffold.dart ===
 import 'package:flutter/material.dart';
 
@@ -513,14 +676,13 @@ class _MainScaffoldState extends State<MainScaffold> {
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:background_downloader/background_downloader.dart';
-import 'package:just_audio/just_audio.dart';
 
 import '../../core/books_repository.dart';
 import '../../models/book.dart';
 import '../../core/downloads_repository.dart';
 import '../../core/playback_repository.dart';
-import '../player/full_player_sheet.dart';
-import '../player/mini_player.dart';
+import '../../widgets/mini_player.dart';
+import '../../widgets/download_button.dart';
 import '../../main.dart'; // ServicesScope
 
 class BookDetailPage extends StatefulWidget {
@@ -534,11 +696,6 @@ class BookDetailPage extends StatefulWidget {
 class _BookDetailPageState extends State<BookDetailPage> {
   late final Future<BooksRepository> _repoFut;
   Future<Book>? _bookFut;
-
-  DownloadsRepository? _downloadsRepo;
-  PlaybackRepository? _playbackRepo;
-  bool _depsInited = false;
-
   Future<double?>? _serverProgressFut;
 
   @override
@@ -551,247 +708,196 @@ class _BookDetailPageState extends State<BookDetailPage> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_depsInited) return;
-    final services = ServicesScope.of(context).services;
-    _downloadsRepo = services.downloads..init();
-    _playbackRepo = services.playback;
-    _serverProgressFut = _playbackRepo!.fetchServerProgress(widget.bookId);
-    _depsInited = true;
-  }
-
-  void _openFullPlayer(PlaybackRepository pb) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => FullPlayerSheet(playback: pb),
-    );
+    final pb = ServicesScope.of(context).services.playback;
+    _serverProgressFut ??= pb.fetchServerProgress(widget.bookId);
   }
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+    final services = ServicesScope.of(context).services;
+    final playbackRepo = services.playback;
+    final downloadsRepo = services.downloads;
 
-    final playbackRepo = _playbackRepo;
-    final downloadsRepo = _downloadsRepo;
-    if (playbackRepo == null || downloadsRepo == null) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
+    final cs = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Book')),
+      appBar: AppBar(title: const Text('Book details')),
       body: Stack(
         children: [
           FutureBuilder<Book>(
             future: _bookFut,
             builder: (context, snap) {
-              if (!snap.hasData) {
-                if (snap.hasError) {
-                  return Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Text('Error: ${snap.error}', style: TextStyle(color: cs.error)),
-                    ),
-                  );
-                }
+              if (snap.connectionState != ConnectionState.done) {
                 return const Center(child: CircularProgressIndicator());
+              }
+              if (snap.hasError || !snap.hasData) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text(
+                      'Failed to load book.',
+                      style: TextStyle(color: cs.error),
+                    ),
+                  ),
+                );
               }
 
               final b = snap.data!;
 
+              String fmtDuration() {
+                if (b.durationMs == null || b.durationMs == 0) return 'Unknown';
+                final d = Duration(milliseconds: b.durationMs!);
+                final h = d.inHours;
+                final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+                return h > 0 ? '$h h $m m' : '$m m';
+              }
+
+              String fmtSize() {
+                if (b.sizeBytes == null || b.sizeBytes == 0) return '—';
+                final mb = (b.sizeBytes! / (1024 * 1024));
+                return '${mb.toStringAsFixed(1)} MB';
+              }
+
               return Padding(
-                // leave room for mini-player if showing
-                padding: const EdgeInsets.only(bottom: 72),
-                child: Column(
-                  children: [
-                    // Scrollable content
-                    Expanded(
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
+                padding: const EdgeInsets.only(bottom: 112), // room for mini player
+                child: CustomScrollView(
+                  slivers: [
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                        child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: CachedNetworkImage(
-                                    imageUrl: b.coverUrl,
-                                    width: 140,
-                                    height: 210,
-                                    fit: BoxFit.cover,
-                                    errorWidget: (_, __, ___) => Container(
-                                      width: 140,
-                                      height: 210,
-                                      alignment: Alignment.center,
-                                      decoration: BoxDecoration(
-                                        color: cs.surfaceContainerHighest,
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: const Icon(Icons.menu_book_outlined, size: 48),
-                                    ),
-                                  ),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: CachedNetworkImage(
+                                imageUrl: b.coverUrl,
+                                width: 140,
+                                height: 210,
+                                fit: BoxFit.cover,
+                                errorWidget: (_, __, ___) => Container(
+                                  width: 140,
+                                  height: 210,
+                                  alignment: Alignment.center,
+                                  color: cs.surfaceContainerHighest,
+                                  child: const Icon(Icons.menu_book_outlined, size: 48),
                                 ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(b.title, style: text.titleLarge, maxLines: 2, overflow: TextOverflow.ellipsis),
+                                  const SizedBox(height: 6),
+                                  Text(b.author ?? 'Unknown author', style: text.titleMedium),
+                                  const SizedBox(height: 12),
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 8,
                                     children: [
-                                      Text(b.title, style: Theme.of(context).textTheme.titleLarge),
-                                      const SizedBox(height: 4),
-                                      Text(b.author ?? 'Unknown', style: Theme.of(context).textTheme.bodyMedium),
-                                      const SizedBox(height: 12),
-                                      if (b.durationMs != null)
-                                        Text('Duration: ${(b.durationMs! / 3600000).toStringAsFixed(1)} h'),
-                                      if (b.sizeBytes != null)
-                                        Text('Size: ${(b.sizeBytes! / (1024 * 1024)).toStringAsFixed(1)} MB'),
-                                      if (b.updatedAt != null) Text('Updated: ${b.updatedAt}'),
+                                      _InfoChip(icon: Icons.schedule, label: fmtDuration()),
+                                      _InfoChip(icon: Icons.save_alt, label: fmtSize()),
+                                      if (b.updatedAt != null)
+                                        _InfoChip(icon: Icons.update, label: b.updatedAt!.toLocal().toString().split('.').first),
                                     ],
                                   ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-
-                            // Listening progress (server + live)
-                            _ListeningProgress(
-                              playback: playbackRepo,
-                              book: b,
-                              serverProgressFuture: _serverProgressFut!,
-                            ),
-
-                            const SizedBox(height: 12),
-
-                            if (b.description != null && b.description!.isNotEmpty) ...[
-                              Text('Description', style: Theme.of(context).textTheme.titleMedium),
-                              const SizedBox(height: 8),
-                              Text(b.description!),
-                            ],
-                            const SizedBox(height: 16),
-
-                            // Inline download progress for this book
-                            StreamBuilder<TaskUpdate>(
-                              stream: downloadsRepo.progressStream(),
-                              builder: (_, snap) {
-                                if (!snap.hasData) return const SizedBox.shrink();
-                                final up = snap.data!;
-                                final metaStr = up.task.metaData ?? '';
-                                final isThisBook = metaStr.contains(b.id);
-                                if (!isThisBook) return const SizedBox.shrink();
-
-                                double? progressValue;
-                                String statusText = 'running';
-
-                                if (up is TaskProgressUpdate) {
-                                  progressValue = up.progress; // 0..1
-                                } else if (up is TaskStatusUpdate) {
-                                  statusText = up.status.name;
-                                  progressValue = null; // indeterminate
-                                }
-
-                                return Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const SizedBox(height: 8),
-                                    LinearProgressIndicator(value: progressValue),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      progressValue != null
-                                          ? 'Download: $statusText • ${(progressValue * 100).toStringAsFixed(0)}%'
-                                          : 'Download: $statusText',
-                                    ),
-                                  ],
-                                );
-                              },
+                                ],
+                              ),
                             ),
                           ],
                         ),
                       ),
                     ),
-
-                    // Sticky bottom action bar (moved up so mini-player can show)
-                    SafeArea(
-                      top: false,
+                    SliverToBoxAdapter(
                       child: Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: _ListeningProgress(
+                          playback: playbackRepo,
+                          book: b,
+                          serverProgressFuture: _serverProgressFut!,
+                        ),
+                      ),
+                    ),
+                    if (b.description != null && b.description!.isNotEmpty)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Description', style: text.titleMedium),
+                              const SizedBox(height: 8),
+                              Text(b.description!, style: text.bodyMedium),
+                            ],
+                          ),
+                        ),
+                      ),
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
                         child: Row(
                           children: [
                             Expanded(
-                              child: StreamBuilder<NowPlaying?>(
-                                stream: playbackRepo.nowPlayingStream,
-                                initialData: playbackRepo.nowPlaying,
-                                builder: (_, npSnap) {
-                                  final np = npSnap.data;
-                                  final isThis = np?.libraryItemId == b.id;
-
-                                  return StreamBuilder<ProcessingState>(
-                                    stream: playbackRepo.processingStateStream,
-                                    initialData: playbackRepo.player.processingState,
-                                    builder: (_, procSnap) {
-                                      final proc = procSnap.data ?? ProcessingState.idle;
-
-                                      return StreamBuilder<bool>(
-                                        stream: playbackRepo.playingStream,
-                                        initialData: playbackRepo.player.playing,
-                                        builder: (_, playSnap) {
-                                          final isPlaying = playSnap.data ?? false;
-
-                                          // Decide label + state:
-                                          final bool isBuffering = isThis &&
-                                              (proc == ProcessingState.loading ||
-                                                  proc == ProcessingState.buffering);
-
-                                          final String label =
-                                          isThis && isPlaying ? 'Stop'
-                                              : isBuffering ? 'Buffering…'
-                                              : 'Play';
-
-                                          final bool disabled = isBuffering;
-
-                                          return FilledButton.icon(
-                                            onPressed: disabled
-                                                ? null
-                                                : () async {
-                                              if (isThis && isPlaying) {
-                                                await playbackRepo.stop();
-                                              } else {
-                                                await playbackRepo.playItem(b.id);
-                                                if (context.mounted) {
-                                                  _openFullPlayer(playbackRepo);
-                                                }
-                                              }
-                                            },
-                                            icon: Icon(
-                                              isThis && isPlaying
-                                                  ? Icons.stop
-                                                  : Icons.play_arrow,
-                                            ),
-                                            label: Text(label),
-                                          );
-                                        },
-                                      );
-                                    },
-                                  );
+                              child: FilledButton.icon(
+                                onPressed: () async {
+                                  await playbackRepo.playItem(b.id);
+                                  if (!context.mounted) return;
+                                  Navigator.of(context).pushNamed('/player');
                                 },
+                                icon: const Icon(Icons.play_arrow),
+                                label: const Text('Play'),
                               ),
                             ),
                             const SizedBox(width: 12),
                             Expanded(
-                              child: FilledButton.icon(
-                                onPressed: () async {
-                                  await downloadsRepo.enqueueItemDownloads(b.id);
-                                  if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('Added to download queue')),
-                                    );
-                                  }
-                                },
-                                icon: const Icon(Icons.download),
-                                label: const Text('Download'),
+                              child: DownloadButton(
+                                libraryItemId: b.id,
+                                titleForNotification: b.title,
                               ),
                             ),
                           ],
+                        ),
+                      ),
+                    ),
+                    // Optional inline per-book progress strip (kept)
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                        child: StreamBuilder<TaskUpdate>(
+                          stream: downloadsRepo.progressStream(),
+                          builder: (_, snapUp) {
+                            if (!snapUp.hasData) return const SizedBox.shrink();
+                            final up = snapUp.data!;
+                            final metaStr = up.task.metaData ?? '';
+                            final isThisBook = metaStr.contains(b.id);
+                            if (!isThisBook) return const SizedBox.shrink();
+
+                            double? progressValue;
+                            String statusText = 'running';
+
+                            if (up is TaskProgressUpdate) {
+                              progressValue = up.progress;
+                            } else if (up is TaskStatusUpdate) {
+                              statusText = up.status.name;
+                              progressValue = null; // indeterminate
+                            }
+
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                LinearProgressIndicator(value: progressValue),
+                                const SizedBox(height: 4),
+                                Text(
+                                  progressValue != null
+                                      ? 'Download: $statusText • ${(progressValue * 100).toStringAsFixed(0)}%'
+                                      : 'Download: $statusText',
+                                ),
+                              ],
+                            );
+                          },
                         ),
                       ),
                     ),
@@ -801,12 +907,12 @@ class _BookDetailPageState extends State<BookDetailPage> {
             },
           ),
 
-          // Mini-player overlay on this page too
+          // Mini player
           Align(
             alignment: Alignment.bottomCenter,
             child: SafeArea(
               top: false,
-              child: MiniPlayer(playback: _playbackRepo!),
+              child: MiniPlayer(height: 112),
             ),
           ),
         ],
@@ -815,8 +921,33 @@ class _BookDetailPageState extends State<BookDetailPage> {
   }
 }
 
-// ---------- Widgets ----------
+class _InfoChip extends StatelessWidget {
+  const _InfoChip({required this.icon, required this.label});
+  final IconData icon;
+  final String label;
 
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: cs.onSurfaceVariant),
+          const SizedBox(width: 6),
+          Text(label, style: Theme.of(context).textTheme.labelLarge),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------- Listening Progress ----------
 class _ListeningProgress extends StatelessWidget {
   const _ListeningProgress({
     required this.playback,
@@ -832,7 +963,6 @@ class _ListeningProgress extends StatelessWidget {
   Widget build(BuildContext context) {
     final isThis = playback.nowPlaying?.libraryItemId == book.id;
 
-    // If playing this book now, use live position/duration
     if (isThis) {
       return StreamBuilder<Duration?>(
         stream: playback.durationStream,
@@ -859,11 +989,10 @@ class _ListeningProgress extends StatelessWidget {
       );
     }
 
-    // Otherwise, show server-stored progress for this book
     return FutureBuilder<double?>(
       future: serverProgressFuture,
       builder: (_, snap) {
-        final sec = snap.data ?? 0.0;
+        final sec = (snap.data ?? 0.0);
         final durMs = book.durationMs ?? 0;
         final totalSec = durMs / 1000.0;
         final v = (totalSec > 0) ? (sec / totalSec).clamp(0.0, 1.0) : 0.0;
@@ -884,8 +1013,7 @@ class _ListeningProgress extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('Listening progress',
-            style: Theme.of(context).textTheme.titleMedium),
+        Text('Listening progress', style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 6),
         LinearProgressIndicator(value: value),
         const SizedBox(height: 4),
@@ -1139,6 +1267,211 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+=== ./lib/ui/player/full_player_page.dart ===
+import 'dart:async';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/material.dart';
+import 'package:just_audio/just_audio.dart';
+
+import '../../core/playback_repository.dart';
+import '../../main.dart';
+
+class FullPlayerPage extends StatefulWidget {
+  const FullPlayerPage({super.key});
+
+  @override
+  State<FullPlayerPage> createState() => _FullPlayerPageState();
+}
+
+class _FullPlayerPageState extends State<FullPlayerPage> {
+  late final PlaybackRepository _pb;
+  bool _dragging = false;
+  double _pendingSeekMs = -1;
+  Timer? _coalesce;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _pb = ServicesScope.of(context).services.playback;
+  }
+
+  @override
+  void dispose() {
+    _coalesce?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _commitSeek() async {
+    if (_pendingSeekMs >= 0) {
+      final ms = _pendingSeekMs;
+      _pendingSeekMs = -1;
+      await _pb.seek(Duration(milliseconds: ms.round()), reportNow: true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+
+    return Scaffold(
+      backgroundColor: cs.surface,
+      appBar: AppBar(
+        title: const Text('Now Playing'),
+        leading: IconButton(
+          icon: const Icon(Icons.keyboard_arrow_down),
+          onPressed: () => Navigator.of(context).maybePop(),
+          tooltip: 'Dismiss',
+        ),
+      ),
+      body: SafeArea(
+        child: StreamBuilder<NowPlaying?>(
+          stream: _pb.nowPlayingStream,
+          initialData: _pb.nowPlaying,
+          builder: (_, snap) {
+            final np = snap.data;
+            if (np == null) {
+              return const Center(child: Text('Nothing playing'));
+            }
+
+            return Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: CachedNetworkImage(
+                          imageUrl: np.coverUrl ?? '',
+                          width: 120,
+                          height: 120,
+                          fit: BoxFit.cover,
+                          errorWidget: (_, __, ___) => Container(
+                            width: 120,
+                            height: 120,
+                            color: cs.surfaceContainerHighest,
+                            child: const Icon(Icons.audiotrack, size: 40),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(np.title, style: text.titleLarge, maxLines: 2, overflow: TextOverflow.ellipsis),
+                            const SizedBox(height: 6),
+                            Text(np.author ?? '', style: text.titleMedium, maxLines: 1, overflow: TextOverflow.ellipsis),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Spacer(),
+                  StreamBuilder<Duration?>(
+                    stream: _pb.durationStream,
+                    initialData: _pb.player.duration,
+                    builder: (_, dSnap) {
+                      final total = dSnap.data ?? Duration.zero;
+                      return StreamBuilder<Duration>(
+                        stream: _pb.positionStream,
+                        initialData: _pb.player.position,
+                        builder: (_, pSnap) {
+                          final pos = pSnap.data ?? Duration.zero;
+                          final max = (total.inMilliseconds > 0)
+                              ? total.inMilliseconds.toDouble()
+                              : 1.0;
+                          final value = _dragging
+                              ? _pendingSeekMs.clamp(0.0, max)
+                              : pos.inMilliseconds
+                              .clamp(0, total.inMilliseconds)
+                              .toDouble();
+
+                          String fmt(Duration d) {
+                            final h = d.inHours;
+                            final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+                            final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+                            return h > 0 ? '$h:$m:$s' : '$m:$s';
+                          }
+
+                          return Column(
+                            children: [
+                              Slider(
+                                min: 0,
+                                max: max,
+                                value: value,
+                                onChangeStart: (_) {
+                                  _dragging = true;
+                                  _coalesce?.cancel();
+                                },
+                                onChanged: (v) {
+                                  _pendingSeekMs = v;
+                                  _coalesce?.cancel();
+                                  _coalesce = Timer(const Duration(milliseconds: 350), _commitSeek);
+                                  setState(() {});
+                                },
+                                onChangeEnd: (_) async {
+                                  _dragging = false;
+                                  await _commitSeek();
+                                },
+                              ),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(fmt(Duration(milliseconds: value.round()))),
+                                  Text(total == Duration.zero
+                                      ? ''
+                                      : '-${fmt(total - Duration(milliseconds: value.round()))}'),
+                                ],
+                              ),
+                            ],
+                          );
+                        },
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      IconButton(
+                        iconSize: 32,
+                        icon: const Icon(Icons.replay_10),
+                        onPressed: () => _pb.nudgeSeconds(-10),
+                      ),
+                      const SizedBox(width: 8),
+                      StreamBuilder<bool>(
+                        stream: _pb.playingStream,
+                        initialData: _pb.player.playing,
+                        builder: (_, playSnap) {
+                          final playing = playSnap.data ?? false;
+                          return FilledButton.icon(
+                            onPressed: () => playing ? _pb.pause() : _pb.resume(),
+                            icon: Icon(playing ? Icons.pause : Icons.play_arrow),
+                            label: Text(playing ? 'Pause' : 'Play'),
+                          );
+                        },
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        iconSize: 32,
+                        icon: const Icon(Icons.forward_30),
+                        onPressed: () => _pb.nudgeSeconds(30),
+                      ),
+                    ],
+                  ),
+                  const Spacer(),
+                ],
+              ),
+            );
+          },
         ),
       ),
     );
@@ -1615,141 +1948,8 @@ class PlayerController {
 }
 
 === ./lib/ui/player/mini_player.dart ===
-import 'package:flutter/material.dart';
-import 'package:just_audio/just_audio.dart';
-
-import '../../core/playback_repository.dart';
-import 'full_player_sheet.dart';
-
-class MiniPlayer extends StatelessWidget {
-  const MiniPlayer({super.key, required this.playback});
-  final PlaybackRepository playback;
-
-  void _openFull(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => FullPlayerSheet(playback: playback),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
-    return StreamBuilder<NowPlaying?>(
-      stream: playback.nowPlayingStream,
-      initialData: playback.nowPlaying,
-      builder: (_, snap) {
-        final np = snap.data;
-        if (np == null) return const SizedBox.shrink();
-
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-          child: Material(
-            color: cs.surface,
-            elevation: 3,
-            borderRadius: BorderRadius.circular(16),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(16),
-              onTap: () => _openFull(context),
-              child: SizedBox(
-                height: 68,
-                child: Row(
-                  children: [
-                    const SizedBox(width: 8),
-                    // cover thumb
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: Image.network(
-                        np.coverUrl ?? '',
-                        width: 52,
-                        height: 52,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
-                          width: 52,
-                          height: 52,
-                          color: cs.surfaceContainerHighest,
-                          child: const Icon(Icons.menu_book_outlined),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    // title + chapter
-                    Expanded(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            np.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.titleSmall,
-                          ),
-                          StreamBuilder<Duration?>(
-                            stream: playback.durationStream,
-                            initialData: playback.player.duration,
-                            builder: (_, dSnap) {
-                              final total = dSnap.data ?? Duration.zero;
-                              return StreamBuilder<Duration>(
-                                stream: playback.positionStream,
-                                initialData: playback.player.position,
-                                builder: (_, pSnap) {
-                                  final pos = pSnap.data ?? Duration.zero;
-                                  final v = (total.inMilliseconds > 0)
-                                      ? pos.inMilliseconds /
-                                      total.inMilliseconds
-                                      : 0.0;
-                                  return LinearProgressIndicator(
-                                    value: v.clamp(0.0, 1.0),
-                                    minHeight: 4,
-                                  );
-                                },
-                              );
-                            },
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    // controls
-                    IconButton(
-                      tooltip: 'Back 30s',
-                      icon: const Icon(Icons.replay_30),
-                      onPressed: () => playback.nudgeSeconds(-30),
-                    ),
-                    StreamBuilder<PlayerState>(
-                      stream: playback.playerStateStream,
-                      initialData: playback.player.playerState,
-                      builder: (_, s) {
-                        final playing = s.data?.playing ?? false;
-                        return IconButton.filled(
-                          tooltip: playing ? 'Pause' : 'Play',
-                          onPressed: playing ? playback.pause : playback.resume,
-                          icon: Icon(
-                            playing ? Icons.pause : Icons.play_arrow,
-                          ),
-                        );
-                      },
-                    ),
-                    IconButton(
-                      tooltip: 'Forward 30s',
-                      icon: const Icon(Icons.forward_30),
-                      onPressed: () => playback.nudgeSeconds(30),
-                    ),
-                    const SizedBox(width: 8),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
+// Keep legacy imports working by re-exporting the real widget.
+export '../../widgets/mini_player.dart';
 
 === ./lib/core/books_repository.dart ===
 import 'dart:convert';
@@ -1975,16 +2175,36 @@ class AuthRepository {
   ApiClient get api => _api;
 }
 
-=== ./lib/core/player_gate.dart ===
-// somewhere central, e.g. lib/core/player_gate.dart
-import 'package:flutter/widgets.dart';
+=== ./lib/core/theme_service.dart ===
+// lib/core/theme_service.dart
+import 'package:flutter/material.dart';
 
+/// Minimal theme controller used by settings_page.dart via ServicesScope.
+/// Access current mode with [mode.value], update with [set] or [toggle].
+class ThemeService {
+  final ValueNotifier<ThemeMode> mode = ValueNotifier<ThemeMode>(ThemeMode.system);
+
+  void set(ThemeMode next) => mode.value = next;
+
+  void toggle() {
+    mode.value = (mode.value == ThemeMode.dark) ? ThemeMode.light : ThemeMode.dark;
+  }
+}
+
+=== ./lib/core/player_gate.dart ===
+// lib/core/player_gate.dart
+import 'package:flutter/material.dart';
+
+/// Ensures the full-screen player (or its bottom sheet) is opened at most once
+/// at a time. Use this everywhere you navigate to the player UI to avoid
+/// stacking two sheets/screens on top of each other.
 class PlayerGate {
   static final PlayerGate I = PlayerGate._();
   PlayerGate._();
 
   bool _open = false;
 
+  /// Open a full-screen route once (e.g., a dedicated NowPlayingPage).
   Future<void> openOnce(BuildContext context, Widget page) async {
     if (_open) return;
     _open = true;
@@ -1999,6 +2219,25 @@ class PlayerGate {
       _open = false;
     }
   }
+
+  /// Open a modal bottom sheet once (e.g., your FullPlayerSheet).
+  Future<void> openSheetOnce(
+      BuildContext context,
+      Widget Function() builder,
+      ) async {
+    if (_open) return;
+    _open = true;
+    try {
+      await showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => builder(),
+      );
+    } finally {
+      _open = false;
+    }
+  }
 }
 
 === ./lib/core/downloads_repository.dart ===
@@ -2008,7 +2247,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:background_downloader/background_downloader.dart';
-import 'package:flutter/foundation.dart'; // debugPrint
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -2038,7 +2277,6 @@ class DownloadsRepository {
 
   static const _wifiOnlyKey = 'downloads_wifi_only';
 
-  // Tiny logger
   void _d(String m) => debugPrint('[DL] $m');
 
   // Plugin updates -> broadcast for UI
@@ -2053,19 +2291,14 @@ class DownloadsRepository {
   StreamSubscription<TaskUpdate>? _muxSub;
 
   Future<void> init() async {
+    // Configure ONE global notification. Do NOT set per-task displayName.
     try {
-      // Simple, cross-version notification templates
-      FileDownloader().configureNotification(
-        running: const TaskNotification('Downloading', '{filename}'),
-        complete: const TaskNotification('Download finished', '{filename}'),
-        error: const TaskNotification('Download failed', '{filename}'),
-        progressBar: true,
+      await FileDownloader().configureNotification(
+        running: const TaskNotification('Downloading audiobooks…', ''),
+        complete: const TaskNotification('Downloads complete', ''),
+        error: const TaskNotification('Download failed', ''),
       );
-      await FileDownloader().start();
-      _d('BackgroundDownloader started & notifications configured.');
-    } catch (e) {
-      _d('init/start/configureNotification failed: $e');
-    }
+    } catch (_) {}
   }
 
   /// Start (or get) an aggregated progress stream for a specific book.
@@ -2078,6 +2311,7 @@ class DownloadsRepository {
       }),
     );
 
+    // Demux plugin updates -> per-item controllers
     _muxSub ??= progressStream().listen((u) async {
       final meta = u.task.metaData ?? '';
       final id = _extractItemId(meta);
@@ -2092,51 +2326,42 @@ class DownloadsRepository {
     return ctrl.stream;
   }
 
-  /// Queue all tracks for download; filenames include book title for clearer notifications.
+  /// Queue all tracks of an item for download (Wi-Fi rule from prefs).
+  /// If the item already has local files AND no active tasks -> no-op (UI should show Delete).
   Future<void> enqueueItemDownloads(
       String libraryItemId, {
         String? episodeId,
       }) async {
-    // Always fetch REMOTE stream tracks (local-first list will mislead us)
-    final tracks = await _playback.getRemoteStreamTracks(
-      libraryItemId,
-      episodeId: episodeId,
-    );
+    // If already downloaded and no tasks => nothing to enqueue
+    if (await hasLocalDownloads(libraryItemId)) {
+      final recs = await _recordsForItem(libraryItemId);
+      if (recs.isEmpty) {
+        _d('Already local for $libraryItemId; skipping enqueue.');
+        _notifyItem(libraryItemId);
+        return;
+      }
+    }
 
-    // Only remote
+    final tracks =
+    await _playback.getPlayableTracks(libraryItemId, episodeId: episodeId);
+
     final remoteTracks = tracks.where((t) => !t.isLocal).toList();
     if (remoteTracks.isEmpty) {
       _d('No remote tracks to download for $libraryItemId (already local?).');
-      final c = _itemCtrls[libraryItemId];
-      if (c != null && !c.isClosed) {
-        c.add(await _computeItemProgress(libraryItemId));
-      }
+      _notifyItem(libraryItemId);
       return;
     }
-
-    // Fetch book title for notifications/filenames
-    final title = await _fetchItemTitle(libraryItemId);
-    final titleSlug = _sanitize(title ?? 'book');
 
     final prefs = await SharedPreferences.getInstance();
     final wifiOnly = prefs.getBool(_wifiOnlyKey) ?? true;
 
+    // Enqueue WITHOUT per-task displayName to keep a single system notification
     for (final t in remoteTracks) {
-      // Validate URL
-      final parsed = Uri.tryParse(t.url);
-      if (parsed == null ||
-          !parsed.hasScheme ||
-          (parsed.scheme != 'http' && parsed.scheme != 'https')) {
-        _d('Skipping invalid url: ${t.url}');
-        continue;
-      }
-      final safeUrl = parsed.toString();
-
       final filename =
-          '${titleSlug}_track_${t.index.toString().padLeft(3, '0')}.${_extFromMime(t.mimeType)}';
+          'track_${t.index.toString().padLeft(3, '0')}.${_extFromMime(t.mimeType)}';
 
       final task = DownloadTask(
-        url: safeUrl,
+        url: t.url, // absolute URL with token
         filename: filename,
         directory: 'abs/$libraryItemId',
         baseDirectory: BaseDirectory.applicationDocuments,
@@ -2146,61 +2371,29 @@ class DownloadsRepository {
         metaData: jsonEncode({'libraryItemId': libraryItemId}),
       );
 
-      try {
-        _d('Queueing $safeUrl -> $filename (wifiOnly=$wifiOnly)');
-        final ok = await FileDownloader().enqueue(task);
-        if (!ok) {
-          _d('Failed to enqueue task ${task.taskId} for $safeUrl');
-          continue;
-        }
-
-        // Wiretap: print progress / status / errors live
-        final sub = progressStream()
-            .where((u) => u.task.taskId == task.taskId)
-            .listen((u) {
-          if (u is TaskProgressUpdate) {
-            _d('task ${u.task.taskId} progress: ${(u.progress * 100).toStringAsFixed(1)}% '
-                '${u.hasNetworkSpeed ? 'speed: ${u.networkSpeedAsString}' : ''} '
-                '${u.hasTimeRemaining ? 'eta: ${u.timeRemainingAsString}' : ''}');
-          } else if (u is TaskStatusUpdate) {
-            _d('task ${u.task.taskId} status: ${u.status}'
-                '${u.exception != null ? ' ex: ${u.exception}' : ''}');
-          }
-        });
-
-        // Auto-cancel this wiretap on terminal status
-        progressStream()
-            .where((u) =>
-        u.task.taskId == task.taskId &&
-            u is TaskStatusUpdate &&
-            (u.status == TaskStatus.complete ||
-                u.status == TaskStatus.failed ||
-                u.status == TaskStatus.canceled ||
-                u.status == TaskStatus.notFound))
-            .first
-            .then((_) => sub.cancel());
-      } catch (e) {
-        _d('Download enqueue failed for $safeUrl: $e');
-      }
+      await FileDownloader().enqueue(task);
     }
 
-    // Kick initial emission for this item
-    final c = _itemCtrls[libraryItemId];
-    if (c != null && !c.isClosed) {
-      c.add(await _computeItemProgress(libraryItemId));
-    }
+    _notifyItem(libraryItemId);
   }
 
-  /// Cancel all queued/running tasks for a book. (UI hook for "Cancel download")
+  /// Cancel all queued/running tasks for a book.
   Future<void> cancelForItem(String libraryItemId) async {
     final recs = await _recordsForItem(libraryItemId);
     for (final r in recs) {
       await FileDownloader().cancelTaskWithId(r.taskId);
     }
-    final c = _itemCtrls[libraryItemId];
-    if (c != null && !c.isClosed) {
-      c.add(await _computeItemProgress(libraryItemId));
+    _notifyItem(libraryItemId);
+  }
+
+  /// Remove local files for a book (and cancel tasks just in case).
+  Future<void> deleteLocal(String libraryItemId) async {
+    await cancelForItem(libraryItemId);
+    final dir = await _itemDir(libraryItemId);
+    if (await dir.exists()) {
+      await dir.delete(recursive: true);
     }
+    _notifyItem(libraryItemId);
   }
 
   Future<void> cancelAll() async {
@@ -2221,22 +2414,12 @@ class DownloadsRepository {
     return dir.exists();
   }
 
-  Future<void> removeLocalDownloads(String libraryItemId) async {
-    final dir = await _itemDir(libraryItemId);
-    if (await dir.exists()) {
-      await dir.delete(recursive: true);
-    }
-    final c = _itemCtrls[libraryItemId];
-    if (c != null && !c.isClosed) {
-      c.add(await _computeItemProgress(libraryItemId));
-    }
-  }
-
   // === Internal aggregation ===
 
   Future<ItemProgress> _computeItemProgress(String libraryItemId) async {
     final recs = await _recordsForItem(libraryItemId);
     if (recs.isEmpty) {
+      // If there are no tasks but local files exist, treat as complete
       final local = await hasLocalDownloads(libraryItemId);
       return ItemProgress(
         libraryItemId: libraryItemId,
@@ -2307,48 +2490,15 @@ class DownloadsRepository {
     return Directory('${docs.path}/abs/$libraryItemId');
   }
 
-  // ---- helpers for title/filenames ----
-  Future<String?> _fetchItemTitle(String libraryItemId) async {
-    try {
-      final baseStr = _auth.api.baseUrl ?? '';
-      final base = Uri.parse(baseStr);
-      final token = await _auth.api.accessToken();
-
-      Uri meta = base.resolve('api/items/$libraryItemId');
-      if (token != null && token.isNotEmpty) {
-        meta = meta.replace(
-          queryParameters: <String, String>{
-            ...meta.queryParameters,
-            'token': token,
-          },
-        );
-      }
-      final r = await HttpClient().getUrl(meta).then((rq) => rq.close());
-      if (r.statusCode != 200) return null;
-      final body = await utf8.decodeStream(r);
-      final j = jsonDecode(body);
-      final m = (j['item'] as Map?)?.cast<String, dynamic>() ??
-          j.cast<String, dynamic>();
-      final t = (m['title'] as String?) ??
-          (m['media']?['metadata']?['title'] as String?) ??
-          (m['book']?['title'] as String?);
-      return t;
-    } catch (_) {
-      return null;
+  void _notifyItem(String libraryItemId) async {
+    final c = _itemCtrls[libraryItemId];
+    if (c != null && !c.isClosed) {
+      c.add(await _computeItemProgress(libraryItemId));
     }
-  }
-
-  String _sanitize(String s) {
-    final r = s
-        .replaceAll(RegExp(r'[^\w\s\-\.\(\)\[\]]+', unicode: true), '')
-        .replaceAll(RegExp(r'\s+'), '_')
-        .trim();
-    return r.isEmpty ? 'book' : r;
   }
 }
 
 === ./lib/core/playback_repository.dart ===
-// lib/core/playback_repository.dart
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -2363,7 +2513,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'auth_repository.dart';
 
 const _kProgressPing = Duration(seconds: 15);
-const _kLocalProgPrefix = 'abs_progress:';
+const _kLocalProgPrefix = 'abs_progress:';      // local fallback per item
+const _kLastItemKey = 'abs_last_item_id';       // last played item id
 
 class PlaybackTrack {
   final int index;
@@ -2429,6 +2580,14 @@ class NowPlaying {
 }
 
 class PlaybackRepository {
+  final StreamController<String> _debugLogCtr = StreamController.broadcast();
+  Stream<String> get debugLogStream => _debugLogCtr.stream;
+
+  void _log(String msg) {
+    debugPrint("[ABS] $msg");
+    _debugLogCtr.add(msg);
+  }
+
   PlaybackRepository(this._auth) {
     _init();
   }
@@ -2436,22 +2595,12 @@ class PlaybackRepository {
   final AuthRepository _auth;
   final AudioPlayer player = AudioPlayer();
 
-  // ---- logging (opt-in UI can subscribe) ----
-  final StreamController<String> _debugLogCtr = StreamController.broadcast();
-  Stream<String> get debugLogStream => _debugLogCtr.stream;
-  void _log(String msg) {
-    debugPrint("[ABS] $msg");
-    _debugLogCtr.add(msg);
-  }
-
-  // Now Playing state
   final StreamController<NowPlaying?> _nowPlayingCtr =
   StreamController.broadcast();
   NowPlaying? _nowPlaying;
   Stream<NowPlaying?> get nowPlayingStream => _nowPlayingCtr.stream;
   NowPlaying? get nowPlaying => _nowPlaying;
 
-  // Exposed streams to wire UI
   Stream<bool> get playingStream => player.playingStream;
   Stream<Duration> get positionStream => player.createPositionStream();
   Stream<Duration?> get durationStream => player.durationStream;
@@ -2459,41 +2608,61 @@ class PlaybackRepository {
   Stream<ProcessingState> get processingStateStream =>
       player.processingStateStream;
 
-  String? _progressItemId; // which item we report progress for
-  double? _metaTotalDurationSec; // from item metadata (seconds)
-  double? _sumTrackDurationsSec; // sum of tracks (seconds) if known
+  String? _progressItemId;
 
-  // Track duration learned at runtime from ExoPlayer
-  final Map<int, double> _observedDurationsSec = {};
-
-  // Debounce/throttle progress signaling
-  Timer? _debounceSeekTimer;
-  bool _userSeekActive = false;
-  DateTime? _lastSentAt;
-  static const _minSendGap = Duration(milliseconds: 500);
-  static const _seekDebounce = Duration(milliseconds: 700);
-
-  // suppress first send until resume is settled
-  bool _resumeSettled = false;
-
-  // lifecycle hook to send on background/exit
   late final WidgetsBindingObserver _lifecycleHook = _LifecycleHook(
     onPauseOrDetach: () => _sendProgressImmediate(),
   );
 
-  // ---- Public API ----
-
-  /// Prefer local files when available (used by player UI).
   Future<List<PlaybackTrack>> getPlayableTracks(String libraryItemId,
       {String? episodeId}) =>
       _getTracksPreferLocal(libraryItemId, episodeId: episodeId);
 
-  /// Always fetch REMOTE streaming tracks (needed by downloader).
-  Future<List<PlaybackTrack>> getRemoteStreamTracks(String libraryItemId,
-      {String? episodeId}) =>
-      _streamTracks(libraryItemId, episodeId: episodeId);
+  /// Warm-load last item (server position wins). If [playAfterLoad] true, will start playback.
+  Future<void> warmLoadLastItem({bool playAfterLoad = false}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final last = prefs.getString(_kLastItemKey);
+      if (last == null || last.isEmpty) return;
 
-  /// Query server for last known position (seconds). Returns null if none.
+      final meta = await _getItemMeta(last);
+      final chapters = _extractChapters(meta);
+      final tracks = await _getTracksPreferLocal(last);
+      final tracksWithDur = await _ensureDurations(tracks, last);
+
+      final np = NowPlaying(
+        libraryItemId: last,
+        title: _titleFromMeta(meta) ?? 'Audiobook',
+        author: _authorFromMeta(meta),
+        coverUrl: await _coverUrl(last),
+        tracks: tracksWithDur,
+        currentIndex: 0,
+        chapters: chapters,
+      );
+      _setNowPlaying(np);
+      _progressItemId = last;
+
+      final resumeSec = await fetchServerProgress(last) ??
+          prefs.getDouble('$_kLocalProgPrefix$last');
+
+      // Map to track and seek BEFORE starting
+      if (resumeSec != null && resumeSec > 0) {
+        final map = _mapGlobalSecondsToTrack(resumeSec, np.tracks);
+        await _setTrackAt(map.index, preload: true);
+        await player.seek(Duration(milliseconds: (map.offsetSec * 1000).round()));
+      } else {
+        await _setTrackAt(0, preload: true);
+      }
+
+      if (playAfterLoad) {
+        await player.play();
+        await _sendProgressImmediate();
+      }
+    } catch (e) {
+      _log('warmLoadLastItem error: $e');
+    }
+  }
+
   Future<double?> fetchServerProgress(String libraryItemId) async {
     final api = _auth.api;
     final resp = await api.request('GET', '/api/me/progress/$libraryItemId');
@@ -2514,22 +2683,18 @@ class PlaybackRepository {
     return null;
   }
 
-  /// Server-first resume, else local fallback if offline or server has none.
   Future<void> playItem(String libraryItemId, {String? episodeId}) async {
     final session = await AudioSession.instance;
     await session.configure(const AudioSessionConfiguration.music());
 
-    // Always pull metadata to get cover/author/chapters + total duration
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kLastItemKey, libraryItemId);
+
     final meta = await _getItemMeta(libraryItemId);
     final chapters = _extractChapters(meta);
-    _metaTotalDurationSec = _extractMetaDurationSec(meta); // seconds
 
-    // Prefer local, but merge remote durations if local durations are unknown
-    var tracks =
-    await _getTracksPreferLocal(libraryItemId, episodeId: episodeId);
-    tracks =
-    await _ensureDurations(tracks, libraryItemId, episodeId: episodeId);
-    _sumTrackDurationsSec = _sumDurations(tracks);
+    var tracks = await _getTracksPreferLocal(libraryItemId, episodeId: episodeId);
+    tracks = await _ensureDurations(tracks, libraryItemId, episodeId: episodeId);
 
     final np = NowPlaying(
       libraryItemId: libraryItemId,
@@ -2544,71 +2709,35 @@ class PlaybackRepository {
     _setNowPlaying(np);
     _progressItemId = libraryItemId;
 
-    _resumeSettled = false; // block early sends
-
-    // Prepare first track (we'll seek after choosing resume)
-    await _playTrackAt(0);
-
-    // --- RESUME ORDER: SERVER -> LOCAL (per-server key) -> LEGACY KEY ---
-    double? resumeSec;
-    bool serverTried = false;
-    try {
-      resumeSec = await fetchServerProgress(libraryItemId);
-      serverTried = true;
-    } catch (e) {
-      _log('fetchServerProgress error (will use local if any): $e');
-    }
-
-    if (resumeSec == null || resumeSec <= 0) {
-      final prefs = await SharedPreferences.getInstance();
-      final localKey = _progressKey(libraryItemId, episodeId: episodeId);
-      final localSec = prefs.getDouble(localKey);
-      if (localSec != null && localSec > 0) {
-        resumeSec = localSec;
-        _log('Using LOCAL resume $resumeSec (serverTried=$serverTried)');
-      } else {
-        // legacy (pre-namespaced) key, just in case
-        final legacy = prefs.getDouble('$_kLocalProgPrefix$libraryItemId');
-        if (legacy != null && legacy > 0) {
-          resumeSec = legacy;
-          _log('Using LEGACY LOCAL resume $resumeSec');
-        } else {
-          _log('No resume position available (serverTried=$serverTried)');
-        }
-      }
-    } else {
-      _log('Using SERVER resume $resumeSec');
-    }
+    // SERVER WINS: try server position first; fallback to local cache
+    double? resumeSec = await fetchServerProgress(libraryItemId);
+    resumeSec ??= prefs.getDouble('$_kLocalProgPrefix$libraryItemId');
 
     if (resumeSec != null && resumeSec > 0) {
       final map = _mapGlobalSecondsToTrack(resumeSec, tracks);
-      await _playTrackAt(map.index);
+      await _setTrackAt(map.index, preload: true);
       await player.seek(Duration(milliseconds: (map.offsetSec * 1000).round()));
+    } else {
+      await _setTrackAt(0, preload: true);
     }
-
-    _resumeSettled = true;
 
     _startProgressSync(libraryItemId, episodeId: episodeId);
 
-    // Auto-next on completion
     player.processingStateStream.listen((state) async {
       if (state == ProcessingState.completed) {
         final cur = _nowPlaying;
         if (cur == null) return;
         final next = cur.currentIndex + 1;
         if (next < cur.tracks.length) {
-          await _playTrackAt(next);
+          await _setTrackAt(next, preload: true);
           await player.play();
-          await _sendProgressImmediate(); // send on track change
+          await _sendProgressImmediate();
         }
       }
     });
 
     await player.play();
-    // Send only if > 0.5s to avoid “reset to 0” on first open
-    if ((player.position.inMilliseconds / 1000.0) > 0.5) {
-      await _sendProgressImmediate();
-    }
+    await _sendProgressImmediate();
   }
 
   Future<void> pause() async {
@@ -2621,23 +2750,24 @@ class PlaybackRepository {
     await _sendProgressImmediate();
   }
 
-  /// Seek to [pos] but **debounce** the server update (prevents PATCH spam).
+  /// When scrubbing, pass `reportNow: false` repeatedly; only call once with true at the end.
   Future<void> seek(Duration pos, {bool reportNow = true}) async {
     await player.seek(pos);
-    _debouncedProgress();
+    if (reportNow) {
+      await _sendProgressImmediate(
+        overrideTrackPosSec: pos.inMilliseconds / 1000.0,
+      );
+    }
   }
 
-  /// Convenience: move by +/- seconds. Also debounced.
   Future<void> nudgeSeconds(int delta) async {
     final total = player.duration ?? Duration.zero;
     var target = player.position + Duration(seconds: delta);
     if (target < Duration.zero) target = Duration.zero;
     if (target > total) target = total;
-    await player.seek(target);
-    _debouncedProgress();
+    await seek(target, reportNow: true);
   }
 
-  /// Manually trigger a progress push (e.g. from UI)
   Future<void> reportProgressNow() => _sendProgressImmediate();
 
   Future<void> setSpeed(double speed) => player.setSpeed(speed.clamp(0.5, 3.0));
@@ -2649,7 +2779,7 @@ class PlaybackRepository {
   Future<void> prevTrack() async {
     if (!hasPrev) return;
     final idx = _nowPlaying!.currentIndex - 1;
-    await _playTrackAt(idx);
+    await _setTrackAt(idx, preload: true);
     await player.play();
     await _sendProgressImmediate();
   }
@@ -2657,7 +2787,7 @@ class PlaybackRepository {
   Future<void> nextTrack() async {
     if (!hasNext) return;
     final idx = _nowPlaying!.currentIndex + 1;
-    await _playTrackAt(idx);
+    await _setTrackAt(idx, preload: true);
     await player.play();
     await _sendProgressImmediate();
   }
@@ -2668,9 +2798,6 @@ class PlaybackRepository {
     _stopProgressSync();
     _setNowPlaying(null);
     _progressItemId = null;
-    _metaTotalDurationSec = null;
-    _sumTrackDurationsSec = null;
-    _resumeSettled = false;
   }
 
   // ---- Progress sync ----
@@ -2685,18 +2812,14 @@ class PlaybackRepository {
       _sendProgressImmediate();
     });
 
-    // Big jumps / finish detection (GLOBAL seconds)
     player.positionStream.listen((_) {
       final cur = _computeGlobalPositionSec() ?? _trackOnlyPosSec();
       final total = _computeTotalDurationSec();
       if (cur == null) return;
 
       final bigJump = (_lastSentSec - cur).abs() >= 30;
-      final isDone =
-      (total != null && total > 0) ? (cur / total) >= 0.999 : false;
-
-      // Don't auto-send while user is actively scrubbing
-      if (!_userSeekActive && (bigJump || isDone)) {
+      final isDone = (total != null && total > 0) ? (cur / total) >= 0.999 : false;
+      if (bigJump || isDone) {
         _sendProgressImmediate(finished: isDone);
       }
     });
@@ -2707,18 +2830,8 @@ class PlaybackRepository {
     _progressTimer = null;
   }
 
-  void _debouncedProgress() {
-    _userSeekActive = true;
-    _debounceSeekTimer?.cancel();
-    _debounceSeekTimer = Timer(_seekDebounce, () {
-      _userSeekActive = false;
-      _sendProgressImmediate();
-    });
-  }
-
-  /// Always try to send at least `currentTime`. Include `progress`
-  /// only when we know the total. Throttled to avoid bursts and protected
-  /// against the initial 0s overwrite before resume settles.
+  /// Always try to send at least `currentTime`. Include `duration/progress`
+  /// only when we know the total.
   Future<void> _sendProgressImmediate({
     double? overrideTrackPosSec,
     bool finished = false,
@@ -2727,15 +2840,6 @@ class PlaybackRepository {
     final np = _nowPlaying;
     if (itemId == null || np == null) return;
 
-    // Throttle
-    final now = DateTime.now();
-    if (_lastSentAt != null &&
-        now.difference(_lastSentAt!) < _minSendGap &&
-        !finished) {
-      return;
-    }
-    _lastSentAt = now;
-
     final total = _computeTotalDurationSec();
     final cur = (overrideTrackPosSec != null)
         ? _computeGlobalFromTrackPos(overrideTrackPosSec)
@@ -2743,17 +2847,9 @@ class PlaybackRepository {
 
     if (cur == null) return;
 
-    // Guard: don't send an early 0s that could reset server progress
-    if (!_resumeSettled && cur <= 0.5 && !finished) {
-      _log('Suppressing initial 0s send until resume settles');
-      return;
-    }
-
-    // Persist locally with per-server key so switching servers won't mix states
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setDouble(
-          _progressKey(itemId, episodeId: np.episodeId), cur);
+      await prefs.setDouble('$_kLocalProgPrefix$itemId', cur);
     } catch (_) {}
 
     _lastSentSec = cur;
@@ -2763,33 +2859,34 @@ class PlaybackRepository {
         ? '/api/me/progress/$itemId'
         : '/api/me/progress/$itemId/${np.episodeId}';
 
-    // Let server-side item duration drive UI; send progress only.
     final bodyMap = <String, dynamic>{
       'currentTime': cur,
-      'isFinished':
-      finished || (total != null && total > 0 && (cur / total) >= 0.995),
-      if (total != null && total > 0)
-        'progress': (cur / total).clamp(0.0, 1.0),
+      'isFinished': finished,
     };
+    if (total != null && total > 0) {
+      bodyMap['duration'] = total;
+      bodyMap['progress'] = (cur / total).clamp(0.0, 1.0);
+    }
 
     http.Response? resp;
-    _log("Sending progress: cur=$cur, total=$total, finished=${bodyMap['isFinished']}");
+    _log("Sending progress: cur=$cur, total=$total, finished=$finished");
 
     try {
       resp = await api.request('PATCH', path,
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode(bodyMap));
-      _log("PATCH ${resp.statusCode} ${resp.reasonPhrase}");
+      _log("PATCH ${resp.statusCode} ${resp.body}");
       if (resp.statusCode == 200 || resp.statusCode == 204) return;
     } catch (e) {
       _log("PATCH error: $e");
     }
 
+    // Fallbacks
     try {
       resp = await api.request('PUT', path,
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode(bodyMap));
-      _log("PUT ${resp.statusCode} ${resp.reasonPhrase}");
+      _log("PUT ${resp.statusCode} ${resp.body}");
       if (resp.statusCode == 200 || resp.statusCode == 204) return;
     } catch (e) {
       _log("PUT error: $e");
@@ -2799,7 +2896,7 @@ class PlaybackRepository {
       resp = await api.request('POST', path,
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode(bodyMap));
-      _log("POST ${resp.statusCode} ${resp.reasonPhrase}");
+      _log("POST ${resp.statusCode} ${resp.body}");
     } catch (e) {
       _log("POST error: $e");
     }
@@ -2813,40 +2910,16 @@ class PlaybackRepository {
     WidgetsBinding.instance.addObserver(_lifecycleHook);
   }
 
-  Future<void> _playTrackAt(int index) async {
+  Future<void> _setTrackAt(int index, {bool preload = false}) async {
     final cur = _nowPlaying!;
     final track = cur.tracks[index];
 
     if (track.isLocal) {
-      await player.setFilePath(track.url, preload: true);
+      await player.setFilePath(track.url, preload: preload);
     } else {
-      await player.setUrl(track.url, preload: true);
+      await player.setUrl(track.url, preload: preload);
     }
     _setNowPlaying(cur.copyWith(currentIndex: index));
-
-    // Learn this track's actual duration from the player
-    final sub = player.durationStream.listen((d) {
-      final ms = d?.inMilliseconds ?? 0;
-      if (ms > 0) {
-        final sec = ms / 1000.0;
-        _observedDurationsSec[index] = sec;
-
-        // Patch track duration if unknown
-        final np = _nowPlaying;
-        if (np != null) {
-          final patched = [...np.tracks];
-          if (patched[index].duration <= 0) {
-            patched[index] = patched[index].copyWith(duration: sec);
-            _setNowPlaying(np.copyWith(tracks: patched));
-          }
-        }
-
-        _sumTrackDurationsSec = _sumDurations(_nowPlaying?.tracks ?? const []);
-      }
-    });
-
-    // Avoid leak
-    Future.delayed(const Duration(seconds: 5), () => sub.cancel());
   }
 
   Future<List<PlaybackTrack>> _getTracksPreferLocal(String libraryItemId,
@@ -2856,8 +2929,6 @@ class PlaybackRepository {
     return _streamTracks(libraryItemId, episodeId: episodeId);
   }
 
-  /// If any track durations are unknown (0) for local playback, fetch remote
-  /// stream metadata once and merge durations by index.
   Future<List<PlaybackTrack>> _ensureDurations(
       List<PlaybackTrack> tracks, String libraryItemId,
       {String? episodeId}) async {
@@ -2867,21 +2938,20 @@ class PlaybackRepository {
     try {
       final remote = await _streamTracks(libraryItemId, episodeId: episodeId);
       final byIndex = {for (final t in remote) t.index: t.duration};
-      final patched = tracks
+      return tracks
           .map((t) => t.duration > 0
           ? t
           : t.copyWith(duration: (byIndex[t.index] ?? 0.0)))
           .toList();
-      return patched;
     } catch (_) {
-      return tracks; // keep as-is if remote metadata fails
+      return tracks;
     }
   }
 
   Future<List<PlaybackTrack>> _streamTracks(String libraryItemId,
       {String? episodeId}) async {
     final api = _auth.api;
-    final token = await _auth.api.accessToken();
+    final token = await api.accessToken();
     final baseStr = api.baseUrl ?? '';
     final base = Uri.parse(baseStr);
 
@@ -2911,8 +2981,7 @@ class PlaybackRepository {
 
       Uri abs = Uri.tryParse(contentUrl) ?? Uri(path: contentUrl);
       if (!abs.hasScheme) {
-        final rel =
-        contentUrl.startsWith('/') ? contentUrl.substring(1) : contentUrl;
+        final rel = contentUrl.startsWith('/') ? contentUrl.substring(1) : contentUrl;
         abs = base.resolve(rel);
       }
       if (token != null && token.isNotEmpty) {
@@ -2938,8 +3007,7 @@ class PlaybackRepository {
       final docs = await getApplicationDocumentsDirectory();
       final dir = Directory('${docs.path}/abs/$libraryItemId');
       if (!await dir.exists()) return const [];
-      final files =
-      (await dir.list().toList()).whereType<File>().toList()
+      final files = (await dir.list().toList()).whereType<File>().toList()
         ..sort((a, b) => a.path.compareTo(b.path));
       if (files.isEmpty) return const [];
       final list = <PlaybackTrack>[];
@@ -2957,7 +3025,7 @@ class PlaybackRepository {
           index: i,
           url: f.path,
           mimeType: mime,
-          duration: 0.0, // unknown for local until we merge from stream meta
+          duration: 0.0, // unknown until merged
           isLocal: true,
         ));
       }
@@ -2974,19 +3042,16 @@ class PlaybackRepository {
 
     Uri meta = base.resolve('api/items/$libraryItemId');
     if (token != null && token.isNotEmpty) {
-      meta = meta.replace(
-        queryParameters: <String, String>{
-          ...meta.queryParameters,
-          'token': token,
-        },
-      );
+      meta = meta.replace(queryParameters: {
+        ...meta.queryParameters,
+        'token': token,
+      });
     }
 
     final r = await http.get(meta);
     try {
       final j = jsonDecode(r.body) as Map<String, dynamic>;
-      return (j['item'] as Map?)?.cast<String, dynamic>() ??
-          j.cast<String, dynamic>();
+      return (j['item'] as Map?)?.cast<String, dynamic>() ?? j.cast<String, dynamic>();
     } catch (_) {
       return <String, dynamic>{};
     }
@@ -2999,12 +3064,10 @@ class PlaybackRepository {
 
     Uri cov = base.resolve('api/items/$libraryItemId/cover');
     if (token != null && token.isNotEmpty) {
-      cov = cov.replace(
-        queryParameters: <String, String>{
-          ...cov.queryParameters,
-          'token': token,
-        },
-      );
+      cov = cov.replace(queryParameters: {
+        ...cov.queryParameters,
+        'token': token,
+      });
     }
     return cov.toString();
   }
@@ -3017,60 +3080,25 @@ class PlaybackRepository {
   // ----- Mapping / helpers -----
 
   double? _computeTotalDurationSec() {
-    // 1) Prefer explicit total from metadata if present
-    if (_metaTotalDurationSec != null && _metaTotalDurationSec! > 0) {
-      return _metaTotalDurationSec;
-    }
-
-    // 2) Sum known/observed per-track durations
-    final np = _nowPlaying;
-    if (np == null) return null;
-
+    final tracks = _nowPlaying?.tracks ?? const <PlaybackTrack>[];
     double sum = 0.0;
-    bool hasUnknown = false;
-    for (var i = 0; i < np.tracks.length; i++) {
-      final t = np.tracks[i];
-      final observed = _observedDurationsSec[i];
-      final d = (t.duration > 0) ? t.duration : (observed ?? 0.0);
-      if (d <= 0) {
-        hasUnknown = true;
-      } else {
-        sum += d;
+    for (final t in tracks) {
+      if (t.duration <= 0) {
+        return null;
       }
+      sum += t.duration;
     }
-
-    // 3) Only cache if we have a complete total (no unknowns)
-    if (!hasUnknown && sum > 0) {
-      _sumTrackDurationsSec = sum;
-      return sum;
-    }
-
-    // 4) Otherwise, use any previously cached full total
-    if (_sumTrackDurationsSec != null && _sumTrackDurationsSec! > 0) {
-      return _sumTrackDurationsSec;
-    }
-
-    // 5) No reliable total yet
-    return null;
+    return sum > 0 ? sum : null;
   }
 
   // track-only pos in seconds (fallback when global mapping impossible)
   double? _trackOnlyPosSec() => player.position.inMilliseconds / 1000.0;
-
-  double _sumDurations(List<PlaybackTrack> tracks) {
-    var s = 0.0;
-    for (final t in tracks) {
-      if (t.duration > 0) s += t.duration;
-    }
-    return s;
-  }
 
   double? _computeGlobalPositionSec() {
     final np = _nowPlaying;
     if (np == null) return null;
     final idx = np.currentIndex;
     final pos = player.position.inMilliseconds / 1000.0;
-    // Sum durations of previous tracks; if any unknown, we cannot compute reliably.
     double prefix = 0.0;
     for (int i = 0; i < idx; i++) {
       final d = np.tracks[i].duration;
@@ -3095,7 +3123,6 @@ class PlaybackRepository {
     for (int i = 0; i < tracks.length; i++) {
       final d = tracks[i].duration;
       if (d <= 0) {
-        // If unknown, assume it's the target track.
         return _TrackMap(index: i, offsetSec: remain);
       }
       if (remain < d) {
@@ -3103,7 +3130,6 @@ class PlaybackRepository {
       }
       remain -= d;
     }
-    // If beyond total, clamp to last track end.
     final last = tracks.isNotEmpty ? tracks.length - 1 : 0;
     return _TrackMap(index: last, offsetSec: tracks.isNotEmpty ? tracks[last].duration : 0.0);
   }
@@ -3138,35 +3164,12 @@ class PlaybackRepository {
               ? (c['start'] as num).toDouble() * 1000
               : (c['startMs'] as num?)?.toDouble();
           if (startMs != null) {
-            chapters.add(Chapter(
-                title: title, start: Duration(milliseconds: startMs.round())));
+            chapters.add(Chapter(title: title, start: Duration(milliseconds: startMs.round())));
           }
         }
       }
     }
     return chapters;
-  }
-
-  double? _extractMetaDurationSec(Map<String, dynamic> meta) {
-    num? candidate;
-    final d1 = meta['duration'];
-    final d2 = meta['media'] is Map ? (meta['media'] as Map)['duration'] : null;
-    final d3 = meta['media'] is Map
-        ? ((meta['media'] as Map)['metadata'] is Map
-        ? ((meta['media'] as Map)['metadata'] as Map)['duration']
-        : null)
-        : null;
-    dynamic pick = d1 ?? d2 ?? d3;
-    if (pick is String) {
-      candidate = num.tryParse(pick);
-    } else if (pick is num) {
-      candidate = pick;
-    }
-    if (candidate == null) return null;
-    double sec = candidate.toDouble();
-    if (sec > 1e6) sec = sec / 1000.0; // ms->s heuristic
-    if (sec <= 0) return null;
-    return sec;
   }
 
   Map<String, dynamic>? _firstMapValue(Map<String, dynamic> m) {
@@ -3178,14 +3181,6 @@ class PlaybackRepository {
       }
     }
     return null;
-  }
-
-  String _progressKey(String libraryItemId, {String? episodeId}) {
-    final base = _auth.api.baseUrl ?? '';
-    final host = Uri.tryParse(base)?.host ?? base;
-    final ep = episodeId ?? '';
-    // Per-server (+episode-safe) namespacing
-    return '$_kLocalProgPrefix$host:$libraryItemId:$ep';
   }
 }
 
@@ -3208,6 +3203,8 @@ class _TrackMap {
   final double offsetSec;
   _TrackMap({required this.index, required this.offsetSec});
 }
+
+
 
 === ./lib/core/api_client.dart ===
 import 'dart:convert';
@@ -3519,39 +3516,46 @@ class Book {
 
 === ./lib/main.dart ===
 import 'package:flutter/material.dart';
-import 'core/auth_repository.dart';
-import 'core/playback_repository.dart';
-import 'core/downloads_repository.dart';
-import 'ui/login/login_screen.dart';
-import 'ui/main/main_scaffold.dart';
-import 'package:permission_handler/permission_handler.dart';
 
-/// Simple app-wide service container
+import 'core/auth_repository.dart';
+import 'core/downloads_repository.dart';
+import 'core/playback_repository.dart';
+import 'core/theme_service.dart';
+
+import 'ui/auth/auth_gate.dart';
+import 'ui/auth/login_page.dart';
+import 'ui/main/main_scaffold.dart';
+import 'ui/player/full_player_page.dart';
+import 'ui/settings/settings_page.dart'; // your existing page that referenced services.theme
+
+/// Simple services bucket accessible via InheritedWidget.
 class AppServices {
-  final AuthRepository auth;
-  final PlaybackRepository playback;
-  final DownloadsRepository downloads;
   AppServices({
     required this.auth,
     required this.playback,
     required this.downloads,
+    required this.theme,
   });
+
+  final AuthRepository auth;
+  final PlaybackRepository playback;
+  final DownloadsRepository downloads;
+  final ThemeService theme; // ✅ provides `services.theme` for settings_page.dart
 }
 
-/// Inherited scope to access services anywhere with:
-/// `ServicesScope.of(context).services`
 class ServicesScope extends InheritedWidget {
-  final AppServices services;
   const ServicesScope({
     super.key,
     required this.services,
-    required Widget child,
-  }) : super(child: child);
+    required super.child,
+  });
+
+  final AppServices services;
 
   static ServicesScope of(BuildContext context) {
-    final scope = context.dependOnInheritedWidgetOfExactType<ServicesScope>();
-    assert(scope != null, 'ServicesScope not found in widget tree');
-    return scope!;
+    final res = context.dependOnInheritedWidgetOfExactType<ServicesScope>();
+    assert(res != null, 'ServicesScope not found in context');
+    return res!;
   }
 
   @override
@@ -3559,68 +3563,62 @@ class ServicesScope extends InheritedWidget {
       oldWidget.services != services;
 }
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  if (await Permission.notification.isDenied) {
-    await Permission.notification.request();
-  }
-
-  // Construct singletons (Auth -> Playback -> Downloads)
-  final auth = await AuthRepository.ensure();
+  // ✅ Your project doesn’t have AuthRepository.create(); use default ctor
+  final auth = AuthRepository();
   final playback = PlaybackRepository(auth);
   final downloads = DownloadsRepository(auth, playback);
+  final theme = ThemeService();
   await downloads.init();
 
-  final services = AppServices(
-    auth: auth,
-    playback: playback,
-    downloads: downloads,
-  );
-
-  runApp(ServicesScope(
-    services: services,
-    child: const AbsApp(),
+  runApp(MyApp(
+    services: AppServices(
+      auth: auth,
+      playback: playback,
+      downloads: downloads,
+      theme: theme,
+    ),
   ));
 }
 
-class AbsApp extends StatefulWidget {
-  const AbsApp({super.key});
-  @override
-  State<AbsApp> createState() => _AbsAppState();
-}
-
-class _AbsAppState extends State<AbsApp> {
-  late final Future<bool> _sessionFuture;
-
-  @override
-  void initState() {
-    super.initState();
-    _sessionFuture =
-        AuthRepository.ensure().then((auth) => auth.hasValidSession());
-  }
+class MyApp extends StatelessWidget {
+  const MyApp({super.key, required this.services});
+  final AppServices services;
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'ABS Client',
-      theme: ThemeData(
-        useMaterial3: true,
-        colorSchemeSeed: Colors.indigo,
-        brightness: Brightness.light,
-      ),
-      home: FutureBuilder<bool>(
-        future: _sessionFuture,
-        builder: (context, snap) {
-          if (!snap.hasData) {
-            return const Scaffold(
-              body: Center(child: CircularProgressIndicator()),
-            );
-          }
-          final services = ServicesScope.of(context).services;
-          return snap.data!
-              ? MainScaffold(downloadsRepo: services.downloads)
-              : LoginScreen(auth: services.auth);
+    // React to theme changes from settings
+    return ServicesScope(
+      services: services,
+      child: ValueListenableBuilder<ThemeMode>(
+        valueListenable: services.theme.mode,
+        builder: (_, mode, __) {
+          return MaterialApp(
+            title: 'Kitzi',
+            theme: ThemeData(
+              useMaterial3: true,
+              colorSchemeSeed: Colors.deepPurple,
+              brightness: Brightness.light,
+            ),
+            darkTheme: ThemeData(
+              useMaterial3: true,
+              colorSchemeSeed: Colors.deepPurple,
+              brightness: Brightness.dark,
+            ),
+            themeMode: mode, // ✅ driven by ThemeService
+            routes: {
+              '/login': (_) => const LoginPage(),
+              '/player': (_) => const FullPlayerPage(),
+              '/settings': (_) => const SettingsPage(), // ✅ make sure this exists
+            },
+            // Wrap your real shell with the auth gate
+            home: AuthGate(
+              // Your MainScaffold requires downloadsRepo
+              child: MainScaffold(downloadsRepo: services.downloads),
+            ),
+          );
         },
       ),
     );
@@ -3629,84 +3627,264 @@ class _AbsAppState extends State<AbsApp> {
 
 === ./lib/widgets/download_button.dart ===
 // lib/widgets/download_button.dart
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:background_downloader/background_downloader.dart';
+
 import '../core/downloads_repository.dart';
+import '../main.dart';
 
-class DownloadButton extends StatelessWidget {
+/// Button that adapts between Download / Cancel / Delete
+/// and shows inline progress when running.
+class DownloadButton extends StatefulWidget {
+  const DownloadButton({super.key, required this.libraryItemId, this.titleForNotification});
+
   final String libraryItemId;
-  final DownloadsRepository downloads;
-  final VoidCallback onStart; // call downloads.enqueueItemDownloads(...)
-  final VoidCallback onCancel; // call downloads.cancelForItem(...)
+  final String? titleForNotification;
 
-  const DownloadButton({
-    super.key,
-    required this.libraryItemId,
-    required this.downloads,
-    required this.onStart,
-    required this.onCancel,
-  });
+  @override
+  State<DownloadButton> createState() => _DownloadButtonState();
+}
+
+class _DownloadButtonState extends State<DownloadButton> {
+  late final DownloadsRepository _dl;
+  StreamSubscription<TaskUpdate>? _sub;
+
+  ItemProgress _snap = const ItemProgress(
+    libraryItemId: '',
+    status: 'none',
+    progress: 0,
+    totalTasks: 0,
+    completed: 0,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _dl = ServicesScope.of(context).services.downloads;
+    // Seed once
+    _dl.watchItemProgress(widget.libraryItemId).listen((s) {
+      if (!mounted) return;
+      setState(() => _snap = s);
+    });
+    // Also listen to global updates so the button repaints quickly
+    _sub = _dl.progressStream().listen((_) {});
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<ItemProgress>(
-      stream: downloads.watchItemProgress(libraryItemId),
-      builder: (context, snap) {
-        final p = snap.data;
-        final status = p?.status ?? 'none';
-        final frac = (p?.progress ?? 0).clamp(0.0, 1.0);
+    final running = _snap.status == 'running' || _snap.status == 'queued';
+    final completed = _snap.status == 'complete';
 
-        if (status == 'complete') {
-          return FilledButton.icon(
-            onPressed: null,
-            icon: const Icon(Icons.check),
-            label: const Text('Downloaded'),
-          );
-        }
+    if (running) {
+      return FilledButton.tonalIcon(
+        onPressed: () => _dl.cancelForItem(widget.libraryItemId),
+        icon: const Icon(Icons.close),
+        label: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text('Cancel'),
+            const SizedBox(width: 8),
+            SizedBox(
+              width: 42,
+              height: 6,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(3),
+                child: LinearProgressIndicator(value: _snap.progress == 0 ? null : _snap.progress),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
-        if (status == 'running' || status == 'queued') {
-          return Stack(
-            alignment: Alignment.center,
-            children: [
-              // background
-              FilledButton(
-                onPressed: onCancel,
-                style: FilledButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.surfaceVariant,
-                ),
-                child: const Text('Cancel'),
-              ),
-              // progress overlay
-              Positioned.fill(
-                child: FractionallySizedBox(
-                  alignment: Alignment.centerLeft,
-                  widthFactor: frac,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primary.withOpacity(0.25),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                  ),
-                ),
-              ),
-              // text on top
-              IgnorePointer(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  child: Text('${(frac * 100).toStringAsFixed(0)}%',
-                      style: Theme.of(context).textTheme.labelLarge),
-                ),
-              ),
-            ],
-          );
-        }
+    if (completed) {
+      return FilledButton.tonalIcon(
+        onPressed: () async {
+          final ok = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Delete downloads?'),
+              content: const Text('Remove downloaded files for this book?'),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+              ],
+            ),
+          ) ??
+              false;
+          if (ok) {
+            await _dl.deleteLocal(widget.libraryItemId);
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Downloads removed')));
+          }
+        },
+        icon: const Icon(Icons.delete),
+        label: const Text('Delete'),
+      );
+    }
 
-        // default: not downloading
-        return FilledButton.icon(
-          onPressed: onStart,
-          icon: const Icon(Icons.download),
-          label: const Text('Download'),
-        );
+    return FilledButton.icon(
+      onPressed: () async {
+        await _dl.enqueueItemDownloads(widget.libraryItemId);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Added to download queue')));
       },
+      icon: const Icon(Icons.download),
+      label: const Text('Download'),
+    );
+  }
+}
+
+=== ./lib/widgets/mini_player.dart ===
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/material.dart';
+import 'package:just_audio/just_audio.dart';
+
+import '../core/playback_repository.dart';
+import '../main.dart';
+
+/// Rich mini player with cover art, title/author, progress and basic controls.
+/// Tap it to open the full player (`/player` route).
+class MiniPlayer extends StatelessWidget {
+  /// Height of the mini player bar.
+  final double height;
+
+  /// Backward-compat: older code may pass `playback:`. We ignore it and
+  /// resolve playback from ServicesScope, but keep this to avoid compile errors.
+  final PlaybackRepository? playback;
+
+  const MiniPlayer({super.key, this.height = 96, this.playback});
+
+  @override
+  Widget build(BuildContext context) {
+    // Prefer ServicesScope; fall back to provided playback if ever needed.
+    final pb = ServicesScope.of(context).services.playback;
+    final cs = Theme.of(context).colorScheme;
+
+    return Material(
+      elevation: 12,
+      color: cs.surface,
+      child: SizedBox(
+        height: height,
+        child: InkWell(
+          onTap: () => Navigator.of(context).pushNamed('/player'),
+          child: StreamBuilder<NowPlaying?>(
+            stream: pb.nowPlayingStream,
+            initialData: pb.nowPlaying,
+            builder: (_, npSnap) {
+              final np = npSnap.data;
+              if (np == null) {
+                return Center(
+                  child: Text(
+                    'Nothing playing',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                );
+              }
+
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                child: Row(
+                  children: [
+                    // Cover
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: CachedNetworkImage(
+                        imageUrl: np.coverUrl ?? '',
+                        width: height - 16,
+                        height: height - 16,
+                        fit: BoxFit.cover,
+                        errorWidget: (_, __, ___) => Container(
+                          width: height - 16,
+                          height: height - 16,
+                          color: cs.surfaceContainerHighest,
+                          child: const Icon(Icons.audiotrack),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+
+                    // Title / author + progress
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(np.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.titleMedium),
+                          const SizedBox(height: 2),
+                          Text(np.author ?? '',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodySmall),
+                          const Spacer(),
+                          StreamBuilder<Duration?>(
+                            stream: pb.durationStream,
+                            initialData: pb.player.duration,
+                            builder: (_, dSnap) {
+                              final total = dSnap.data ?? Duration.zero;
+                              return StreamBuilder<Duration>(
+                                stream: pb.positionStream,
+                                initialData: pb.player.position,
+                                builder: (_, pSnap) {
+                                  final pos = pSnap.data ?? Duration.zero;
+                                  final v = (total.inMilliseconds > 0)
+                                      ? pos.inMilliseconds / total.inMilliseconds
+                                      : 0.0;
+                                  return LinearProgressIndicator(value: v);
+                                },
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(width: 8),
+
+                    // Controls
+                    StreamBuilder<bool>(
+                      stream: pb.playingStream,
+                      initialData: pb.player.playing,
+                      builder: (_, playSnap) {
+                        final playing = playSnap.data ?? false;
+                        return Row(
+                          children: [
+                            IconButton(
+                              tooltip: 'Rewind 10s',
+                              icon: const Icon(Icons.replay_10),
+                              onPressed: () => pb.nudgeSeconds(-10),
+                            ),
+                            IconButton(
+                              tooltip: playing ? 'Pause' : 'Play',
+                              icon: Icon(playing ? Icons.pause : Icons.play_arrow),
+                              onPressed: () => playing ? pb.pause() : pb.resume(),
+                            ),
+                            IconButton(
+                              tooltip: 'Forward 30s',
+                              icon: const Icon(Icons.forward_30),
+                              onPressed: () => pb.nudgeSeconds(30),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ),
     );
   }
 }

@@ -4,7 +4,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:background_downloader/background_downloader.dart';
-import 'package:flutter/foundation.dart'; // debugPrint
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -34,7 +34,6 @@ class DownloadsRepository {
 
   static const _wifiOnlyKey = 'downloads_wifi_only';
 
-  // Tiny logger
   void _d(String m) => debugPrint('[DL] $m');
 
   // Plugin updates -> broadcast for UI
@@ -49,19 +48,14 @@ class DownloadsRepository {
   StreamSubscription<TaskUpdate>? _muxSub;
 
   Future<void> init() async {
+    // Configure ONE global notification. Do NOT set per-task displayName.
     try {
-      // Simple, cross-version notification templates
-      FileDownloader().configureNotification(
-        running: const TaskNotification('Downloading', '{filename}'),
-        complete: const TaskNotification('Download finished', '{filename}'),
-        error: const TaskNotification('Download failed', '{filename}'),
-        progressBar: true,
+      await FileDownloader().configureNotification(
+        running: const TaskNotification('Downloading audiobooks…', ''),
+        complete: const TaskNotification('Downloads complete', ''),
+        error: const TaskNotification('Download failed', ''),
       );
-      await FileDownloader().start();
-      _d('BackgroundDownloader started & notifications configured.');
-    } catch (e) {
-      _d('init/start/configureNotification failed: $e');
-    }
+    } catch (_) {}
   }
 
   /// Start (or get) an aggregated progress stream for a specific book.
@@ -74,6 +68,7 @@ class DownloadsRepository {
       }),
     );
 
+    // Demux plugin updates -> per-item controllers
     _muxSub ??= progressStream().listen((u) async {
       final meta = u.task.metaData ?? '';
       final id = _extractItemId(meta);
@@ -88,51 +83,42 @@ class DownloadsRepository {
     return ctrl.stream;
   }
 
-  /// Queue all tracks for download; filenames include book title for clearer notifications.
+  /// Queue all tracks of an item for download (Wi-Fi rule from prefs).
+  /// If the item already has local files AND no active tasks -> no-op (UI should show Delete).
   Future<void> enqueueItemDownloads(
       String libraryItemId, {
         String? episodeId,
       }) async {
-    // Always fetch REMOTE stream tracks (local-first list will mislead us)
-    final tracks = await _playback.getRemoteStreamTracks(
-      libraryItemId,
-      episodeId: episodeId,
-    );
+    // If already downloaded and no tasks => nothing to enqueue
+    if (await hasLocalDownloads(libraryItemId)) {
+      final recs = await _recordsForItem(libraryItemId);
+      if (recs.isEmpty) {
+        _d('Already local for $libraryItemId; skipping enqueue.');
+        _notifyItem(libraryItemId);
+        return;
+      }
+    }
 
-    // Only remote
+    final tracks =
+    await _playback.getPlayableTracks(libraryItemId, episodeId: episodeId);
+
     final remoteTracks = tracks.where((t) => !t.isLocal).toList();
     if (remoteTracks.isEmpty) {
       _d('No remote tracks to download for $libraryItemId (already local?).');
-      final c = _itemCtrls[libraryItemId];
-      if (c != null && !c.isClosed) {
-        c.add(await _computeItemProgress(libraryItemId));
-      }
+      _notifyItem(libraryItemId);
       return;
     }
-
-    // Fetch book title for notifications/filenames
-    final title = await _fetchItemTitle(libraryItemId);
-    final titleSlug = _sanitize(title ?? 'book');
 
     final prefs = await SharedPreferences.getInstance();
     final wifiOnly = prefs.getBool(_wifiOnlyKey) ?? true;
 
+    // Enqueue WITHOUT per-task displayName to keep a single system notification
     for (final t in remoteTracks) {
-      // Validate URL
-      final parsed = Uri.tryParse(t.url);
-      if (parsed == null ||
-          !parsed.hasScheme ||
-          (parsed.scheme != 'http' && parsed.scheme != 'https')) {
-        _d('Skipping invalid url: ${t.url}');
-        continue;
-      }
-      final safeUrl = parsed.toString();
-
       final filename =
-          '${titleSlug}_track_${t.index.toString().padLeft(3, '0')}.${_extFromMime(t.mimeType)}';
+          'track_${t.index.toString().padLeft(3, '0')}.${_extFromMime(t.mimeType)}';
 
       final task = DownloadTask(
-        url: safeUrl,
+        url: t.url, // absolute URL with token
         filename: filename,
         directory: 'abs/$libraryItemId',
         baseDirectory: BaseDirectory.applicationDocuments,
@@ -142,61 +128,29 @@ class DownloadsRepository {
         metaData: jsonEncode({'libraryItemId': libraryItemId}),
       );
 
-      try {
-        _d('Queueing $safeUrl -> $filename (wifiOnly=$wifiOnly)');
-        final ok = await FileDownloader().enqueue(task);
-        if (!ok) {
-          _d('Failed to enqueue task ${task.taskId} for $safeUrl');
-          continue;
-        }
-
-        // Wiretap: print progress / status / errors live
-        final sub = progressStream()
-            .where((u) => u.task.taskId == task.taskId)
-            .listen((u) {
-          if (u is TaskProgressUpdate) {
-            _d('task ${u.task.taskId} progress: ${(u.progress * 100).toStringAsFixed(1)}% '
-                '${u.hasNetworkSpeed ? 'speed: ${u.networkSpeedAsString}' : ''} '
-                '${u.hasTimeRemaining ? 'eta: ${u.timeRemainingAsString}' : ''}');
-          } else if (u is TaskStatusUpdate) {
-            _d('task ${u.task.taskId} status: ${u.status}'
-                '${u.exception != null ? ' ex: ${u.exception}' : ''}');
-          }
-        });
-
-        // Auto-cancel this wiretap on terminal status
-        progressStream()
-            .where((u) =>
-        u.task.taskId == task.taskId &&
-            u is TaskStatusUpdate &&
-            (u.status == TaskStatus.complete ||
-                u.status == TaskStatus.failed ||
-                u.status == TaskStatus.canceled ||
-                u.status == TaskStatus.notFound))
-            .first
-            .then((_) => sub.cancel());
-      } catch (e) {
-        _d('Download enqueue failed for $safeUrl: $e');
-      }
+      await FileDownloader().enqueue(task);
     }
 
-    // Kick initial emission for this item
-    final c = _itemCtrls[libraryItemId];
-    if (c != null && !c.isClosed) {
-      c.add(await _computeItemProgress(libraryItemId));
-    }
+    _notifyItem(libraryItemId);
   }
 
-  /// Cancel all queued/running tasks for a book. (UI hook for "Cancel download")
+  /// Cancel all queued/running tasks for a book.
   Future<void> cancelForItem(String libraryItemId) async {
     final recs = await _recordsForItem(libraryItemId);
     for (final r in recs) {
       await FileDownloader().cancelTaskWithId(r.taskId);
     }
-    final c = _itemCtrls[libraryItemId];
-    if (c != null && !c.isClosed) {
-      c.add(await _computeItemProgress(libraryItemId));
+    _notifyItem(libraryItemId);
+  }
+
+  /// Remove local files for a book (and cancel tasks just in case).
+  Future<void> deleteLocal(String libraryItemId) async {
+    await cancelForItem(libraryItemId);
+    final dir = await _itemDir(libraryItemId);
+    if (await dir.exists()) {
+      await dir.delete(recursive: true);
     }
+    _notifyItem(libraryItemId);
   }
 
   Future<void> cancelAll() async {
@@ -217,22 +171,12 @@ class DownloadsRepository {
     return dir.exists();
   }
 
-  Future<void> removeLocalDownloads(String libraryItemId) async {
-    final dir = await _itemDir(libraryItemId);
-    if (await dir.exists()) {
-      await dir.delete(recursive: true);
-    }
-    final c = _itemCtrls[libraryItemId];
-    if (c != null && !c.isClosed) {
-      c.add(await _computeItemProgress(libraryItemId));
-    }
-  }
-
   // === Internal aggregation ===
 
   Future<ItemProgress> _computeItemProgress(String libraryItemId) async {
     final recs = await _recordsForItem(libraryItemId);
     if (recs.isEmpty) {
+      // If there are no tasks but local files exist, treat as complete
       final local = await hasLocalDownloads(libraryItemId);
       return ItemProgress(
         libraryItemId: libraryItemId,
@@ -303,42 +247,10 @@ class DownloadsRepository {
     return Directory('${docs.path}/abs/$libraryItemId');
   }
 
-  // ---- helpers for title/filenames ----
-  Future<String?> _fetchItemTitle(String libraryItemId) async {
-    try {
-      final baseStr = _auth.api.baseUrl ?? '';
-      final base = Uri.parse(baseStr);
-      final token = await _auth.api.accessToken();
-
-      Uri meta = base.resolve('api/items/$libraryItemId');
-      if (token != null && token.isNotEmpty) {
-        meta = meta.replace(
-          queryParameters: <String, String>{
-            ...meta.queryParameters,
-            'token': token,
-          },
-        );
-      }
-      final r = await HttpClient().getUrl(meta).then((rq) => rq.close());
-      if (r.statusCode != 200) return null;
-      final body = await utf8.decodeStream(r);
-      final j = jsonDecode(body);
-      final m = (j['item'] as Map?)?.cast<String, dynamic>() ??
-          j.cast<String, dynamic>();
-      final t = (m['title'] as String?) ??
-          (m['media']?['metadata']?['title'] as String?) ??
-          (m['book']?['title'] as String?);
-      return t;
-    } catch (_) {
-      return null;
+  void _notifyItem(String libraryItemId) async {
+    final c = _itemCtrls[libraryItemId];
+    if (c != null && !c.isClosed) {
+      c.add(await _computeItemProgress(libraryItemId));
     }
-  }
-
-  String _sanitize(String s) {
-    final r = s
-        .replaceAll(RegExp(r'[^\w\s\-\.\(\)\[\]]+', unicode: true), '')
-        .replaceAll(RegExp(r'\s+'), '_')
-        .trim();
-    return r.isEmpty ? 'book' : r;
   }
 }

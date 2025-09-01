@@ -1,20 +1,25 @@
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
+
 import 'core/auth_repository.dart';
 import 'core/playback_repository.dart';
 import 'core/downloads_repository.dart';
+import 'core/theme_service.dart';
+
 import 'ui/login/login_screen.dart';
 import 'ui/main/main_scaffold.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 /// Simple app-wide service container
 class AppServices {
   final AuthRepository auth;
   final PlaybackRepository playback;
   final DownloadsRepository downloads;
+  final ThemeService theme;
   AppServices({
     required this.auth,
     required this.playback,
     required this.downloads,
+    required this.theme,
   });
 }
 
@@ -39,7 +44,7 @@ class ServicesScope extends InheritedWidget {
       oldWidget.services != services;
 }
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   if (await Permission.notification.isDenied) {
@@ -50,12 +55,14 @@ void main() async {
   final auth = await AuthRepository.ensure();
   final playback = PlaybackRepository(auth);
   final downloads = DownloadsRepository(auth, playback);
+  final theme = ThemeService();
   await downloads.init();
 
   final services = AppServices(
     auth: auth,
     playback: playback,
     downloads: downloads,
+    theme: theme,
   );
 
   runApp(ServicesScope(
@@ -82,27 +89,39 @@ class _AbsAppState extends State<AbsApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'ABS Client',
-      theme: ThemeData(
-        useMaterial3: true,
-        colorSchemeSeed: Colors.indigo,
-        brightness: Brightness.light,
-      ),
-      home: FutureBuilder<bool>(
-        future: _sessionFuture,
-        builder: (context, snap) {
-          if (!snap.hasData) {
-            return const Scaffold(
-              body: Center(child: CircularProgressIndicator()),
-            );
-          }
-          final services = ServicesScope.of(context).services;
-          return snap.data!
-              ? MainScaffold(downloadsRepo: services.downloads)
-              : LoginScreen(auth: services.auth);
-        },
-      ),
+    final services = ServicesScope.of(context).services;
+
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: services.theme.mode,
+      builder: (_, themeMode, __) {
+        return MaterialApp(
+          title: 'ABS Client',
+          theme: ThemeData(
+            useMaterial3: true,
+            colorSchemeSeed: Colors.indigo,
+            brightness: Brightness.light,
+          ),
+          darkTheme: ThemeData(
+            useMaterial3: true,
+            colorSchemeSeed: Colors.indigo,
+            brightness: Brightness.dark,
+          ),
+          themeMode: themeMode,
+          home: FutureBuilder<bool>(
+            future: _sessionFuture,
+            builder: (context, snap) {
+              if (!snap.hasData) {
+                return const Scaffold(
+                  body: Center(child: CircularProgressIndicator()),
+                );
+              }
+              return snap.data!
+                  ? MainScaffold(downloadsRepo: services.downloads)
+                  : LoginScreen(auth: services.auth);
+            },
+          ),
+        );
+      },
     );
   }
 }

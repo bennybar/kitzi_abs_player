@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 import '../settings/settings_page.dart';
 import '../home/books_page.dart';
 import '../downloads/downloads_page.dart';
-import '../player/mini_player.dart';
+// UPDATED import path: MiniPlayer now lives under widgets/
+import '../../widgets/mini_player.dart';
 
 import '../../core/downloads_repository.dart';
 import '../../core/playback_repository.dart';
@@ -42,8 +43,8 @@ class _MainScaffoldState extends State<MainScaffold> {
             children: [
               Positioned.fill(
                 child: Padding(
-                  // leave room for the mini-player (64px) + a bit of spacing
-                  padding: EdgeInsets.only(bottom: hasMini ? 72 : 0),
+                  // leave room for the mini-player + spacing when it’s visible
+                  padding: EdgeInsets.only(bottom: hasMini ? 80 : 0),
                   child: pages[_index],
                 ),
               ),
@@ -52,7 +53,8 @@ class _MainScaffoldState extends State<MainScaffold> {
                   alignment: Alignment.bottomCenter,
                   child: SafeArea(
                     top: false,
-                    child: MiniPlayer(playback: playback),
+                    // UPDATED: MiniPlayer no longer takes `playback:`; give it a bit more height
+                    child: const MiniPlayer(height: 112),
                   ),
                 ),
             ],

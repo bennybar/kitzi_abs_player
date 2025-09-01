@@ -1,4 +1,3 @@
-// lib/core/playback_repository.dart
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -13,7 +12,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'auth_repository.dart';
 
 const _kProgressPing = Duration(seconds: 15);
-const _kLocalProgPrefix = 'abs_progress:';
+const _kLocalProgPrefix = 'abs_progress:';      // local fallback per item
+const _kLastItemKey = 'abs_last_item_id';       // last played item id
 
 class PlaybackTrack {
   final int index;
@@ -79,6 +79,14 @@ class NowPlaying {
 }
 
 class PlaybackRepository {
+  final StreamController<String> _debugLogCtr = StreamController.broadcast();
+  Stream<String> get debugLogStream => _debugLogCtr.stream;
+
+  void _log(String msg) {
+    debugPrint("[ABS] $msg");
+    _debugLogCtr.add(msg);
+  }
+
   PlaybackRepository(this._auth) {
     _init();
   }
@@ -86,22 +94,12 @@ class PlaybackRepository {
   final AuthRepository _auth;
   final AudioPlayer player = AudioPlayer();
 
-  // ---- logging (opt-in UI can subscribe) ----
-  final StreamController<String> _debugLogCtr = StreamController.broadcast();
-  Stream<String> get debugLogStream => _debugLogCtr.stream;
-  void _log(String msg) {
-    debugPrint("[ABS] $msg");
-    _debugLogCtr.add(msg);
-  }
-
-  // Now Playing state
   final StreamController<NowPlaying?> _nowPlayingCtr =
   StreamController.broadcast();
   NowPlaying? _nowPlaying;
   Stream<NowPlaying?> get nowPlayingStream => _nowPlayingCtr.stream;
   NowPlaying? get nowPlaying => _nowPlaying;
 
-  // Exposed streams to wire UI
   Stream<bool> get playingStream => player.playingStream;
   Stream<Duration> get positionStream => player.createPositionStream();
   Stream<Duration?> get durationStream => player.durationStream;
@@ -109,41 +107,61 @@ class PlaybackRepository {
   Stream<ProcessingState> get processingStateStream =>
       player.processingStateStream;
 
-  String? _progressItemId; // which item we report progress for
-  double? _metaTotalDurationSec; // from item metadata (seconds)
-  double? _sumTrackDurationsSec; // sum of tracks (seconds) if known
+  String? _progressItemId;
 
-  // Track duration learned at runtime from ExoPlayer
-  final Map<int, double> _observedDurationsSec = {};
-
-  // Debounce/throttle progress signaling
-  Timer? _debounceSeekTimer;
-  bool _userSeekActive = false;
-  DateTime? _lastSentAt;
-  static const _minSendGap = Duration(milliseconds: 500);
-  static const _seekDebounce = Duration(milliseconds: 700);
-
-  // suppress first send until resume is settled
-  bool _resumeSettled = false;
-
-  // lifecycle hook to send on background/exit
   late final WidgetsBindingObserver _lifecycleHook = _LifecycleHook(
     onPauseOrDetach: () => _sendProgressImmediate(),
   );
 
-  // ---- Public API ----
-
-  /// Prefer local files when available (used by player UI).
   Future<List<PlaybackTrack>> getPlayableTracks(String libraryItemId,
       {String? episodeId}) =>
       _getTracksPreferLocal(libraryItemId, episodeId: episodeId);
 
-  /// Always fetch REMOTE streaming tracks (needed by downloader).
-  Future<List<PlaybackTrack>> getRemoteStreamTracks(String libraryItemId,
-      {String? episodeId}) =>
-      _streamTracks(libraryItemId, episodeId: episodeId);
+  /// Warm-load last item (server position wins). If [playAfterLoad] true, will start playback.
+  Future<void> warmLoadLastItem({bool playAfterLoad = false}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final last = prefs.getString(_kLastItemKey);
+      if (last == null || last.isEmpty) return;
 
-  /// Query server for last known position (seconds). Returns null if none.
+      final meta = await _getItemMeta(last);
+      final chapters = _extractChapters(meta);
+      final tracks = await _getTracksPreferLocal(last);
+      final tracksWithDur = await _ensureDurations(tracks, last);
+
+      final np = NowPlaying(
+        libraryItemId: last,
+        title: _titleFromMeta(meta) ?? 'Audiobook',
+        author: _authorFromMeta(meta),
+        coverUrl: await _coverUrl(last),
+        tracks: tracksWithDur,
+        currentIndex: 0,
+        chapters: chapters,
+      );
+      _setNowPlaying(np);
+      _progressItemId = last;
+
+      final resumeSec = await fetchServerProgress(last) ??
+          prefs.getDouble('$_kLocalProgPrefix$last');
+
+      // Map to track and seek BEFORE starting
+      if (resumeSec != null && resumeSec > 0) {
+        final map = _mapGlobalSecondsToTrack(resumeSec, np.tracks);
+        await _setTrackAt(map.index, preload: true);
+        await player.seek(Duration(milliseconds: (map.offsetSec * 1000).round()));
+      } else {
+        await _setTrackAt(0, preload: true);
+      }
+
+      if (playAfterLoad) {
+        await player.play();
+        await _sendProgressImmediate();
+      }
+    } catch (e) {
+      _log('warmLoadLastItem error: $e');
+    }
+  }
+
   Future<double?> fetchServerProgress(String libraryItemId) async {
     final api = _auth.api;
     final resp = await api.request('GET', '/api/me/progress/$libraryItemId');
@@ -164,22 +182,18 @@ class PlaybackRepository {
     return null;
   }
 
-  /// Server-first resume, else local fallback if offline or server has none.
   Future<void> playItem(String libraryItemId, {String? episodeId}) async {
     final session = await AudioSession.instance;
     await session.configure(const AudioSessionConfiguration.music());
 
-    // Always pull metadata to get cover/author/chapters + total duration
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kLastItemKey, libraryItemId);
+
     final meta = await _getItemMeta(libraryItemId);
     final chapters = _extractChapters(meta);
-    _metaTotalDurationSec = _extractMetaDurationSec(meta); // seconds
 
-    // Prefer local, but merge remote durations if local durations are unknown
-    var tracks =
-    await _getTracksPreferLocal(libraryItemId, episodeId: episodeId);
-    tracks =
-    await _ensureDurations(tracks, libraryItemId, episodeId: episodeId);
-    _sumTrackDurationsSec = _sumDurations(tracks);
+    var tracks = await _getTracksPreferLocal(libraryItemId, episodeId: episodeId);
+    tracks = await _ensureDurations(tracks, libraryItemId, episodeId: episodeId);
 
     final np = NowPlaying(
       libraryItemId: libraryItemId,
@@ -194,71 +208,35 @@ class PlaybackRepository {
     _setNowPlaying(np);
     _progressItemId = libraryItemId;
 
-    _resumeSettled = false; // block early sends
-
-    // Prepare first track (we'll seek after choosing resume)
-    await _playTrackAt(0);
-
-    // --- RESUME ORDER: SERVER -> LOCAL (per-server key) -> LEGACY KEY ---
-    double? resumeSec;
-    bool serverTried = false;
-    try {
-      resumeSec = await fetchServerProgress(libraryItemId);
-      serverTried = true;
-    } catch (e) {
-      _log('fetchServerProgress error (will use local if any): $e');
-    }
-
-    if (resumeSec == null || resumeSec <= 0) {
-      final prefs = await SharedPreferences.getInstance();
-      final localKey = _progressKey(libraryItemId, episodeId: episodeId);
-      final localSec = prefs.getDouble(localKey);
-      if (localSec != null && localSec > 0) {
-        resumeSec = localSec;
-        _log('Using LOCAL resume $resumeSec (serverTried=$serverTried)');
-      } else {
-        // legacy (pre-namespaced) key, just in case
-        final legacy = prefs.getDouble('$_kLocalProgPrefix$libraryItemId');
-        if (legacy != null && legacy > 0) {
-          resumeSec = legacy;
-          _log('Using LEGACY LOCAL resume $resumeSec');
-        } else {
-          _log('No resume position available (serverTried=$serverTried)');
-        }
-      }
-    } else {
-      _log('Using SERVER resume $resumeSec');
-    }
+    // SERVER WINS: try server position first; fallback to local cache
+    double? resumeSec = await fetchServerProgress(libraryItemId);
+    resumeSec ??= prefs.getDouble('$_kLocalProgPrefix$libraryItemId');
 
     if (resumeSec != null && resumeSec > 0) {
       final map = _mapGlobalSecondsToTrack(resumeSec, tracks);
-      await _playTrackAt(map.index);
+      await _setTrackAt(map.index, preload: true);
       await player.seek(Duration(milliseconds: (map.offsetSec * 1000).round()));
+    } else {
+      await _setTrackAt(0, preload: true);
     }
-
-    _resumeSettled = true;
 
     _startProgressSync(libraryItemId, episodeId: episodeId);
 
-    // Auto-next on completion
     player.processingStateStream.listen((state) async {
       if (state == ProcessingState.completed) {
         final cur = _nowPlaying;
         if (cur == null) return;
         final next = cur.currentIndex + 1;
         if (next < cur.tracks.length) {
-          await _playTrackAt(next);
+          await _setTrackAt(next, preload: true);
           await player.play();
-          await _sendProgressImmediate(); // send on track change
+          await _sendProgressImmediate();
         }
       }
     });
 
     await player.play();
-    // Send only if > 0.5s to avoid “reset to 0” on first open
-    if ((player.position.inMilliseconds / 1000.0) > 0.5) {
-      await _sendProgressImmediate();
-    }
+    await _sendProgressImmediate();
   }
 
   Future<void> pause() async {
@@ -271,23 +249,24 @@ class PlaybackRepository {
     await _sendProgressImmediate();
   }
 
-  /// Seek to [pos] but **debounce** the server update (prevents PATCH spam).
+  /// When scrubbing, pass `reportNow: false` repeatedly; only call once with true at the end.
   Future<void> seek(Duration pos, {bool reportNow = true}) async {
     await player.seek(pos);
-    _debouncedProgress();
+    if (reportNow) {
+      await _sendProgressImmediate(
+        overrideTrackPosSec: pos.inMilliseconds / 1000.0,
+      );
+    }
   }
 
-  /// Convenience: move by +/- seconds. Also debounced.
   Future<void> nudgeSeconds(int delta) async {
     final total = player.duration ?? Duration.zero;
     var target = player.position + Duration(seconds: delta);
     if (target < Duration.zero) target = Duration.zero;
     if (target > total) target = total;
-    await player.seek(target);
-    _debouncedProgress();
+    await seek(target, reportNow: true);
   }
 
-  /// Manually trigger a progress push (e.g. from UI)
   Future<void> reportProgressNow() => _sendProgressImmediate();
 
   Future<void> setSpeed(double speed) => player.setSpeed(speed.clamp(0.5, 3.0));
@@ -299,7 +278,7 @@ class PlaybackRepository {
   Future<void> prevTrack() async {
     if (!hasPrev) return;
     final idx = _nowPlaying!.currentIndex - 1;
-    await _playTrackAt(idx);
+    await _setTrackAt(idx, preload: true);
     await player.play();
     await _sendProgressImmediate();
   }
@@ -307,7 +286,7 @@ class PlaybackRepository {
   Future<void> nextTrack() async {
     if (!hasNext) return;
     final idx = _nowPlaying!.currentIndex + 1;
-    await _playTrackAt(idx);
+    await _setTrackAt(idx, preload: true);
     await player.play();
     await _sendProgressImmediate();
   }
@@ -318,9 +297,6 @@ class PlaybackRepository {
     _stopProgressSync();
     _setNowPlaying(null);
     _progressItemId = null;
-    _metaTotalDurationSec = null;
-    _sumTrackDurationsSec = null;
-    _resumeSettled = false;
   }
 
   // ---- Progress sync ----
@@ -335,18 +311,14 @@ class PlaybackRepository {
       _sendProgressImmediate();
     });
 
-    // Big jumps / finish detection (GLOBAL seconds)
     player.positionStream.listen((_) {
       final cur = _computeGlobalPositionSec() ?? _trackOnlyPosSec();
       final total = _computeTotalDurationSec();
       if (cur == null) return;
 
       final bigJump = (_lastSentSec - cur).abs() >= 30;
-      final isDone =
-      (total != null && total > 0) ? (cur / total) >= 0.999 : false;
-
-      // Don't auto-send while user is actively scrubbing
-      if (!_userSeekActive && (bigJump || isDone)) {
+      final isDone = (total != null && total > 0) ? (cur / total) >= 0.999 : false;
+      if (bigJump || isDone) {
         _sendProgressImmediate(finished: isDone);
       }
     });
@@ -357,18 +329,8 @@ class PlaybackRepository {
     _progressTimer = null;
   }
 
-  void _debouncedProgress() {
-    _userSeekActive = true;
-    _debounceSeekTimer?.cancel();
-    _debounceSeekTimer = Timer(_seekDebounce, () {
-      _userSeekActive = false;
-      _sendProgressImmediate();
-    });
-  }
-
-  /// Always try to send at least `currentTime`. Include `progress`
-  /// only when we know the total. Throttled to avoid bursts and protected
-  /// against the initial 0s overwrite before resume settles.
+  /// Always try to send at least `currentTime`. Include `duration/progress`
+  /// only when we know the total.
   Future<void> _sendProgressImmediate({
     double? overrideTrackPosSec,
     bool finished = false,
@@ -377,15 +339,6 @@ class PlaybackRepository {
     final np = _nowPlaying;
     if (itemId == null || np == null) return;
 
-    // Throttle
-    final now = DateTime.now();
-    if (_lastSentAt != null &&
-        now.difference(_lastSentAt!) < _minSendGap &&
-        !finished) {
-      return;
-    }
-    _lastSentAt = now;
-
     final total = _computeTotalDurationSec();
     final cur = (overrideTrackPosSec != null)
         ? _computeGlobalFromTrackPos(overrideTrackPosSec)
@@ -393,17 +346,9 @@ class PlaybackRepository {
 
     if (cur == null) return;
 
-    // Guard: don't send an early 0s that could reset server progress
-    if (!_resumeSettled && cur <= 0.5 && !finished) {
-      _log('Suppressing initial 0s send until resume settles');
-      return;
-    }
-
-    // Persist locally with per-server key so switching servers won't mix states
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setDouble(
-          _progressKey(itemId, episodeId: np.episodeId), cur);
+      await prefs.setDouble('$_kLocalProgPrefix$itemId', cur);
     } catch (_) {}
 
     _lastSentSec = cur;
@@ -413,33 +358,34 @@ class PlaybackRepository {
         ? '/api/me/progress/$itemId'
         : '/api/me/progress/$itemId/${np.episodeId}';
 
-    // Let server-side item duration drive UI; send progress only.
     final bodyMap = <String, dynamic>{
       'currentTime': cur,
-      'isFinished':
-      finished || (total != null && total > 0 && (cur / total) >= 0.995),
-      if (total != null && total > 0)
-        'progress': (cur / total).clamp(0.0, 1.0),
+      'isFinished': finished,
     };
+    if (total != null && total > 0) {
+      bodyMap['duration'] = total;
+      bodyMap['progress'] = (cur / total).clamp(0.0, 1.0);
+    }
 
     http.Response? resp;
-    _log("Sending progress: cur=$cur, total=$total, finished=${bodyMap['isFinished']}");
+    _log("Sending progress: cur=$cur, total=$total, finished=$finished");
 
     try {
       resp = await api.request('PATCH', path,
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode(bodyMap));
-      _log("PATCH ${resp.statusCode} ${resp.reasonPhrase}");
+      _log("PATCH ${resp.statusCode} ${resp.body}");
       if (resp.statusCode == 200 || resp.statusCode == 204) return;
     } catch (e) {
       _log("PATCH error: $e");
     }
 
+    // Fallbacks
     try {
       resp = await api.request('PUT', path,
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode(bodyMap));
-      _log("PUT ${resp.statusCode} ${resp.reasonPhrase}");
+      _log("PUT ${resp.statusCode} ${resp.body}");
       if (resp.statusCode == 200 || resp.statusCode == 204) return;
     } catch (e) {
       _log("PUT error: $e");
@@ -449,7 +395,7 @@ class PlaybackRepository {
       resp = await api.request('POST', path,
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode(bodyMap));
-      _log("POST ${resp.statusCode} ${resp.reasonPhrase}");
+      _log("POST ${resp.statusCode} ${resp.body}");
     } catch (e) {
       _log("POST error: $e");
     }
@@ -463,40 +409,16 @@ class PlaybackRepository {
     WidgetsBinding.instance.addObserver(_lifecycleHook);
   }
 
-  Future<void> _playTrackAt(int index) async {
+  Future<void> _setTrackAt(int index, {bool preload = false}) async {
     final cur = _nowPlaying!;
     final track = cur.tracks[index];
 
     if (track.isLocal) {
-      await player.setFilePath(track.url, preload: true);
+      await player.setFilePath(track.url, preload: preload);
     } else {
-      await player.setUrl(track.url, preload: true);
+      await player.setUrl(track.url, preload: preload);
     }
     _setNowPlaying(cur.copyWith(currentIndex: index));
-
-    // Learn this track's actual duration from the player
-    final sub = player.durationStream.listen((d) {
-      final ms = d?.inMilliseconds ?? 0;
-      if (ms > 0) {
-        final sec = ms / 1000.0;
-        _observedDurationsSec[index] = sec;
-
-        // Patch track duration if unknown
-        final np = _nowPlaying;
-        if (np != null) {
-          final patched = [...np.tracks];
-          if (patched[index].duration <= 0) {
-            patched[index] = patched[index].copyWith(duration: sec);
-            _setNowPlaying(np.copyWith(tracks: patched));
-          }
-        }
-
-        _sumTrackDurationsSec = _sumDurations(_nowPlaying?.tracks ?? const []);
-      }
-    });
-
-    // Avoid leak
-    Future.delayed(const Duration(seconds: 5), () => sub.cancel());
   }
 
   Future<List<PlaybackTrack>> _getTracksPreferLocal(String libraryItemId,
@@ -506,8 +428,6 @@ class PlaybackRepository {
     return _streamTracks(libraryItemId, episodeId: episodeId);
   }
 
-  /// If any track durations are unknown (0) for local playback, fetch remote
-  /// stream metadata once and merge durations by index.
   Future<List<PlaybackTrack>> _ensureDurations(
       List<PlaybackTrack> tracks, String libraryItemId,
       {String? episodeId}) async {
@@ -517,21 +437,20 @@ class PlaybackRepository {
     try {
       final remote = await _streamTracks(libraryItemId, episodeId: episodeId);
       final byIndex = {for (final t in remote) t.index: t.duration};
-      final patched = tracks
+      return tracks
           .map((t) => t.duration > 0
           ? t
           : t.copyWith(duration: (byIndex[t.index] ?? 0.0)))
           .toList();
-      return patched;
     } catch (_) {
-      return tracks; // keep as-is if remote metadata fails
+      return tracks;
     }
   }
 
   Future<List<PlaybackTrack>> _streamTracks(String libraryItemId,
       {String? episodeId}) async {
     final api = _auth.api;
-    final token = await _auth.api.accessToken();
+    final token = await api.accessToken();
     final baseStr = api.baseUrl ?? '';
     final base = Uri.parse(baseStr);
 
@@ -561,8 +480,7 @@ class PlaybackRepository {
 
       Uri abs = Uri.tryParse(contentUrl) ?? Uri(path: contentUrl);
       if (!abs.hasScheme) {
-        final rel =
-        contentUrl.startsWith('/') ? contentUrl.substring(1) : contentUrl;
+        final rel = contentUrl.startsWith('/') ? contentUrl.substring(1) : contentUrl;
         abs = base.resolve(rel);
       }
       if (token != null && token.isNotEmpty) {
@@ -588,8 +506,7 @@ class PlaybackRepository {
       final docs = await getApplicationDocumentsDirectory();
       final dir = Directory('${docs.path}/abs/$libraryItemId');
       if (!await dir.exists()) return const [];
-      final files =
-      (await dir.list().toList()).whereType<File>().toList()
+      final files = (await dir.list().toList()).whereType<File>().toList()
         ..sort((a, b) => a.path.compareTo(b.path));
       if (files.isEmpty) return const [];
       final list = <PlaybackTrack>[];
@@ -607,7 +524,7 @@ class PlaybackRepository {
           index: i,
           url: f.path,
           mimeType: mime,
-          duration: 0.0, // unknown for local until we merge from stream meta
+          duration: 0.0, // unknown until merged
           isLocal: true,
         ));
       }
@@ -624,19 +541,16 @@ class PlaybackRepository {
 
     Uri meta = base.resolve('api/items/$libraryItemId');
     if (token != null && token.isNotEmpty) {
-      meta = meta.replace(
-        queryParameters: <String, String>{
-          ...meta.queryParameters,
-          'token': token,
-        },
-      );
+      meta = meta.replace(queryParameters: {
+        ...meta.queryParameters,
+        'token': token,
+      });
     }
 
     final r = await http.get(meta);
     try {
       final j = jsonDecode(r.body) as Map<String, dynamic>;
-      return (j['item'] as Map?)?.cast<String, dynamic>() ??
-          j.cast<String, dynamic>();
+      return (j['item'] as Map?)?.cast<String, dynamic>() ?? j.cast<String, dynamic>();
     } catch (_) {
       return <String, dynamic>{};
     }
@@ -649,12 +563,10 @@ class PlaybackRepository {
 
     Uri cov = base.resolve('api/items/$libraryItemId/cover');
     if (token != null && token.isNotEmpty) {
-      cov = cov.replace(
-        queryParameters: <String, String>{
-          ...cov.queryParameters,
-          'token': token,
-        },
-      );
+      cov = cov.replace(queryParameters: {
+        ...cov.queryParameters,
+        'token': token,
+      });
     }
     return cov.toString();
   }
@@ -667,60 +579,25 @@ class PlaybackRepository {
   // ----- Mapping / helpers -----
 
   double? _computeTotalDurationSec() {
-    // 1) Prefer explicit total from metadata if present
-    if (_metaTotalDurationSec != null && _metaTotalDurationSec! > 0) {
-      return _metaTotalDurationSec;
-    }
-
-    // 2) Sum known/observed per-track durations
-    final np = _nowPlaying;
-    if (np == null) return null;
-
+    final tracks = _nowPlaying?.tracks ?? const <PlaybackTrack>[];
     double sum = 0.0;
-    bool hasUnknown = false;
-    for (var i = 0; i < np.tracks.length; i++) {
-      final t = np.tracks[i];
-      final observed = _observedDurationsSec[i];
-      final d = (t.duration > 0) ? t.duration : (observed ?? 0.0);
-      if (d <= 0) {
-        hasUnknown = true;
-      } else {
-        sum += d;
+    for (final t in tracks) {
+      if (t.duration <= 0) {
+        return null;
       }
+      sum += t.duration;
     }
-
-    // 3) Only cache if we have a complete total (no unknowns)
-    if (!hasUnknown && sum > 0) {
-      _sumTrackDurationsSec = sum;
-      return sum;
-    }
-
-    // 4) Otherwise, use any previously cached full total
-    if (_sumTrackDurationsSec != null && _sumTrackDurationsSec! > 0) {
-      return _sumTrackDurationsSec;
-    }
-
-    // 5) No reliable total yet
-    return null;
+    return sum > 0 ? sum : null;
   }
 
   // track-only pos in seconds (fallback when global mapping impossible)
   double? _trackOnlyPosSec() => player.position.inMilliseconds / 1000.0;
-
-  double _sumDurations(List<PlaybackTrack> tracks) {
-    var s = 0.0;
-    for (final t in tracks) {
-      if (t.duration > 0) s += t.duration;
-    }
-    return s;
-  }
 
   double? _computeGlobalPositionSec() {
     final np = _nowPlaying;
     if (np == null) return null;
     final idx = np.currentIndex;
     final pos = player.position.inMilliseconds / 1000.0;
-    // Sum durations of previous tracks; if any unknown, we cannot compute reliably.
     double prefix = 0.0;
     for (int i = 0; i < idx; i++) {
       final d = np.tracks[i].duration;
@@ -745,7 +622,6 @@ class PlaybackRepository {
     for (int i = 0; i < tracks.length; i++) {
       final d = tracks[i].duration;
       if (d <= 0) {
-        // If unknown, assume it's the target track.
         return _TrackMap(index: i, offsetSec: remain);
       }
       if (remain < d) {
@@ -753,7 +629,6 @@ class PlaybackRepository {
       }
       remain -= d;
     }
-    // If beyond total, clamp to last track end.
     final last = tracks.isNotEmpty ? tracks.length - 1 : 0;
     return _TrackMap(index: last, offsetSec: tracks.isNotEmpty ? tracks[last].duration : 0.0);
   }
@@ -788,35 +663,12 @@ class PlaybackRepository {
               ? (c['start'] as num).toDouble() * 1000
               : (c['startMs'] as num?)?.toDouble();
           if (startMs != null) {
-            chapters.add(Chapter(
-                title: title, start: Duration(milliseconds: startMs.round())));
+            chapters.add(Chapter(title: title, start: Duration(milliseconds: startMs.round())));
           }
         }
       }
     }
     return chapters;
-  }
-
-  double? _extractMetaDurationSec(Map<String, dynamic> meta) {
-    num? candidate;
-    final d1 = meta['duration'];
-    final d2 = meta['media'] is Map ? (meta['media'] as Map)['duration'] : null;
-    final d3 = meta['media'] is Map
-        ? ((meta['media'] as Map)['metadata'] is Map
-        ? ((meta['media'] as Map)['metadata'] as Map)['duration']
-        : null)
-        : null;
-    dynamic pick = d1 ?? d2 ?? d3;
-    if (pick is String) {
-      candidate = num.tryParse(pick);
-    } else if (pick is num) {
-      candidate = pick;
-    }
-    if (candidate == null) return null;
-    double sec = candidate.toDouble();
-    if (sec > 1e6) sec = sec / 1000.0; // ms->s heuristic
-    if (sec <= 0) return null;
-    return sec;
   }
 
   Map<String, dynamic>? _firstMapValue(Map<String, dynamic> m) {
@@ -828,14 +680,6 @@ class PlaybackRepository {
       }
     }
     return null;
-  }
-
-  String _progressKey(String libraryItemId, {String? episodeId}) {
-    final base = _auth.api.baseUrl ?? '';
-    final host = Uri.tryParse(base)?.host ?? base;
-    final ep = episodeId ?? '';
-    // Per-server (+episode-safe) namespacing
-    return '$_kLocalProgPrefix$host:$libraryItemId:$ep';
   }
 }
 
@@ -858,3 +702,5 @@ class _TrackMap {
   final double offsetSec;
   _TrackMap({required this.index, required this.offsetSec});
 }
+
+
