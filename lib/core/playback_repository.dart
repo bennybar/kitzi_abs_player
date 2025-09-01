@@ -702,5 +702,3 @@ class _TrackMap {
   final double offsetSec;
   _TrackMap({required this.index, required this.offsetSec});
 }
-
-
