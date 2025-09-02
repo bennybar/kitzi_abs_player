@@ -66,6 +66,7 @@ class _DownloadButtonState extends State<DownloadButton> {
       await _downloads!.enqueueItemDownloads(
         widget.libraryItemId,
         episodeId: widget.episodeId,
+        displayTitle: widget.titleForNotification,
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -76,7 +77,10 @@ class _DownloadButtonState extends State<DownloadButton> {
     if (_downloads == null) return;
     setState(() => _busy = true);
     try {
-      await _downloads!.cancelForItem(widget.libraryItemId);
+      // Cancel all downloads and clear the entire queue
+      await _downloads!.cancelAll();
+      // Also remove local files for this specific book
+      await _downloads!.deleteLocal(widget.libraryItemId);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -139,7 +143,7 @@ class _DownloadButtonState extends State<DownloadButton> {
             child: Align(
               alignment: Alignment.centerRight,
               child: IconButton(
-                tooltip: 'Cancel',
+                tooltip: 'Cancel all downloads and clear queue',
                 onPressed: _busy ? null : _cancelAll,
                 icon: const Icon(Icons.close),
               ),

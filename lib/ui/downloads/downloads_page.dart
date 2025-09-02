@@ -46,10 +46,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
     return FutureBuilder<List<String>>(
       future: widget.repo.listTrackedItemIds(),
       builder: (context, idsSnap) {
-        final ids = idsSnap.data ?? const [];
-        if (ids.isEmpty) {
-          return const Center(child: Text('No downloads'));
-        }
+        final allIds = idsSnap.data ?? const [];
         return FutureBuilder<BooksRepository>(
           future: BooksRepository.create(),
           builder: (context, repoSnap) {
@@ -57,75 +54,96 @@ class _DownloadsPageState extends State<DownloadsPage> {
               return const Center(child: CircularProgressIndicator());
             }
             final repo = repoSnap.data!;
-            return Column(
-              children: [
-                Expanded(
-                  child: ListView.separated(
-                    itemCount: ids.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
-                    itemBuilder: (ctx, i) {
-                      final itemId = ids[i];
-                      return FutureBuilder<Book>(
-                        future: repo.getBook(itemId),
-                        builder: (context, bookSnap) {
-                          final book = bookSnap.data;
-                          return Dismissible(
-                            key: ValueKey('dl-$itemId'),
-                            direction: DismissDirection.endToStart,
-                            background: Container(
-                              alignment: Alignment.centerRight,
-                              padding: const EdgeInsets.symmetric(horizontal: 20),
-                              color: Theme.of(context).colorScheme.error,
-                              child: Icon(
-                                Icons.delete_forever_rounded,
-                                color: Theme.of(context).colorScheme.onError,
+            return FutureBuilder<List<Widget>>(
+              future: _buildTiles(repo, allIds),
+              builder: (context, tilesSnap) {
+                final tiles = tilesSnap.data ?? const <Widget>[];
+                if (tiles.isEmpty) return const Center(child: Text('No downloads'));
+                return Column(
+                  children: [
+                    Expanded(
+                      child: ListView.separated(
+                        itemCount: tiles.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        itemBuilder: (_, i) => tiles[i],
+                      ),
+                    ),
+                    SafeArea(
+                      top: false,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: FilledButton.tonalIcon(
+                                onPressed: () async {
+                                  await widget.repo.deleteAllLocal();
+                                  if (mounted) setState(() {});
+                                },
+                                icon: const Icon(Icons.delete_sweep_rounded),
+                                label: const Text('Cancel all & delete all'),
                               ),
                             ),
-                            confirmDismiss: (_) async => true,
-                            onDismissed: (_) async {
-                              await widget.repo.cancelForItem(itemId);
-                              await widget.repo.deleteLocal(itemId);
-                              if (mounted) setState(() {});
-                            },
-                            child: _BookDownloadTile(
-                              itemId: itemId,
-                              title: book?.title ?? 'Item $itemId',
-                              coverUrl: book?.coverUrl,
-                              repo: widget.repo,
-                              latest: _latest,
-                            ),
-                          );
-                        },
-                      );
-                    },
-                  ),
-                ),
-                SafeArea(
-                  top: false,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: FilledButton.tonalIcon(
-                            onPressed: () async {
-                              await widget.repo.deleteAllLocal();
-                              if (mounted) setState(() {});
-                            },
-                            icon: const Icon(Icons.delete_sweep_rounded),
-                            label: const Text('Delete all downloads'),
-                          ),
+                          ],
                         ),
-                      ],
+                      ),
                     ),
-                  ),
-                ),
-              ],
+                  ],
+                );
+              },
             );
           },
         );
       },
     );
+  }
+
+  Future<List<Widget>> _buildTiles(BooksRepository repo, List<String> ids) async {
+    final tiles = <Widget>[];
+    for (final itemId in ids) {
+      final recs = await FileDownloader().database.allRecords();
+      final records = recs.where((r) => (r.task.metaData ?? '').contains(itemId)).toList()
+        ..sort((a, b) => (a.task.filename ?? '').compareTo(b.task.filename ?? ''));
+      final total = records.length;
+      final done = records.where((r) => r.status == TaskStatus.complete).length;
+
+      final book = await repo.getBook(itemId);
+      final w = Dismissible(
+        key: ValueKey('dl-$itemId'),
+        direction: DismissDirection.endToStart,
+        background: Container(
+          alignment: Alignment.centerRight,
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          color: Theme.of(context).colorScheme.error,
+          child: Icon(
+            Icons.delete_forever_rounded,
+            color: Theme.of(context).colorScheme.onError,
+          ),
+        ),
+        confirmDismiss: (_) async => true,
+        onDismissed: (_) async {
+          await widget.repo.cancelForItem(itemId);
+          await widget.repo.deleteLocal(itemId);
+          if (mounted) setState(() {});
+        },
+        child: _BookDownloadTile(
+          itemId: itemId,
+          title: book.title,
+          coverUrl: book.coverUrl,
+          repo: widget.repo,
+          latest: _latest,
+        ),
+      );
+
+      // Include if complete or has active/in-progress status
+      final hasActive = records.any((r) => r.status == TaskStatus.running || r.status == TaskStatus.enqueued);
+      if (done == total && total > 0) {
+        tiles.add(w);
+      } else if (hasActive || (done > 0 && done < total)) {
+        tiles.add(w);
+      }
+    }
+    return tiles;
   }
 }
 
@@ -219,7 +237,7 @@ class _BookDownloadTileState extends State<_BookDownloadTile> {
           const SizedBox(height: 4),
           if (!isComplete && total > 0)
             Text(
-              'File ${fileIndex.clamp(1, total)} of $total • ${(filePct * 100).toStringAsFixed(0)}%',
+              'Overall ${(overallPct * 100).toStringAsFixed(0)}% • File ${fileIndex.clamp(1, total)} of $total',
               style: Theme.of(context).textTheme.labelLarge?.copyWith(
                     color: cs.onSurfaceVariant,
                   ),
@@ -228,32 +246,7 @@ class _BookDownloadTileState extends State<_BookDownloadTile> {
             const Text('Complete'),
         ],
       ),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (!isComplete)
-            IconButton(
-              tooltip: 'Cancel',
-              icon: const Icon(Icons.cancel_rounded),
-              onPressed: () async {
-                for (final r in _records) {
-                  await FileDownloader().cancelTaskWithId(r.taskId);
-                }
-                await _load();
-                if (mounted) setState(() {});
-              },
-            ),
-          IconButton(
-            tooltip: 'Delete files',
-            icon: const Icon(Icons.delete_outline_rounded),
-            onPressed: () async {
-              await widget.repo.deleteLocal(widget.itemId);
-              await _load();
-              if (mounted) setState(() {});
-            },
-          ),
-        ],
-      ),
+      // No trailing actions; swipe-to-delete only
     );
   }
 

@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:collection';
 
 import 'package:background_downloader/background_downloader.dart';
 import 'package:flutter/foundation.dart';
@@ -45,14 +46,30 @@ class DownloadsRepository {
 
   // Per-item aggregated progress streams
   final Map<String, StreamController<ItemProgress>> _itemCtrls = {};
-  StreamSubscription<TaskUpdate>? _muxSub;
+  // Demux listener (UI progress)
+  StreamSubscription<TaskUpdate>? _demuxSub;
+  // Chaining listener (enqueue next)
+  StreamSubscription<TaskUpdate>? _chainSub;
+  // Prevent concurrent scheduling/enqueue for the same item
+  final Set<String> _schedulingItems = <String>{};
+  // Keep a short-lived queued state until task records appear
+  final Map<String, DateTime> _pendingQueuedUntil = <String, DateTime>{};
+  // Items explicitly canceled/blocked from auto-chaining
+  final Set<String> _blockedItems = <String>{};
+  
+  // Global download queue management
+  final Queue<MapEntry<String, String?>> _globalDownloadQueue = Queue<MapEntry<String, String?>>();
+  bool _isProcessingGlobalQueue = false;
+  final Set<String> _itemsInGlobalQueue = <String>{};
 
   Future<void> init() async {
     // Configure ONE global notification. Do NOT set per-task displayName.
     try {
       await FileDownloader().configureNotification(
-        running: const TaskNotification('Downloading audiobooks…', ''),
-        complete: const TaskNotification('Downloads complete', ''),
+        running: const TaskNotification('Downloading…', ''),
+        // Avoid per-track complete notifications; we'll rely on UI and only
+        // update title when the whole book finishes
+        complete: null,
         error: const TaskNotification('Download failed', ''),
       );
     } catch (_) {}
@@ -61,6 +78,9 @@ class DownloadsRepository {
     try {
       await _resumeAllPending();
     } catch (_) {}
+
+    // Ensure global listener is active so chaining continues even when UI is closed
+    _ensureChainListener();
   }
 
   /// Start (or get) an aggregated progress stream for a specific book.
@@ -74,7 +94,7 @@ class DownloadsRepository {
     );
 
     // Demux plugin updates -> per-item controllers
-    _muxSub ??= progressStream().listen((u) async {
+    _demuxSub ??= progressStream().listen((u) async {
       final meta = u.task.metaData ?? '';
       final id = _extractItemId(meta);
       if (id == null) return;
@@ -93,9 +113,50 @@ class DownloadsRepository {
   Future<void> enqueueItemDownloads(
       String libraryItemId, {
         String? episodeId,
+        String? displayTitle,
       }) async {
-    // Kick off or continue serial downloads for this item (one track at a time)
-    await _startNextForItem(libraryItemId, episodeId: episodeId);
+    // Unblock if user explicitly re-enqueues
+    _blockedItems.remove(libraryItemId);
+    
+    // Add to global queue if not already there
+    if (!_itemsInGlobalQueue.contains(libraryItemId)) {
+      _globalDownloadQueue.add(MapEntry(libraryItemId, episodeId));
+      _itemsInGlobalQueue.add(libraryItemId);
+      _d('Added $libraryItemId to global queue. Queue length: ${_globalDownloadQueue.length}');
+    }
+    
+    // Update notification title to the current book (best effort)
+    try {
+      await FileDownloader().configureNotification(
+        running: TaskNotification(
+          displayTitle != null && displayTitle.isNotEmpty
+              ? 'Downloading "$displayTitle"'
+              : 'Downloading audiobook…',
+          '',
+        ),
+        complete: null,
+        error: const TaskNotification('Download failed', ''),
+      );
+    } catch (_) {}
+    
+    // Immediately publish a queued snapshot so UI updates without waiting for DB
+    try {
+      _pendingQueuedUntil[libraryItemId] = DateTime.now().add(const Duration(seconds: 3));
+      final totalTracks = await _playback.getTotalTrackCount(libraryItemId);
+      final completedLocal = await _countLocalFiles(libraryItemId);
+      final snap = ItemProgress(
+        libraryItemId: libraryItemId,
+        status: 'queued',
+        progress: totalTracks == 0 ? 0.0 : (completedLocal / totalTracks).clamp(0.0, 1.0),
+        totalTasks: totalTracks,
+        completed: completedLocal,
+      );
+      final ctrl = _itemCtrls[libraryItemId];
+      if (ctrl != null && !ctrl.isClosed) ctrl.add(snap);
+    } catch (_) {}
+
+    // Start processing the global queue
+    _processGlobalQueue();
   }
 
   /// Cancel all queued/running tasks for a book.
@@ -104,6 +165,13 @@ class DownloadsRepository {
     for (final r in recs) {
       await FileDownloader().cancelTaskWithId(r.taskId);
     }
+    _pendingQueuedUntil.remove(libraryItemId);
+    _blockedItems.add(libraryItemId);
+    
+    // Remove from global queue
+    _globalDownloadQueue.removeWhere((entry) => entry.key == libraryItemId);
+    _itemsInGlobalQueue.remove(libraryItemId);
+    
     _notifyItem(libraryItemId);
   }
 
@@ -114,15 +182,39 @@ class DownloadsRepository {
     if (await dir.exists()) {
       await dir.delete(recursive: true);
     }
+    // Also remove task records for this item from plugin database
+    try {
+      final recs = await _recordsForItem(libraryItemId);
+      for (final r in recs) {
+        await FileDownloader().database.deleteRecordWithId(r.taskId);
+      }
+    } catch (_) {}
+    _pendingQueuedUntil.remove(libraryItemId);
+    _blockedItems.add(libraryItemId);
     _notifyItem(libraryItemId);
   }
 
   Future<void> cancelAll() async {
+    // Cancel all active downloads
     final records = await FileDownloader().database.allRecords();
     final ids = records.map((r) => r.taskId).toList();
     if (ids.isNotEmpty) {
       await FileDownloader().cancelTasksWithIds(ids);
     }
+    
+    // Clear the global queue completely
+    _globalDownloadQueue.clear();
+    _itemsInGlobalQueue.clear();
+    _isProcessingGlobalQueue = false;
+    
+    // Block all items from auto-chaining
+    final allItemIds = await listTrackedItemIds();
+    for (final id in allItemIds) {
+      _blockedItems.add(id);
+      _pendingQueuedUntil.remove(id);
+    }
+    
+    _d('Canceled all downloads and cleared global queue');
   }
 
   Future<List<TaskRecord>> listAll() =>
@@ -132,8 +224,26 @@ class DownloadsRepository {
   Future<void> resumeAll() async {
     final ids = await listTrackedItemIds();
     for (final id in ids) {
-      await _startNextForItem(id);
+      // Unblock items that were previously blocked
+      _blockedItems.remove(id);
+      // Add back to global queue if they have pending downloads
+      if (!_itemsInGlobalQueue.contains(id)) {
+        _globalDownloadQueue.add(MapEntry(id, null));
+        _itemsInGlobalQueue.add(id);
+      }
     }
+    // Start processing the queue
+    _processGlobalQueue();
+  }
+
+  /// Get current queue status for debugging
+  Map<String, dynamic> getQueueStatus() {
+    return {
+      'queueLength': _globalDownloadQueue.length,
+      'itemsInQueue': _itemsInGlobalQueue.toList(),
+      'isProcessing': _isProcessingGlobalQueue,
+      'blockedItems': _blockedItems.toList(),
+    };
   }
 
   /// Return a union of itemIds that either have local files or active records.
@@ -203,6 +313,7 @@ class DownloadsRepository {
     else if (recs.any((r) => r.status == TaskStatus.failed)) status = 'failed';
     else if (recs.any((r) => r.status == TaskStatus.running)) status = 'running';
     else if (recs.any((r) => r.status == TaskStatus.enqueued)) status = 'queued';
+    else if (_pendingQueuedUntil[libraryItemId]?.isAfter(DateTime.now()) == true) status = 'queued';
     else if (completedLocal > 0 && completedLocal < totalTracks) status = 'running';
 
     return ItemProgress(
@@ -268,17 +379,80 @@ class DownloadsRepository {
     }
   }
 
+  /// Process the global download queue - ensures only one download runs at a time
+  Future<void> _processGlobalQueue() async {
+    if (_isProcessingGlobalQueue || _globalDownloadQueue.isEmpty) {
+      _d('Global queue processing skipped: isProcessing=$_isProcessingGlobalQueue, isEmpty=${_globalDownloadQueue.isEmpty}');
+      return;
+    }
+    
+    _isProcessingGlobalQueue = true;
+    _d('Starting global queue processing. Queue length: ${_globalDownloadQueue.length}');
+    
+    try {
+      while (_globalDownloadQueue.isNotEmpty) {
+        // Check if there's already a download running
+        final allRecords = await FileDownloader().database.allRecords();
+        final hasRunning = allRecords.any((r) => 
+          r.status == TaskStatus.running || r.status == TaskStatus.enqueued);
+        
+        if (hasRunning) {
+          _d('Download already running, waiting...');
+          // Wait a bit and check again
+          await Future.delayed(const Duration(milliseconds: 500));
+          continue;
+        }
+        
+        // Take the next item from the queue
+        final nextItem = _globalDownloadQueue.removeFirst();
+        final libraryItemId = nextItem.key;
+        final episodeId = nextItem.value;
+        
+        _itemsInGlobalQueue.remove(libraryItemId);
+        _d('Processing next item from global queue: $libraryItemId');
+        
+        // Start downloading the next track for this item
+        await _startNextForItem(libraryItemId, episodeId: episodeId);
+        
+        // Don't break here - let the chain listener handle the next steps
+        // It will either continue with this book or move to the next one
+        break;
+      }
+    } finally {
+      _isProcessingGlobalQueue = false;
+      _d('Finished global queue processing');
+    }
+  }
+
   // Serial per-item scheduler: ensure only one active task for a given item
   Future<void> _startNextForItem(String libraryItemId, {String? episodeId}) async {
-    // If already running/enqueued for this item, do nothing
-    final recs = await _recordsForItem(libraryItemId);
-    final hasActive = recs.any((r) => r.status == TaskStatus.running || r.status == TaskStatus.enqueued);
-    if (hasActive) return;
+    _d('_startNextForItem called for $libraryItemId');
+    
+    if (_blockedItems.contains(libraryItemId)) {
+      _d('Item $libraryItemId is blocked, skipping');
+      return;
+    }
+    if (_schedulingItems.contains(libraryItemId)) {
+      _d('Item $libraryItemId is already being scheduled, skipping');
+      return;
+    }
+    _schedulingItems.add(libraryItemId);
+    try {
+      // If already running/enqueued for this item, do nothing
+      final recs = await _recordsForItem(libraryItemId);
+      final hasActive = recs.any((r) => r.status == TaskStatus.running || r.status == TaskStatus.enqueued);
+      if (hasActive) {
+        _d('Item $libraryItemId already has active tasks, skipping');
+        return;
+      }
 
     // Determine next remote track not yet downloaded locally
     final tracks = await _playback.getRemoteTracks(libraryItemId, episodeId: episodeId);
-    tracks.sort((a, b) => a.index.compareTo(b.index));
+    tracks.sort((a, b) => a.index.toString().compareTo(b.index.toString()));
+    _d('Found ${tracks.length} remote tracks for $libraryItemId');
+    
     if (tracks.isEmpty) {
+      _d('No remote tracks found for $libraryItemId');
       _notifyItem(libraryItemId);
       return;
     }
@@ -295,9 +469,15 @@ class DownloadsRepository {
       }
     }
     if (next == null) {
+      // All tracks for this book are downloaded, remove from global queue
+      _globalDownloadQueue.removeWhere((entry) => entry.key == libraryItemId);
+      _itemsInGlobalQueue.remove(libraryItemId);
+      _d('Book $libraryItemId is complete, removed from global queue');
       _notifyItem(libraryItemId);
       return;
     }
+    
+    _d('Downloading track ${next.index} for $libraryItemId');
 
     final prefs = await SharedPreferences.getInstance();
     final wifiOnly = prefs.getBool(_wifiOnlyKey) ?? true;
@@ -312,27 +492,88 @@ class DownloadsRepository {
       requiresWiFi: wifiOnly,
       allowPause: true,
       metaData: jsonEncode({'libraryItemId': libraryItemId}),
+      group: 'book-$libraryItemId',
     );
 
     await FileDownloader().enqueue(task);
     _notifyItem(libraryItemId);
 
-    // Listen to updates to trigger next in chain
-    _muxSub ??= progressStream().listen((u) async {
-      final meta = u.task.metaData ?? '';
-      final id = _extractItemId(meta);
-      if (id == null) return;
-      await Future.delayed(const Duration(milliseconds: 100));
-      await _startNextForItem(id);
-      _notifyItem(id);
-    });
+    // Keep this item in the global queue until all tracks are downloaded
+    // The chain listener will handle continuing with the next track
+
+    _ensureChainListener();
+    } finally {
+      _schedulingItems.remove(libraryItemId);
+    }
   }
 
   Future<void> _resumeAllPending() async {
     final ids = await listTrackedItemIds();
     for (final id in ids) {
-      await _startNextForItem(id);
+      // Add to global queue if not already there
+      if (!_itemsInGlobalQueue.contains(id)) {
+        _globalDownloadQueue.add(MapEntry(id, null));
+        _itemsInGlobalQueue.add(id);
+      }
     }
+    // Start processing the queue
+    _processGlobalQueue();
+  }
+
+  void _ensureChainListener() {
+    if (_chainSub != null) return;
+    _chainSub = progressStream().listen((u) async {
+      final meta = u.task.metaData ?? '';
+      final id = _extractItemId(meta);
+      if (id == null) return;
+      if (_blockedItems.contains(id)) return;
+      
+      _d('Chain listener: Task update for $id');
+      
+      // React to any update; scheduling guard + hasActive prevent duplicates
+      await Future.delayed(const Duration(milliseconds: 150));
+      
+      // Check if this item needs more tracks downloaded
+      final recs = await _recordsForItem(id);
+      final hasActive = recs.any((r) => r.status == TaskStatus.running || r.status == TaskStatus.enqueued);
+      
+      _d('Chain listener: Item $id hasActive: $hasActive, records: ${recs.length}');
+      
+      if (!hasActive) {
+        // Check if this book still has tracks to download
+        final tracks = await _playback.getRemoteTracks(id);
+        final dir = await _itemDir(id);
+        bool hasMoreTracks = false;
+        
+        for (final t in tracks) {
+          final filename = 'track_${t.index.toString().padLeft(3, '0')}.${_extFromMime(t.mimeType)}';
+          final f = File('${dir.path}/$filename');
+          if (!f.existsSync()) {
+            hasMoreTracks = true;
+            break;
+          }
+        }
+        
+        if (hasMoreTracks) {
+          // This book still has tracks to download, continue with it
+          _d('Book $id still has tracks to download, continuing...');
+          // Add a small delay to ensure the previous download is fully processed
+          await Future.delayed(const Duration(milliseconds: 200));
+          await _startNextForItem(id);
+        } else {
+          // This book is complete, remove from global queue and process next
+          _d('Book $id is complete, removing from global queue and moving to next');
+          _globalDownloadQueue.removeWhere((entry) => entry.key == id);
+          _itemsInGlobalQueue.remove(id);
+          _processGlobalQueue();
+        }
+      } else {
+        // Continue with this item
+        await _startNextForItem(id);
+      }
+      
+      _notifyItem(id);
+    });
   }
 
   /// Delete all downloaded files and cancel any active tasks (global).
