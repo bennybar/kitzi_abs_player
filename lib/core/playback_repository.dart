@@ -1,3 +1,4 @@
+// lib/core/playback_repository.dart
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -239,14 +240,61 @@ class PlaybackRepository {
     await _sendProgressImmediate();
   }
 
+  /// UPDATED: Send position to server on pause
   Future<void> pause() async {
     await player.pause();
     await _sendProgressImmediate();
   }
 
+  /// UPDATED: Check server position and sync before resuming
   Future<void> resume() async {
+    final itemId = _progressItemId;
+    if (itemId != null) {
+      await _syncPositionFromServer();
+    }
     await player.play();
     await _sendProgressImmediate();
+  }
+
+  /// New method: Sync position from server before playing
+  Future<void> _syncPositionFromServer() async {
+    final itemId = _progressItemId;
+    final np = _nowPlaying;
+    if (itemId == null || np == null) return;
+
+    try {
+      _log('Checking server position before resume...');
+      final serverSec = await fetchServerProgress(itemId);
+      if (serverSec == null) return;
+
+      // Get current local position
+      final currentSec = _computeGlobalPositionSec() ?? _trackOnlyPosSec();
+      if (currentSec == null) return;
+
+      // If server position differs by more than 5 seconds, sync to server position
+      const threshold = 5.0;
+      final diff = (serverSec - currentSec).abs();
+
+      if (diff > threshold) {
+        _log('Server position ($serverSec) differs from local ($currentSec) by ${diff.toStringAsFixed(1)}s. Syncing...');
+
+        final map = _mapGlobalSecondsToTrack(serverSec, np.tracks);
+
+        // Switch track if necessary
+        if (map.index != np.currentIndex) {
+          await _setTrackAt(map.index, preload: true);
+        }
+
+        // Seek to the correct position
+        await player.seek(Duration(milliseconds: (map.offsetSec * 1000).round()));
+
+        _log('Synced to server position: track ${map.index}, offset ${map.offsetSec.toStringAsFixed(1)}s');
+      } else {
+        _log('Server position matches local position (diff: ${diff.toStringAsFixed(1)}s)');
+      }
+    } catch (e) {
+      _log('Error syncing position from server: $e');
+    }
   }
 
   /// When scrubbing, pass `reportNow: false` repeatedly; only call once with true at the end.
