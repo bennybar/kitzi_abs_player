@@ -13,9 +13,19 @@ class FullPlayerPage extends StatelessWidget {
     if (_isOpen) return;
     _isOpen = true;
     try {
-      await Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const FullPlayerPage()),
-      );
+      await Navigator.of(context).push(PageRouteBuilder(
+        pageBuilder: (_, __, ___) => const FullPlayerPage(),
+        transitionsBuilder: (_, anim, __, child) {
+          final curved = CurvedAnimation(parent: anim, curve: Curves.easeOutCubic);
+          return FadeTransition(
+            opacity: curved,
+            child: SlideTransition(
+              position: Tween<Offset>(begin: const Offset(0, 0.04), end: Offset.zero).animate(curved),
+              child: child,
+            ),
+          );
+        },
+      ));
     } finally {
       _isOpen = false;
     }
@@ -254,30 +264,33 @@ class FullPlayerPage extends StatelessWidget {
                     child: Column(
                       children: [
                         // Cover with enhanced shadow and border
-                        Container(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(24),
-                            boxShadow: [
-                              BoxShadow(
-                                color: cs.shadow.withOpacity(0.3),
-                                blurRadius: 20,
-                                offset: const Offset(0, 8),
-                              ),
-                            ],
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(24),
-                            child: AspectRatio(
-                              aspectRatio: 1,
-                              child: Image.network(
-                                np.coverUrl ?? '',
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => Container(
-                                  color: cs.surfaceContainerHighest,
-                                  child: Icon(
-                                    Icons.menu_book_outlined,
-                                    size: 88,
-                                    color: cs.onSurfaceVariant,
+                        Hero(
+                          tag: 'cover-${np.libraryItemId}',
+                          child: Container(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(24),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: cs.shadow.withOpacity(0.25),
+                                  blurRadius: 18,
+                                  offset: const Offset(0, 8),
+                                ),
+                              ],
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(24),
+                              child: AspectRatio(
+                                aspectRatio: 1,
+                                child: Image.network(
+                                  np.coverUrl ?? '',
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => Container(
+                                    color: cs.surfaceContainerHighest,
+                                    child: Icon(
+                                      Icons.menu_book_outlined,
+                                      size: 88,
+                                      color: cs.onSurfaceVariant,
+                                    ),
                                   ),
                                 ),
                               ),
