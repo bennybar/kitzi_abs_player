@@ -25,6 +25,7 @@ class _MainScaffoldState extends State<MainScaffold> {
   Widget build(BuildContext context) {
     final services = ServicesScope.of(context).services;
     final playback = services.playback;
+    final cs = Theme.of(context).colorScheme;
 
     final pages = <Widget>[
       const BooksPage(),
@@ -39,12 +40,13 @@ class _MainScaffoldState extends State<MainScaffold> {
         final hasMini = snap.data != null;
 
         return Scaffold(
+          backgroundColor: cs.surface,
           body: Stack(
             children: [
               Positioned.fill(
                 child: Padding(
-                  // leave room for the mini-player + spacing when it’s visible
-                  padding: EdgeInsets.only(bottom: hasMini ? 80 : 0),
+                  // leave room for the mini-player + spacing when it's visible
+                  padding: EdgeInsets.only(bottom: hasMini ? 120 : 0),
                   child: pages[_index],
                 ),
               ),
@@ -53,8 +55,7 @@ class _MainScaffoldState extends State<MainScaffold> {
                   alignment: Alignment.bottomCenter,
                   child: SafeArea(
                     top: false,
-                    // UPDATED: MiniPlayer no longer takes `playback:`; give it a bit more height
-                    child: const MiniPlayer(height: 112),
+                    child: const MiniPlayer(height: 120),
                   ),
                 ),
             ],
@@ -62,17 +63,24 @@ class _MainScaffoldState extends State<MainScaffold> {
           bottomNavigationBar: NavigationBar(
             selectedIndex: _index,
             onDestinationSelected: (i) => setState(() => _index = i),
+            backgroundColor: cs.surface,
+            surfaceTintColor: cs.surfaceTint,
+            elevation: 0,
+            indicatorColor: cs.primaryContainer,
             destinations: const [
               NavigationDestination(
                 icon: Icon(Icons.library_books_outlined),
+                selectedIcon: Icon(Icons.library_books),
                 label: 'Books',
               ),
               NavigationDestination(
                 icon: Icon(Icons.download_outlined),
+                selectedIcon: Icon(Icons.download),
                 label: 'Downloads',
               ),
               NavigationDestination(
                 icon: Icon(Icons.settings_outlined),
+                selectedIcon: Icon(Icons.settings),
                 label: 'Settings',
               ),
             ],

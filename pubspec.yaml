@@ -34,12 +34,15 @@ dependencies:
   shared_preferences: ^2.3.2
   flutter_secure_storage: ^9.2.2
   cached_network_image: ^3.4.1
-  just_audio: ^0.9.39
-  audio_session: ^0.1.18
   rxdart: ^0.27.7
   dio: ^5.5.0
   background_downloader: ^8.6.0
   permission_handler: ^11.3.1
+  just_audio: ^0.9.40
+  audio_session: ^0.1.21
+  path_provider: ^2.1.1
+  audio_service: ^0.18.12
+
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.

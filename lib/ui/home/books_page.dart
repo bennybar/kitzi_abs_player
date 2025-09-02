@@ -161,169 +161,468 @@ class _BooksPageState extends State<BooksPage> {
     final visible = _visibleBooks();
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Books'),
-        actions: [
-          IconButton(
-            tooltip: 'Refresh',
-            onPressed: _loading ? null : () => _refresh(),
-            icon: const Icon(Icons.refresh),
-          ),
-          PopupMenuButton<SortMode>(
-            tooltip: 'Sort',
-            initialValue: _sort,
-            onSelected: (mode) {
-              setState(() => _sort = mode);
-              _saveSortPref(mode);
-            },
-            itemBuilder: (context) => const [
-              PopupMenuItem(
-                value: SortMode.addedDesc,
-                child: ListTile(
-                  leading: Icon(Icons.schedule),
-                  title: Text('Added date (newest)'),
+      backgroundColor: cs.surface,
+      body: CustomScrollView(
+        slivers: [
+          // Enhanced App Bar with modern design
+          SliverAppBar(
+            expandedHeight: 120,
+            floating: false,
+            pinned: true,
+            backgroundColor: cs.surface,
+            surfaceTintColor: cs.surfaceTint,
+            elevation: 0,
+            flexibleSpace: FlexibleSpaceBar(
+              title: Text(
+                'Library',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: cs.onSurface,
                 ),
               ),
-              PopupMenuItem(
-                value: SortMode.nameAsc,
-                child: ListTile(
-                  leading: Icon(Icons.sort_by_alpha),
-                  title: Text('Name (A–Z)'),
+              titlePadding: const EdgeInsets.only(left: 20, bottom: 16),
+            ),
+            actions: [
+              IconButton.filledTonal(
+                tooltip: 'Refresh',
+                onPressed: _loading ? null : () => _refresh(),
+                icon: const Icon(Icons.refresh_rounded),
+                style: IconButton.styleFrom(
+                  backgroundColor: cs.surfaceContainerHighest,
                 ),
               ),
-            ],
-            icon: const Icon(Icons.sort),
-          ),
-          const SizedBox(width: 8),
-        ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(56),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: SearchBar(
-              controller: _searchCtrl,
-              leading: const Icon(Icons.search),
-              hintText: 'Search title or author',
-              onChanged: (val) {
-                setState(() => _query = val);
-                _saveSearchPref(val);
-              },
-              trailing: [
-                if (_query.isNotEmpty)
-                  IconButton(
-                    tooltip: 'Clear',
-                    onPressed: () {
-                      _searchCtrl.clear();
-                      setState(() => _query = '');
-                      _saveSearchPref('');
-                    },
-                    icon: const Icon(Icons.clear),
+              PopupMenuButton<SortMode>(
+                tooltip: 'Sort',
+                initialValue: _sort,
+                onSelected: (mode) {
+                  setState(() => _sort = mode);
+                  _saveSortPref(mode);
+                },
+                icon: Icon(
+                  Icons.sort_rounded,
+                  color: cs.onSurfaceVariant,
+                ),
+                itemBuilder: (context) => [
+                  PopupMenuItem(
+                    value: SortMode.addedDesc,
+                    child: ListTile(
+                      leading: Icon(
+                        Icons.schedule_rounded,
+                        color: cs.primary,
+                      ),
+                      title: const Text('Added date (newest)'),
+                      contentPadding: EdgeInsets.zero,
+                    ),
                   ),
-                SegmentedButton<LibraryView>(
-                  segments: const [
-                    ButtonSegment(
-                        value: LibraryView.grid, icon: Icon(Icons.grid_view)),
-                    ButtonSegment(
-                        value: LibraryView.list, icon: Icon(Icons.view_list)),
-                  ],
-                  selected: {_view},
-                  onSelectionChanged: (sel) {
-                    final v = sel.first;
-                    setState(() => _view = v);
-                    _saveViewPref(v);
-                  },
-                ),
-              ],
+                  PopupMenuItem(
+                    value: SortMode.nameAsc,
+                    child: ListTile(
+                      leading: Icon(
+                        Icons.sort_by_alpha_rounded,
+                        color: cs.primary,
+                      ),
+                      title: const Text('Name (A–Z)'),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(width: 8),
+            ],
+          ),
+
+          // Enhanced Search Bar
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+              child: Column(
+                children: [
+                  // Modern search bar
+                  Container(
+                    decoration: BoxDecoration(
+                      color: cs.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: cs.outline.withOpacity(0.1),
+                        width: 1,
+                      ),
+                    ),
+                    child: SearchBar(
+                      controller: _searchCtrl,
+                      leading: Icon(
+                        Icons.search_rounded,
+                        color: cs.onSurfaceVariant,
+                      ),
+                      hintText: 'Search books or authors...',
+                      hintStyle: MaterialStateProperty.all(
+                        TextStyle(color: cs.onSurfaceVariant),
+                      ),
+                      backgroundColor: MaterialStateProperty.all(Colors.transparent),
+                      elevation: MaterialStateProperty.all(0),
+                      onChanged: (val) {
+                        setState(() => _query = val);
+                        _saveSearchPref(val);
+                      },
+                      trailing: [
+                        if (_query.isNotEmpty)
+                          IconButton(
+                            tooltip: 'Clear',
+                            onPressed: () {
+                              _searchCtrl.clear();
+                              setState(() => _query = '');
+                              _saveSearchPref('');
+                            },
+                            icon: Icon(
+                              Icons.clear_rounded,
+                              color: cs.onSurfaceVariant,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // View toggle with enhanced design
+                  Container(
+                    decoration: BoxDecoration(
+                      color: cs.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: SegmentedButton<LibraryView>(
+                      segments: const [
+                        ButtonSegment(
+                          value: LibraryView.grid,
+                          icon: Icon(Icons.grid_view_rounded),
+                          label: Text('Grid'),
+                        ),
+                        ButtonSegment(
+                          value: LibraryView.list,
+                          icon: Icon(Icons.view_list_rounded),
+                          label: Text('List'),
+                        ),
+                      ],
+                      selected: {_view},
+                      onSelectionChanged: (sel) {
+                        final v = sel.first;
+                        setState(() => _view = v);
+                        _saveViewPref(v);
+                      },
+                      style: ButtonStyle(
+                        backgroundColor: MaterialStateProperty.resolveWith((states) {
+                          if (states.contains(MaterialState.selected)) {
+                            return cs.primaryContainer;
+                          }
+                          return Colors.transparent;
+                        }),
+                        foregroundColor: MaterialStateProperty.resolveWith((states) {
+                          if (states.contains(MaterialState.selected)) {
+                            return cs.onPrimaryContainer;
+                          }
+                          return cs.onSurfaceVariant;
+                        }),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
-      ),
-      body: RefreshIndicator(
-        onRefresh: _refresh,
-        child: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : _error != null
-            ? ListView(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text('Error: $_error',
-                  style: TextStyle(color: cs.error)),
-            ),
-          ],
-        )
-            : (_view == LibraryView.grid
-            ? _buildGrid(visible)
-            : _buildList(visible)),
+
+          // Content
+          if (_loading)
+            const SliverFillRemaining(
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 16),
+                    Text('Loading your library...'),
+                  ],
+                ),
+              ),
+            )
+          else if (_error != null)
+            SliverFillRemaining(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.error_outline_rounded,
+                        size: 64,
+                        color: cs.error,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Error loading library',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          color: cs.error,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _error!,
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: cs.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      FilledButton.icon(
+                        onPressed: () => _refresh(),
+                        icon: const Icon(Icons.refresh_rounded),
+                        label: const Text('Try Again'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            )
+          else if (visible.isEmpty)
+            SliverFillRemaining(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        _query.isNotEmpty ? Icons.search_off_rounded : Icons.library_books_outlined,
+                        size: 64,
+                        color: cs.onSurfaceVariant,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        _query.isNotEmpty ? 'No books found' : 'Your library is empty',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          color: cs.onSurface,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _query.isNotEmpty
+                            ? 'Try adjusting your search terms'
+                            : 'Add some books to get started',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: cs.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            )
+          else
+            (_view == LibraryView.grid
+                ? _buildGrid(visible)
+                : _buildList(visible)),
+        ],
       ),
     );
   }
 
   Widget _buildGrid(List<Book> list) {
-    return GridView.builder(
-      padding: const EdgeInsets.all(12),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-        childAspectRatio: 0.66,
+    return SliverPadding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+      sliver: SliverGrid(
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          mainAxisSpacing: 16,
+          crossAxisSpacing: 16,
+          childAspectRatio: 0.7,
+        ),
+        delegate: SliverChildBuilderDelegate(
+          (context, i) {
+            final b = list[i];
+            return _BookCard(
+              book: b,
+              onTap: () => _openDetails(b),
+            );
+          },
+          childCount: list.length,
+        ),
       ),
-      itemCount: list.length,
-      itemBuilder: (context, i) {
-        final b = list[i];
-        return _BookTile(
-          book: b,
-          onTap: () => _openDetails(b),
-        );
-      },
     );
   }
 
   Widget _buildList(List<Book> list) {
-    return ListView.separated(
-      padding: const EdgeInsets.all(8),
-      itemCount: list.length,
-      separatorBuilder: (_, __) => const Divider(height: 1),
-      itemBuilder: (context, i) {
-        final b = list[i];
-        return ListTile(
-          leading: _CoverThumb(url: b.coverUrl, size: 56),
-          title: Text(b.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-          subtitle: Text(b.author ?? 'Unknown'),
-          onTap: () => _openDetails(b),
-        );
-      },
+    return SliverPadding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+      sliver: SliverList.separated(
+        itemCount: list.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 12),
+        itemBuilder: (context, i) {
+          final b = list[i];
+          return _BookListTile(
+            book: b,
+            onTap: () => _openDetails(b),
+          );
+        },
+      ),
     );
   }
 }
 
-class _BookTile extends StatelessWidget {
-  const _BookTile({required this.book, required this.onTap});
+class _BookCard extends StatelessWidget {
+  const _BookCard({required this.book, required this.onTap});
   final Book book;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(child: _CoverThumb(url: book.coverUrl)),
-          const SizedBox(height: 6),
-          Text(
-            book.title,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.bodyMedium,
+    final cs = Theme.of(context).colorScheme;
+    
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: cs.outline.withOpacity(0.1),
+          width: 1,
+        ),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Enhanced cover with shadow
+              Expanded(
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: cs.shadow.withOpacity(0.1),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: _CoverThumb(url: book.coverUrl),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              
+              // Title and author with better typography
+              Text(
+                book.title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  height: 1.2,
+                ),
+              ),
+              if (book.author != null && book.author!.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  book.author!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ],
           ),
-          Text(
-            book.author ?? '',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.bodySmall,
+        ),
+      ),
+    );
+  }
+}
+
+class _BookListTile extends StatelessWidget {
+  const _BookListTile({required this.book, required this.onTap});
+  final Book book;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: cs.outline.withOpacity(0.1),
+          width: 1,
+        ),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              // Enhanced cover
+              Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: cs.shadow.withOpacity(0.1),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: _CoverThumb(url: book.coverUrl, size: 72),
+                ),
+              ),
+              const SizedBox(width: 16),
+              
+              // Title and author
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      book.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    if (book.author != null && book.author!.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        book.author!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: cs.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              
+              // Arrow indicator
+              Icon(
+                Icons.chevron_right_rounded,
+                color: cs.onSurfaceVariant,
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -336,13 +635,20 @@ class _CoverThumb extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final radius = BorderRadius.circular(12);
-    final placeholder = DecoratedBox(
+    final placeholder = Container(
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        color: cs.surfaceContainerHighest,
         borderRadius: radius,
       ),
-      child: const Center(child: Icon(Icons.menu_book_outlined)),
+      child: Center(
+        child: Icon(
+          Icons.menu_book_outlined,
+          color: cs.onSurfaceVariant,
+          size: size != null ? size! * 0.4 : 32,
+        ),
+      ),
     );
 
     final img = CachedNetworkImage(
