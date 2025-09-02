@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sqflite/sqflite.dart';
+import 'package:path/path.dart' as p;
 import '../models/book.dart';
 import 'auth_repository.dart';
 
@@ -8,6 +10,7 @@ class BooksRepository {
   BooksRepository(this._auth, this._prefs);
   final AuthRepository _auth;
   final SharedPreferences _prefs;
+  Database? _db;
 
   static const _etagKey = 'books_list_etag';
   static const _cacheKey = 'books_list_cache_json';
@@ -73,56 +76,13 @@ class BooksRepository {
   }
 
   Future<List<Book>> listBooks() async {
-    final api = _auth.api;
-    final token = await api.accessToken();
-    final libId = await _ensureLibraryId();
+    // Always prefer local DB first
+    final local = await _listBooksFromDb();
+    if (local.isNotEmpty) return local;
 
-    // Auth via query (robust for GET on some deployments)
-    final tokenQS = (token != null && token.isNotEmpty) ? '&token=$token' : '';
-    final etag = _prefs.getString(_etagKey);
-    final headers = <String, String>{};
-    if (etag != null) headers['If-None-Match'] = etag;
-
-    final path =
-        '/api/libraries/$libId/items?limit=200&sort=updatedAt:desc$tokenQS';
-
-    final http.Response resp = await api.request('GET', path, headers: headers);
-
-    if (resp.statusCode == 304) {
-      final cached = _prefs.getString(_cacheKey);
-      if (cached != null) {
-        final data = jsonDecode(cached);
-        final items = _extractItems(data);
-        return _toBooks(items);
-      }
-      return <Book>[];
-    }
-
-    if (resp.statusCode == 200) {
-      final bodyStr = resp.body;
-      final body = bodyStr.isNotEmpty ? jsonDecode(bodyStr) : null;
-
-      final newEtag = resp.headers['etag'];
-      await _prefs.setString(_cacheKey, bodyStr);
-      if (newEtag != null) await _prefs.setString(_etagKey, newEtag);
-
-      final items = _extractItems(body);
-      if (items.isEmpty && bodyStr.isNotEmpty) {
-        final preview = bodyStr.substring(0, bodyStr.length.clamp(0, 300));
-        throw Exception('Library returned no parseable items. Body preview: $preview');
-      }
-      return _toBooks(items);
-    }
-
-    // Fallback to cache on errors
-    final cached = _prefs.getString(_cacheKey);
-    if (cached != null) {
-      final data = jsonDecode(cached);
-      final items = _extractItems(data);
-      return _toBooks(items);
-    }
-
-    throw Exception('Failed to load books: ${resp.statusCode}');
+    // If DB empty, do an initial network fetch and persist
+    final fetched = await refreshFromServer();
+    return fetched;
   }
 
   Future<List<Book>> _toBooks(List<Map<String, dynamic>> items) async {
@@ -157,6 +117,139 @@ class BooksRepository {
   static Future<BooksRepository> create() async {
     final auth = await AuthRepository.ensure();
     final prefs = await SharedPreferences.getInstance();
-    return BooksRepository(auth, prefs);
+    final repo = BooksRepository(auth, prefs);
+    await repo._openDb();
+    return repo;
+  }
+
+  Future<void> _openDb() async {
+    final dbPath = await getDatabasesPath();
+    final path = p.join(dbPath, 'kitzi_books.db');
+    _db = await openDatabase(
+      path,
+      version: 1,
+      onCreate: (db, v) async {
+        await db.execute('''
+          CREATE TABLE books (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            author TEXT,
+            coverUrl TEXT NOT NULL,
+            description TEXT,
+            durationMs INTEGER,
+            sizeBytes INTEGER,
+            updatedAt INTEGER
+          )
+        ''');
+      },
+    );
+  }
+
+  Future<void> _upsertBooks(List<Book> items) async {
+    final db = _db;
+    if (db == null) return;
+    final batch = db.batch();
+    for (final b in items) {
+      batch.insert(
+        'books',
+        {
+          'id': b.id,
+          'title': b.title,
+          'author': b.author,
+          'coverUrl': b.coverUrl,
+          'description': b.description,
+          'durationMs': b.durationMs,
+          'sizeBytes': b.sizeBytes,
+          'updatedAt': b.updatedAt?.millisecondsSinceEpoch,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+    await batch.commit(noResult: true);
+  }
+
+  Future<List<Book>> _listBooksFromDb() async {
+    final db = _db;
+    if (db == null) return <Book>[];
+    final rows = await db.query('books', orderBy: 'updatedAt DESC NULLS LAST');
+    if (rows.isEmpty) return <Book>[];
+    final baseUrl = _auth.api.baseUrl ?? '';
+    final token = await _auth.api.accessToken();
+    return rows.map((m) {
+      final id = (m['id'] as String);
+      var coverUrl = '$baseUrl/api/items/$id/cover';
+      if (token != null && token.isNotEmpty) coverUrl = '$coverUrl?token=$token';
+      return Book(
+        id: id,
+        title: (m['title'] as String),
+        author: m['author'] as String?,
+        coverUrl: coverUrl,
+        description: m['description'] as String?,
+        durationMs: m['durationMs'] as int?,
+        sizeBytes: m['sizeBytes'] as int?,
+        updatedAt: (m['updatedAt'] as int?) != null
+            ? DateTime.fromMillisecondsSinceEpoch((m['updatedAt'] as int), isUtc: true)
+            : null,
+      );
+    }).toList();
+  }
+
+  /// Explicit refresh from server; persists to DB and cache, returns fresh list
+  Future<List<Book>> refreshFromServer() async {
+    final api = _auth.api;
+    final token = await api.accessToken();
+    final libId = await _ensureLibraryId();
+
+    final tokenQS = (token != null && token.isNotEmpty) ? '&token=$token' : '';
+    final etag = _prefs.getString(_etagKey);
+    final headers = <String, String>{};
+    if (etag != null) headers['If-None-Match'] = etag;
+
+    final path = '/api/libraries/$libId/items?limit=200&sort=updatedAt:desc$tokenQS';
+    final bool localEmpty = await _isDbEmpty();
+    http.Response resp = await api.request('GET', path, headers: headers);
+
+    if (resp.statusCode == 304) {
+      // If DB has data, return it; otherwise attempt to use cache or force fetch
+      if (!localEmpty) {
+        return await _listBooksFromDb();
+      }
+      // Try cache
+      final cached = _prefs.getString(_cacheKey);
+      if (cached != null && cached.isNotEmpty) {
+        try {
+          final body = jsonDecode(cached);
+          final items = _extractItems(body);
+          final books = await _toBooks(items);
+          await _upsertBooks(books);
+          return await _listBooksFromDb();
+        } catch (_) {}
+      }
+      // Force a network fetch without ETag since local is empty
+      resp = await api.request('GET', path, headers: {});
+    }
+
+    if (resp.statusCode == 200) {
+      final bodyStr = resp.body;
+      final body = bodyStr.isNotEmpty ? jsonDecode(bodyStr) : null;
+      final newEtag = resp.headers['etag'];
+      await _prefs.setString(_cacheKey, bodyStr);
+      if (newEtag != null) await _prefs.setString(_etagKey, newEtag);
+
+      final items = _extractItems(body);
+      final books = await _toBooks(items);
+      await _upsertBooks(books);
+      return await _listBooksFromDb();
+    }
+
+    // On error, return local DB
+    return await _listBooksFromDb();
+  }
+
+  Future<bool> _isDbEmpty() async {
+    final db = _db;
+    if (db == null) return true;
+    final count = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM books')) ?? 0;
+    return count == 0;
   }
 }

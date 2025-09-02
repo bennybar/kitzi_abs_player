@@ -43,6 +43,8 @@ dependencies:
   path_provider: ^2.1.1
   audio_service: ^0.18.12
   flutter_local_notifications: ^17.2.2
+  sqflite: ^2.3.3
+  path: ^1.9.0
 
 
   # The following adds the Cupertino Icons font to your application.

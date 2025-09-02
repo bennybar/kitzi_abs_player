@@ -82,7 +82,7 @@ class _BooksPageState extends State<BooksPage> {
   }
 
   void _setupAutoRefresh() {
-    _timer = Timer.periodic(const Duration(minutes: 1), (_) => _refresh());
+    // Disabled: manual pull-to-refresh or toolbar refresh triggers updates.
   }
 
   Future<void> _refresh({bool initial = false}) async {
@@ -92,13 +92,15 @@ class _BooksPageState extends State<BooksPage> {
     });
     try {
       final repo = await _repoFut;
-      final items = await repo.listBooks();
+      final items = initial ? await repo.listBooks() : await repo.refreshFromServer();
       if (!mounted) return;
       setState(() {
         _books = items;
         _loading = false;
       });
-      _warmCacheCovers(items);
+      if (!initial) {
+        _warmCacheCovers(items);
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -162,8 +164,14 @@ class _BooksPageState extends State<BooksPage> {
 
     return Scaffold(
       backgroundColor: cs.surface,
-      body: CustomScrollView(
-        slivers: [
+      body: RefreshIndicator(
+        onRefresh: () => _refresh(),
+        edgeOffset: 120,
+        color: cs.primary,
+        backgroundColor: cs.surface,
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
           // Enhanced App Bar with modern design
           SliverAppBar(
             expandedHeight: 120,
@@ -421,6 +429,7 @@ class _BooksPageState extends State<BooksPage> {
                 ? _buildGrid(visible)
                 : _buildList(visible)),
         ],
+        ),
       ),
     );
   }

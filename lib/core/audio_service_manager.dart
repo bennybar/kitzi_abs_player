@@ -42,7 +42,8 @@ class AudioServiceManager {
         config: AudioServiceConfig(
           androidNotificationChannelId: 'com.bennybar.kitzi.channel.audio',
           androidNotificationChannelName: 'Kitzi Audio',
-          androidNotificationOngoing: false,
+          // Per audio_service assertion, keep these consistent
+          androidNotificationOngoing: true,
           androidStopForegroundOnPause: true,
           androidNotificationIcon: 'mipmap/ic_launcher',
           androidShowNotificationBadge: true,

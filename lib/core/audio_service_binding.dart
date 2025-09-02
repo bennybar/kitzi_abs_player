@@ -45,7 +45,9 @@ class AudioServiceBinding {
           androidNotificationChannelName: 'Kitzi Audio',
           androidNotificationIcon: 'mipmap/ic_launcher',
           androidShowNotificationBadge: true,
+          // Per audio_service assertion, if ongoing=true then stopOnPause must be true
           androidStopForegroundOnPause: true,
+          androidNotificationOngoing: true,
         ),
       );
       debugPrint('✓ Audio service initialized');

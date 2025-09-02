@@ -70,9 +70,10 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
       ));
       
       // Update current media item for lock screen
-      if (currentIndex >= 0 && currentIndex < queue.value.length) {
-        final currentItem = queue.value[currentIndex];
-        if (currentItem != null) {
+      final q = queue.value;
+      if (currentIndex >= 0 && currentIndex < q.length) {
+        final currentItem = q[currentIndex];
+        if (currentItem is MediaItem) {
           mediaItem.add(currentItem);
         }
       }
@@ -85,7 +86,7 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
       final currentQueue = queue.value;
       if (index != null && index < currentQueue.length) {
         final oldMediaItem = currentQueue[index];
-        if (oldMediaItem != null) {
+        if (oldMediaItem is MediaItem) {
           try {
             final newMediaItem = oldMediaItem.copyWith(duration: duration);
             final newQueue = List<MediaItem>.from(currentQueue);
@@ -112,10 +113,17 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
   void _listenForSequenceStateChanges() {
     _player.sequenceStateStream.listen((SequenceState? sequenceState) {
       if (sequenceState == null) return;
-      final queue = sequenceState.effectiveSequence;
-      if (queue.isEmpty) return;
-      final metadata = queue.map((source) => source.tag).toList().cast<MediaItem>();
-      this.queue.add(metadata);
+      final effective = sequenceState.effectiveSequence;
+      if (effective.isEmpty) return;
+      // Only update queue from tags if all tags are valid MediaItems.
+      final tags = effective
+          .map((source) => source.tag)
+          .where((t) => t is MediaItem)
+          .cast<MediaItem>()
+          .toList();
+      if (tags.isNotEmpty) {
+        this.queue.add(tags);
+      }
     });
   }
 
@@ -178,13 +186,13 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
           artist: nowPlaying.author ?? 'Unknown Author',
           duration: track.duration > 0 
               ? Duration(milliseconds: (track.duration * 1000).round())
-              : Duration.zero,
+              : null,
           artUri: nowPlaying.coverUrl != null ? Uri.parse(nowPlaying.coverUrl!) : null,
           displayTitle: nowPlaying.title,
           displaySubtitle: nowPlaying.author,
           playable: true,
         );
-      }).toList();
+      }).toList(growable: false);
 
       debugPrint('Created ${mediaItems.length} media items');
       queue.add(mediaItems);
