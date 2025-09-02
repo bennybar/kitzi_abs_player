@@ -122,6 +122,22 @@ class PlaybackRepository {
       {String? episodeId}) =>
       _getTracksPreferLocal(libraryItemId, episodeId: episodeId);
 
+  /// Always fetch remote/stream tracks (ignores local files) for metadata like total count.
+  Future<List<PlaybackTrack>> getRemoteTracks(String libraryItemId, {String? episodeId}) {
+    return _streamTracks(libraryItemId, episodeId: episodeId);
+  }
+
+  /// Total number of tracks for an item (remote preferred; fallback to local count).
+  Future<int> getTotalTrackCount(String libraryItemId, {String? episodeId}) async {
+    try {
+      final remote = await _streamTracks(libraryItemId, episodeId: episodeId);
+      return remote.length;
+    } catch (_) {
+      final local = await _localTracks(libraryItemId);
+      return local.length;
+    }
+  }
+
   /// Warm-load last item (server position wins). If [playAfterLoad] true, will start playback.
   Future<void> warmLoadLastItem({bool playAfterLoad = false}) async {
     try {

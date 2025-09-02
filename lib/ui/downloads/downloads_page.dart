@@ -57,25 +57,51 @@ class _DownloadsPageState extends State<DownloadsPage> {
               return const Center(child: CircularProgressIndicator());
             }
             final repo = repoSnap.data!;
-            return ListView.separated(
-              itemCount: ids.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
-              itemBuilder: (ctx, i) {
-                final itemId = ids[i];
-                return FutureBuilder<Book>(
-                  future: repo.getBook(itemId),
-                  builder: (context, bookSnap) {
-                    final book = bookSnap.data;
-                    return _BookDownloadTile(
-                      itemId: itemId,
-                      title: book?.title ?? 'Item $itemId',
-                      coverUrl: book?.coverUrl,
-                      repo: widget.repo,
-                      latest: _latest,
-                    );
-                  },
-                );
-              },
+            return Column(
+              children: [
+                Expanded(
+                  child: ListView.separated(
+                    itemCount: ids.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (ctx, i) {
+                      final itemId = ids[i];
+                      return FutureBuilder<Book>(
+                        future: repo.getBook(itemId),
+                        builder: (context, bookSnap) {
+                          final book = bookSnap.data;
+                          return _BookDownloadTile(
+                            itemId: itemId,
+                            title: book?.title ?? 'Item $itemId',
+                            coverUrl: book?.coverUrl,
+                            repo: widget.repo,
+                            latest: _latest,
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
+                SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: FilledButton.tonalIcon(
+                            onPressed: () async {
+                              await widget.repo.deleteAllLocal();
+                              if (mounted) setState(() {});
+                            },
+                            icon: const Icon(Icons.delete_forever_rounded),
+                            label: const Text('Delete all files'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             );
           },
         );
@@ -117,7 +143,8 @@ class _BookDownloadTileState extends State<_BookDownloadTile> {
       _records = all.where((r) {
         final id = (r.task.metaData ?? '').contains(widget.itemId);
         return id;
-      }).toList();
+      }).toList()
+        ..sort((a, b) => (a.task.filename ?? '').compareTo(b.task.filename ?? ''));
     });
   }
 
@@ -125,13 +152,31 @@ class _BookDownloadTileState extends State<_BookDownloadTile> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    int total = _records.length;
-    int done = _records.where((r) => r.status == TaskStatus.complete).length;
-    double sum = 0.0;
-    for (final r in _records) {
-      if (r.status == TaskStatus.complete) sum += 1.0; else sum += (r.progress ?? 0.0);
+    final total = _records.length;
+    final done = _records.where((r) => r.status == TaskStatus.complete).length;
+
+    // Find the active task (running or enqueued)
+    TaskRecord? active;
+    if (_records.isNotEmpty) {
+      try {
+        active = _records.firstWhere(
+          (r) => r.status == TaskStatus.running || r.status == TaskStatus.enqueued,
+          orElse: () => _records.last,
+        );
+      } catch (_) {
+        active = _records.last;
+      }
     }
-    final progress = total == 0 ? 0.0 : (sum / total);
+    double filePct = 0.0;
+    int fileIndex = done + ((active != null && active.status != TaskStatus.complete) ? 1 : 0);
+    if (active != null && active.status == TaskStatus.running) {
+      filePct = (active.progress ?? 0.0).clamp(0.0, 1.0);
+    }
+
+    final overallPct = total == 0
+        ? 0.0
+        : ((done.toDouble()) + filePct) / total.toDouble();
+
     final isComplete = total > 0 && done == total;
 
     return ListTile(
@@ -145,12 +190,20 @@ class _BookDownloadTileState extends State<_BookDownloadTile> {
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
             child: LinearProgressIndicator(
-              value: isComplete ? 1.0 : progress,
+              value: isComplete ? 1.0 : overallPct,
               minHeight: 6,
             ),
           ),
           const SizedBox(height: 4),
-          Text(isComplete ? 'Complete' : 'Downloading • ${(progress * 100).toStringAsFixed(0)}%'),
+          if (!isComplete && total > 0)
+            Text(
+              'File ${fileIndex.clamp(1, total)} of $total • ${(filePct * 100).toStringAsFixed(0)}%',
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                    color: cs.onSurfaceVariant,
+                  ),
+            )
+          else
+            const Text('Complete'),
         ],
       ),
       trailing: Row(

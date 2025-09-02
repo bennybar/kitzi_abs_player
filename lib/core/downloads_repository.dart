@@ -15,8 +15,8 @@ class ItemProgress {
   final String libraryItemId;
   final String status; // queued | running | complete | canceled | failed | none
   final double progress; // 0..1
-  final int totalTasks;
-  final int completed;
+  final int totalTasks; // total tracks for this item
+  final int completed; // number of locally downloaded tracks
 
   const ItemProgress({
     required this.libraryItemId,
@@ -56,6 +56,11 @@ class DownloadsRepository {
         error: const TaskNotification('Download failed', ''),
       );
     } catch (_) {}
+
+    // Resume any pending downloads from previous session
+    try {
+      await _resumeAllPending();
+    } catch (_) {}
   }
 
   /// Start (or get) an aggregated progress stream for a specific book.
@@ -89,49 +94,8 @@ class DownloadsRepository {
       String libraryItemId, {
         String? episodeId,
       }) async {
-    // If already downloaded and no tasks => nothing to enqueue
-    if (await hasLocalDownloads(libraryItemId)) {
-      final recs = await _recordsForItem(libraryItemId);
-      if (recs.isEmpty) {
-        _d('Already local for $libraryItemId; skipping enqueue.');
-        _notifyItem(libraryItemId);
-        return;
-      }
-    }
-
-    final tracks =
-    await _playback.getPlayableTracks(libraryItemId, episodeId: episodeId);
-
-    final remoteTracks = tracks.where((t) => !t.isLocal).toList();
-    if (remoteTracks.isEmpty) {
-      _d('No remote tracks to download for $libraryItemId (already local?).');
-      _notifyItem(libraryItemId);
-      return;
-    }
-
-    final prefs = await SharedPreferences.getInstance();
-    final wifiOnly = prefs.getBool(_wifiOnlyKey) ?? true;
-
-    // Enqueue WITHOUT per-task displayName to keep a single system notification
-    for (final t in remoteTracks) {
-      final filename =
-          'track_${t.index.toString().padLeft(3, '0')}.${_extFromMime(t.mimeType)}';
-
-      final task = DownloadTask(
-        url: t.url, // absolute URL with token
-        filename: filename,
-        directory: 'abs/$libraryItemId',
-        baseDirectory: BaseDirectory.applicationDocuments,
-        updates: Updates.statusAndProgress,
-        requiresWiFi: wifiOnly,
-        allowPause: true,
-        metaData: jsonEncode({'libraryItemId': libraryItemId}),
-      );
-
-      await FileDownloader().enqueue(task);
-    }
-
-    _notifyItem(libraryItemId);
+    // Kick off or continue serial downloads for this item (one track at a time)
+    await _startNextForItem(libraryItemId, episodeId: episodeId);
   }
 
   /// Cancel all queued/running tasks for a book.
@@ -159,6 +123,25 @@ class DownloadsRepository {
     if (ids.isNotEmpty) {
       await FileDownloader().cancelTasksWithIds(ids);
     }
+  }
+
+  /// Delete ALL files inside the downloads folder (abs/) and cancel tasks.
+  Future<void> deleteAllLocal() async {
+    await cancelAll();
+    try {
+      final docs = await getApplicationDocumentsDirectory();
+      final absDir = Directory('${docs.path}/abs');
+      if (await absDir.exists()) {
+        await absDir.delete(recursive: true);
+      }
+    } catch (_) {}
+    // Remove all task records
+    try {
+      final all = await FileDownloader().database.allRecords();
+      for (final r in all) {
+        await FileDownloader().database.deleteRecordWithId(r.taskId);
+      }
+    } catch (_) {}
   }
 
   Future<List<TaskRecord>> listAll() =>
@@ -211,43 +194,34 @@ class DownloadsRepository {
 
   Future<ItemProgress> _computeItemProgress(String libraryItemId) async {
     final recs = await _recordsForItem(libraryItemId);
-    if (recs.isEmpty) {
-      // If there are no tasks but local files exist, treat as complete
-      final local = await hasLocalDownloads(libraryItemId);
-      return ItemProgress(
-        libraryItemId: libraryItemId,
-        status: local ? 'complete' : 'none',
-        progress: local ? 1.0 : 0.0,
-        totalTasks: 0,
-        completed: local ? 1 : 0,
+    final totalTracks = await _playback.getTotalTrackCount(libraryItemId);
+    final completedLocal = await _countLocalFiles(libraryItemId);
+
+    double runningProgress = 0.0;
+    if (recs.isNotEmpty) {
+      final running = recs.firstWhere(
+            (r) => r.status == TaskStatus.running || r.status == TaskStatus.enqueued,
+        orElse: () => recs.first,
       );
+      runningProgress = (running.progress ?? 0.0).clamp(0.0, 1.0);
     }
 
-    int total = recs.length;
-    int done = recs.where((r) => r.status == TaskStatus.complete).length;
+    final denom = totalTracks == 0 ? 1 : totalTracks;
+    final value = ((completedLocal.toDouble()) + runningProgress) / denom;
 
-    double sum = 0.0;
-    for (final r in recs) {
-      if (r.status == TaskStatus.complete) {
-        sum += 1.0;
-      } else {
-        sum += (r.progress ?? 0.0);
-      }
-    }
-    final avg = sum / total;
-
-    String status = 'running';
-    if (done == total) status = 'complete';
-    if (recs.any((r) => r.status == TaskStatus.failed)) status = 'failed';
-    if (recs.every((r) => r.status == TaskStatus.enqueued)) status = 'queued';
-    if (recs.every((r) => r.status == TaskStatus.canceled)) status = 'canceled';
+    String status = 'none';
+    if (completedLocal >= totalTracks && totalTracks > 0) status = 'complete';
+    else if (recs.any((r) => r.status == TaskStatus.failed)) status = 'failed';
+    else if (recs.any((r) => r.status == TaskStatus.running)) status = 'running';
+    else if (recs.any((r) => r.status == TaskStatus.enqueued)) status = 'queued';
+    else if (completedLocal > 0 && completedLocal < totalTracks) status = 'running';
 
     return ItemProgress(
       libraryItemId: libraryItemId,
       status: status,
-      progress: avg,
-      totalTasks: total,
-      completed: done,
+      progress: value.clamp(0.0, 1.0),
+      totalTasks: totalTracks,
+      completed: completedLocal,
     );
   }
 
@@ -287,6 +261,89 @@ class DownloadsRepository {
     final c = _itemCtrls[libraryItemId];
     if (c != null && !c.isClosed) {
       c.add(await _computeItemProgress(libraryItemId));
+    }
+  }
+
+  Future<int> _countLocalFiles(String libraryItemId) async {
+    try {
+      final dir = await _itemDir(libraryItemId);
+      if (!await dir.exists()) return 0;
+      final files = await dir
+          .list()
+          .where((e) => e is File)
+          .cast<File>()
+          .toList();
+      return files.length;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  // Serial per-item scheduler: ensure only one active task for a given item
+  Future<void> _startNextForItem(String libraryItemId, {String? episodeId}) async {
+    // If already running/enqueued for this item, do nothing
+    final recs = await _recordsForItem(libraryItemId);
+    final hasActive = recs.any((r) => r.status == TaskStatus.running || r.status == TaskStatus.enqueued);
+    if (hasActive) return;
+
+    // Determine next remote track not yet downloaded locally
+    final tracks = await _playback.getRemoteTracks(libraryItemId, episodeId: episodeId);
+    tracks.sort((a, b) => a.index.compareTo(b.index));
+    if (tracks.isEmpty) {
+      _notifyItem(libraryItemId);
+      return;
+    }
+
+    // Find first track whose file does NOT exist locally
+    final dir = await _itemDir(libraryItemId);
+    PlaybackTrack? next;
+    for (final t in tracks) {
+      final filename = 'track_${t.index.toString().padLeft(3, '0')}.${_extFromMime(t.mimeType)}';
+      final f = File('${dir.path}/$filename');
+      if (!f.existsSync()) {
+        next = t;
+        break;
+      }
+    }
+    if (next == null) {
+      _notifyItem(libraryItemId);
+      return;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final wifiOnly = prefs.getBool(_wifiOnlyKey) ?? true;
+    final filename = 'track_${next.index.toString().padLeft(3, '0')}.${_extFromMime(next.mimeType)}';
+
+    final task = DownloadTask(
+      url: next.url,
+      filename: filename,
+      directory: 'abs/$libraryItemId',
+      baseDirectory: BaseDirectory.applicationDocuments,
+      updates: Updates.statusAndProgress,
+      requiresWiFi: wifiOnly,
+      allowPause: true,
+      metaData: jsonEncode({'libraryItemId': libraryItemId}),
+    );
+
+    await FileDownloader().enqueue(task);
+    _notifyItem(libraryItemId);
+
+    // Listen to updates to trigger next in chain
+    _muxSub ??= progressStream().listen((u) async {
+      final meta = u.task.metaData ?? '';
+      final id = _extractItemId(meta);
+      if (id == null) return;
+      await Future.delayed(const Duration(milliseconds: 100));
+      await _startNextForItem(id);
+      _notifyItem(id);
+    });
+  }
+
+  Future<void> _resumeAllPending() async {
+    // For each tracked item, ensure the next missing file is scheduled
+    final ids = await listTrackedItemIds();
+    for (final id in ids) {
+      await _startNextForItem(id);
     }
   }
 }
