@@ -214,7 +214,11 @@ class PlaybackRepository {
     _progressItemId = libraryItemId;
 
     // Update audio service with new now playing info
-    await AudioServiceManager.instance.updateNowPlaying(np);
+    try {
+      await AudioServiceManager.instance.updateNowPlaying(np);
+    } catch (e) {
+      _log('Failed to update audio service: $e');
+    }
 
     // SERVER WINS: try server position first; fallback to local cache
     double? resumeSec = await fetchServerProgress(libraryItemId);

@@ -19,14 +19,18 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
 
   Future<void> _loadEmptyPlaylist() async {
     try {
-      queue.add([MediaItem(
+      final initialItem = MediaItem(
         id: '1',
         album: "Audiobookshelf",
         title: "Loading...",
+        artist: "Loading...",
         duration: Duration.zero,
-      )]);
+        playable: true,
+      );
+      queue.add([initialItem]);
+      mediaItem.add(initialItem);
     } catch (e) {
-      debugPrint("Error: $e");
+      debugPrint("Error loading empty playlist: $e");
     }
   }
 
@@ -35,6 +39,7 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
       final playing = _player.playing;
       final currentIndex = _player.currentIndex ?? 0;
       
+      // Update playback state
       playbackState.add(playbackState.value.copyWith(
         controls: [
           MediaControl.skipToPrevious,
@@ -62,10 +67,12 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
         queueIndex: currentIndex,
       ));
       
-      // Update current media item if available
+      // Update current media item for lock screen
       if (currentIndex >= 0 && currentIndex < queue.value.length) {
         final currentItem = queue.value[currentIndex];
-        mediaItem.add(currentItem);
+        if (currentItem != null) {
+          mediaItem.add(currentItem);
+        }
       }
     });
   }
@@ -73,12 +80,19 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
   void _listenForDurationChanges() {
     _player.durationStream.listen((duration) {
       var index = _player.currentIndex;
-      final newQueue = queue.value.toList();
-      if (index != null && index < newQueue.length) {
-        final oldMediaItem = newQueue[index];
-        final newMediaItem = oldMediaItem.copyWith(duration: duration);
-        newQueue[index] = newMediaItem;
-        queue.add(newQueue);
+      final currentQueue = queue.value;
+      if (index != null && index < currentQueue.length) {
+        final oldMediaItem = currentQueue[index];
+        if (oldMediaItem != null) {
+          try {
+            final newMediaItem = oldMediaItem.copyWith(duration: duration);
+            final newQueue = List<MediaItem>.from(currentQueue);
+            newQueue[index] = newMediaItem;
+            queue.add(newQueue);
+          } catch (e) {
+            debugPrint('Error updating MediaItem duration: $e');
+          }
+        }
       }
     });
   }
@@ -143,33 +157,41 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
 
   // Update the queue with current playing item
   Future<void> updateQueueFromNowPlaying(NowPlaying nowPlaying) async {
-    final mediaItems = nowPlaying.tracks.map((track) {
-      return MediaItem(
-        id: '${nowPlaying.libraryItemId}_${track.index}',
-        album: nowPlaying.title,
-        title: '${nowPlaying.title} - Track ${track.index + 1}',
-        artist: nowPlaying.author ?? 'Unknown Author',
-        duration: track.duration > 0 
-            ? Duration(milliseconds: (track.duration * 1000).round())
-            : Duration.zero,
-        artUri: nowPlaying.coverUrl != null ? Uri.parse(nowPlaying.coverUrl!) : null,
-        displayTitle: nowPlaying.title,
-        displaySubtitle: nowPlaying.author,
-        playable: true,
-      );
-    }).toList();
-
-    queue.add(mediaItems);
-    
-    // Set the current index
-    if (nowPlaying.currentIndex < mediaItems.length) {
-      playbackState.add(playbackState.value.copyWith(
-        queueIndex: nowPlaying.currentIndex,
-      ));
+    try {
+      debugPrint('Updating queue with now playing: ${nowPlaying.title}');
       
-      // Update the current media item for lock screen
-      final currentItem = mediaItems[nowPlaying.currentIndex];
-      mediaItem.add(currentItem);
+      final mediaItems = nowPlaying.tracks.map((track) {
+        return MediaItem(
+          id: '${nowPlaying.libraryItemId}_${track.index}',
+          album: nowPlaying.title,
+          title: '${nowPlaying.title} - Track ${track.index + 1}',
+          artist: nowPlaying.author ?? 'Unknown Author',
+          duration: track.duration > 0 
+              ? Duration(milliseconds: (track.duration * 1000).round())
+              : Duration.zero,
+          artUri: nowPlaying.coverUrl != null ? Uri.parse(nowPlaying.coverUrl!) : null,
+          displayTitle: nowPlaying.title,
+          displaySubtitle: nowPlaying.author,
+          playable: true,
+        );
+      }).toList();
+
+      debugPrint('Created ${mediaItems.length} media items');
+      queue.add(mediaItems);
+      
+      // Set the current index
+      if (nowPlaying.currentIndex < mediaItems.length) {
+        playbackState.add(playbackState.value.copyWith(
+          queueIndex: nowPlaying.currentIndex,
+        ));
+        
+        // Update the current media item for lock screen
+        final currentItem = mediaItems[nowPlaying.currentIndex];
+        mediaItem.add(currentItem);
+        debugPrint('Updated current media item: ${currentItem.title}');
+      }
+    } catch (e) {
+      debugPrint('Error updating queue from now playing: $e');
     }
   }
 
@@ -202,5 +224,23 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
           ? AudioProcessingState.ready 
           : AudioProcessingState.ready,
     ));
+  }
+
+  // Force update the media session
+  void forceUpdateMediaSession() {
+    try {
+      final currentQueue = queue.value;
+      final currentIndex = playbackState.value.queueIndex;
+      
+      if (currentIndex != null && currentIndex >= 0 && currentIndex < currentQueue.length) {
+        final currentItem = currentQueue[currentIndex];
+        if (currentItem != null) {
+          mediaItem.add(currentItem);
+          debugPrint('Forced media session update: ${currentItem.title}');
+        }
+      }
+    } catch (e) {
+      debugPrint('Error forcing media session update: $e');
+    }
   }
 }

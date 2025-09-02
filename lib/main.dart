@@ -58,9 +58,6 @@ Future<void> main() async {
   final downloads = DownloadsRepository(auth, playback);
   final theme = ThemeService();
   await downloads.init();
-  
-  // Initialize audio service
-  await AudioServiceManager.instance.initialize(playback);
 
   final services = AppServices(
     auth: auth,
@@ -89,6 +86,12 @@ class _AbsAppState extends State<AbsApp> {
     super.initState();
     _sessionFuture =
         AuthRepository.ensure().then((auth) => auth.hasValidSession());
+    
+    // Initialize audio service after app is ready
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final services = ServicesScope.of(context).services;
+      AudioServiceManager.instance.initialize(services.playback);
+    });
   }
 
   @override

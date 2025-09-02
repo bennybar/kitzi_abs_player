@@ -18,12 +18,16 @@ class AudioServiceManager {
     if (_isInitialized) return;
 
     try {
+      debugPrint('Initializing audio service...');
+      
       // Configure audio session
       final session = await AudioSession.instance;
       await session.configure(AudioSessionConfiguration.music());
+      debugPrint('Audio session configured');
 
       // Create audio handler
       _audioHandler = KitziAudioHandler(playbackRepository, playbackRepository.player);
+      debugPrint('Audio handler created');
 
       // Start audio service
       await AudioService.init(
@@ -35,6 +39,7 @@ class AudioServiceManager {
           androidStopForegroundOnPause: false,
           androidNotificationIcon: 'mipmap/ic_launcher',
           androidShowNotificationBadge: true,
+          notificationColor: Colors.deepPurple,
         ),
       );
 
@@ -42,6 +47,7 @@ class AudioServiceManager {
       debugPrint('Audio service initialized successfully');
     } catch (e) {
       debugPrint('Failed to initialize audio service: $e');
+      debugPrint('Stack trace: ${StackTrace.current}');
     }
   }
 
@@ -56,6 +62,12 @@ class AudioServiceManager {
   Future<void> updateCurrentTrack(int trackIndex) async {
     if (_audioHandler != null) {
       _audioHandler!.updateCurrentMediaItem(trackIndex);
+    }
+  }
+
+  Future<void> forceUpdateMediaSession() async {
+    if (_audioHandler != null) {
+      _audioHandler!.forceUpdateMediaSession();
     }
   }
 
