@@ -69,12 +69,31 @@ class _DownloadsPageState extends State<DownloadsPage> {
                         future: repo.getBook(itemId),
                         builder: (context, bookSnap) {
                           final book = bookSnap.data;
-                          return _BookDownloadTile(
-                            itemId: itemId,
-                            title: book?.title ?? 'Item $itemId',
-                            coverUrl: book?.coverUrl,
-                            repo: widget.repo,
-                            latest: _latest,
+                          return Dismissible(
+                            key: ValueKey('dl-$itemId'),
+                            direction: DismissDirection.endToStart,
+                            background: Container(
+                              alignment: Alignment.centerRight,
+                              padding: const EdgeInsets.symmetric(horizontal: 20),
+                              color: Theme.of(context).colorScheme.error,
+                              child: Icon(
+                                Icons.delete_forever_rounded,
+                                color: Theme.of(context).colorScheme.onError,
+                              ),
+                            ),
+                            confirmDismiss: (_) async => true,
+                            onDismissed: (_) async {
+                              await widget.repo.cancelForItem(itemId);
+                              await widget.repo.deleteLocal(itemId);
+                              if (mounted) setState(() {});
+                            },
+                            child: _BookDownloadTile(
+                              itemId: itemId,
+                              title: book?.title ?? 'Item $itemId',
+                              coverUrl: book?.coverUrl,
+                              repo: widget.repo,
+                              latest: _latest,
+                            ),
                           );
                         },
                       );
@@ -93,8 +112,8 @@ class _DownloadsPageState extends State<DownloadsPage> {
                               await widget.repo.deleteAllLocal();
                               if (mounted) setState(() {});
                             },
-                            icon: const Icon(Icons.delete_forever_rounded),
-                            label: const Text('Delete all files'),
+                            icon: const Icon(Icons.delete_sweep_rounded),
+                            label: const Text('Delete all downloads'),
                           ),
                         ),
                       ],

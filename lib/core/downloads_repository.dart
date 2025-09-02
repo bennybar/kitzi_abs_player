@@ -125,27 +125,16 @@ class DownloadsRepository {
     }
   }
 
-  /// Delete ALL files inside the downloads folder (abs/) and cancel tasks.
-  Future<void> deleteAllLocal() async {
-    await cancelAll();
-    try {
-      final docs = await getApplicationDocumentsDirectory();
-      final absDir = Directory('${docs.path}/abs');
-      if (await absDir.exists()) {
-        await absDir.delete(recursive: true);
-      }
-    } catch (_) {}
-    // Remove all task records
-    try {
-      final all = await FileDownloader().database.allRecords();
-      for (final r in all) {
-        await FileDownloader().database.deleteRecordWithId(r.taskId);
-      }
-    } catch (_) {}
-  }
-
   Future<List<TaskRecord>> listAll() =>
       FileDownloader().database.allRecords();
+
+  /// Resume serial downloads for all tracked items (if applicable)
+  Future<void> resumeAll() async {
+    final ids = await listTrackedItemIds();
+    for (final id in ids) {
+      await _startNextForItem(id);
+    }
+  }
 
   /// Return a union of itemIds that either have local files or active records.
   Future<List<String>> listTrackedItemIds() async {
@@ -340,10 +329,27 @@ class DownloadsRepository {
   }
 
   Future<void> _resumeAllPending() async {
-    // For each tracked item, ensure the next missing file is scheduled
     final ids = await listTrackedItemIds();
     for (final id in ids) {
       await _startNextForItem(id);
     }
+  }
+
+  /// Delete all downloaded files and cancel any active tasks (global).
+  Future<void> deleteAllLocal() async {
+    await cancelAll();
+    try {
+      final docs = await getApplicationDocumentsDirectory();
+      final root = Directory('${docs.path}/abs');
+      if (await root.exists()) {
+        await root.delete(recursive: true);
+      }
+    } catch (_) {}
+    try {
+      final all = await FileDownloader().database.allRecords();
+      for (final r in all) {
+        await FileDownloader().database.deleteRecordWithId(r.taskId);
+      }
+    } catch (_) {}
   }
 }
