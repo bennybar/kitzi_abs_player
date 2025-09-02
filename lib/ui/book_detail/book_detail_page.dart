@@ -172,7 +172,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
                     ),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: _ListeningProgress(
+                      child: _ProgressSummary(
                         playback: playbackRepo,
                         book: b,
                         serverProgressFuture: _serverProgressFut!,
@@ -296,8 +296,8 @@ class _MetaLine extends StatelessWidget {
 }
 
 // ---------- Listening Progress ----------
-class _ListeningProgress extends StatelessWidget {
-  const _ListeningProgress({
+class _ProgressSummary extends StatelessWidget {
+  const _ProgressSummary({
     required this.playback,
     required this.book,
     required this.serverProgressFuture,
@@ -310,73 +310,61 @@ class _ListeningProgress extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isThis = playback.nowPlaying?.libraryItemId == book.id;
-
     if (isThis) {
-      return StreamBuilder<Duration?>(
-        stream: playback.durationStream,
-        initialData: playback.player.duration,
-        builder: (_, dSnap) {
-          final total = dSnap.data ?? Duration.zero;
-          return StreamBuilder<Duration>(
-            stream: playback.positionStream,
-            initialData: playback.player.position,
-            builder: (_, pSnap) {
-              final pos = pSnap.data ?? Duration.zero;
-              final v = (total.inMilliseconds > 0)
-                  ? pos.inMilliseconds / total.inMilliseconds
-                  : 0.0;
-              return _progressTile(
-                context,
-                value: v,
-                left: _fmt(pos),
-                right: total == Duration.zero ? '' : '-${_fmt(total - pos)}',
-              );
-            },
-          );
+      // Live summary based on entire book (all tracks), not per track
+      return StreamBuilder<Duration>(
+        stream: playback.positionStream,
+        initialData: playback.player.position,
+        builder: (_, pSnap) {
+          final np = playback.nowPlaying;
+          final curPos = pSnap.data ?? Duration.zero;
+          double totalSec = 0;
+          double prefixSec = 0;
+          if (np != null && np.tracks.isNotEmpty) {
+            for (int i = 0; i < np.tracks.length; i++) {
+              final d = np.tracks[i].duration;
+              if (d > 0) totalSec += d;
+              if (i < np.currentIndex && d > 0) prefixSec += d;
+            }
+          }
+          // Fallback to book duration if tracks have unknown durations
+          if (totalSec <= 0 && (book.durationMs ?? 0) > 0) {
+            totalSec = (book.durationMs ?? 0) / 1000.0;
+          }
+          final posSec = prefixSec + curPos.inSeconds;
+          return _renderText(context, posSec, totalSec > 0 ? totalSec : null);
         },
       );
     }
-
     return FutureBuilder<double?>(
       future: serverProgressFuture,
-      builder: (_, snap) {
-        final sec = (snap.data ?? 0.0);
-        final durMs = book.durationMs ?? 0;
-        final totalSec = durMs / 1000.0;
-        final v = (totalSec > 0) ? (sec / totalSec).clamp(0.0, 1.0) : 0.0;
-        return _progressTile(
-          context,
-          value: v,
-          left: _fmt(Duration(milliseconds: (sec * 1000).round())),
-          right: (totalSec > 0)
-              ? '-${_fmt(Duration(milliseconds: (totalSec * 1000 - sec * 1000).round()))}'
-              : '',
-        );
+      builder: (_, sSnap) {
+        final sec = sSnap.data;
+        return _renderText(context, sec, (book.durationMs ?? 0) / 1000.0);
       },
     );
   }
 
-  Widget _progressTile(BuildContext context,
-      {required double value, required String left, required String right}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text('Listening progress', style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 6),
-        LinearProgressIndicator(value: value),
-        const SizedBox(height: 4),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(left, style: Theme.of(context).textTheme.labelLarge),
-            Text(right, style: Theme.of(context).textTheme.labelLarge),
-          ],
-        ),
-      ],
+  Widget _renderText(BuildContext context, double? seconds, double? totalSeconds) {
+    final cs = Theme.of(context).colorScheme;
+    String label;
+    if (seconds == null || seconds <= 0) {
+      label = 'Not started';
+    } else if (totalSeconds == null || totalSeconds <= 0) {
+      label = 'In progress';
+    } else if ((seconds / totalSeconds) >= 0.999) {
+      label = 'Finished';
+    } else {
+      label = 'Progress: ${_fmtHMS(seconds)} of ${_fmtHMS(totalSeconds)}';
+    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Text(label, style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: cs.onSurfaceVariant)),
     );
   }
 
-  String _fmt(Duration d) {
+  String _fmtHMS(double sec) {
+    final d = Duration(milliseconds: (sec * 1000).round());
     final h = d.inHours;
     final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
     final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
