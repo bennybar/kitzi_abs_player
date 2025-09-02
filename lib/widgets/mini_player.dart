@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../core/playback_repository.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'dart:io';
 import '../main.dart'; // ServicesScope
 import '../ui/player/full_player_page.dart';
 
@@ -79,28 +81,10 @@ class MiniPlayer extends StatelessWidget {
                       children: [
                         // Enhanced cover with Hero
                         Hero(
-                          tag: 'cover-${np.libraryItemId}',
+                          tag: 'mini-cover-${np.libraryItemId}',
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(12),
-                            child: Image.network(
-                              np.coverUrl ?? '',
-                              width: height - 20,
-                              height: height - 20,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => Container(
-                                width: height - 20,
-                                height: height - 20,
-                                decoration: BoxDecoration(
-                                  color: cs.surfaceContainerHighest,
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Icon(
-                                  Icons.menu_book_outlined,
-                                  color: cs.onSurfaceVariant,
-                                  size: 28,
-                                ),
-                              ),
-                            ),
+                            child: _MiniCover(url: np.coverUrl, size: height - 20),
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -215,6 +199,50 @@ class MiniPlayer extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _MiniCover extends StatelessWidget {
+  const _MiniCover({required this.url, required this.size});
+  final String? url;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final placeholder = Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Icon(
+        Icons.menu_book_outlined,
+        color: cs.onSurfaceVariant,
+        size: size * 0.45,
+      ),
+    );
+
+    final src = url ?? '';
+    if (src.startsWith('file://')) {
+      final file = File(Uri.parse(src).toFilePath());
+      if (file.existsSync()) {
+        return Image.file(file, width: size, height: size, fit: BoxFit.cover);
+      }
+      return placeholder;
+    }
+
+    if (src.isEmpty) return placeholder;
+
+    return CachedNetworkImage(
+      imageUrl: src,
+      width: size,
+      height: size,
+      fit: BoxFit.cover,
+      placeholder: (_, __) => placeholder,
+      errorWidget: (_, __, ___) => placeholder,
     );
   }
 }

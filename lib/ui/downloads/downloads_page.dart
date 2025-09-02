@@ -200,7 +200,10 @@ class _BookDownloadTileState extends State<_BookDownloadTile> {
 
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      leading: _cover(widget.coverUrl, cs),
+      leading: Hero(
+        tag: 'downloads-cover-${widget.itemId}',
+        child: _cover(widget.coverUrl, cs),
+      ),
       title: Text(widget.title, maxLines: 2, overflow: TextOverflow.ellipsis),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

@@ -546,9 +546,12 @@ class _BookCard extends StatelessWidget {
                       ),
                     ],
                   ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: _CoverThumb(url: book.coverUrl),
+                  child: Hero(
+                    tag: 'home-cover-${book.id}',
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: _CoverThumb(url: book.coverUrl),
+                    ),
                   ),
                 ),
               ),
@@ -620,9 +623,12 @@ class _BookListTile extends StatelessWidget {
                     ),
                   ],
                 ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: _CoverThumb(url: book.coverUrl, size: 72),
+                child: Hero(
+                  tag: 'home-cover-${book.id}',
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: _CoverThumb(url: book.coverUrl, size: 72),
+                  ),
                 ),
               ),
               const SizedBox(width: 16),

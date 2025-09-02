@@ -265,7 +265,7 @@ class FullPlayerPage extends StatelessWidget {
                       children: [
                         // Cover with enhanced shadow and border
                         Hero(
-                          tag: 'cover-${np.libraryItemId}',
+                          tag: 'mini-cover-${np.libraryItemId}',
                           child: Container(
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(24),
