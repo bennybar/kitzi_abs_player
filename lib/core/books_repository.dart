@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
+import 'dart:io';
 import '../models/book.dart';
 import 'auth_repository.dart';
 
@@ -76,7 +77,7 @@ class BooksRepository {
   }
 
   Future<List<Book>> listBooks() async {
-    // Always prefer local DB first
+    // Always prefer local DB first and do not hit network on app start when DB has data
     final local = await _listBooksFromDb();
     if (local.isNotEmpty) return local;
 
@@ -135,6 +136,7 @@ class BooksRepository {
             title TEXT NOT NULL,
             author TEXT,
             coverUrl TEXT NOT NULL,
+            coverPath TEXT,
             description TEXT,
             durationMs INTEGER,
             sizeBytes INTEGER,
@@ -143,6 +145,11 @@ class BooksRepository {
         ''');
       },
     );
+
+    // Best-effort migration for existing installs
+    try {
+      await _db!.execute('ALTER TABLE books ADD COLUMN coverPath TEXT');
+    } catch (_) {}
   }
 
   Future<void> _upsertBooks(List<Book> items) async {
@@ -150,6 +157,8 @@ class BooksRepository {
     if (db == null) return;
     final batch = db.batch();
     for (final b in items) {
+      final coverFile = await _coverFileForId(b.id);
+      final hasLocal = await coverFile.exists();
       batch.insert(
         'books',
         {
@@ -157,6 +166,7 @@ class BooksRepository {
           'title': b.title,
           'author': b.author,
           'coverUrl': b.coverUrl,
+          'coverPath': hasLocal ? coverFile.path : null,
           'description': b.description,
           'durationMs': b.durationMs,
           'sizeBytes': b.sizeBytes,
@@ -177,8 +187,12 @@ class BooksRepository {
     final token = await _auth.api.accessToken();
     return rows.map((m) {
       final id = (m['id'] as String);
+      final localPath = (m['coverPath'] as String?);
       var coverUrl = '$baseUrl/api/items/$id/cover';
       if (token != null && token.isNotEmpty) coverUrl = '$coverUrl?token=$token';
+      if (localPath != null && File(localPath).existsSync()) {
+        coverUrl = 'file://$localPath';
+      }
       return Book(
         id: id,
         title: (m['title'] as String),
@@ -238,6 +252,8 @@ class BooksRepository {
 
       final items = _extractItems(body);
       final books = await _toBooks(items);
+      // Persist covers to disk (best effort)
+      await _persistCovers(books);
       await _upsertBooks(books);
       return await _listBooksFromDb();
     }
@@ -251,5 +267,44 @@ class BooksRepository {
     if (db == null) return true;
     final count = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM books')) ?? 0;
     return count == 0;
+  }
+
+  // ---- Offline covers ----
+  Future<Directory> _coversDir() async {
+    final dbPath = await getDatabasesPath();
+    // Use the same base root as database to avoid extra permissions
+    final dir = Directory(p.join(dbPath, 'kitzi_covers'));
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+    return dir;
+  }
+
+  Future<File> _coverFileForId(String id) async {
+    final dir = await _coversDir();
+    return File(p.join(dir.path, '$id.jpg'));
+  }
+
+  Future<void> _persistCovers(List<Book> books) async {
+    final client = http.Client();
+    try {
+      for (final b in books) {
+        final file = await _coverFileForId(b.id);
+        if (await file.exists()) continue;
+        try {
+          final resp = await client.get(Uri.parse(b.coverUrl));
+          if (resp.statusCode == 200 && resp.bodyBytes.isNotEmpty) {
+            await file.writeAsBytes(resp.bodyBytes, flush: true);
+            // Update DB row's coverPath
+            final db = _db;
+            if (db != null) {
+              await db.update('books', {'coverPath': file.path}, where: 'id = ?', whereArgs: [b.id]);
+            }
+          }
+        } catch (_) {}
+      }
+    } finally {
+      client.close();
+    }
   }
 }

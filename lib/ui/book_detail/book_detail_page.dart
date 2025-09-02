@@ -1,4 +1,5 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:background_downloader/background_downloader.dart';
 
@@ -9,6 +10,7 @@ import '../../core/playback_repository.dart';
 import '../../widgets/mini_player.dart';
 import '../../widgets/download_button.dart';
 import '../../main.dart'; // ServicesScope
+import '../../ui/player/full_player_page.dart'; // Added import for FullPlayerPage
 
 class BookDetailPage extends StatefulWidget {
   const BookDetailPage({super.key, required this.bookId});
@@ -69,6 +71,16 @@ class _BookDetailPageState extends State<BookDetailPage> {
               }
 
               final b = snap.data!;
+              // Debug: Inspect raw description to understand formatting
+              // and confirm whether it is JSON we can parse
+              try {
+                final raw = b.description ?? '';
+                final preview = raw.length > 500 ? raw.substring(0, 500) + '…' : raw;
+                debugPrint('[DETAILS] Book id=${b.id} title="${b.title}"');
+                debugPrint('[DETAILS] Author=${b.author} durationMs=${b.durationMs} sizeBytes=${b.sizeBytes}');
+                debugPrint('[DETAILS] description.length=${raw.length}');
+                debugPrint('[DETAILS] description.preview=${preview.replaceAll('\n', ' ')}');
+              } catch (_) {}
 
               String fmtDuration() {
                 if (b.durationMs == null || b.durationMs == 0) return 'Unknown';
@@ -150,14 +162,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
                       SliverToBoxAdapter(
                         child: Padding(
                           padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('Description', style: text.titleMedium),
-                              const SizedBox(height: 8),
-                              Text(b.description!, style: text.bodyMedium),
-                            ],
-                          ),
+                          child: _MetaOrDescription(book: b),
                         ),
                       ),
                     SliverToBoxAdapter(
@@ -170,7 +175,11 @@ class _BookDetailPageState extends State<BookDetailPage> {
                                 onPressed: () async {
                                   await playbackRepo.playItem(b.id);
                                   if (!context.mounted) return;
-                                  Navigator.of(context).pushNamed('/player');
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => const FullPlayerPage(),
+                                    ),
+                                  );
                                 },
                                 icon: const Icon(Icons.play_arrow),
                                 label: const Text('Play'),
@@ -358,5 +367,193 @@ class _ListeningProgress extends StatelessWidget {
     final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
     final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
     return h > 0 ? '$h:$m:$s' : '$m:$s';
+  }
+}
+
+/// Converts JSON-like descriptions to a human-readable list, otherwise shows text as-is.
+class _HumanizedDescription extends StatelessWidget {
+  const _HumanizedDescription({required this.raw});
+  final String raw;
+
+  bool _looksLikeJsonList(String s) {
+    final t = s.trim();
+    return t.startsWith('[') && t.endsWith(']');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+
+    if (_looksLikeJsonList(raw)) {
+      try {
+        final data = jsonDecode(raw);
+        if (data is List) {
+          final items = data.cast<dynamic>();
+          // Render as a pretty bullet list: "Name (id)"
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final it in items)
+                if (it is Map)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('• ', style: text.bodyMedium?.copyWith(color: cs.onSurface)),
+                        Expanded(
+                          child: Text(
+                            '${it['name'] ?? it['title'] ?? 'Item'} (${it['id'] ?? ''})',
+                            style: text.bodyMedium,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+            ],
+          );
+        }
+      } catch (_) {
+        // fall through to plain text
+      }
+    }
+
+    return Text(raw, style: Theme.of(context).textTheme.bodyMedium);
+  }
+}
+
+/// Attempts to parse structured JSON in `Book.description` and render
+/// a rich, human-readable metadata panel. Falls back to plain text.
+class _MetaOrDescription extends StatelessWidget {
+  const _MetaOrDescription({required this.book});
+  final Book book;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+
+    dynamic parsed;
+    try {
+      final raw = book.description ?? '';
+      debugPrint('[DETAILS] Attempting jsonDecode for book=${book.id}');
+      parsed = jsonDecode(raw);
+      debugPrint('[DETAILS] jsonDecode success: type=${parsed.runtimeType}');
+    } catch (e) {
+      debugPrint('[DETAILS] jsonDecode failed: $e');
+    }
+
+    if (parsed is Map<String, dynamic>) {
+      final m = parsed;
+      debugPrint('[DETAILS] Parsed Map keys=${m.keys.toList()}');
+
+      String title = book.title;
+      final author = book.author ?? _fromList(m['authors']) ?? _fromList(book.authors);
+      final narrators = _fromList(m['narrators']) ?? _fromList(book.narrators);
+      final publisher = (m['publisher']?.toString()) ?? book.publisher;
+      final year = (m['year']?.toString() ?? m['publishYear']?.toString()) ?? (book.publishYear?.toString());
+      final genres = _fromList(m['genres'], sep: ' / ') ?? _fromList(book.genres, sep: ' / ');
+      final duration = _formatDurationAny(m['duration'] ?? m['durationMs'] ?? book.durationMs);
+      final size = _formatSizeAny(m['size'] ?? book.sizeBytes);
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: text.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+          if (author != null && author.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text('by $author', style: text.titleMedium?.copyWith(color: cs.onSurfaceVariant)),
+          ],
+          const SizedBox(height: 16),
+          if (narrators != null && narrators.isNotEmpty) _kv('Narrators', narrators, context),
+          if (year != null && year.isNotEmpty) _kv('Publish Year', year, context),
+          if (publisher != null && publisher.isNotEmpty) _kv('Publisher', publisher, context),
+          if (genres != null && genres.isNotEmpty) _kv('Genres', genres, context),
+          if (duration != null && duration.isNotEmpty) _kv('Duration', duration, context),
+          if (size != null && size.isNotEmpty) _kv('Size', size, context),
+        ],
+      );
+    }
+
+    if (parsed is List) {
+      // Show as bullet list using humanizer
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Details', style: text.titleMedium),
+          const SizedBox(height: 8),
+          _HumanizedDescription(raw: book.description!),
+        ],
+      );
+    }
+
+    // Fallback plain text
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Description', style: text.titleMedium),
+        const SizedBox(height: 8),
+        Text(book.description ?? '', style: text.bodyMedium),
+      ],
+    );
+  }
+
+  String? _fromList(dynamic v, {String sep = ', '}) {
+    if (v == null) return null;
+    if (v is List) {
+      final parts = <String>[];
+      for (final it in v) {
+        if (it is String) parts.add(it);
+        if (it is Map && (it['name'] != null || it['title'] != null)) {
+          parts.add((it['name'] ?? it['title']).toString());
+        }
+      }
+      return parts.join(sep);
+    }
+    return v.toString();
+  }
+
+  String? _formatDurationAny(dynamic v) {
+    if (v == null) return null;
+    if (v is int) return _fmt(Duration(milliseconds: v));
+    if (v is num) return _fmt(Duration(seconds: v.round())) ;
+    if (v is String) {
+      final n = num.tryParse(v);
+      if (n != null) return _formatDurationAny(n);
+    }
+    return null;
+  }
+
+  String _fmt(Duration d) {
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    return h > 0 ? '$h hr $m min' : '$m min';
+  }
+
+  String? _formatSizeAny(dynamic v) {
+    if (v == null) return null;
+    num? bytes;
+    if (v is num) bytes = v;
+    if (v is String) bytes = num.tryParse(v);
+    if (bytes == null) return null;
+    final mb = bytes / (1024 * 1024);
+    return '${mb.toStringAsFixed(2)} MB';
+  }
+
+  Widget _kv(String k, String v, BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(k, style: text.labelLarge?.copyWith(color: cs.onSurfaceVariant)),
+          const SizedBox(height: 2),
+          Text(v, style: text.bodyMedium),
+        ],
+      ),
+    );
   }
 }

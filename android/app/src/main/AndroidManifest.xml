@@ -54,6 +54,8 @@
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
 
+        <!-- Android Auto discovery is handled by the audio_service plugin's service above -->
+
     </application>
 
     <!-- Required to query activities that can process text, see:

@@ -482,6 +482,20 @@ class PlaybackRepository {
     final session = await AudioSession.instance;
     await session.configure(const AudioSessionConfiguration.music());
     WidgetsBinding.instance.addObserver(_lifecycleHook);
+
+    // Pause when headphones unplug or audio becomes noisy
+    // and respect interruption events (e.g., phone calls)
+    session.becomingNoisyEventStream.listen((_) async {
+      await pause();
+    });
+
+    session.interruptionEventStream.listen((event) async {
+      if (event.begin) {
+        // On any interruption start, pause playback
+        await pause();
+      }
+      // We avoid auto-resume to be conservative for user intent/battery
+    });
   }
 
   Future<void> _setTrackAt(int index, {bool preload = false}) async {
