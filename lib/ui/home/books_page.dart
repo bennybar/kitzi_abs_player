@@ -25,7 +25,7 @@ class _BooksPageState extends State<BooksPage> {
   String? _error;
   Timer? _timer;
 
-  LibraryView _view = LibraryView.grid;
+  LibraryView _view = LibraryView.list;
   SortMode _sort = SortMode.addedDesc;
   String _query = '';
 
@@ -184,7 +184,8 @@ class _BooksPageState extends State<BooksPage> {
         color: cs.primary,
         backgroundColor: cs.surface,
         child: CustomScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
+          physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+          cacheExtent: 1200,
           slivers: [
           // Enhanced App Bar with modern design
           SliverAppBar(
@@ -304,47 +305,7 @@ class _BooksPageState extends State<BooksPage> {
                   ),
                   const SizedBox(height: 16),
 
-                  // View toggle with enhanced design
-                  Container(
-                    decoration: BoxDecoration(
-                      color: cs.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: SegmentedButton<LibraryView>(
-                      segments: const [
-                        ButtonSegment(
-                          value: LibraryView.grid,
-                          icon: Icon(Icons.grid_view_rounded),
-                          label: Text('Grid'),
-                        ),
-                        ButtonSegment(
-                          value: LibraryView.list,
-                          icon: Icon(Icons.view_list_rounded),
-                          label: Text('List'),
-                        ),
-                      ],
-                      selected: {_view},
-                      onSelectionChanged: (sel) {
-                        final v = sel.first;
-                        setState(() => _view = v);
-                        _saveViewPref(v);
-                      },
-                      style: ButtonStyle(
-                        backgroundColor: MaterialStateProperty.resolveWith((states) {
-                          if (states.contains(MaterialState.selected)) {
-                            return cs.primaryContainer;
-                          }
-                          return Colors.transparent;
-                        }),
-                        foregroundColor: MaterialStateProperty.resolveWith((states) {
-                          if (states.contains(MaterialState.selected)) {
-                            return cs.onPrimaryContainer;
-                          }
-                          return cs.onSurfaceVariant;
-                        }),
-                      ),
-                    ),
-                  ),
+                  // View toggle removed – list only
                 ],
               ),
             ),
@@ -456,9 +417,7 @@ class _BooksPageState extends State<BooksPage> {
               ),
             )
           else
-            (_view == LibraryView.grid
-                ? _buildGrid(visible)
-                : _buildList(visible)),
+            _buildList(visible),
         ],
         ),
       ),
@@ -470,10 +429,10 @@ class _BooksPageState extends State<BooksPage> {
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
       sliver: SliverGrid(
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          mainAxisSpacing: 16,
-          crossAxisSpacing: 16,
-          childAspectRatio: 0.7,
+          crossAxisCount: 3,
+          mainAxisSpacing: 12,
+          crossAxisSpacing: 12,
+          childAspectRatio: 0.62,
         ),
         delegate: SliverChildBuilderDelegate(
           (context, i) {
@@ -494,7 +453,7 @@ class _BooksPageState extends State<BooksPage> {
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
       sliver: SliverList.separated(
         itemCount: list.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 12),
+        separatorBuilder: (_, __) => const SizedBox(height: 8),
         itemBuilder: (context, i) {
           final b = list[i];
           return _BookListTile(
@@ -533,51 +492,60 @@ class _BookCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Enhanced cover with shadow
-              Expanded(
-                child: Container(
-                  decoration: BoxDecoration(
+              // Uniform cover size 2:3
+              Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: cs.shadow.withOpacity(0.1),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Hero(
+                  tag: 'home-cover-${book.id}',
+                  child: ClipRRect(
                     borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: cs.shadow.withOpacity(0.1),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Hero(
-                    tag: 'home-cover-${book.id}',
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
+                    child: AspectRatio(
+                      aspectRatio: 2 / 3,
                       child: _CoverThumb(url: book.coverUrl),
                     ),
                   ),
                 ),
               ),
-              const SizedBox(height: 12),
-              
-              // Title and author with better typography
-              Text(
-                book.title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  height: 1.2,
-                ),
-              ),
-              if (book.author != null && book.author!.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Text(
-                  book.author!,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: cs.onSurfaceVariant,
+              const SizedBox(height: 6),
+              // Fixed text heights for consistency
+              SizedBox(
+                height: 34,
+                child: Align(
+                  alignment: Alignment.topLeft,
+                  child: Text(
+                    book.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      height: 1.1,
+                    ),
                   ),
                 ),
-              ],
+              ),
+              const SizedBox(height: 2),
+              SizedBox(
+                height: 14,
+                child: (book.author != null && book.author!.isNotEmpty)
+                    ? Text(
+                        book.author!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: cs.onSurfaceVariant,
+                        ),
+                      )
+                    : const SizedBox.shrink(),
+              ),
             ],
           ),
         ),
@@ -608,7 +576,7 @@ class _BookListTile extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(12),
           child: Row(
             children: [
               // Enhanced cover
@@ -631,7 +599,7 @@ class _BookListTile extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 12),
               
               // Title and author
               Expanded(
