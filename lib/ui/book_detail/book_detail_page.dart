@@ -96,145 +96,123 @@ class _BookDetailPageState extends State<BookDetailPage> {
                 return '${mb.toStringAsFixed(1)} MB';
               }
 
+              // Layout: header and actions stay static; description area scrolls independently.
               return Padding(
                 padding: const EdgeInsets.only(bottom: 112), // room for mini player
-                child: CustomScrollView(
-                  slivers: [
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
-                              child: CachedNetworkImage(
-                                imageUrl: b.coverUrl,
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: CachedNetworkImage(
+                              imageUrl: b.coverUrl,
+                              width: 140,
+                              height: 210,
+                              fit: BoxFit.cover,
+                              errorWidget: (_, __, ___) => Container(
                                 width: 140,
                                 height: 210,
-                                fit: BoxFit.cover,
-                                errorWidget: (_, __, ___) => Container(
-                                  width: 140,
-                                  height: 210,
-                                  alignment: Alignment.center,
-                                  color: cs.surfaceContainerHighest,
-                                  child: const Icon(Icons.menu_book_outlined, size: 48),
-                                ),
+                                alignment: Alignment.center,
+                                color: cs.surfaceContainerHighest,
+                                child: const Icon(Icons.menu_book_outlined, size: 48),
                               ),
                             ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(b.title, style: text.titleLarge, maxLines: 2, overflow: TextOverflow.ellipsis),
-                                  const SizedBox(height: 6),
-                                  Text(b.author ?? 'Unknown author', style: text.titleMedium),
-                                  const SizedBox(height: 12),
-                                  Wrap(
-                                    spacing: 8,
-                                    runSpacing: 8,
-                                    children: [
-                                      _InfoChip(icon: Icons.schedule, label: fmtDuration()),
-                                      _InfoChip(icon: Icons.save_alt, label: fmtSize()),
-                                      if (b.updatedAt != null)
-                                        _InfoChip(icon: Icons.update, label: b.updatedAt!.toLocal().toString().split('.').first),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: _ListeningProgress(
-                          playback: playbackRepo,
-                          book: b,
-                          serverProgressFuture: _serverProgressFut!,
-                        ),
-                      ),
-                    ),
-                    if (b.description != null && b.description!.isNotEmpty)
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                          child: _MetaOrDescription(book: b),
-                        ),
-                      ),
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: FilledButton.icon(
-                                onPressed: () async {
-                                  await playbackRepo.playItem(b.id);
-                                  if (!context.mounted) return;
-                                  Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      builder: (_) => const FullPlayerPage(),
-                                    ),
-                                  );
-                                },
-                                icon: const Icon(Icons.play_arrow),
-                                label: const Text('Play'),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: DownloadButton(
-                                libraryItemId: b.id,
-                                titleForNotification: b.title,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    // Optional inline per-book progress strip (kept)
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                        child: StreamBuilder<TaskUpdate>(
-                          stream: downloadsRepo.progressStream(),
-                          builder: (_, snapUp) {
-                            if (!snapUp.hasData) return const SizedBox.shrink();
-                            final up = snapUp.data!;
-                            final metaStr = up.task.metaData ?? '';
-                            final isThisBook = metaStr.contains(b.id);
-                            if (!isThisBook) return const SizedBox.shrink();
-
-                            double? progressValue;
-                            String statusText = 'running';
-
-                            if (up is TaskProgressUpdate) {
-                              progressValue = up.progress;
-                            } else if (up is TaskStatusUpdate) {
-                              statusText = up.status.name;
-                              progressValue = null; // indeterminate
-                            }
-
-                            return Column(
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                LinearProgressIndicator(value: progressValue),
-                                const SizedBox(height: 4),
-                                Text(
-                                  progressValue != null
-                                      ? 'Download: $statusText • ${(progressValue * 100).toStringAsFixed(0)}%'
-                                      : 'Download: $statusText',
+                                Text(b.title, style: text.titleLarge, maxLines: 2, overflow: TextOverflow.ellipsis),
+                                const SizedBox(height: 6),
+                                Text(b.author ?? 'Unknown author', style: text.titleMedium),
+                                const SizedBox(height: 12),
+                                if ((b.narrators ?? const []).isNotEmpty)
+                                  _MetaLine(
+                                    icon: Icons.record_voice_over_rounded,
+                                    label: 'Narrators',
+                                    value: b.narrators!.join(', '),
+                                  ),
+                                if (b.publishYear != null)
+                                  _MetaLine(
+                                    icon: Icons.calendar_today_rounded,
+                                    label: 'Publish Year',
+                                    value: b.publishYear.toString(),
+                                  ),
+                                if ((b.publisher ?? '').isNotEmpty)
+                                  _MetaLine(
+                                    icon: Icons.business_rounded,
+                                    label: 'Publisher',
+                                    value: b.publisher!,
+                                  ),
+                                if ((b.genres ?? const []).isNotEmpty)
+                                  _MetaLine(
+                                    icon: Icons.category_rounded,
+                                    label: 'Genres',
+                                    value: b.genres!.join(' / '),
+                                  ),
+                                const SizedBox(height: 12),
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: [
+                                    _InfoChip(icon: Icons.schedule, label: fmtDuration()),
+                                    _InfoChip(icon: Icons.save_alt, label: fmtSize()),
+                                  ],
                                 ),
                               ],
-                            );
-                          },
-                        ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: _ListeningProgress(
+                        playback: playbackRepo,
+                        book: b,
+                        serverProgressFuture: _serverProgressFut!,
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: FilledButton.icon(
+                              onPressed: () async {
+                                await playbackRepo.playItem(b.id);
+                                if (!context.mounted) return;
+                                await FullPlayerPage.openOnce(context);
+                              },
+                              icon: const Icon(Icons.play_arrow),
+                              label: const Text('Play'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: DownloadButton(
+                              libraryItemId: b.id,
+                              titleForNotification: b.title,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Scrollable description area
+                    if (b.description != null && b.description!.isNotEmpty)
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                          child: SingleChildScrollView(
+                            child: _MetaOrDescription(book: b),
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               );
@@ -275,6 +253,42 @@ class _InfoChip extends StatelessWidget {
           Icon(icon, size: 16, color: cs.onSurfaceVariant),
           const SizedBox(width: 6),
           Text(label, style: Theme.of(context).textTheme.labelLarge),
+        ],
+      ),
+    );
+  }
+}
+
+class _MetaLine extends StatelessWidget {
+  const _MetaLine({required this.icon, required this.label, required this.value});
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: cs.onSurfaceVariant),
+          const SizedBox(width: 8),
+          Expanded(
+            child: RichText(
+              text: TextSpan(
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: cs.onSurface),
+                children: [
+                  TextSpan(
+                    text: '$label\n',
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(color: cs.onSurfaceVariant),
+                  ),
+                  TextSpan(text: value),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );

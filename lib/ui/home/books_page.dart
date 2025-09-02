@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -92,6 +93,7 @@ class _BooksPageState extends State<BooksPage> {
     });
     try {
       final repo = await _repoFut;
+      // Offline-first: always try local DB; only network on explicit pull
       final items = initial ? await repo.listBooks() : await repo.refreshFromServer();
       if (!mounted) return;
       setState(() {
@@ -384,6 +386,23 @@ class _BooksPageState extends State<BooksPage> {
                         icon: const Icon(Icons.refresh_rounded),
                         label: const Text('Try Again'),
                       ),
+                      const SizedBox(height: 8),
+                      FilledButton.tonalIcon(
+                        onPressed: () async {
+                          // Force offline view from DB only
+                          setState(() => _loading = true);
+                          final repo = await _repoFut;
+                          final local = await repo.listBooks();
+                          if (!mounted) return;
+                          setState(() {
+                            _books = local;
+                            _loading = false;
+                            _error = null;
+                          });
+                        },
+                        icon: const Icon(Icons.offline_pin_rounded),
+                        label: const Text('Show Offline Library'),
+                      ),
                     ],
                   ),
                 ),
@@ -660,18 +679,29 @@ class _CoverThumb extends StatelessWidget {
       ),
     );
 
-    final img = CachedNetworkImage(
-      imageUrl: url,
-      fit: BoxFit.cover,
-      placeholder: (_, __) => placeholder,
-      errorWidget: (_, __, ___) => placeholder,
-    );
+    // Support offline file:// covers produced by DB
+    final uri = Uri.tryParse(url);
+    Widget child;
+    if (uri != null && uri.scheme == 'file') {
+      final filePath = uri.toFilePath();
+      final file = File(filePath);
+      child = file.existsSync()
+          ? Image.file(file, fit: BoxFit.cover)
+          : placeholder;
+    } else {
+      child = CachedNetworkImage(
+        imageUrl: url,
+        fit: BoxFit.cover,
+        placeholder: (_, __) => placeholder,
+        errorWidget: (_, __, ___) => placeholder,
+      );
+    }
 
     return ClipRRect(
       borderRadius: radius,
       child: size != null
-          ? SizedBox(width: size, height: size, child: img)
-          : img,
+          ? SizedBox(width: size, height: size, child: child)
+          : child,
     );
   }
 }

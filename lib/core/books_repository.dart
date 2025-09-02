@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async' show unawaited;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
@@ -79,7 +80,13 @@ class BooksRepository {
   Future<List<Book>> listBooks() async {
     // Always prefer local DB first and do not hit network on app start when DB has data
     final local = await _listBooksFromDb();
-    if (local.isNotEmpty) return local;
+    if (local.isNotEmpty) {
+      // Best-effort: ensure covers exist locally in background
+      // without blocking UI. Missing covers will be fetched once.
+      // This avoids network list fetches at startup.
+      unawaited(_persistCovers(local));
+      return local;
+    }
 
     // If DB empty, do an initial network fetch and persist
     final fetched = await refreshFromServer();
@@ -292,7 +299,15 @@ class BooksRepository {
         final file = await _coverFileForId(b.id);
         if (await file.exists()) continue;
         try {
-          final resp = await client.get(Uri.parse(b.coverUrl));
+          // Always fetch from server for highest quality; strip any file:// fallback
+          var src = b.coverUrl;
+          if (src.startsWith('file://')) {
+            final baseUrl = _auth.api.baseUrl ?? '';
+            final token = await _auth.api.accessToken();
+            src = '$baseUrl/api/items/${b.id}/cover';
+            if (token != null && token.isNotEmpty) src = '$src?token=$token';
+          }
+          final resp = await client.get(Uri.parse(src));
           if (resp.statusCode == 200 && resp.bodyBytes.isNotEmpty) {
             await file.writeAsBytes(resp.bodyBytes, flush: true);
             // Update DB row's coverPath

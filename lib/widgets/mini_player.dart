@@ -29,10 +29,8 @@ class MiniPlayer extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const FullPlayerPage()),
-            );
+          onTap: () async {
+            await FullPlayerPage.openOnce(context);
           },
           child: SizedBox(
             height: height,

@@ -7,6 +7,20 @@ import '../../main.dart'; // ServicesScope
 class FullPlayerPage extends StatelessWidget {
   const FullPlayerPage({super.key});
 
+  // Prevent duplicate openings of the FullPlayerPage within the same session.
+  static bool _isOpen = false;
+  static Future<void> openOnce(BuildContext context) async {
+    if (_isOpen) return;
+    _isOpen = true;
+    try {
+      await Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const FullPlayerPage()),
+      );
+    } finally {
+      _isOpen = false;
+    }
+  }
+
   String _fmt(Duration d) {
     final h = d.inHours;
     final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
