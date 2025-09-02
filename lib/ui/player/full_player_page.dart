@@ -292,7 +292,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
                     // ARTWORK + TITLE
                     Expanded(
                       child: Padding(
-                        padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+                        padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
                         child: Column(
                           children: [
                             // Cover with enhanced shadow and border
@@ -329,7 +329,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 32),
+                            const SizedBox(height: 20),
 
                             // Title / author with enhanced typography
                             Text(
@@ -362,7 +362,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
 
                     // POSITION + SLIDER
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+                      padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
                       child: StreamBuilder<Duration?>(
                         stream: playback.durationStream,
                         initialData: playback.player.duration,
@@ -383,10 +383,10 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
                                     data: SliderTheme.of(context).copyWith(
                                       trackHeight: 6,
                                       thumbShape: const RoundSliderThumbShape(
-                                        enabledThumbRadius: 12,
+                                        enabledThumbRadius: 10,
                                         elevation: 4,
                                       ),
-                                      overlayShape: const RoundSliderOverlayShape(overlayRadius: 20),
+                                      overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
                                       activeTrackColor: cs.primary,
                                       inactiveTrackColor: cs.surfaceContainerHighest,
                                       thumbColor: cs.primary,
@@ -441,66 +441,90 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
                       ),
                     ),
 
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 8),
 
                     // CONTROLS + CHAPTERS
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
                       child: Column(
                         children: [
-                          // Large transport controls (Material 3)
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                            children: [
-                              _RoundIconButton(
-                                tooltip: 'Previous track',
-                                icon: Icons.skip_previous_rounded,
-                                onTap: () async {
-                                  if (playback.hasPrev) {
-                                    await playback.prevTrack();
-                                  }
-                                },
-                              ),
-                              _RoundIconButton(
-                                tooltip: 'Back 30s',
-                                icon: Icons.replay_30_rounded,
-                                onTap: () => playback.nudgeSeconds(-30),
-                              ),
-                              StreamBuilder<bool>(
-                                stream: playback.playingStream,
-                                initialData: playback.player.playing,
-                                builder: (_, playSnap) {
-                                  final playing = playSnap.data ?? false;
-                                  return _RoundIconButton(
-                                    tooltip: playing ? 'Pause' : 'Play',
-                                    icon: playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                                    isPrimary: true,
-                                    size: 96,
+                          // Large transport controls (Material 3) - single row, auto-sized
+                          LayoutBuilder(
+                            builder: (context, constraints) {
+                              final maxW = constraints.maxWidth;
+                              double spacing = 12;
+                              double side = 56;   // base side buttons
+                              double center = 72; // base center button
+                              final needed = 4 * side + center + 4 * spacing;
+                              if (needed > maxW) {
+                                final scale = (maxW - 4 * spacing) / (4 * side + center);
+                                final clamped = scale.clamp(0.6, 1.0);
+                                side = side * clamped;
+                                center = center * clamped;
+                              }
+                              return Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  _ControlButton(
+                                    tooltip: 'Previous track',
+                                    icon: Icons.skip_previous_rounded,
+                                    size: side,
                                     onTap: () async {
-                                      if (playing) {
-                                        await playback.pause();
-                                      } else {
-                                        await playback.resume();
+                                      if (playback.hasPrev) {
+                                        await playback.prevTrack();
                                       }
                                     },
-                                  );
-                                },
-                              ),
-                              _RoundIconButton(
-                                tooltip: 'Forward 30s',
-                                icon: Icons.forward_30_rounded,
-                                onTap: () => playback.nudgeSeconds(30),
-                              ),
-                              _RoundIconButton(
-                                tooltip: 'Next track',
-                                icon: Icons.skip_next_rounded,
-                                onTap: () async {
-                                  if (playback.hasNext) {
-                                    await playback.nextTrack();
-                                  }
-                                },
-                              ),
-                            ],
+                                  ),
+                                  SizedBox(width: spacing),
+                                  _ControlButton(
+                                    tooltip: 'Back 30s',
+                                    icon: Icons.replay_30_rounded,
+                                    size: side,
+                                    onTap: () => playback.nudgeSeconds(-30),
+                                  ),
+                                  SizedBox(width: spacing),
+                                  StreamBuilder<bool>(
+                                    stream: playback.playingStream,
+                                    initialData: playback.player.playing,
+                                    builder: (_, playSnap) {
+                                      final playing = playSnap.data ?? false;
+                                      return _ControlButton(
+                                        tooltip: playing ? 'Pause' : 'Play',
+                                        icon: playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                                        isPrimary: true,
+                                        isCircular: !playing, // keep round when showing Play triangle
+                                        size: center,
+                                        onTap: () async {
+                                          if (playing) {
+                                            await playback.pause();
+                                          } else {
+                                            await playback.resume();
+                                          }
+                                        },
+                                      );
+                                    },
+                                  ),
+                                  SizedBox(width: spacing),
+                                  _ControlButton(
+                                    tooltip: 'Forward 30s',
+                                    icon: Icons.forward_30_rounded,
+                                    size: side,
+                                    onTap: () => playback.nudgeSeconds(30),
+                                  ),
+                                  SizedBox(width: spacing),
+                                  _ControlButton(
+                                    tooltip: 'Next track',
+                                    icon: Icons.skip_next_rounded,
+                                    size: side,
+                                    onTap: () async {
+                                      if (playback.hasNext) {
+                                        await playback.nextTrack();
+                                      }
+                                    },
+                                  ),
+                                ],
+                              );
+                            },
                           ),
 
                           const SizedBox(height: 24),
@@ -556,13 +580,14 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
 }
 
 /// Enhanced circular MD3 icon button used for transport controls
-class _RoundIconButton extends StatelessWidget {
-  const _RoundIconButton({
+class _ControlButton extends StatelessWidget {
+  const _ControlButton({
     required this.icon,
     required this.onTap,
     this.tooltip,
     this.isPrimary = false,
     this.size = 64,
+    this.isCircular = false,
   });
 
   final IconData icon;
@@ -570,6 +595,7 @@ class _RoundIconButton extends StatelessWidget {
   final String? tooltip;
   final bool isPrimary;
   final double size;
+  final bool isCircular;
 
   @override
   Widget build(BuildContext context) {
@@ -578,19 +604,25 @@ class _RoundIconButton extends StatelessWidget {
     final bg = isPrimary ? cs.primary : cs.surfaceContainerHighest;
     final fg = isPrimary ? cs.onPrimary : cs.onSurface;
 
+    final shape = isCircular
+        ? const CircleBorder()
+        : RoundedRectangleBorder(borderRadius: BorderRadius.circular(16));
+
+    final child = SizedBox(
+      width: size,
+      height: size,
+      child: Icon(icon, size: size * 0.48, color: fg),
+    );
+
     final button = Material(
       color: bg,
-      shape: const CircleBorder(),
+      shape: shape,
       elevation: isPrimary ? 4 : 0,
       shadowColor: isPrimary ? cs.primary.withOpacity(0.3) : Colors.transparent,
       child: InkWell(
-        customBorder: const CircleBorder(),
+        customBorder: shape,
         onTap: onTap,
-        child: SizedBox(
-          width: size,
-          height: size,
-          child: Icon(icon, size: size * 0.48, color: fg),
-        ),
+        child: child,
       ),
     );
 

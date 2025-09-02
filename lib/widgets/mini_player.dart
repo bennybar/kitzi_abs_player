@@ -150,41 +150,76 @@ class MiniPlayer extends StatelessWidget {
                           initialData: playback.player.playing,
                           builder: (_, playSnap) {
                             final playing = playSnap.data ?? false;
+                            ColorScheme cs2 = cs;
+                            Widget squareBtn(IconData icon, VoidCallback onTap) {
+                              return Material(
+                                color: cs2.surfaceContainerHighest,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                child: InkWell(
+                                  customBorder: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  onTap: onTap,
+                                  child: const SizedBox(width: 40, height: 40, child: Icon(Icons.abc, size: 22)),
+                                ),
+                              );
+                            }
                             return Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                IconButton(
-                                  tooltip: 'Back 15s',
-                                  icon: const Icon(Icons.replay_10_rounded),
-                                  onPressed: () => ServicesScope.of(context).services.playback.nudgeSeconds(-15),
+                                // Back 15s (squarish)
+                                Material(
+                                  color: cs.surfaceContainerHighest,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  child: InkWell(
+                                    customBorder: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                    onTap: () => ServicesScope.of(context).services.playback.nudgeSeconds(-15),
+                                    child: const SizedBox(width: 40, height: 40, child: Icon(Icons.replay_10_rounded, size: 22)),
+                                  ),
                                 ),
+                                const SizedBox(width: 10),
+                                // Play/Pause (round when play)
                                 AnimatedSwitcher(
                                   duration: const Duration(milliseconds: 180),
                                   transitionBuilder: (child, anim) => FadeTransition(opacity: anim, child: child),
-                                  child: IconButton.filled(
-                                    key: ValueKey(playing),
-                                    onPressed: () async {
-                                      if (playing) {
-                                        await playback.pause();
-                                      } else {
-                                        await playback.resume();
-                                      }
-                                    },
-                                    icon: Icon(
-                                      playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                                      color: cs.onPrimary,
-                                    ),
-                                    style: IconButton.styleFrom(
-                                      backgroundColor: cs.primary,
-                                      foregroundColor: cs.onPrimary,
-                                      padding: const EdgeInsets.all(8),
-                                    ),
-                                  ),
+                                  child: playing
+                                      ? Material(
+                                          key: const ValueKey('pause'),
+                                          color: cs.primary,
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                          child: InkWell(
+                                            customBorder: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                            onTap: () async { await playback.pause(); },
+                                            child: SizedBox(
+                                              width: 44,
+                                              height: 44,
+                                              child: Icon(Icons.pause_rounded, color: cs.onPrimary),
+                                            ),
+                                          ),
+                                        )
+                                      : Material(
+                                          key: const ValueKey('play'),
+                                          color: cs.primary,
+                                          shape: const CircleBorder(),
+                                          child: InkWell(
+                                            customBorder: const CircleBorder(),
+                                            onTap: () async { await playback.resume(); },
+                                            child: SizedBox(
+                                              width: 48,
+                                              height: 48,
+                                              child: Icon(Icons.play_arrow_rounded, color: cs.onPrimary),
+                                            ),
+                                          ),
+                                        ),
                                 ),
-                                IconButton(
-                                  tooltip: 'Forward 30s',
-                                  icon: const Icon(Icons.forward_30_rounded),
-                                  onPressed: () => ServicesScope.of(context).services.playback.nudgeSeconds(30),
+                                const SizedBox(width: 10),
+                                // Forward 30s (squarish)
+                                Material(
+                                  color: cs.surfaceContainerHighest,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  child: InkWell(
+                                    customBorder: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                    onTap: () => ServicesScope.of(context).services.playback.nudgeSeconds(30),
+                                    child: const SizedBox(width: 40, height: 40, child: Icon(Icons.forward_30_rounded, size: 22)),
+                                  ),
                                 ),
                               ],
                             );
