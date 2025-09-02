@@ -84,8 +84,18 @@ class _AbsAppState extends State<AbsApp> {
   @override
   void initState() {
     super.initState();
-    _sessionFuture =
-        AuthRepository.ensure().then((auth) => auth.hasValidSession());
+    _sessionFuture = AuthRepository.ensure().then((auth) async {
+      // Offline-friendly session check: if base URL is configured, proceed
+      // even if token refresh cannot reach the server (timeout quickly).
+      final hasBase = auth.api.baseUrl != null && auth.api.baseUrl!.isNotEmpty;
+      bool ok = false;
+      try {
+        ok = await auth.hasValidSession().timeout(const Duration(seconds: 2));
+      } catch (_) {
+        ok = false; // likely offline; fall through
+      }
+      return ok || hasBase;
+    });
     
     // Initialize audio service after app is ready
     WidgetsBinding.instance.addPostFrameCallback((_) {

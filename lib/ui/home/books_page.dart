@@ -93,7 +93,7 @@ class _BooksPageState extends State<BooksPage> {
     });
     try {
       final repo = await _repoFut;
-      // Offline-first: always try local DB; only network on explicit pull
+      // Offline-first: on initial open load from DB only; on pull fetch network
       final items = initial ? await repo.listBooks() : await repo.refreshFromServer();
       if (!mounted) return;
       setState(() {
@@ -104,6 +104,18 @@ class _BooksPageState extends State<BooksPage> {
         _warmCacheCovers(items);
       }
     } catch (e) {
+      // Fallback to local DB if network fails (offline)
+      try {
+        final repo = await _repoFut;
+        final local = await repo.listBooks();
+        if (!mounted) return;
+        setState(() {
+          _books = local;
+          _loading = false;
+          _error = null;
+        });
+        return;
+      } catch (_) {}
       if (!mounted) return;
       setState(() {
         _error = e.toString();
