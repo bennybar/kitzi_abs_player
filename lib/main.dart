@@ -5,7 +5,7 @@ import 'core/auth_repository.dart';
 import 'core/playback_repository.dart';
 import 'core/downloads_repository.dart';
 import 'core/theme_service.dart';
-import 'core/audio_service_manager.dart';
+import 'core/audio_service_binding.dart';
 
 import 'ui/login/login_screen.dart';
 import 'ui/main/main_scaffold.dart';
@@ -89,8 +89,13 @@ class _AbsAppState extends State<AbsApp> {
     
     // Initialize audio service after app is ready
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final services = ServicesScope.of(context).services;
-      AudioServiceManager.instance.initialize(services.playback);
+      debugPrint('Post frame callback - binding audio service...');
+      try {
+        final services = ServicesScope.of(context).services;
+        AudioServiceBinding.instance.bindAudioService(services.playback);
+      } catch (e) {
+        debugPrint('Error in post frame callback: $e');
+      }
     });
   }
 

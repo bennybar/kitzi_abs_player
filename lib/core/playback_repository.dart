@@ -11,7 +11,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'auth_repository.dart';
-import 'audio_service_manager.dart';
+import 'audio_service_binding.dart';
 import 'chapter_navigation_service.dart';
 import 'sleep_timer_service.dart';
 import 'playback_speed_service.dart';
@@ -214,10 +214,12 @@ class PlaybackRepository {
     _progressItemId = libraryItemId;
 
     // Update audio service with new now playing info
+    _log('Updating audio service with now playing: ${np.title}');
     try {
-      await AudioServiceManager.instance.updateNowPlaying(np);
+      await AudioServiceBinding.instance.updateNowPlaying(np);
+      _log('✓ Audio service updated successfully');
     } catch (e) {
-      _log('Failed to update audio service: $e');
+      _log('❌ Failed to update audio service: $e');
     }
 
     // SERVER WINS: try server position first; fallback to local cache
@@ -496,7 +498,7 @@ class PlaybackRepository {
 
   void _notifyAudioServiceTrackChange(int trackIndex) {
     // Notify audio service about track change
-    AudioServiceManager.instance.updateCurrentTrack(trackIndex);
+    AudioServiceBinding.instance.updateCurrentTrack(trackIndex);
   }
 
   Future<List<PlaybackTrack>> _getTracksPreferLocal(String libraryItemId,

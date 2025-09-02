@@ -1,0 +1,155 @@
+import 'package:audio_service/audio_service.dart';
+import 'package:flutter/material.dart';
+import 'package:just_audio/just_audio.dart';
+import 'package:audio_session/audio_session.dart';
+
+import 'playback_repository.dart';
+import 'audio_service_handler.dart';
+
+class AudioServiceBinding {
+  static AudioServiceBinding? _instance;
+  static AudioServiceBinding get instance => _instance ??= AudioServiceBinding._();
+  
+  AudioServiceBinding._();
+
+  KitziAudioHandler? _audioHandler;
+  bool _isBound = false;
+  bool _isInitialized = false;
+
+  Future<void> bindAudioService(PlaybackRepository playbackRepository) async {
+    if (_isBound) {
+      debugPrint('Audio service already bound');
+      return;
+    }
+
+    try {
+      debugPrint('=== BINDING AUDIO SERVICE ===');
+      
+      // Step 1: Configure audio session
+      debugPrint('1. Configuring audio session...');
+      final session = await AudioSession.instance;
+      await session.configure(AudioSessionConfiguration.music());
+      debugPrint('✓ Audio session configured');
+
+      // Step 2: Create audio handler
+      debugPrint('2. Creating audio handler...');
+      _audioHandler = KitziAudioHandler(playbackRepository, playbackRepository.player);
+      debugPrint('✓ Audio handler created');
+
+      // Step 3: Initialize audio service
+      debugPrint('3. Initializing audio service...');
+      await AudioService.init(
+        builder: () => _audioHandler!,
+        config: AudioServiceConfig(
+          androidNotificationChannelId: 'com.bennybar.kitzi.channel.audio',
+          androidNotificationChannelName: 'Kitzi Audio',
+          androidNotificationIcon: 'mipmap/ic_launcher',
+          androidShowNotificationBadge: true,
+        ),
+      );
+      debugPrint('✓ Audio service initialized');
+
+      // Step 4: Force bind by starting and stopping playback
+      debugPrint('4. Forcing service binding...');
+      try {
+        // Create a dummy audio source to force binding
+        final dummySource = AudioSource.uri(Uri.parse('https://example.com/dummy.mp3'));
+        await _audioHandler!.setAudioSource(dummySource);
+        await _audioHandler!.play();
+        await Future.delayed(const Duration(milliseconds: 100));
+        await _audioHandler!.pause();
+        await _audioHandler!.stop();
+        debugPrint('✓ Service binding successful');
+      } catch (e) {
+        debugPrint('⚠️ Service binding failed: $e');
+      }
+
+      _isBound = true;
+      _isInitialized = true;
+      debugPrint('=== AUDIO SERVICE BOUND SUCCESSFULLY ===');
+      
+    } catch (e) {
+      debugPrint('❌ Failed to bind audio service: $e');
+      debugPrint('Stack trace: ${StackTrace.current}');
+      _isBound = false;
+      _isInitialized = false;
+    }
+  }
+
+  Future<void> updateNowPlaying(NowPlaying nowPlaying) async {
+    if (!_isBound || _audioHandler == null) {
+      debugPrint('❌ Audio service not bound, attempting to bind...');
+      return;
+    }
+
+    try {
+      debugPrint('Updating now playing: ${nowPlaying.title}');
+      await _audioHandler!.updateQueueFromNowPlaying(nowPlaying);
+      debugPrint('✓ Now playing updated successfully');
+    } catch (e) {
+      debugPrint('❌ Failed to update now playing: $e');
+    }
+  }
+
+  Future<void> updateCurrentTrack(int trackIndex) async {
+    if (!_isBound || _audioHandler == null) return;
+
+    try {
+      _audioHandler!.updateCurrentMediaItem(trackIndex);
+    } catch (e) {
+      debugPrint('❌ Failed to update current track: $e');
+    }
+  }
+
+  Future<void> forceUpdateMediaSession() async {
+    if (!_isBound || _audioHandler == null) return;
+
+    try {
+      _audioHandler!.forceUpdateMediaSession();
+    } catch (e) {
+      debugPrint('❌ Failed to force update media session: $e');
+    }
+  }
+
+  bool get isBound => _isBound;
+  bool get isInitialized => _isInitialized;
+  KitziAudioHandler? get audioHandler => _audioHandler;
+
+  Future<void> checkStatus() async {
+    debugPrint('=== AUDIO SERVICE BINDING STATUS ===');
+    debugPrint('Is bound: $_isBound');
+    debugPrint('Is initialized: $_isInitialized');
+    debugPrint('Audio handler: ${_audioHandler != null ? 'exists' : 'null'}');
+    
+    if (_audioHandler != null) {
+      try {
+        final queue = _audioHandler!.queue.value;
+        final mediaItem = _audioHandler!.mediaItem.value;
+        final playbackState = _audioHandler!.playbackState.value;
+        
+        debugPrint('Queue length: ${queue.length}');
+        debugPrint('Current media item: ${mediaItem?.title ?? 'null'}');
+        debugPrint('Playback state: ${playbackState.playing ? 'playing' : 'paused'}');
+        debugPrint('Queue index: ${playbackState.queueIndex}');
+      } catch (e) {
+        debugPrint('Error checking status: $e');
+      }
+    }
+    debugPrint('=== END STATUS CHECK ===');
+  }
+
+  Future<void> unbind() async {
+    if (_audioHandler != null) {
+      try {
+        await _audioHandler!.stop();
+        await AudioService.stop();
+      } catch (e) {
+        debugPrint('Error stopping audio service: $e');
+      }
+    }
+    _audioHandler = null;
+    _isBound = false;
+    _isInitialized = false;
+    debugPrint('Audio service unbound');
+  }
+}

@@ -118,7 +118,9 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
   }
 
   void _listenForNowPlayingChanges() {
+    debugPrint('Setting up now playing listener...');
     _playback.nowPlayingStream.listen((nowPlaying) {
+      debugPrint('Received now playing update: ${nowPlaying?.title ?? 'null'}');
       if (nowPlaying != null) {
         updateQueueFromNowPlaying(nowPlaying);
       }
