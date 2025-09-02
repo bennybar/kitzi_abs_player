@@ -349,6 +349,15 @@ class FullPlayerPage extends StatelessWidget {
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
                           _RoundIconButton(
+                            tooltip: 'Previous track',
+                            icon: Icons.skip_previous_rounded,
+                            onTap: () async {
+                              if (playback.hasPrev) {
+                                await playback.prevTrack();
+                              }
+                            },
+                          ),
+                          _RoundIconButton(
                             tooltip: 'Back 30s',
                             icon: Icons.replay_30_rounded,
                             onTap: () => playback.nudgeSeconds(-30),
@@ -377,6 +386,15 @@ class FullPlayerPage extends StatelessWidget {
                             tooltip: 'Forward 30s',
                             icon: Icons.forward_30_rounded,
                             onTap: () => playback.nudgeSeconds(30),
+                          ),
+                          _RoundIconButton(
+                            tooltip: 'Next track',
+                            icon: Icons.skip_next_rounded,
+                            onTap: () async {
+                              if (playback.hasNext) {
+                                await playback.nextTrack();
+                              }
+                            },
                           ),
                         ],
                       ),

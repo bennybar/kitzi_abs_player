@@ -82,32 +82,11 @@ class _DownloadButtonState extends State<DownloadButton> {
     }
   }
 
-  /// Try to remove local downloads even if the repository method name differs
-  /// across branches (removeLocalDownloads / removeLocal / removeLocalItem).
   Future<void> _removeLocal() async {
     if (_downloads == null) return;
     setState(() => _busy = true);
     try {
-      // Use dynamic to avoid static compile errors if the exact method name differs.
-      final dyn = _downloads as dynamic;
-      final id = widget.libraryItemId;
-
-      // Try common method names in order:
-      if (dyn.removeLocalDownloads is Function) {
-        await dyn.removeLocalDownloads(id);
-      } else if (dyn.removeLocal is Function) {
-        await dyn.removeLocal(id);
-      } else if (dyn.removeLocalItem is Function) {
-        await dyn.removeLocalItem(id);
-      } else {
-        // Fallback: cancel tasks; user may need to delete files manually
-        await _downloads!.cancelForItem(id);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Removed from queue. Local files unchanged.')),
-          );
-        }
-      }
+      await _downloads!.deleteLocal(widget.libraryItemId);
     } catch (_) {
       // Best-effort: surface a gentle message
       if (mounted) {

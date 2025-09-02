@@ -43,7 +43,9 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
       playbackState.add(playbackState.value.copyWith(
         controls: [
           MediaControl.skipToPrevious,
+          MediaControl.rewind,
           if (playing) MediaControl.pause else MediaControl.play,
+          MediaControl.fastForward,
           MediaControl.skipToNext,
           MediaControl.stop,
         ],
@@ -52,7 +54,7 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
           MediaAction.seekForward,
           MediaAction.seekBackward,
         },
-        androidCompactActionIndices: const [0, 1, 2],
+        androidCompactActionIndices: const [0, 2, 4],
         processingState: {
           ProcessingState.idle: AudioProcessingState.idle,
           ProcessingState.loading: AudioProcessingState.loading,
@@ -128,16 +130,22 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
   }
 
   @override
-  Future<void> play() => _player.play();
+  Future<void> play() => _playback.resume();
 
   @override
-  Future<void> pause() => _player.pause();
+  Future<void> pause() => _playback.pause();
 
   @override
   Future<void> stop() => _player.stop();
 
   @override
-  Future<void> seek(Duration position) => _player.seek(position);
+  Future<void> seek(Duration position) => _playback.seek(position, reportNow: true);
+
+  @override
+  Future<void> fastForward() => _playback.nudgeSeconds(30);
+
+  @override
+  Future<void> rewind() => _playback.nudgeSeconds(-30);
 
   @override
   Future<void> skipToNext() async {

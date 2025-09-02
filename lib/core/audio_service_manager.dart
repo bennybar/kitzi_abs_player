@@ -42,8 +42,8 @@ class AudioServiceManager {
         config: AudioServiceConfig(
           androidNotificationChannelId: 'com.bennybar.kitzi.channel.audio',
           androidNotificationChannelName: 'Kitzi Audio',
-          androidNotificationOngoing: true,
-          androidStopForegroundOnPause: false,
+          androidNotificationOngoing: false,
+          androidStopForegroundOnPause: true,
           androidNotificationIcon: 'mipmap/ic_launcher',
           androidShowNotificationBadge: true,
           notificationColor: Colors.deepPurple,
@@ -51,15 +51,7 @@ class AudioServiceManager {
       );
       debugPrint('✓ AudioService.init completed successfully');
 
-      // Force start the service to ensure it's bound
-      debugPrint('Forcing audio service to start...');
-      try {
-        await _audioHandler!.play();
-        await _audioHandler!.pause();
-        debugPrint('✓ Audio service forced start successful');
-      } catch (e) {
-        debugPrint('⚠️ Audio service forced start failed: $e');
-      }
+      // Do not force playback start; keep service lazy for battery savings.
 
       _isInitialized = true;
       debugPrint('=== AUDIO SERVICE INITIALIZATION COMPLETE ===');

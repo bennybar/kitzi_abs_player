@@ -45,28 +45,15 @@ class AudioServiceBinding {
           androidNotificationChannelName: 'Kitzi Audio',
           androidNotificationIcon: 'mipmap/ic_launcher',
           androidShowNotificationBadge: true,
+          androidStopForegroundOnPause: true,
         ),
       );
       debugPrint('✓ Audio service initialized');
 
-      // Step 4: Force bind by starting and stopping playback
-      debugPrint('4. Forcing service binding...');
-      try {
-        // Create a dummy audio source to force binding
-        final dummySource = AudioSource.uri(Uri.parse('https://example.com/dummy.mp3'));
-        await _audioHandler!.setAudioSource(dummySource);
-        await _audioHandler!.play();
-        await Future.delayed(const Duration(milliseconds: 100));
-        await _audioHandler!.pause();
-        await _audioHandler!.stop();
-        debugPrint('✓ Service binding successful');
-      } catch (e) {
-        debugPrint('⚠️ Service binding failed: $e');
-      }
-
+      // Step 4: Do not force playback start; remain lazy to save battery
       _isBound = true;
       _isInitialized = true;
-      debugPrint('=== AUDIO SERVICE BOUND SUCCESSFULLY ===');
+      debugPrint('=== AUDIO SERVICE BOUND SUCCESSFULLY (lazy) ===');
       
     } catch (e) {
       debugPrint('❌ Failed to bind audio service: $e');

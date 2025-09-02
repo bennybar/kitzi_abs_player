@@ -168,7 +168,17 @@ class DownloadsRepository {
 
   Future<bool> hasLocalDownloads(String libraryItemId) async {
     final dir = await _itemDir(libraryItemId);
-    return dir.exists();
+    if (!await dir.exists()) return false;
+    try {
+      final files = await dir
+          .list()
+          .where((e) => e is File)
+          .cast<File>()
+          .toList();
+      return files.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
   }
 
   // === Internal aggregation ===

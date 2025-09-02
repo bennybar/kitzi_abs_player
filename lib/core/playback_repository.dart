@@ -16,7 +16,7 @@ import 'chapter_navigation_service.dart';
 import 'sleep_timer_service.dart';
 import 'playback_speed_service.dart';
 
-const _kProgressPing = Duration(seconds: 15);
+const _kProgressPing = Duration(seconds: 10);
 const _kLocalProgPrefix = 'abs_progress:';      // local fallback per item
 const _kLastItemKey = 'abs_last_item_id';       // last played item id
 
@@ -364,12 +364,24 @@ class PlaybackRepository {
 
   Timer? _progressTimer;
   double _lastSentSec = -1;
+  StreamSubscription<bool>? _playingSub;
 
   void _startProgressSync(String libraryItemId, {String? episodeId}) {
     _progressTimer?.cancel();
+    _playingSub?.cancel();
 
-    _progressTimer = Timer.periodic(_kProgressPing, (_) {
-      _sendProgressImmediate();
+    // Start/stop heartbeat based on actual playing state
+    _playingSub = player.playingStream.listen((isPlaying) async {
+      if (isPlaying) {
+        // Start periodic ping if not already running
+        _progressTimer ??= Timer.periodic(_kProgressPing, (_) async {
+          await _sendProgressImmediate();
+        });
+      } else {
+        // Stop periodic ping when paused/stopped
+        _progressTimer?.cancel();
+        _progressTimer = null;
+      }
     });
 
     player.positionStream.listen((_) {
@@ -388,6 +400,8 @@ class PlaybackRepository {
   void _stopProgressSync() {
     _progressTimer?.cancel();
     _progressTimer = null;
+    _playingSub?.cancel();
+    _playingSub = null;
   }
 
   /// Always try to send at least `currentTime`. Include `duration/progress`
