@@ -130,9 +130,12 @@ class PlaybackRepository {
       if (last == null || last.isEmpty) return;
 
       final meta = await _getItemMeta(last);
-      final chapters = _extractChapters(meta);
+      var chapters = _extractChapters(meta);
       final tracks = await _getTracksPreferLocal(last);
       final tracksWithDur = await _ensureDurations(tracks, last);
+      if (chapters.isEmpty && tracksWithDur.isNotEmpty) {
+        chapters = _chaptersFromTracks(tracksWithDur);
+      }
 
       final np = NowPlaying(
         libraryItemId: last,
@@ -195,10 +198,13 @@ class PlaybackRepository {
     await prefs.setString(_kLastItemKey, libraryItemId);
 
     final meta = await _getItemMeta(libraryItemId);
-    final chapters = _extractChapters(meta);
+    var chapters = _extractChapters(meta);
 
     var tracks = await _getTracksPreferLocal(libraryItemId, episodeId: episodeId);
     tracks = await _ensureDurations(tracks, libraryItemId, episodeId: episodeId);
+    if (chapters.isEmpty && tracks.isNotEmpty) {
+      chapters = _chaptersFromTracks(tracks);
+    }
 
     final np = NowPlaying(
       libraryItemId: libraryItemId,
@@ -775,6 +781,19 @@ class PlaybackRepository {
           }
         }
       }
+    }
+    return chapters;
+  }
+
+  List<Chapter> _chaptersFromTracks(List<PlaybackTrack> tracks) {
+    final chapters = <Chapter>[];
+    double cursorSec = 0.0;
+    for (final t in tracks) {
+      chapters.add(Chapter(
+        title: 'Track ${t.index + 1}',
+        start: Duration(milliseconds: (cursorSec * 1000).round()),
+      ));
+      cursorSec += t.duration > 0 ? t.duration : 0.0;
     }
     return chapters;
   }

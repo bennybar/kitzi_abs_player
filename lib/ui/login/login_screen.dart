@@ -36,25 +36,29 @@ class _LoginScreenState extends State<LoginScreen> {
 
     String normalizeBaseUrl(String input) {
       var url = input.trim();
+      // Accept full URLs including scheme and port; if no scheme, default to https
       if (!url.startsWith('http://') && !url.startsWith('https://')) {
         url = 'https://$url';
       }
       return url.replaceAll(RegExp(r'/+$'), '');
     }
 
-    final ok = await widget.auth.login(
-      baseUrl: normalizeBaseUrl(_serverCtrl.text),
-      username: _userCtrl.text.trim(),
-      password: _passCtrl.text,
-    );
-
-
-
+    bool ok = false;
+    try {
+      ok = await widget.auth
+          .login(
+            baseUrl: normalizeBaseUrl(_serverCtrl.text),
+            username: _userCtrl.text.trim(),
+            password: _passCtrl.text,
+          )
+          .timeout(const Duration(seconds: 10));
+    } catch (_) {
+      ok = false;
+    }
 
     if (!mounted) return;
     setState(() => _loading = false);
 
-    // after a successful login:
     if (ok) {
       final services = ServicesScope.of(context).services;
       Navigator.of(context).pushReplacement(
@@ -64,8 +68,11 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     } else {
       setState(() => _error = 'Login failed. Check server URL and credentials.');
+      // Clear the form on failure
+      _serverCtrl.clear();
+      _userCtrl.clear();
+      _passCtrl.clear();
     }
-
   }
 
   @override
@@ -91,18 +98,18 @@ class _LoginScreenState extends State<LoginScreen> {
                       controller: _serverCtrl,
                       decoration: const InputDecoration(
                         labelText: 'Server URL',
-                        hintText: 'https://abs.example.com',
+                        hintText: 'https://abs.example.com:443',
                       ),
                       keyboardType: TextInputType.url,
                       validator: (v) =>
-                      (v == null || v.trim().isEmpty) ? 'Required' : null,
+                          (v == null || v.trim().isEmpty) ? 'Required' : null,
                     ),
                     const SizedBox(height: 12),
                     TextFormField(
                       controller: _userCtrl,
                       decoration: const InputDecoration(labelText: 'Username'),
                       validator: (v) =>
-                      (v == null || v.trim().isEmpty) ? 'Required' : null,
+                          (v == null || v.trim().isEmpty) ? 'Required' : null,
                     ),
                     const SizedBox(height: 12),
                     TextFormField(
@@ -110,7 +117,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       decoration: const InputDecoration(labelText: 'Password'),
                       obscureText: true,
                       validator: (v) =>
-                      (v == null || v.isEmpty) ? 'Required' : null,
+                          (v == null || v.isEmpty) ? 'Required' : null,
                     ),
                     const SizedBox(height: 16),
                     if (_error != null)
@@ -122,10 +129,10 @@ class _LoginScreenState extends State<LoginScreen> {
                       onPressed: _loading ? null : _submit,
                       child: _loading
                           ? const SizedBox(
-                        height: 18,
-                        width: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
+                              height: 18,
+                              width: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
                           : const Text('Sign in'),
                     ),
                   ],

@@ -85,16 +85,15 @@ class _AbsAppState extends State<AbsApp> {
   void initState() {
     super.initState();
     _sessionFuture = AuthRepository.ensure().then((auth) async {
-      // Offline-friendly session check: if base URL is configured, proceed
-      // even if token refresh cannot reach the server (timeout quickly).
+      // Only proceed to app when a valid session exists
       final hasBase = auth.api.baseUrl != null && auth.api.baseUrl!.isNotEmpty;
-      bool ok = false;
+      if (!hasBase) return false;
       try {
-        ok = await auth.hasValidSession().timeout(const Duration(seconds: 2));
+        final ok = await auth.hasValidSession().timeout(const Duration(seconds: 2));
+        return ok;
       } catch (_) {
-        ok = false; // likely offline; fall through
+        return false;
       }
-      return ok || hasBase;
     });
     
     // Initialize audio service after app is ready

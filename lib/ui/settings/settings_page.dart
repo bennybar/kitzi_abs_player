@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../main.dart'; // ServicesScope
+import '../../ui/login/login_screen.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -48,6 +49,32 @@ class SettingsPage extends StatelessWidget {
                   },
                 );
               },
+            ),
+          ),
+          const Divider(height: 32),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            child: Text('Account', style: Theme.of(context).textTheme.titleMedium),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: FilledButton.tonalIcon(
+              icon: const Icon(Icons.logout_rounded),
+              label: const Text('Log out'),
+              onPressed: () async {
+                final auth = services.auth;
+                try {
+                  await auth.logout();
+                } catch (_) {}
+                if (!context.mounted) return;
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (_) => LoginScreen(auth: auth)),
+                  (route) => false,
+                );
+              },
+              style: FilledButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.error,
+              ),
             ),
           ),
         ],

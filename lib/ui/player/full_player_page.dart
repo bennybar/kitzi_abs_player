@@ -41,6 +41,13 @@ class FullPlayerPage extends StatelessWidget {
       return;
     }
 
+    // Determine the current chapter index once when opening
+    final pos = playback.player.position;
+    int currentIdx = 0;
+    for (int i = 0; i < chapters.length; i++) {
+      if (pos >= chapters[i].start) currentIdx = i; else break;
+    }
+
     await showModalBottomSheet<void>(
       context: context,
       useSafeArea: true,
@@ -84,52 +91,77 @@ class FullPlayerPage extends StatelessWidget {
                 ),
               ),
               Flexible(
-                child: ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-                  itemCount: chapters.length,
-                  separatorBuilder: (_, __) => Divider(
-                    height: 1,
-                    color: Theme.of(ctx).colorScheme.outline.withOpacity(0.2),
-                  ),
-                  itemBuilder: (_, i) {
-                    final c = chapters[i];
-                    return ListTile(
-                      dense: false,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                      title: Text(
-                        c.title.isEmpty ? 'Chapter ${i + 1}' : c.title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(ctx).textTheme.bodyLarge?.copyWith(
-                          fontWeight: FontWeight.w500,
-                        ),
+                child: StreamBuilder<Duration>(
+                  stream: playback.positionStream,
+                  initialData: playback.player.position,
+                  builder: (_, posSnap) {
+                    final pos = posSnap.data ?? Duration.zero;
+                    int liveIdx = 0;
+                    for (int i = 0; i < chapters.length; i++) {
+                      if (pos >= chapters[i].start) liveIdx = i; else break;
+                    }
+                    return ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                      itemCount: chapters.length,
+                      separatorBuilder: (_, __) => Divider(
+                        height: 1,
+                        color: Theme.of(ctx).colorScheme.outline.withOpacity(0.2),
                       ),
-                      subtitle: Text(
-                        _fmt(c.start),
-                        style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
-                          color: Theme.of(ctx).colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                      leading: Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: Theme.of(ctx).colorScheme.primaryContainer,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Center(
-                          child: Text(
-                            '${i + 1}',
-                            style: Theme.of(ctx).textTheme.labelLarge?.copyWith(
-                              color: Theme.of(ctx).colorScheme.onPrimaryContainer,
-                              fontWeight: FontWeight.w600,
+                      itemBuilder: (_, i) {
+                        final c = chapters[i];
+                        final isCurrent = i == liveIdx;
+                        return ListTile(
+                          dense: false,
+                          contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                          title: Text(
+                            c.title.isEmpty ? 'Chapter ${i + 1}' : c.title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(ctx).textTheme.bodyLarge?.copyWith(
+                              fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w500,
+                              color: isCurrent
+                                  ? Theme.of(ctx).colorScheme.primary
+                                  : Theme.of(ctx).colorScheme.onSurface,
                             ),
                           ),
-                        ),
-                      ),
-                      onTap: () async {
-                        Navigator.of(ctx).pop();
-                        await playback.seek(c.start, reportNow: true);
+                          subtitle: Text(
+                            _fmt(c.start),
+                            style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
+                              color: isCurrent
+                                  ? Theme.of(ctx).colorScheme.primary
+                                  : Theme.of(ctx).colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                          leading: Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: isCurrent
+                                  ? Theme.of(ctx).colorScheme.primary
+                                  : Theme.of(ctx).colorScheme.primaryContainer,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Center(
+                              child: Text(
+                                '${i + 1}',
+                                style: Theme.of(ctx).textTheme.labelLarge?.copyWith(
+                                  color: isCurrent
+                                      ? Theme.of(ctx).colorScheme.onPrimary
+                                      : Theme.of(ctx).colorScheme.onPrimaryContainer,
+                                  fontWeight: isCurrent ? FontWeight.w800 : FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                          trailing: isCurrent
+                              ? Icon(Icons.play_arrow_rounded,
+                                  color: Theme.of(ctx).colorScheme.primary)
+                              : null,
+                          onTap: () async {
+                            Navigator.of(ctx).pop();
+                            await playback.seek(c.start, reportNow: true);
+                          },
+                        );
                       },
                     );
                   },
@@ -182,6 +214,19 @@ class FullPlayerPage extends StatelessWidget {
                         ),
                       ),
                       const Spacer(),
+                      IconButton(
+                        tooltip: 'Chapters',
+                        icon: Icon(
+                          Icons.list_alt_rounded,
+                          color: cs.onSurfaceVariant,
+                        ),
+                        onPressed: () async {
+                          final npNow = playback.nowPlaying;
+                          if (npNow != null) {
+                            await _showChaptersSheet(context, playback, npNow);
+                          }
+                        },
+                      ),
                       PopupMenuButton<double>(
                         tooltip: 'Playback speed',
                         icon: Icon(
