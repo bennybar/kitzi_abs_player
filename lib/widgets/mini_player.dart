@@ -160,34 +160,49 @@ class MiniPlayer extends StatelessWidget {
                         ),
                         const SizedBox(width: 12),
 
-                        // Enhanced play/pause button with AnimatedSwitcher
+                        // Controls: back 15s, play/pause, forward 30s
                         StreamBuilder<bool>(
                           stream: playback.playingStream,
                           initialData: playback.player.playing,
                           builder: (_, playSnap) {
                             final playing = playSnap.data ?? false;
-                            return AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 180),
-                              transitionBuilder: (child, anim) => FadeTransition(opacity: anim, child: child),
-                              child: IconButton.filled(
-                                key: ValueKey(playing),
-                                onPressed: () async {
-                                  if (playing) {
-                                    await playback.pause();
-                                  } else {
-                                    await playback.resume();
-                                  }
-                                },
-                                icon: Icon(
-                                  playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                                  color: cs.onPrimary,
+                            return Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  tooltip: 'Back 15s',
+                                  icon: const Icon(Icons.replay_10_rounded),
+                                  onPressed: () => ServicesScope.of(context).services.playback.nudgeSeconds(-15),
                                 ),
-                                style: IconButton.styleFrom(
-                                  backgroundColor: cs.primary,
-                                  foregroundColor: cs.onPrimary,
-                                  padding: const EdgeInsets.all(8),
+                                AnimatedSwitcher(
+                                  duration: const Duration(milliseconds: 180),
+                                  transitionBuilder: (child, anim) => FadeTransition(opacity: anim, child: child),
+                                  child: IconButton.filled(
+                                    key: ValueKey(playing),
+                                    onPressed: () async {
+                                      if (playing) {
+                                        await playback.pause();
+                                      } else {
+                                        await playback.resume();
+                                      }
+                                    },
+                                    icon: Icon(
+                                      playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                                      color: cs.onPrimary,
+                                    ),
+                                    style: IconButton.styleFrom(
+                                      backgroundColor: cs.primary,
+                                      foregroundColor: cs.onPrimary,
+                                      padding: const EdgeInsets.all(8),
+                                    ),
+                                  ),
                                 ),
-                              ),
+                                IconButton(
+                                  tooltip: 'Forward 30s',
+                                  icon: const Icon(Icons.forward_30_rounded),
+                                  onPressed: () => ServicesScope.of(context).services.playback.nudgeSeconds(30),
+                                ),
+                              ],
                             );
                           },
                         ),

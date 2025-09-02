@@ -224,7 +224,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
             alignment: Alignment.bottomCenter,
             child: SafeArea(
               top: false,
-              child: MiniPlayer(height: 112),
+              child: MiniPlayer(height: 72),
             ),
           ),
         ],

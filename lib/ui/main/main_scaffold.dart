@@ -55,7 +55,7 @@ class _MainScaffoldState extends State<MainScaffold> {
                   alignment: Alignment.bottomCenter,
                   child: SafeArea(
                     top: false,
-                    child: const MiniPlayer(height: 120),
+                    child: const MiniPlayer(height: 72),
                   ),
                 ),
             ],
