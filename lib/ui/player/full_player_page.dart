@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import '../../core/playback_repository.dart';
 import '../../main.dart'; // ServicesScope
 
-class FullPlayerPage extends StatelessWidget {
+class FullPlayerPage extends StatefulWidget {
   const FullPlayerPage({super.key});
 
   // Prevent duplicate openings of the FullPlayerPage within the same session.
@@ -30,6 +30,13 @@ class FullPlayerPage extends StatelessWidget {
       _isOpen = false;
     }
   }
+
+  @override
+  State<FullPlayerPage> createState() => _FullPlayerPageState();
+}
+
+class _FullPlayerPageState extends State<FullPlayerPage> {
+  double _dragY = 0.0;
 
   String _fmt(Duration d) {
     final h = d.inHours;
@@ -102,8 +109,8 @@ class FullPlayerPage extends StatelessWidget {
               ),
               Flexible(
                 child: StreamBuilder<Duration>(
-                  stream: playback.positionStream,
-                  initialData: playback.player.position,
+                  stream: ServicesScope.of(context).services.playback.positionStream,
+                  initialData: ServicesScope.of(context).services.playback.player.position,
                   builder: (_, posSnap) {
                     final pos = posSnap.data ?? Duration.zero;
                     int liveIdx = 0;
@@ -169,7 +176,7 @@ class FullPlayerPage extends StatelessWidget {
                               : null,
                           onTap: () async {
                             Navigator.of(ctx).pop();
-                            await playback.seek(c.start, reportNow: true);
+                            await ServicesScope.of(context).services.playback.seek(c.start, reportNow: true);
                           },
                         );
                       },
@@ -192,329 +199,356 @@ class FullPlayerPage extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: cs.surface,
-      body: SafeArea(
-        child: StreamBuilder<NowPlaying?>(
-          stream: playback.nowPlayingStream,
-          initialData: playback.nowPlaying,
-          builder: (context, snap) {
-            final np = snap.data;
-            if (np == null) {
-              return const Center(child: Text('Nothing playing'));
-            }
+      body: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onVerticalDragUpdate: (details) {
+          final dy = details.delta.dy;
+          if (dy > 0 || _dragY > 0) {
+            setState(() {
+              _dragY = (_dragY + dy).clamp(0.0, MediaQuery.of(context).size.height);
+            });
+          }
+        },
+        onVerticalDragEnd: (details) {
+          final v = details.velocity.pixelsPerSecond.dy;
+          final shouldDismiss = _dragY > 140 || v > 700;
+          if (shouldDismiss) {
+            Navigator.of(context).maybePop();
+          } else {
+            setState(() {
+              _dragY = 0.0;
+            });
+          }
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          transform: Matrix4.translationValues(0, _dragY, 0),
+          child: SafeArea(
+            child: StreamBuilder<NowPlaying?>(
+              stream: playback.nowPlayingStream,
+              initialData: playback.nowPlaying,
+              builder: (context, snap) {
+                final np = snap.data;
+                if (np == null) {
+                  return const Center(child: Text('Nothing playing'));
+                }
 
-            return Column(
-              children: [
-                // Custom App Bar
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                  child: Row(
-                    children: [
-                      IconButton.filledTonal(
-                        onPressed: () => Navigator.of(context).pop(),
-                        icon: const Icon(Icons.keyboard_arrow_down_rounded),
-                        style: IconButton.styleFrom(
-                          backgroundColor: cs.surfaceContainerHighest,
-                        ),
-                      ),
-                      const Spacer(),
-                      Text(
-                        'Now Playing',
-                        style: text.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const Spacer(),
-                      IconButton(
-                        tooltip: 'Chapters',
-                        icon: Icon(
-                          Icons.list_alt_rounded,
-                          color: cs.onSurfaceVariant,
-                        ),
-                        onPressed: () async {
-                          final npNow = playback.nowPlaying;
-                          if (npNow != null) {
-                            await _showChaptersSheet(context, playback, npNow);
-                          }
-                        },
-                      ),
-                      PopupMenuButton<double>(
-                        tooltip: 'Playback speed',
-                        icon: Icon(
-                          Icons.speed_rounded,
-                          color: cs.onSurfaceVariant,
-                        ),
-                        onSelected: (v) => playback.setSpeed(v),
-                        itemBuilder: (context) => const [
-                          PopupMenuItem(value: 0.75, child: Text('0.75×')),
-                          PopupMenuItem(value: 1.0, child: Text('1.0×')),
-                          PopupMenuItem(value: 1.25, child: Text('1.25×')),
-                          PopupMenuItem(value: 1.5, child: Text('1.5×')),
-                          PopupMenuItem(value: 1.75, child: Text('1.75×')),
-                          PopupMenuItem(value: 2.0, child: Text('2.0×')),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-
-                // ARTWORK + TITLE
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
-                    child: Column(
-                      children: [
-                        // Cover with enhanced shadow and border
-                        Hero(
-                          tag: 'mini-cover-${np.libraryItemId}',
-                          child: Container(
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(24),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: cs.shadow.withOpacity(0.25),
-                                  blurRadius: 18,
-                                  offset: const Offset(0, 8),
-                                ),
-                              ],
-                            ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(24),
-                              child: AspectRatio(
-                                aspectRatio: 1,
-                                child: Image.network(
-                                  np.coverUrl ?? '',
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => Container(
-                                    color: cs.surfaceContainerHighest,
-                                    child: Icon(
-                                      Icons.menu_book_outlined,
-                                      size: 88,
-                                      color: cs.onSurfaceVariant,
-                                    ),
-                                  ),
-                                ),
-                              ),
+                return Column(
+                  children: [
+                    // Custom App Bar
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                      child: Row(
+                        children: [
+                          IconButton.filledTonal(
+                            onPressed: () => Navigator.of(context).pop(),
+                            icon: const Icon(Icons.keyboard_arrow_down_rounded),
+                            style: IconButton.styleFrom(
+                              backgroundColor: cs.surfaceContainerHighest,
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 32),
-
-                        // Title / author with enhanced typography
-                        Text(
-                          np.title,
-                          textAlign: TextAlign.center,
-                          style: text.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.w700,
-                            height: 1.2,
-                          ),
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        if (np.author != null && np.author!.isNotEmpty) ...[
-                          const SizedBox(height: 8),
+                          const Spacer(),
                           Text(
-                            np.author!,
-                            textAlign: TextAlign.center,
+                            'Now Playing',
                             style: text.titleMedium?.copyWith(
-                              color: cs.onSurfaceVariant,
-                              fontWeight: FontWeight.w500,
+                              fontWeight: FontWeight.w600,
                             ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const Spacer(),
+                          IconButton(
+                            tooltip: 'Chapters',
+                            icon: Icon(
+                              Icons.list_alt_rounded,
+                              color: cs.onSurfaceVariant,
+                            ),
+                            onPressed: () async {
+                              final npNow = playback.nowPlaying;
+                              if (npNow != null) {
+                                await _showChaptersSheet(context, playback, npNow);
+                              }
+                            },
+                          ),
+                          PopupMenuButton<double>(
+                            tooltip: 'Playback speed',
+                            icon: Icon(
+                              Icons.speed_rounded,
+                              color: cs.onSurfaceVariant,
+                            ),
+                            onSelected: (v) => playback.setSpeed(v),
+                            itemBuilder: (context) => const [
+                              PopupMenuItem(value: 0.75, child: Text('0.75×')),
+                              PopupMenuItem(value: 1.0, child: Text('1.0×')),
+                              PopupMenuItem(value: 1.25, child: Text('1.25×')),
+                              PopupMenuItem(value: 1.5, child: Text('1.5×')),
+                              PopupMenuItem(value: 1.75, child: Text('1.75×')),
+                              PopupMenuItem(value: 2.0, child: Text('2.0×')),
+                            ],
                           ),
                         ],
-                      ],
+                      ),
                     ),
-                  ),
-                ),
 
-                // POSITION + SLIDER
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
-                  child: StreamBuilder<Duration?>(
-                    stream: playback.durationStream,
-                    initialData: playback.player.duration,
-                    builder: (_, durSnap) {
-                      final total = durSnap.data ?? Duration.zero;
-                      return StreamBuilder<Duration>(
-                        stream: playback.positionStream,
-                        initialData: playback.player.position,
-                        builder: (_, posSnap) {
-                          final pos = posSnap.data ?? Duration.zero;
-                          final max = total.inMilliseconds.toDouble().clamp(0.0, double.infinity);
-                          final value = pos.inMilliseconds.toDouble().clamp(0.0, max);
-
-                          return Column(
-                            children: [
-                              // Enhanced slider with custom theme
-                              SliderTheme(
-                                data: SliderTheme.of(context).copyWith(
-                                  trackHeight: 6,
-                                  thumbShape: const RoundSliderThumbShape(
-                                    enabledThumbRadius: 12,
-                                    elevation: 4,
-                                  ),
-                                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 20),
-                                  activeTrackColor: cs.primary,
-                                  inactiveTrackColor: cs.surfaceContainerHighest,
-                                  thumbColor: cs.primary,
-                                  overlayColor: cs.primary.withOpacity(0.2),
-                                ),
-                                child: Slider(
-                                  min: 0.0,
-                                  max: max > 0 ? max : 1.0,
-                                  value: value,
-                                  onChanged: (v) async {
-                                    await playback.seek(
-                                      Duration(milliseconds: v.round()),
-                                      reportNow: false,
-                                    );
-                                  },
-                                  onChangeEnd: (v) async {
-                                    await playback.seek(
-                                      Duration(milliseconds: v.round()),
-                                      reportNow: true,
-                                    );
-                                  },
-                                ),
-                              ),
-                              // Time indicators
-                              Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 4),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                      _fmt(pos),
-                                      style: text.labelLarge?.copyWith(
-                                        color: cs.onSurfaceVariant,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                    Text(
-                                      total == Duration.zero ? '' : '-${_fmt(total - pos)}',
-                                      style: text.labelLarge?.copyWith(
-                                        color: cs.onSurfaceVariant,
-                                        fontWeight: FontWeight.w500,
-                                      ),
+                    // ARTWORK + TITLE
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+                        child: Column(
+                          children: [
+                            // Cover with enhanced shadow and border
+                            Hero(
+                              tag: 'mini-cover-${np.libraryItemId}',
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(24),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: cs.shadow.withOpacity(0.25),
+                                      blurRadius: 18,
+                                      offset: const Offset(0, 8),
                                     ),
                                   ],
                                 ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(24),
+                                  child: AspectRatio(
+                                    aspectRatio: 1,
+                                    child: Image.network(
+                                      np.coverUrl ?? '',
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) => Container(
+                                        color: cs.surfaceContainerHighest,
+                                        child: Icon(
+                                          Icons.menu_book_outlined,
+                                          size: 88,
+                                          color: cs.onSurfaceVariant,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 32),
+
+                            // Title / author with enhanced typography
+                            Text(
+                              np.title,
+                              textAlign: TextAlign.center,
+                              style: text.headlineSmall?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                height: 1.2,
+                              ),
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            if (np.author != null && np.author!.isNotEmpty) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                np.author!,
+                                textAlign: TextAlign.center,
+                                style: text.titleMedium?.copyWith(
+                                  color: cs.onSurfaceVariant,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ],
-                          );
-                        },
-                      );
-                    },
-                  ),
-                ),
+                          ],
+                        ),
+                      ),
+                    ),
 
-                const SizedBox(height: 16),
+                    // POSITION + SLIDER
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+                      child: StreamBuilder<Duration?>(
+                        stream: playback.durationStream,
+                        initialData: playback.player.duration,
+                        builder: (_, durSnap) {
+                          final total = durSnap.data ?? Duration.zero;
+                          return StreamBuilder<Duration>(
+                            stream: playback.positionStream,
+                            initialData: playback.player.position,
+                            builder: (_, posSnap) {
+                              final pos = posSnap.data ?? Duration.zero;
+                              final max = total.inMilliseconds.toDouble().clamp(0.0, double.infinity);
+                              final value = pos.inMilliseconds.toDouble().clamp(0.0, max);
 
-                // CONTROLS + CHAPTERS
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
-                  child: Column(
-                    children: [
-                      // Large transport controls (Material 3)
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          _RoundIconButton(
-                            tooltip: 'Previous track',
-                            icon: Icons.skip_previous_rounded,
-                            onTap: () async {
-                              if (playback.hasPrev) {
-                                await playback.prevTrack();
-                              }
-                            },
-                          ),
-                          _RoundIconButton(
-                            tooltip: 'Back 30s',
-                            icon: Icons.replay_30_rounded,
-                            onTap: () => playback.nudgeSeconds(-30),
-                          ),
-                          StreamBuilder<bool>(
-                            stream: playback.playingStream,
-                            initialData: playback.player.playing,
-                            builder: (_, playSnap) {
-                              final playing = playSnap.data ?? false;
-                              return _RoundIconButton(
-                                tooltip: playing ? 'Pause' : 'Play',
-                                icon: playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                                isPrimary: true,
-                                size: 96,
-                                onTap: () async {
-                                  if (playing) {
-                                    await playback.pause();
-                                  } else {
-                                    await playback.resume();
-                                  }
-                                },
+                              return Column(
+                                children: [
+                                  // Enhanced slider with custom theme
+                                  SliderTheme(
+                                    data: SliderTheme.of(context).copyWith(
+                                      trackHeight: 6,
+                                      thumbShape: const RoundSliderThumbShape(
+                                        enabledThumbRadius: 12,
+                                        elevation: 4,
+                                      ),
+                                      overlayShape: const RoundSliderOverlayShape(overlayRadius: 20),
+                                      activeTrackColor: cs.primary,
+                                      inactiveTrackColor: cs.surfaceContainerHighest,
+                                      thumbColor: cs.primary,
+                                      overlayColor: cs.primary.withOpacity(0.2),
+                                    ),
+                                    child: Slider(
+                                      min: 0.0,
+                                      max: max > 0 ? max : 1.0,
+                                      value: value,
+                                      onChanged: (v) async {
+                                        await playback.seek(
+                                          Duration(milliseconds: v.round()),
+                                          reportNow: false,
+                                        );
+                                      },
+                                      onChangeEnd: (v) async {
+                                        await playback.seek(
+                                          Duration(milliseconds: v.round()),
+                                          reportNow: true,
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                  // Time indicators
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(
+                                          _fmt(pos),
+                                          style: text.labelLarge?.copyWith(
+                                            color: cs.onSurfaceVariant,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                        Text(
+                                          total == Duration.zero ? '' : '-${_fmt(total - pos)}',
+                                          style: text.labelLarge?.copyWith(
+                                            color: cs.onSurfaceVariant,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
                               );
                             },
-                          ),
-                          _RoundIconButton(
-                            tooltip: 'Forward 30s',
-                            icon: Icons.forward_30_rounded,
-                            onTap: () => playback.nudgeSeconds(30),
-                          ),
-                          _RoundIconButton(
-                            tooltip: 'Next track',
-                            icon: Icons.skip_next_rounded,
-                            onTap: () async {
-                              if (playback.hasNext) {
-                                await playback.nextTrack();
-                              }
-                            },
-                          ),
-                        ],
+                          );
+                        },
                       ),
+                    ),
 
-                      const SizedBox(height: 24),
+                    const SizedBox(height: 16),
 
-                      // Chapters + Queue controls with enhanced design
-                      Row(
+                    // CONTROLS + CHAPTERS
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
+                      child: Column(
                         children: [
-                          Expanded(
-                            child: FilledButton.tonalIcon(
-                              icon: const Icon(Icons.list_alt_rounded),
-                              label: const Text('Chapters'),
-                              onPressed: () => _showChaptersSheet(context, playback, np),
-                              style: FilledButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(vertical: 16),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
+                          // Large transport controls (Material 3)
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: [
+                              _RoundIconButton(
+                                tooltip: 'Previous track',
+                                icon: Icons.skip_previous_rounded,
+                                onTap: () async {
+                                  if (playback.hasPrev) {
+                                    await playback.prevTrack();
+                                  }
+                                },
                               ),
-                            ),
+                              _RoundIconButton(
+                                tooltip: 'Back 30s',
+                                icon: Icons.replay_30_rounded,
+                                onTap: () => playback.nudgeSeconds(-30),
+                              ),
+                              StreamBuilder<bool>(
+                                stream: playback.playingStream,
+                                initialData: playback.player.playing,
+                                builder: (_, playSnap) {
+                                  final playing = playSnap.data ?? false;
+                                  return _RoundIconButton(
+                                    tooltip: playing ? 'Pause' : 'Play',
+                                    icon: playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                                    isPrimary: true,
+                                    size: 96,
+                                    onTap: () async {
+                                      if (playing) {
+                                        await playback.pause();
+                                      } else {
+                                        await playback.resume();
+                                      }
+                                    },
+                                  );
+                                },
+                              ),
+                              _RoundIconButton(
+                                tooltip: 'Forward 30s',
+                                icon: Icons.forward_30_rounded,
+                                onTap: () => playback.nudgeSeconds(30),
+                              ),
+                              _RoundIconButton(
+                                tooltip: 'Next track',
+                                icon: Icons.skip_next_rounded,
+                                onTap: () async {
+                                  if (playback.hasNext) {
+                                    await playback.nextTrack();
+                                  }
+                                },
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: FilledButton.tonalIcon(
-                              icon: const Icon(Icons.queue_music_rounded),
-                              label: const Text('Queue'),
-                              onPressed: () {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('Queue view not implemented yet')),
-                                );
-                              },
-                              style: FilledButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(vertical: 16),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16),
+
+                          const SizedBox(height: 24),
+
+                          // Chapters + Queue controls with enhanced design
+                          Row(
+                            children: [
+                              Expanded(
+                                child: FilledButton.tonalIcon(
+                                  icon: const Icon(Icons.list_alt_rounded),
+                                  label: const Text('Chapters'),
+                                  onPressed: () => _showChaptersSheet(context, playback, np),
+                                  style: FilledButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(vertical: 16),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                  ),
                                 ),
                               ),
-                            ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: FilledButton.tonalIcon(
+                                  icon: const Icon(Icons.queue_music_rounded),
+                                  label: const Text('Queue'),
+                                  onPressed: () {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('Queue view not implemented yet')),
+                                    );
+                                  },
+                                  style: FilledButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(vertical: 16),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
-                    ],
-                  ),
-                ),
-              ],
-            );
-          },
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
         ),
       ),
     );
