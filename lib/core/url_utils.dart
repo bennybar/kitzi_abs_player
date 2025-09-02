@@ -1,5 +1,4 @@
 // lib/core/url_utils.dart
-import 'package:flutter/foundation.dart';
 
 String normalizeBase(String input) {
   var url = input.trim();

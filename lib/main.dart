@@ -5,6 +5,7 @@ import 'core/auth_repository.dart';
 import 'core/playback_repository.dart';
 import 'core/downloads_repository.dart';
 import 'core/theme_service.dart';
+import 'core/audio_service_manager.dart';
 
 import 'ui/login/login_screen.dart';
 import 'ui/main/main_scaffold.dart';
@@ -57,6 +58,9 @@ Future<void> main() async {
   final downloads = DownloadsRepository(auth, playback);
   final theme = ThemeService();
   await downloads.init();
+  
+  // Initialize audio service
+  await AudioServiceManager.instance.initialize(playback);
 
   final services = AppServices(
     auth: auth,

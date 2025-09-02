@@ -11,6 +11,10 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'auth_repository.dart';
+import 'audio_service_manager.dart';
+import 'chapter_navigation_service.dart';
+import 'sleep_timer_service.dart';
+import 'playback_speed_service.dart';
 
 const _kProgressPing = Duration(seconds: 15);
 const _kLocalProgPrefix = 'abs_progress:';      // local fallback per item
@@ -208,6 +212,9 @@ class PlaybackRepository {
     );
     _setNowPlaying(np);
     _progressItemId = libraryItemId;
+
+    // Update audio service with new now playing info
+    await AudioServiceManager.instance.updateNowPlaying(np);
 
     // SERVER WINS: try server position first; fallback to local cache
     double? resumeSec = await fetchServerProgress(libraryItemId);
@@ -466,7 +473,26 @@ class PlaybackRepository {
     } else {
       await player.setUrl(track.url, preload: preload);
     }
-    _setNowPlaying(cur.copyWith(currentIndex: index));
+    
+    final updatedNowPlaying = cur.copyWith(currentIndex: index);
+    _setNowPlaying(updatedNowPlaying);
+    
+    // Notify audio service about track change
+    _notifyAudioServiceTrackChange(index);
+    
+    // Update chapter navigation service
+    ChapterNavigationService.instance.initialize(this);
+    
+    // Update sleep timer service
+    SleepTimerService.instance.initialize(this);
+    
+    // Update playback speed service
+    PlaybackSpeedService.instance.initialize(this);
+  }
+
+  void _notifyAudioServiceTrackChange(int trackIndex) {
+    // Notify audio service about track change
+    AudioServiceManager.instance.updateCurrentTrack(trackIndex);
   }
 
   Future<List<PlaybackTrack>> _getTracksPreferLocal(String libraryItemId,
