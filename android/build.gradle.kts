@@ -22,6 +22,24 @@ subprojects {
         mavenCentral()
         maven { url = uri("https://storage.googleapis.com/download.flutter.io") }
     }
+
+    // Ensure Java 11 toolchain for all Android modules to silence source/target 8 warnings
+    plugins.withId("com.android.library") {
+        extensions.configure<com.android.build.gradle.LibraryExtension>("android") {
+            compileOptions {
+                sourceCompatibility = JavaVersion.VERSION_11
+                targetCompatibility = JavaVersion.VERSION_11
+            }
+        }
+    }
+    plugins.withId("com.android.application") {
+        extensions.configure<com.android.build.gradle.AppExtension>("android") {
+            compileOptions {
+                sourceCompatibility = JavaVersion.VERSION_11
+                targetCompatibility = JavaVersion.VERSION_11
+            }
+        }
+    }
 }
 
 subprojects {

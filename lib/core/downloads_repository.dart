@@ -164,6 +164,32 @@ class DownloadsRepository {
   Future<List<TaskRecord>> listAll() =>
       FileDownloader().database.allRecords();
 
+  /// Return a union of itemIds that either have local files or active records.
+  Future<List<String>> listTrackedItemIds() async {
+    final ids = <String>{};
+    // From task records
+    final all = await FileDownloader().database.allRecords();
+    for (final r in all) {
+      final meta = r.task.metaData ?? '';
+      final id = _extractItemId(meta);
+      if (id != null && id.isNotEmpty) ids.add(id);
+    }
+    // From local directory names
+    try {
+      final docs = await getApplicationDocumentsDirectory();
+      final dir = Directory('${docs.path}/abs');
+      if (await dir.exists()) {
+        final entries = await dir.list(followLinks: false).toList();
+        for (final e in entries) {
+          final name = e.path.split('/').last;
+          if (name.isNotEmpty) ids.add(name);
+        }
+      }
+    } catch (_) {}
+    final list = ids.toList()..sort();
+    return list;
+  }
+
   // === Local files helpers ===
 
   Future<bool> hasLocalDownloads(String libraryItemId) async {
