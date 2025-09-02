@@ -1,4 +1,4 @@
-# kitzi
+# Kitzi ABS Player
 
 An audiobookshelf client
 
