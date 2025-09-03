@@ -5,6 +5,7 @@ import 'dart:io';
 import '../../core/download_storage.dart';
 import '../../core/books_repository.dart';
 import '../../core/downloads_repository.dart';
+import '../book_detail/book_detail_page.dart';
 
 class DownloadsPage extends StatefulWidget {
   const DownloadsPage({super.key, required this.repo});
@@ -274,6 +275,13 @@ class _BookDownloadTileState extends State<_BookDownloadTile> {
 
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      onTap: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => BookDetailPage(bookId: widget.itemId),
+          ),
+        );
+      },
       leading: Hero(
         tag: 'downloads-cover-${widget.itemId}',
         child: _cover(widget.coverUrl, cs),
