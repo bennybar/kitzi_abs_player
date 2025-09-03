@@ -36,6 +36,14 @@ class ApiClient {
 
   /// Public helper: get current access token (nullable).
   Future<String?> accessToken() => _getAccessToken();
+  /// Public helper: get access token expiry (nullable UTC timestamp string parsed to DateTime).
+  DateTime? accessTokenExpiry() => _getAccessExpiry();
+  /// Public helper: true if we have a non-expired access token with optional leeway seconds.
+  bool hasFreshAccessToken({int leewaySeconds = 60}) {
+    final exp = _getAccessExpiry();
+    if (exp == null) return false;
+    return exp.isAfter(DateTime.now().toUtc().add(Duration(seconds: leewaySeconds)));
+  }
 
   Future<void> clearTokens() async {
     await _prefs.remove('abs_access');

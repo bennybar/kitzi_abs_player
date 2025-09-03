@@ -68,26 +68,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
                         itemBuilder: (_, i) => tiles[i],
                       ),
                     ),
-                    SafeArea(
-                      top: false,
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: FilledButton.tonalIcon(
-                                onPressed: () async {
-                                  await widget.repo.deleteAllLocal();
-                                  if (mounted) setState(() {});
-                                },
-                                icon: const Icon(Icons.delete_sweep_rounded),
-                                label: const Text('Cancel all & delete all'),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
+                    // No global destructive action; swipe to delete per item
                   ],
                 );
               },
@@ -135,7 +116,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
         ),
       );
 
-      // Include if complete or has active/in-progress status
+      // Show finished downloads and in-progress ones
       final hasActive = records.any((r) => r.status == TaskStatus.running || r.status == TaskStatus.enqueued);
       if (done == total && total > 0) {
         tiles.add(w);

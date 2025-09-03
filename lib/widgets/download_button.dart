@@ -73,14 +73,11 @@ class _DownloadButtonState extends State<DownloadButton> {
     }
   }
 
-  Future<void> _cancelAll() async {
+  Future<void> _cancelCurrent() async {
     if (_downloads == null) return;
     setState(() => _busy = true);
     try {
-      // Cancel all downloads and clear the entire queue
-      await _downloads!.cancelAll();
-      // Also remove local files for this specific book
-      await _downloads!.deleteLocal(widget.libraryItemId);
+      await _downloads!.cancelForItem(widget.libraryItemId);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -138,13 +135,13 @@ class _DownloadButtonState extends State<DownloadButton> {
             icon: const Icon(Icons.download),
             label: Text('Downloading… $pct%'),
           ),
-          // Cancel hotspot on the right
+          // Cancel hotspot on the right (per-book cancel)
           Positioned.fill(
             child: Align(
               alignment: Alignment.centerRight,
               child: IconButton(
-                tooltip: 'Cancel all downloads and clear queue',
-                onPressed: _busy ? null : _cancelAll,
+                tooltip: 'Cancel download',
+                onPressed: _busy ? null : _cancelCurrent,
                 icon: const Icon(Icons.close),
               ),
             ),

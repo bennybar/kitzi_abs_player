@@ -9,6 +9,7 @@ class NotificationService {
 
   final FlutterLocalNotificationsPlugin _notifications = FlutterLocalNotificationsPlugin();
   bool _isInitialized = false;
+  static const int _downloadNotificationId = 2001;
 
   Future<void> initialize() async {
     if (_isInitialized) return;
@@ -134,6 +135,48 @@ class NotificationService {
     if (_isInitialized) {
       await hideMediaNotification();
       _isInitialized = false;
+    }
+  }
+
+  // Simple one-shot download notification that appears once when a book starts
+  // downloading and is dismissed when the book completes.
+  Future<void> showDownloadStarted(String title) async {
+    if (!_isInitialized) return;
+    try {
+      const androidDetails = AndroidNotificationDetails(
+        'kitzi_download_channel',
+        'Kitzi Downloads',
+        channelDescription: 'Download notifications',
+        importance: Importance.low,
+        priority: Priority.low,
+        ongoing: true,
+        autoCancel: false,
+        showWhen: false,
+      );
+      const iosDetails = DarwinNotificationDetails(
+        presentAlert: false,
+        presentBadge: false,
+        presentSound: false,
+      );
+      const details = NotificationDetails(android: androidDetails, iOS: iosDetails);
+      await _notifications.show(
+        _downloadNotificationId,
+        'Downloading book: $title',
+        null,
+        details,
+        payload: 'book_download',
+      );
+    } catch (e) {
+      debugPrint('Failed to show download notification: $e');
+    }
+  }
+
+  Future<void> hideDownloadNotification() async {
+    if (!_isInitialized) return;
+    try {
+      await _notifications.cancel(_downloadNotificationId);
+    } catch (e) {
+      debugPrint('Failed to hide download notification: $e');
     }
   }
 }

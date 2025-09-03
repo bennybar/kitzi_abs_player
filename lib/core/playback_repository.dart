@@ -15,6 +15,7 @@ import 'audio_service_binding.dart';
 import 'chapter_navigation_service.dart';
 import 'sleep_timer_service.dart';
 import 'playback_speed_service.dart';
+import 'download_storage.dart';
 
 const _kProgressPing = Duration(seconds: 10);
 const _kLocalProgPrefix = 'abs_progress:';      // local fallback per item
@@ -633,8 +634,7 @@ class PlaybackRepository {
 
   Future<List<PlaybackTrack>> _localTracks(String libraryItemId) async {
     try {
-      final docs = await getApplicationDocumentsDirectory();
-      final dir = Directory('${docs.path}/abs/$libraryItemId');
+      final dir = await DownloadStorage.itemDir(libraryItemId);
       if (!await dir.exists()) return const [];
       final files = (await dir.list().toList()).whereType<File>().toList()
         ..sort((a, b) => a.path.compareTo(b.path));

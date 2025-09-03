@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../../core/auth_repository.dart';
 import '../../main.dart';
 import '../main/main_scaffold.dart';
+import '../../core/download_storage.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key, required this.auth});
@@ -60,6 +62,36 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _loading = false);
 
     if (ok) {
+      // Prompt a folder name once after successful login (simple dialog),
+      // and request storage/media permissions on Android for public Music dir.
+      try {
+        await DownloadStorage.requestStoragePermissions();
+        final services = ServicesScope.of(context).services;
+        final current = await DownloadStorage.getBaseSubfolder();
+        final controller = TextEditingController(text: current);
+        final chosen = await showDialog<String>(
+          context: context,
+          builder: (context) {
+            return AlertDialog(
+              title: const Text('Choose download folder name'),
+              content: TextField(
+                controller: controller,
+                decoration: const InputDecoration(
+                  labelText: 'Folder (under app documents)'
+                ),
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(context), child: const Text('Skip')),
+                FilledButton(onPressed: () => Navigator.pop(context, controller.text.trim()), child: const Text('Save')),
+              ],
+            );
+          },
+        );
+        if (chosen != null && chosen.trim().isNotEmpty && chosen.trim() != current) {
+          await DownloadStorage.setBaseSubfolder(chosen.trim());
+        }
+      } catch (_) {}
+
       final services = ServicesScope.of(context).services;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(

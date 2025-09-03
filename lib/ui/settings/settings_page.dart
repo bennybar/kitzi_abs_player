@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../main.dart'; // ServicesScope
 import '../../ui/login/login_screen.dart';
+import '../../core/download_storage.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -48,6 +49,74 @@ class SettingsPage extends StatelessWidget {
                     theme.set(v ? ThemeMode.system : ThemeMode.light);
                   },
                 );
+              },
+            ),
+          ),
+          const Divider(height: 32),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            child: Text('Downloads', style: Theme.of(context).textTheme.titleMedium),
+          ),
+          FutureBuilder<String>(
+            future: DownloadStorage.getBaseSubfolder(),
+            builder: (context, snap) {
+              final current = snap.data ?? 'abs';
+              return ListTile(
+                title: const Text('Download folder name'),
+                subtitle: Text(current),
+                trailing: const Icon(Icons.edit_outlined),
+                onTap: () async {
+                  final controller = TextEditingController(text: current);
+                  final newName = await showDialog<String>(
+                    context: context,
+                    builder: (context) {
+                      return AlertDialog(
+                        title: const Text('Set download folder name'),
+                        content: TextField(
+                          controller: controller,
+                          decoration: const InputDecoration(
+                            labelText: 'Folder (under app documents)'
+                          ),
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context),
+                            child: const Text('Cancel'),
+                          ),
+                          FilledButton(
+                            onPressed: () => Navigator.pop(context, controller.text.trim()),
+                            child: const Text('Save'),
+                          )
+                        ],
+                      );
+                    },
+                  );
+                  if (newName != null && newName.trim().isNotEmpty) {
+                    // Migrate storage and refresh tile
+                    await DownloadStorage.setBaseSubfolder(newName.trim());
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Download folder updated')),
+                      );
+                    }
+                  }
+                },
+              );
+            },
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: FilledButton.tonalIcon(
+              icon: const Icon(Icons.stop_circle_outlined),
+              label: const Text('Cancel running downloads'),
+              onPressed: () async {
+                final downloads = services.downloads;
+                await downloads.cancelAll();
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('All running downloads canceled')),
+                  );
+                }
               },
             ),
           ),

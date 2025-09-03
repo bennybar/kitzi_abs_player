@@ -6,6 +6,7 @@ import 'core/playback_repository.dart';
 import 'core/downloads_repository.dart';
 import 'core/theme_service.dart';
 import 'core/audio_service_binding.dart';
+import 'core/notification_service.dart';
 
 import 'ui/login/login_screen.dart';
 import 'ui/main/main_scaffold.dart';
@@ -51,6 +52,9 @@ Future<void> main() async {
   if (await Permission.notification.isDenied) {
     await Permission.notification.request();
   }
+
+  // Initialize notifications early
+  await NotificationService.instance.initialize();
 
   // Construct singletons (Auth -> Playback -> Downloads)
   final auth = await AuthRepository.ensure();

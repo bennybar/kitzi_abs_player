@@ -39,7 +39,11 @@ class AuthRepository {
   /// Returns true if we have a base URL + refresh token and a refresh succeeds.
   Future<bool> hasValidSession() async {
     if (_api.baseUrl == null) return false;
-    // Use the *public* wrapper on ApiClient to avoid private access.
+    // Trust non-expired access tokens first to avoid forcing refresh on every launch
+    if (_api.hasFreshAccessToken(leewaySeconds: 60)) {
+      return true;
+    }
+    // Otherwise try refresh
     final ok = await _api.refreshAccessToken();
     return ok;
   }
