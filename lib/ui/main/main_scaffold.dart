@@ -45,8 +45,8 @@ class _MainScaffoldState extends State<MainScaffold> {
             children: [
               Positioned.fill(
                 child: Padding(
-                  // leave room for the mini-player + spacing when it's visible
-                  padding: EdgeInsets.only(bottom: hasMini ? 120 : 0),
+                  // let content extend fully; mini-player floats above
+                  padding: EdgeInsets.zero,
                   child: pages[_index],
                 ),
               ),
