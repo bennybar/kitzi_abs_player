@@ -44,3 +44,27 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Additional build artifacts
+/android/build/
+/ios/build/
+/build/
+*.iml
+kitzi.iml
+
+# IDE files
+.idea/
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Flutter generated
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Generated files
+*.g.dart
+*.freezed.dart
+*.mocks.dart
