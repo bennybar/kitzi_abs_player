@@ -3,6 +3,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 import '../../core/books_repository.dart';
 import '../../models/book.dart';
@@ -24,6 +25,8 @@ class _BooksPageState extends State<BooksPage> {
   bool _loading = true;
   String? _error;
   Timer? _timer;
+  StreamSubscription<List<ConnectivityResult>>? _connSub;
+  bool _isOnline = true;
 
   LibraryView _view = LibraryView.list;
   SortMode _sort = SortMode.addedDesc;
@@ -39,6 +42,7 @@ class _BooksPageState extends State<BooksPage> {
   void initState() {
     super.initState();
     _repoFut = BooksRepository.create();
+    _startConnectivityWatch();
     _restorePrefs().then((_) {
       _refresh(initial: true);
       _setupAutoRefresh();
@@ -48,6 +52,7 @@ class _BooksPageState extends State<BooksPage> {
   @override
   void dispose() {
     _timer?.cancel();
+    _connSub?.cancel();
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -64,6 +69,27 @@ class _BooksPageState extends State<BooksPage> {
       _query = q;
       _searchCtrl.text = q;
     }
+  }
+
+  Future<void> _startConnectivityWatch() async {
+    final current = await Connectivity().checkConnectivity();
+    if (mounted) setState(() => _isOnline = _isConnectedList(current));
+    _connSub = Connectivity().onConnectivityChanged.listen((conn) {
+      if (!mounted) return;
+      setState(() => _isOnline = _isConnectedList(conn));
+    });
+  }
+
+  bool _isConnectedList(List<ConnectivityResult> results) {
+    for (final r in results) {
+      if (r == ConnectivityResult.mobile ||
+          r == ConnectivityResult.wifi ||
+          r == ConnectivityResult.ethernet ||
+          r == ConnectivityResult.vpn) {
+        return true;
+      }
+    }
+    return false;
   }
 
   Future<void> _saveViewPref(LibraryView v) async {
@@ -93,16 +119,35 @@ class _BooksPageState extends State<BooksPage> {
     });
     try {
       final repo = await _repoFut;
-      // Offline-first: on initial open load from DB only; on pull fetch network
-      final items = initial ? await repo.listBooks() : await repo.refreshFromServer();
+      // Network status
+      final conn = await Connectivity().checkConnectivity();
+      final online = conn.contains(ConnectivityResult.mobile) || conn.contains(ConnectivityResult.wifi) || conn.contains(ConnectivityResult.ethernet);
+      // Strategy:
+      // - Initial: if online, fetch server then store; else use DB and show no-internet banner
+      // - Manual refresh: if online fetch server; else keep local and show no-internet banner
+      List<Book> items;
+      if (initial) {
+        if (online) {
+          items = await repo.refreshFromServer();
+        } else {
+          items = await repo.listBooks();
+          if (mounted) _showNoInternetSnack();
+        }
+      } else {
+        if (online) {
+          items = await repo.refreshFromServer();
+        } else {
+          items = await repo.listBooks();
+          if (mounted) _showNoInternetSnack();
+        }
+      }
       if (!mounted) return;
       setState(() {
         _books = items;
         _loading = false;
       });
-      if (!initial) {
-        _warmCacheCovers(items);
-      }
+      // Always warm covers in background; UI is already updated
+      _warmCacheCovers(items);
     } catch (e) {
       // Fallback to local DB if network fails (offline)
       try {
@@ -114,6 +159,7 @@ class _BooksPageState extends State<BooksPage> {
           _loading = false;
           _error = null;
         });
+        if (mounted) _showNoInternetSnack();
         return;
       } catch (_) {}
       if (!mounted) return;
@@ -122,6 +168,12 @@ class _BooksPageState extends State<BooksPage> {
         _loading = false;
       });
     }
+  }
+
+  void _showNoInternetSnack() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('No internet connection')),
+    );
   }
 
   /// Pre-cache first N covers to disk/memory for snappy grid/list.
@@ -204,6 +256,31 @@ class _BooksPageState extends State<BooksPage> {
                 ),
               ),
               titlePadding: const EdgeInsets.only(left: 20, bottom: 16),
+            ),
+            bottom: PreferredSize(
+              preferredSize: const Size.fromHeight(28),
+              child: _isOnline
+                  ? const SizedBox.shrink()
+                  : Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                      color: cs.errorContainer,
+                      child: Row(
+                        children: [
+                          Icon(Icons.wifi_off_rounded, size: 16, color: cs.onErrorContainer),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Offline – showing cached library',
+                              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                                    color: cs.onErrorContainer,
+                                  ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
             ),
             actions: [
               IconButton.filledTonal(

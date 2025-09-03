@@ -259,9 +259,10 @@ class BooksRepository {
 
       final items = _extractItems(body);
       final books = await _toBooks(items);
-      // Persist covers to disk (best effort)
-      await _persistCovers(books);
+      // Write DB immediately so UI can render without delay
       await _upsertBooks(books);
+      // Persist covers in background, then update DB with coverPath when done
+      unawaited(_persistCovers(books).then((_) => _upsertBooks(books)));
       return await _listBooksFromDb();
     }
 

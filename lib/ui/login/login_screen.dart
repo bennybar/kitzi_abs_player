@@ -54,7 +54,7 @@ class _LoginScreenState extends State<LoginScreen> {
             password: _passCtrl.text,
           )
           .timeout(const Duration(seconds: 10));
-    } catch (_) {
+    } catch (e) {
       ok = false;
     }
 
@@ -100,9 +100,7 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     } else {
       setState(() => _error = 'Login failed. Check server URL and credentials.');
-      // Clear the form on failure
-      _serverCtrl.clear();
-      _userCtrl.clear();
+      // Only clear password on failure (keep server & username)
       _passCtrl.clear();
     }
   }
