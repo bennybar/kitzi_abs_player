@@ -62,7 +62,11 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
     final pos = playback.player.position;
     int currentIdx = 0;
     for (int i = 0; i < chapters.length; i++) {
-      if (pos >= chapters[i].start) currentIdx = i; else break;
+      if (pos >= chapters[i].start) {
+        currentIdx = i;
+      } else {
+        break;
+      }
     }
 
     await showModalBottomSheet<void>(
@@ -115,7 +119,11 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
                     final pos = posSnap.data ?? Duration.zero;
                     int liveIdx = 0;
                     for (int i = 0; i < chapters.length; i++) {
-                      if (pos >= chapters[i].start) liveIdx = i; else break;
+                      if (pos >= chapters[i].start) {
+                        liveIdx = i;
+                      } else {
+                        break;
+                      }
                     }
                     return ListView.separated(
                       padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),

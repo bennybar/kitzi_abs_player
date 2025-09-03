@@ -6,7 +6,6 @@ import 'dart:collection';
 
 import 'package:background_downloader/background_downloader.dart';
 import 'package:flutter/foundation.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'auth_repository.dart';
@@ -88,7 +87,7 @@ class DownloadsRepository {
   Future<void> init() async {
     // Configure ONE global notification. Do NOT set per-task displayName.
     try {
-      await FileDownloader().configureNotification(
+      FileDownloader().configureNotification(
         running: null,
         complete: null,
         error: null,
@@ -121,7 +120,7 @@ class DownloadsRepository {
       libraryItemId,
           () => StreamController<ItemProgress>.broadcast(onListen: () async {
         final snap = await _computeItemProgress(libraryItemId);
-        (_itemCtrls[libraryItemId]!)..add(snap);
+        (_itemCtrls[libraryItemId]!).add(snap);
       }),
     );
 
@@ -437,8 +436,9 @@ class DownloadsRepository {
     }
 
     String status = 'none';
-    if (completedLocal >= totalTracks && totalTracks > 0) status = 'complete';
-    else if (recs.any((r) => r.status == TaskStatus.failed)) status = 'failed';
+    if (completedLocal >= totalTracks && totalTracks > 0) {
+      status = 'complete';
+    } else if (recs.any((r) => r.status == TaskStatus.failed)) status = 'failed';
     else if (recs.any((r) => r.status == TaskStatus.running)) status = 'running';
     else if (recs.any((r) => r.status == TaskStatus.enqueued)) status = 'queued';
     else if (_pendingQueuedUntil[libraryItemId]?.isAfter(DateTime.now()) == true) status = 'queued';

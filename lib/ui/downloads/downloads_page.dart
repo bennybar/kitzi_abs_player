@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:background_downloader/background_downloader.dart';
 import 'dart:io';
 import '../../core/books_repository.dart';
-import '../../models/book.dart';
 import '../../core/downloads_repository.dart';
 
 class DownloadsPage extends StatefulWidget {

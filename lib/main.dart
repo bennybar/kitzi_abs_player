@@ -32,8 +32,8 @@ class ServicesScope extends InheritedWidget {
   const ServicesScope({
     super.key,
     required this.services,
-    required Widget child,
-  }) : super(child: child);
+    required super.child,
+  });
 
   static ServicesScope of(BuildContext context) {
     final scope = context.dependOnInheritedWidgetOfExactType<ServicesScope>();

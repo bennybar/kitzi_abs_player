@@ -53,7 +53,7 @@ class Book {
       if (authorsList.isEmpty) authorsList = null;
     }
     final authorStr = (j['author'] ?? meta['authorName'] ?? meta['author'])?.toString() ??
-        (authorsList != null ? authorsList.join(', ') : null);
+        (authorsList?.join(', '));
 
     // Construct cover URL, add ?token= only if provided
     var coverUrl = '$baseUrl/api/items/$id/cover';

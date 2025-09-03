@@ -73,10 +73,8 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
       final q = queue.value;
       if (currentIndex >= 0 && currentIndex < q.length) {
         final currentItem = q[currentIndex];
-        if (currentItem is MediaItem) {
-          mediaItem.add(currentItem);
-        }
-      }
+        mediaItem.add(currentItem);
+            }
     });
   }
 
@@ -86,17 +84,15 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
       final currentQueue = queue.value;
       if (index != null && index < currentQueue.length) {
         final oldMediaItem = currentQueue[index];
-        if (oldMediaItem is MediaItem) {
-          try {
-            final newMediaItem = oldMediaItem.copyWith(duration: duration);
-            final newQueue = List<MediaItem>.from(currentQueue);
-            newQueue[index] = newMediaItem;
-            queue.add(newQueue);
-          } catch (e) {
-            debugPrint('Error updating MediaItem duration: $e');
-          }
+        try {
+          final newMediaItem = oldMediaItem.copyWith(duration: duration);
+          final newQueue = List<MediaItem>.from(currentQueue);
+          newQueue[index] = newMediaItem;
+          queue.add(newQueue);
+        } catch (e) {
+          debugPrint('Error updating MediaItem duration: $e');
         }
-      }
+            }
     });
   }
 
@@ -118,11 +114,11 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
       // Only update queue from tags if all tags are valid MediaItems.
       final tags = effective
           .map((source) => source.tag)
-          .where((t) => t is MediaItem)
+          .whereType<MediaItem>()
           .cast<MediaItem>()
           .toList();
       if (tags.isNotEmpty) {
-        this.queue.add(tags);
+        queue.add(tags);
       }
     });
   }
@@ -252,11 +248,9 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
       
       if (currentIndex != null && currentIndex >= 0 && currentIndex < currentQueue.length) {
         final currentItem = currentQueue[currentIndex];
-        if (currentItem != null) {
-          mediaItem.add(currentItem);
-          debugPrint('Forced media session update: ${currentItem.title}');
-        }
-      }
+        mediaItem.add(currentItem);
+        debugPrint('Forced media session update: ${currentItem.title}');
+            }
     } catch (e) {
       debugPrint('Error forcing media session update: $e');
     }

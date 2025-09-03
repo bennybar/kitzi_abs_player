@@ -19,15 +19,23 @@ class BooksRepository {
   static const _libIdKey = 'books_library_id';
 
   Future<String> _ensureLibraryId() async {
+    print('BooksRepository: _ensureLibraryId() called');
+    
     final cached = _prefs.getString(_libIdKey);
-    if (cached != null && cached.isNotEmpty) return cached;
+    if (cached != null && cached.isNotEmpty) {
+      print('BooksRepository: Using cached library ID: $cached');
+      return cached;
+    }
 
+    print('BooksRepository: No cached library ID, fetching from server...');
     final api = _auth.api;
     final token = await api.accessToken();
     final tokenQS = (token != null && token.isNotEmpty) ? '?token=$token' : '';
     final resp = await api.request('GET', '/api/libraries$tokenQS');
 
+    print('BooksRepository: Libraries API response status: ${resp.statusCode}');
     if (resp.statusCode != 200) {
+      print('BooksRepository: Failed to list libraries: ${resp.statusCode}');
       throw Exception('Failed to list libraries: ${resp.statusCode}');
     }
 
@@ -38,7 +46,10 @@ class BooksRepository {
         ? (body['libraries'] as List)
         : (body is List ? body : const []);
 
+    print('BooksRepository: Found ${libs.length} libraries');
+
     if (libs.isEmpty) {
+      print('BooksRepository: No libraries accessible for this user');
       throw Exception('No libraries accessible for this user');
     }
 
@@ -48,13 +59,19 @@ class BooksRepository {
       final mt = (m['mediaType'] ?? m['type'] ?? '').toString().toLowerCase();
       if (mt.contains('book')) {
         chosen = m;
+        print('BooksRepository: Selected book library: ${m['name'] ?? 'unnamed'} (ID: ${m['id'] ?? m['_id']})');
         break;
       }
     }
     chosen ??= (libs.first as Map).cast<String, dynamic>();
 
     final id = (chosen['id'] ?? chosen['_id'] ?? '').toString();
-    if (id.isEmpty) throw Exception('Invalid library id from /api/libraries');
+    if (id.isEmpty) {
+      print('BooksRepository: Invalid library id from /api/libraries');
+      throw Exception('Invalid library id from /api/libraries');
+    }
+
+    print('BooksRepository: Setting library ID: $id');
 
     await _prefs.setString(_libIdKey, id);
     return id;
@@ -78,19 +95,27 @@ class BooksRepository {
   }
 
   Future<List<Book>> listBooks() async {
-    // Always prefer local DB first and do not hit network on app start when DB has data
-    final local = await _listBooksFromDb();
-    if (local.isNotEmpty) {
+    print('BooksRepository: listBooks() called - checking server first');
+    
+    try {
+      // Always try to get fresh data from server first
+      print('BooksRepository: Attempting to fetch fresh data from server...');
+      final fetched = await refreshFromServer();
+      print('BooksRepository: Successfully fetched ${fetched.length} books from server');
+      return fetched;
+    } catch (e) {
+      print('BooksRepository: Server fetch failed: $e');
+      print('BooksRepository: Falling back to local database...');
+      
+      // Fallback to local DB if server fails
+      final local = await _listBooksFromDb();
+      print('BooksRepository: Retrieved ${local.length} books from local database');
+      
       // Best-effort: ensure covers exist locally in background
       // without blocking UI. Missing covers will be fetched once.
-      // This avoids network list fetches at startup.
       unawaited(_persistCovers(local));
       return local;
     }
-
-    // If DB empty, do an initial network fetch and persist
-    final fetched = await refreshFromServer();
-    return fetched;
   }
 
   Future<List<Book>> _toBooks(List<Map<String, dynamic>> items) async {
@@ -217,11 +242,22 @@ class BooksRepository {
     }).toList();
   }
 
+  /// Clear ETag cache to force fresh data on next request
+  Future<void> _clearEtagCache() async {
+    print('BooksRepository: Clearing ETag cache to force fresh data');
+    await _prefs.remove(_etagKey);
+    await _prefs.remove(_cacheKey);
+  }
+
   /// Explicit refresh from server; persists to DB and cache, returns fresh list
   Future<List<Book>> refreshFromServer() async {
+    print('BooksRepository: refreshFromServer() called');
+    
     final api = _auth.api;
     final token = await api.accessToken();
     final libId = await _ensureLibraryId();
+    
+    print('BooksRepository: Library ID: $libId, Token present: ${token != null && token.isNotEmpty}');
 
     final tokenQS = (token != null && token.isNotEmpty) ? '&token=$token' : '';
     final etag = _prefs.getString(_etagKey);
@@ -229,30 +265,28 @@ class BooksRepository {
     if (etag != null) headers['If-None-Match'] = etag;
 
     final path = '/api/libraries/$libId/items?limit=200&sort=updatedAt:desc$tokenQS';
+    print('BooksRepository: Requesting from path: $path');
+    
     final bool localEmpty = await _isDbEmpty();
+    print('BooksRepository: Local DB empty: $localEmpty');
+    
     http.Response resp = await api.request('GET', path, headers: headers);
+    print('BooksRepository: Server response status: ${resp.statusCode}');
 
     if (resp.statusCode == 304) {
-      // If DB has data, return it; otherwise attempt to use cache or force fetch
-      if (!localEmpty) {
-        return await _listBooksFromDb();
-      }
-      // Try cache
-      final cached = _prefs.getString(_cacheKey);
-      if (cached != null && cached.isNotEmpty) {
-        try {
-          final body = jsonDecode(cached);
-          final items = _extractItems(body);
-          final books = await _toBooks(items);
-          await _upsertBooks(books);
-          return await _listBooksFromDb();
-        } catch (_) {}
-      }
-      // Force a network fetch without ETag since local is empty
+      print('BooksRepository: Server returned 304 (Not Modified)');
+      print('BooksRepository: WARNING: 304 response detected - this might indicate stale ETag');
+      print('BooksRepository: Forcing fresh data fetch to ensure we have the latest books');
+      
+      // Force a network fetch without ETag to get fresh data
+      // This ensures we always get the latest book list, even if ETag is stale
+      print('BooksRepository: Forcing network fetch without ETag');
       resp = await api.request('GET', path, headers: {});
+      print('BooksRepository: Force fetch response status: ${resp.statusCode}');
     }
 
     if (resp.statusCode == 200) {
+      print('BooksRepository: Processing successful response');
       final bodyStr = resp.body;
       final body = bodyStr.isNotEmpty ? jsonDecode(bodyStr) : null;
       final newEtag = resp.headers['etag'];
@@ -260,14 +294,20 @@ class BooksRepository {
       if (newEtag != null) await _prefs.setString(_etagKey, newEtag);
 
       final items = _extractItems(body);
+      print('BooksRepository: Extracted ${items.length} items from response');
       final books = await _toBooks(items);
+      print('BooksRepository: Converted to ${books.length} Book objects');
+      
       // Write DB immediately so UI can render without delay
       await _upsertBooks(books);
+      print('BooksRepository: Books persisted to database');
+      
       // Persist covers in background, then update DB with coverPath when done
       unawaited(_persistCovers(books).then((_) => _upsertBooks(books)));
       return await _listBooksFromDb();
     }
 
+    print('BooksRepository: Server request failed, falling back to local DB');
     // On error, return local DB
     return await _listBooksFromDb();
   }

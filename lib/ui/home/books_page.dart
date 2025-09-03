@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 
 import '../../core/books_repository.dart';
+import '../../core/play_history_service.dart';
 import '../../models/book.dart';
 import '../book_detail/book_detail_page.dart';
 
@@ -22,6 +23,7 @@ class BooksPage extends StatefulWidget {
 class _BooksPageState extends State<BooksPage> {
   late final Future<BooksRepository> _repoFut;
   List<Book> _books = [];
+  List<Book> _recentBooks = [];
   bool _loading = true;
   String? _error;
   Timer? _timer;
@@ -46,6 +48,7 @@ class _BooksPageState extends State<BooksPage> {
     _restorePrefs().then((_) {
       _refresh(initial: true);
       _setupAutoRefresh();
+      _loadRecentBooks();
     });
   }
 
@@ -113,6 +116,7 @@ class _BooksPageState extends State<BooksPage> {
   }
 
   Future<void> _refresh({bool initial = false}) async {
+    print('BooksPage: _refresh() called, initial: $initial');
     setState(() {
       if (initial) _loading = true;
       _error = null;
@@ -122,37 +126,51 @@ class _BooksPageState extends State<BooksPage> {
       // Network status
       final conn = await Connectivity().checkConnectivity();
       final online = conn.contains(ConnectivityResult.mobile) || conn.contains(ConnectivityResult.wifi) || conn.contains(ConnectivityResult.ethernet);
+      print('BooksPage: Network status - online: $online');
+      
       // Strategy:
       // - Initial: if online, fetch server then store; else use DB and show no-internet banner
       // - Manual refresh: if online fetch server; else keep local and show no-internet banner
       List<Book> items;
       if (initial) {
         if (online) {
+          print('BooksPage: Initial load with internet - calling refreshFromServer()');
           items = await repo.refreshFromServer();
         } else {
+          print('BooksPage: Initial load without internet - calling listBooks()');
           items = await repo.listBooks();
           if (mounted) _showNoInternetSnack();
         }
       } else {
         if (online) {
+          print('BooksPage: Manual refresh with internet - calling refreshFromServer()');
           items = await repo.refreshFromServer();
         } else {
+          print('BooksPage: Manual refresh without internet - calling listBooks()');
           items = await repo.listBooks();
           if (mounted) _showNoInternetSnack();
         }
       }
       if (!mounted) return;
+      print('BooksPage: Received ${items.length} books from repository');
       setState(() {
         _books = items;
         _loading = false;
       });
       // Always warm covers in background; UI is already updated
       _warmCacheCovers(items);
+      
+      // Load recent books after main library
+      if (!initial) {
+        _loadRecentBooks();
+      }
     } catch (e) {
       // Fallback to local DB if network fails (offline)
+      print('BooksPage: Network request failed, attempting fallback to local DB');
       try {
         final repo = await _repoFut;
         final local = await repo.listBooks();
+        print('BooksPage: Fallback successful - got ${local.length} books from local DB');
         if (!mounted) return;
         setState(() {
           _books = local;
@@ -160,8 +178,13 @@ class _BooksPageState extends State<BooksPage> {
           _error = null;
         });
         if (mounted) _showNoInternetSnack();
+        
+        // Load recent books from local data
+        _loadRecentBooks();
         return;
-      } catch (_) {}
+      } catch (_) {
+        print('BooksPage: Fallback to local DB also failed');
+      }
       if (!mounted) return;
       setState(() {
         _error = e.toString();
@@ -174,6 +197,31 @@ class _BooksPageState extends State<BooksPage> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('No internet connection')),
     );
+  }
+  
+  Future<void> _loadRecentBooks() async {
+    print('BooksPage: _loadRecentBooks() called');
+    try {
+      print('BooksPage: Calling PlayHistoryService.getLastPlayedBooks(4)');
+      final recent = await PlayHistoryService.getLastPlayedBooks(4);
+      print('BooksPage: PlayHistoryService returned ${recent.length} recent books');
+      if (mounted) {
+        setState(() {
+          _recentBooks = recent;
+        });
+        print('BooksPage: Updated _recentBooks state with ${recent.length} books');
+      }
+    } catch (e) {
+      print('BooksPage: Failed to load recent books: $e');
+      // Don't fail the main UI if recent books fail to load
+      debugPrint('Failed to load recent books: $e');
+      // Set empty list to prevent UI errors
+      if (mounted) {
+        setState(() {
+          _recentBooks = [];
+        });
+      }
+    }
   }
 
   /// Pre-cache first N covers to disk/memory for snappy grid/list.
@@ -362,11 +410,11 @@ class _BooksPageState extends State<BooksPage> {
                         color: cs.onSurfaceVariant,
                       ),
                       hintText: 'Search books or authors...',
-                      hintStyle: MaterialStateProperty.all(
+                      hintStyle: WidgetStateProperty.all(
                         TextStyle(color: cs.onSurfaceVariant),
                       ),
-                      backgroundColor: MaterialStateProperty.all(Colors.transparent),
-                      elevation: MaterialStateProperty.all(0),
+                      backgroundColor: WidgetStateProperty.all(Colors.transparent),
+                      elevation: WidgetStateProperty.all(0),
                       onChanged: (val) {
                         setState(() => _query = val);
                         _saveSearchPref(val);
@@ -501,8 +549,11 @@ class _BooksPageState extends State<BooksPage> {
                 ),
               ),
             )
-          else
+          else ...[
+            // Resume Playing Section
+            if (_recentBooks.isNotEmpty) _buildResumePlayingSection(),
             _buildList(visible),
+          ],
         ],
         ),
       ),
@@ -528,6 +579,56 @@ class _BooksPageState extends State<BooksPage> {
             );
           },
           childCount: list.length,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildResumePlayingSection() {
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.play_circle_outline_rounded,
+                  color: Theme.of(context).colorScheme.primary,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Resume Playing',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    height: 1.0,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 0),
+            SizedBox(
+              height: 176,
+              child: GridView.builder(
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 4,
+                  mainAxisSpacing: 2,
+                  crossAxisSpacing: 2,
+                  childAspectRatio: 1.0, // square tiles
+                ),
+                itemCount: _recentBooks.length,
+                itemBuilder: (context, index) {
+                  final book = _recentBooks[index];
+                  return _ResumeBookCard(
+                    book: book,
+                    onTap: () => _openDetails(book),
+                  );
+                },
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -630,6 +731,100 @@ class _BookCard extends StatelessWidget {
                         ),
                       )
                     : const SizedBox.shrink(),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ResumeBookCard extends StatelessWidget {
+  const _ResumeBookCard({required this.book, required this.onTap});
+  final Book book;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: cs.outline.withOpacity(0.1),
+          width: 1,
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: AspectRatio(
+          aspectRatio: 1.0,
+          child: Stack(
+            children: [
+              // Cropped cover fills tile
+              Positioned.fill(
+                child: _CoverThumb(url: book.coverUrl),
+              ),
+              // Dim layer for legibility
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.black.withOpacity(0.0),
+                        Colors.black.withOpacity(0.35),
+                        Colors.black.withOpacity(0.55),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              // Play icon centered
+              Center(
+                child: Icon(
+                  Icons.play_arrow_rounded,
+                  color: Colors.white.withOpacity(0.9),
+                  size: 28,
+                ),
+              ),
+              // Text over image at bottom
+              Positioned(
+                left: 8,
+                right: 8,
+                bottom: 8,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      book.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        height: 1.05,
+                      ),
+                    ),
+                    if (book.author != null && book.author!.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        book.author!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Colors.white.withOpacity(0.92),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ),
             ],
           ),

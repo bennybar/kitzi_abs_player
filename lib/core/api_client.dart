@@ -76,7 +76,7 @@ class ApiClient {
       if (access != null) reqHeaders['Authorization'] = 'Bearer $access';
     }
 
-    Future<http.Response> _send(String m) async {
+    Future<http.Response> send(String m) async {
       switch (m) {
         case 'GET':
           return http.get(uri, headers: reqHeaders);
@@ -94,14 +94,14 @@ class ApiClient {
     }
 
     var upper = method.toUpperCase();
-    var resp = await _send(upper);
+    var resp = await send(upper);
 
     if (auth && resp.statusCode == 401) {
       final refreshed = await _refreshAccessToken();
       if (refreshed) {
         final retryHeaders = Map<String, String>.from(reqHeaders);
         retryHeaders['Authorization'] = 'Bearer ${await _getAccessToken()}';
-        resp = await _send(upper);
+        resp = await send(upper);
       }
     }
     return resp;

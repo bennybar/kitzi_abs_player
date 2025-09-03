@@ -3,7 +3,6 @@ import '../../core/auth_repository.dart';
 import '../../main.dart';
 import '../main/main_scaffold.dart';
 import '../../core/download_storage.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key, required this.auth});

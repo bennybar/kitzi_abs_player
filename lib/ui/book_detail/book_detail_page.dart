@@ -1,11 +1,9 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:background_downloader/background_downloader.dart';
 
 import '../../core/books_repository.dart';
 import '../../models/book.dart';
-import '../../core/downloads_repository.dart';
 import '../../core/playback_repository.dart';
 import '../../widgets/mini_player.dart';
 import '../../widgets/download_button.dart';
@@ -75,7 +73,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
               // and confirm whether it is JSON we can parse
               try {
                 final raw = b.description ?? '';
-                final preview = raw.length > 500 ? raw.substring(0, 500) + '…' : raw;
+                final preview = raw.length > 500 ? '${raw.substring(0, 500)}…' : raw;
                 debugPrint('[DETAILS] Book id=${b.id} title="${b.title}"');
                 debugPrint('[DETAILS] Author=${b.author} durationMs=${b.durationMs} sizeBytes=${b.sizeBytes}');
                 debugPrint('[DETAILS] description.length=${raw.length}');

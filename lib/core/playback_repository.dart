@@ -7,7 +7,6 @@ import 'package:audio_session/audio_session.dart';
 import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
 import 'package:just_audio/just_audio.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'auth_repository.dart';
@@ -16,6 +15,8 @@ import 'chapter_navigation_service.dart';
 import 'sleep_timer_service.dart';
 import 'playback_speed_service.dart';
 import 'download_storage.dart';
+import 'play_history_service.dart';
+import '../models/book.dart';
 
 const _kProgressPing = Duration(seconds: 10);
 const _kLocalProgPrefix = 'abs_progress:';      // local fallback per item
@@ -233,6 +234,17 @@ class PlaybackRepository {
       chapters: chapters,
       episodeId: episodeId,
     );
+    
+    // Add to play history
+    try {
+      final book = await _getBookForHistory(libraryItemId);
+      if (book != null) {
+        await PlayHistoryService.addToHistory(book);
+      }
+    } catch (e) {
+      // Don't fail playback if history tracking fails
+      _log('Failed to add to play history: $e');
+    }
     _setNowPlaying(np);
     _progressItemId = libraryItemId;
 
@@ -823,6 +835,29 @@ class PlaybackRepository {
       }
     }
     return null;
+  }
+  
+  /// Helper method to get book information for play history
+  Future<Book?> _getBookForHistory(String libraryItemId) async {
+    try {
+      final meta = await _getItemMeta(libraryItemId);
+      
+      final coverUrl = await _coverUrl(libraryItemId);
+      if (coverUrl == null) return null; // Skip if no cover available
+      
+      return Book(
+        id: libraryItemId,
+        title: _titleFromMeta(meta) ?? 'Unknown Title',
+        author: _authorFromMeta(meta),
+        coverUrl: coverUrl,
+        description: null,
+        durationMs: null,
+        sizeBytes: null,
+      );
+    } catch (e) {
+      _log('Failed to get book info for history: $e');
+      return null;
+    }
   }
 }
 
