@@ -1,5 +1,6 @@
 # Miscellaneous
 *.class
+IMPROVEMENTS.md
 *.log
 *.pyc
 *.swp
