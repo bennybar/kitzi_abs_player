@@ -156,7 +156,9 @@ class BooksRepository {
     // Best-effort migration for existing installs
     try {
       await _db!.execute('ALTER TABLE books ADD COLUMN coverPath TEXT');
-    } catch (_) {}
+    } catch (_) {
+      // ignore duplicate column errors
+    }
   }
 
   Future<void> _upsertBooks(List<Book> items) async {

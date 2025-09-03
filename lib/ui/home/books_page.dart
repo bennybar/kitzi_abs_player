@@ -181,9 +181,17 @@ class _BooksPageState extends State<BooksPage> {
     if (!mounted || items.isEmpty) return;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       for (final b in items.take(count)) {
-        // Fire-and-forget; CachedNetworkImage handles disk cache
-        precacheImage(CachedNetworkImageProvider(b.coverUrl), context)
-            .catchError((_) {});
+        try {
+          final uri = Uri.tryParse(b.coverUrl);
+          if (uri != null && uri.scheme == 'file') {
+            final f = File(uri.toFilePath());
+            if (await f.exists()) {
+              await precacheImage(FileImage(f), context);
+            }
+          } else {
+            await precacheImage(CachedNetworkImageProvider(b.coverUrl), context);
+          }
+        } catch (_) {}
       }
     });
   }

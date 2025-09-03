@@ -52,6 +52,8 @@ class DownloadsRepository {
   final Map<String, double> _lastRunningProgress = <String, double>{};
   // Known taskIds per item from live updates (DB may lag)
   final Map<String, Set<String>> _itemTaskIds = <String, Set<String>>{};
+  // Last time we received any update for an item
+  final Map<String, DateTime> _lastUpdateAt = <String, DateTime>{};
 
   // Per-item aggregated progress streams
   final Map<String, StreamController<ItemProgress>> _itemCtrls = {};
@@ -74,6 +76,8 @@ class DownloadsRepository {
   final Map<String, bool> _uiActive = <String, bool>{};
   // Items we explicitly allow to run (opt-in when user taps Download)
   final Set<String> _activeItems = <String>{};
+  // Brief global halt after cancel to avoid race with plugin updates
+  DateTime? _globalHaltUntil;
   // Foreground path removed; we use background_downloader exclusively
   
   // Global download queue management
@@ -127,6 +131,7 @@ class DownloadsRepository {
       final id = _extractItemId(meta);
       if (id == null) return;
       _lastItemUpdate[id] = u;
+      _lastUpdateAt[id] = DateTime.now();
       // Track task id for this item
       try {
         final tid = u.task.taskId;
@@ -226,6 +231,12 @@ class DownloadsRepository {
     _inFlightItems.remove(libraryItemId);
     _uiActive[libraryItemId] = false;
     _activeItems.remove(libraryItemId);
+    // Clear any cached progress/updates so UI doesn't show stale percentages
+    _lastRunningProgress.remove(libraryItemId);
+    _lastItemUpdate.remove(libraryItemId);
+    _lastUpdateAt.remove(libraryItemId);
+    // Brief global halt
+    _globalHaltUntil = DateTime.now().add(const Duration(milliseconds: 1500));
     // Remove any queued entries for this item
     _globalDownloadQueue.removeWhere((entry) => entry.key == libraryItemId);
     _itemsInGlobalQueue.remove(libraryItemId);
@@ -273,6 +284,9 @@ class DownloadsRepository {
     } catch (_) {}
     _pendingQueuedUntil.remove(libraryItemId);
     _blockedItems.add(libraryItemId);
+    _lastRunningProgress.remove(libraryItemId);
+    _lastItemUpdate.remove(libraryItemId);
+    _lastUpdateAt.remove(libraryItemId);
     _notifyItem(libraryItemId);
   }
 
@@ -380,7 +394,12 @@ class DownloadsRepository {
 
     final denom = totalTracks == 0 ? 1 : totalTracks;
     double value = ((completedLocal.toDouble()) + runningProgress) / denom;
-    if (value > 0.0 && value < 0.01) value = 0.01;
+    // If item is blocked/canceled, force 0 to avoid stale '2%'
+    if (_blockedItems.contains(libraryItemId)) {
+      value = 0.0;
+    } else if (value > 0.0 && value < 0.01) {
+      value = 0.01;
+    }
 
     String status = 'none';
     if (completedLocal >= totalTracks && totalTracks > 0) status = 'complete';
@@ -389,6 +408,7 @@ class DownloadsRepository {
     else if (recs.any((r) => r.status == TaskStatus.enqueued)) status = 'queued';
     else if (_pendingQueuedUntil[libraryItemId]?.isAfter(DateTime.now()) == true) status = 'queued';
     else if (_itemsInGlobalQueue.contains(libraryItemId) || _activeItems.contains(libraryItemId)) status = 'queued';
+    else if (_blockedItems.contains(libraryItemId)) status = 'none';
     else if (_uiActive[libraryItemId] == true) status = 'running';
     else if (completedLocal > 0 && completedLocal < totalTracks) status = 'running';
 
@@ -474,6 +494,11 @@ class DownloadsRepository {
 
   /// Process the global download queue - ensures only one download runs at a time
   Future<void> _processGlobalQueue() async {
+    // Respect global halt
+    if (_globalHaltUntil != null && DateTime.now().isBefore(_globalHaltUntil!)) {
+      _d('Global halt active; skipping queue processing');
+      return;
+    }
     if (_isProcessingGlobalQueue || _globalDownloadQueue.isEmpty) {
       _d('Global queue processing skipped: isProcessing=$_isProcessingGlobalQueue, isEmpty=${_globalDownloadQueue.isEmpty}');
       return;
@@ -520,6 +545,11 @@ class DownloadsRepository {
   // Serial per-item scheduler: ensure only one active task for a given item
   Future<void> _startNextForItem(String libraryItemId, {String? episodeId}) async {
     _d('_startNextForItem called for $libraryItemId');
+    // Respect global halt
+    if (_globalHaltUntil != null && DateTime.now().isBefore(_globalHaltUntil!)) {
+      _d('Global halt active; not scheduling new task');
+      return;
+    }
     
     if (_blockedItems.contains(libraryItemId)) {
       _d('Item $libraryItemId is blocked, skipping');
@@ -622,13 +652,70 @@ class DownloadsRepository {
       final meta = u.task.metaData ?? '';
       final id = _extractItemId(meta);
       if (id == null) return;
-      // With background downloader disabled, we only use updates to clear stray tasks when blocked
-      if (_blockedItems.contains(id) || !_activeItems.contains(id)) {
+      // Ignore/cancel updates for items we explicitly blocked
+      if (_blockedItems.contains(id)) {
         try {
           await FileDownloader().cancelTaskWithId(u.task.taskId);
           try { await FileDownloader().database.deleteRecordWithId(u.task.taskId); } catch (_) {}
         } catch (_) {}
+        return;
       }
+      // Only respond to items the user activated
+      if (!_activeItems.contains(id)) return;
+
+      // Small debounce to allow plugin to update DB
+      await Future.delayed(const Duration(milliseconds: 150));
+
+      // Determine activity using DB and live flags
+      final recs = await _recordsForItem(id);
+      final hasActiveDb = recs.any((r) => r.status == TaskStatus.running || r.status == TaskStatus.enqueued);
+      bool hasActiveLive = (_uiActive[id] == true) || _inFlightItems.contains(id);
+      // Clear stale live flags if no DB activity for >2s
+      if (!hasActiveDb && hasActiveLive) {
+        final last = _lastUpdateAt[id];
+        final stale = last == null || DateTime.now().difference(last) > const Duration(seconds: 2);
+        if (stale) {
+          _uiActive[id] = false;
+          _inFlightItems.remove(id);
+          hasActiveLive = false;
+        }
+      }
+      final hasActive = hasActiveDb || hasActiveLive;
+
+      if (!hasActive) {
+        // Check if this book still has tracks to download
+        final tracks = await _playback.getRemoteTracks(id);
+        final dir = await _itemDir(id);
+        bool hasMoreTracks = false;
+        for (final t in tracks) {
+          final filename = 'track_${t.index.toString().padLeft(3, '0')}.${_extFromMime(t.mimeType)}';
+          final f = File('${dir.path}/$filename');
+          if (!f.existsSync()) {
+            hasMoreTracks = true;
+            break;
+          }
+        }
+
+        if (hasMoreTracks) {
+          // Throttle; ensure no other file in flight
+          final now = DateTime.now();
+          if (_globalHaltUntil != null && now.isBefore(_globalHaltUntil!)) return;
+          final nextOk = _nextAllowedSchedule[id] ?? DateTime.fromMillisecondsSinceEpoch(0);
+          if (now.isBefore(nextOk)) return;
+          if (_inFlightItems.isNotEmpty) return;
+          _nextAllowedSchedule[id] = now.add(const Duration(milliseconds: 750));
+          await _startNextForItem(id);
+        } else {
+          // Completed: clear queues and hide notification
+          _globalDownloadQueue.removeWhere((entry) => entry.key == id);
+          _itemsInGlobalQueue.remove(id);
+          _uiActive[id] = false;
+          _inFlightItems.remove(id);
+          try { await NotificationService.instance.hideDownloadNotification(); } catch (_) {}
+        }
+      }
+
+      _notifyItem(id);
     });
   }
 
