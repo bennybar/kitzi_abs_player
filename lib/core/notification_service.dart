@@ -179,4 +179,35 @@ class NotificationService {
       debugPrint('Failed to hide download notification: $e');
     }
   }
+
+  Future<void> showDownloadComplete(String title) async {
+    if (!_isInitialized) return;
+    try {
+      const androidDetails = AndroidNotificationDetails(
+        'kitzi_download_channel',
+        'Kitzi Downloads',
+        channelDescription: 'Download notifications',
+        importance: Importance.defaultImportance,
+        priority: Priority.defaultPriority,
+        autoCancel: true,
+        showWhen: true,
+        timeoutAfter: 3500,
+      );
+      const iosDetails = DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: false,
+        presentSound: false,
+      );
+      const details = NotificationDetails(android: androidDetails, iOS: iosDetails);
+      await _notifications.show(
+        2002,
+        'Download complete',
+        title,
+        details,
+        payload: 'book_download_complete',
+      );
+    } catch (e) {
+      debugPrint('Failed to show download complete notification: $e');
+    }
+  }
 }

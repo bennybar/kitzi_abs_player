@@ -140,26 +140,26 @@ class _DownloadButtonState extends State<DownloadButton> {
     else if (snap != null &&
         (snap.status == 'running' || snap.status == 'queued')) {
       final pct = (snap.progress * 100).clamp(0, 100).toStringAsFixed(0);
-      child = Stack(
-        children: [
-          // Background progress bar that fills the button
-          Positioned.fill(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(20),
+      child = SizedBox(
+        height: 40, // lock height to avoid layout jump
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // Background progress bar that fills the button
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
               child: LinearProgressIndicator(
                 value: snap.progress,
                 backgroundColor: Colors.transparent,
               ),
             ),
-          ),
-          FilledButton.icon(
-            onPressed: null, // disabled while running
-            icon: const Icon(Icons.download),
-            label: Text('Downloading… $pct%'),
-          ),
-          // Cancel hotspot on the right (per-book cancel)
-          Positioned.fill(
-            child: Align(
+            FilledButton.icon(
+              onPressed: null, // disabled while running
+              icon: const Icon(Icons.download),
+              label: Text('Downloading… $pct%'),
+            ),
+            // Cancel hotspot on the right (per-book cancel)
+            Align(
               alignment: Alignment.centerRight,
               child: IconButton(
                 tooltip: 'Cancel download',
@@ -167,8 +167,8 @@ class _DownloadButtonState extends State<DownloadButton> {
                 icon: const Icon(Icons.close),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       );
     }
     // 3) Default -> "Download"

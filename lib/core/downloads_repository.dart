@@ -261,11 +261,44 @@ class DownloadsRepository {
       for (final r in all.where((r) => _extractItemId(r.task.metaData ?? '') == libraryItemId)) {
         try { await FileDownloader().database.deleteRecordWithId(r.taskId); } catch (_) {}
       }
+      // Best-effort: remove partially written current track
+      try {
+        final last = _lastItemUpdate[libraryItemId];
+        final fn = last?.task.filename ?? '';
+        bool shouldDelete = false;
+        if (last is TaskProgressUpdate) {
+          shouldDelete = (last.progress ?? 0.0) < 0.999;
+        } else if (last is TaskStatusUpdate) {
+          shouldDelete = last.status == TaskStatus.running || last.status == TaskStatus.enqueued;
+        }
+        if (fn.isNotEmpty && shouldDelete) {
+          final dir = await _itemDir(libraryItemId);
+          final f = File('${dir.path}/$fn');
+          if (await f.exists()) {
+            await f.delete();
+          }
+        }
+        // Also remove any leftover temp/part files
+        final dir = await _itemDir(libraryItemId);
+        if (await dir.exists()) {
+          final entries = await dir.list().toList();
+          for (final e in entries) {
+            if (e is File) {
+              final name = e.path.split('/').last.toLowerCase();
+              if (name.endsWith('.part') || name.endsWith('.tmp')) {
+                try { await e.delete(); } catch (_) {}
+              }
+            }
+          }
+        }
+      } catch (_) {}
     } catch (_) {}
     
     // Small debounce to allow plugin to settle
     await Future.delayed(const Duration(milliseconds: 150));
     _notifyItem(libraryItemId);
+    // Hide download notification on cancel
+    try { await NotificationService.instance.hideDownloadNotification(); } catch (_) {}
   }
 
   /// Remove local files for a book (and cancel tasks just in case).
@@ -315,6 +348,8 @@ class DownloadsRepository {
     await _persistBlockedItems();
     
     _d('Canceled all downloads and cleared global queue');
+    // Hide download notification on cancel all
+    try { await NotificationService.instance.hideDownloadNotification(); } catch (_) {}
   }
 
   Future<List<TaskRecord>> listAll() =>
@@ -711,7 +746,12 @@ class DownloadsRepository {
           _itemsInGlobalQueue.remove(id);
           _uiActive[id] = false;
           _inFlightItems.remove(id);
-          try { await NotificationService.instance.hideDownloadNotification(); } catch (_) {}
+          try {
+            await NotificationService.instance.hideDownloadNotification();
+            // Best-effort: show a short completion notification using the item id as title hint
+            await NotificationService.instance.showDownloadComplete('Book ready');
+          } catch (_) {}
+          // Optional: toast/snackbar via notification channel could be added here
         }
       }
 
