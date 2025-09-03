@@ -63,11 +63,32 @@ class _DownloadButtonState extends State<DownloadButton> {
     if (_downloads == null) return;
     setState(() => _busy = true);
     try {
-      await _downloads!.enqueueItemDownloads(
-        widget.libraryItemId,
-        episodeId: widget.episodeId,
-        displayTitle: widget.titleForNotification,
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Single download at a time'),
+          content: const Text(
+              'Only one download is supported at a time.\n\nCancel all other downloads and download this book now?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('No'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Yes, download this'),
+            ),
+          ],
+        ),
       );
+      if (proceed == true) {
+        await _downloads!.cancelAll();
+        await _downloads!.enqueueItemDownloads(
+          widget.libraryItemId,
+          episodeId: widget.episodeId,
+          displayTitle: widget.titleForNotification,
+        );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -77,6 +98,7 @@ class _DownloadButtonState extends State<DownloadButton> {
     if (_downloads == null) return;
     setState(() => _busy = true);
     try {
+      // Strong cancel: cancel all tasks first, then remove this item's local files
       await _downloads!.cancelForItem(widget.libraryItemId);
     } finally {
       if (mounted) setState(() => _busy = false);
