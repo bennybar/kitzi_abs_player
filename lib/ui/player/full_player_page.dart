@@ -149,6 +149,10 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
                                   : Theme.of(ctx).colorScheme.onSurface,
                             ),
                           ),
+                          // Show raw time for debugging when long-pressing a row
+                          onLongPress: () {
+                            debugPrint('[Chapters] Tap ${i+1}: "${c.title}" start=${c.start.inMilliseconds}ms');
+                          },
                           subtitle: Text(
                             _fmt(c.start),
                             style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(

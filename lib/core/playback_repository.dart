@@ -148,11 +148,16 @@ class PlaybackRepository {
       if (last == null || last.isEmpty) return;
 
       final meta = await _getItemMeta(last);
+      _log('Warm load metadata for $last: keys=${meta.keys.toList()}');
       var chapters = _extractChapters(meta);
+      _log('Warm load extracted ${chapters.length} chapters');
       final tracks = await _getTracksPreferLocal(last);
+      _log('Warm load fetched ${tracks.length} tracks');
       final tracksWithDur = await _ensureDurations(tracks, last);
+      _log('Warm load ensured durations');
       if (chapters.isEmpty && tracksWithDur.isNotEmpty) {
         chapters = _chaptersFromTracks(tracksWithDur);
+        _log('Warm load generated ${chapters.length} chapters from tracks');
       }
 
       final np = NowPlaying(
@@ -216,12 +221,17 @@ class PlaybackRepository {
     await prefs.setString(_kLastItemKey, libraryItemId);
 
     final meta = await _getItemMeta(libraryItemId);
+    _log('Loaded item metadata for $libraryItemId: keys=${meta.keys.toList()}');
     var chapters = _extractChapters(meta);
+    _log('Extracted ${chapters.length} chapters');
 
     var tracks = await _getTracksPreferLocal(libraryItemId, episodeId: episodeId);
+    _log('Fetched ${tracks.length} tracks (localFirst)');
     tracks = await _ensureDurations(tracks, libraryItemId, episodeId: episodeId);
+    _log('Ensured track durations; firstDur=${tracks.isNotEmpty ? tracks.first.duration : 'n/a'}');
     if (chapters.isEmpty && tracks.isNotEmpty) {
       chapters = _chaptersFromTracks(tracks);
+      _log('No chapters from metadata; generated ${chapters.length} from tracks');
     }
 
     final np = NowPlaying(
@@ -796,20 +806,41 @@ class PlaybackRepository {
 
   List<Chapter> _extractChapters(Map<String, dynamic> meta) {
     final chapters = <Chapter>[];
-    final toc = meta['chapters'] ?? meta['tableOfContents'];
-    if (toc is List) {
-      for (final c in toc) {
+    // Try common locations used by Audiobookshelf and derivatives
+    final toc = meta['chapters'] ??
+        meta['tableOfContents'] ??
+        meta['media']?['metadata']?['chapters'] ??
+        meta['media']?['chapters'] ??
+        meta['book']?['chapters'];
+
+    void _parseList(List list, {String? sourceName}) {
+      for (final c in list) {
         if (c is Map) {
-          final title = (c['title'] ?? c['name'] ?? '').toString();
-          final startMs = (c['start'] is num)
-              ? (c['start'] as num).toDouble() * 1000
-              : (c['startMs'] as num?)?.toDouble();
+          final map = c.cast<String, dynamic>();
+          final title = (map['title'] ?? map['name'] ?? map['chapter'] ?? '').toString();
+          final startMs = (map['start'] is num)
+              ? (map['start'] as num).toDouble() * 1000
+              : (map['startMs'] is num)
+                  ? (map['startMs'] as num).toDouble()
+                  : (map['time'] is num)
+                      ? (map['time'] as num).toDouble() * 1000
+                      : null;
           if (startMs != null) {
-            chapters.add(Chapter(title: title, start: Duration(milliseconds: startMs.round())));
+            chapters.add(Chapter(
+              title: title,
+              start: Duration(milliseconds: startMs.round()),
+            ));
           }
         }
       }
     }
+
+    if (toc is List) {
+      _parseList(toc, sourceName: 'root');
+    }
+
+    // Sort by start just in case
+    chapters.sort((a, b) => a.start.compareTo(b.start));
     return chapters;
   }
 
@@ -817,8 +848,21 @@ class PlaybackRepository {
     final chapters = <Chapter>[];
     double cursorSec = 0.0;
     for (final t in tracks) {
+      // Prefer to use filename (without extension) when local files are used,
+      // otherwise fall back to generic Track N.
+      String title = 'Track ${t.index + 1}';
+      if (t.isLocal) {
+        try {
+          final parts = t.url.split(Platform.pathSeparator);
+          final base = parts.isNotEmpty ? parts.last : t.url;
+          final withoutExt = base.contains('.') ? base.substring(0, base.lastIndexOf('.')) : base;
+          if (withoutExt.trim().isNotEmpty) {
+            title = withoutExt.trim();
+          }
+        } catch (_) {}
+      }
       chapters.add(Chapter(
-        title: 'Track ${t.index + 1}',
+        title: title,
         start: Duration(milliseconds: (cursorSec * 1000).round()),
       ));
       cursorSec += t.duration > 0 ? t.duration : 0.0;

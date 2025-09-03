@@ -36,6 +36,9 @@ class ChapterNavigationService {
       }
     }
 
+    if (currentChapter != null) {
+      debugPrint('[Chapters] Current: ${currentChapter.title} @ ${currentChapter.start.inMilliseconds}ms');
+    }
     return currentChapter;
   }
 
@@ -85,9 +88,9 @@ class ChapterNavigationService {
 
     try {
       await _player!.seek(chapter.start);
-      debugPrint('Jumped to chapter: ${chapter.title}');
+      debugPrint('[Chapters] Jumped to: ${chapter.title}');
     } catch (e) {
-      debugPrint('Failed to jump to chapter: $e');
+      debugPrint('[Chapters] Failed to jump: $e');
     }
   }
 
