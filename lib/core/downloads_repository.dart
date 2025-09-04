@@ -380,6 +380,19 @@ class DownloadsRepository {
     };
   }
 
+  /// Returns true if there are any active or queued downloads
+  Future<bool> hasActiveOrQueued() async {
+    try {
+      final recs = await FileDownloader().database.allRecords();
+      final hasDbActive = recs.any((r) => r.status == TaskStatus.running || r.status == TaskStatus.enqueued);
+      if (hasDbActive) return true;
+    } catch (_) {}
+    if (_inFlightItems.isNotEmpty) return true;
+    if (_itemsInGlobalQueue.isNotEmpty) return true;
+    if (_uiActive.values.any((v) => v == true)) return true;
+    return false;
+  }
+
   /// Return a union of itemIds that either have local files or active records.
   Future<List<String>> listTrackedItemIds() async {
     final ids = <String>{};
@@ -646,7 +659,7 @@ class DownloadsRepository {
       _d('Downloading track ${next.index} for $libraryItemId');
 
       final prefs = await SharedPreferences.getInstance();
-      final wifiOnly = prefs.getBool(_wifiOnlyKey) ?? true;
+      final wifiOnly = prefs.getBool(_wifiOnlyKey) ?? false;
       final filename = 'track_${next.index.toString().padLeft(3, '0')}.${_extFromMime(next.mimeType)}';
 
       final baseFolder = await DownloadStorage.taskDirectoryPrefix();

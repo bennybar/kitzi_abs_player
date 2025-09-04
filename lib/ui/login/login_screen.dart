@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../core/auth_repository.dart';
 import '../../main.dart';
 import '../main/main_scaffold.dart';
@@ -137,6 +138,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     TextFormField(
                       controller: _userCtrl,
                       decoration: const InputDecoration(labelText: 'Username'),
+                      autofillHints: const [AutofillHints.username],
                       validator: (v) =>
                           (v == null || v.trim().isEmpty) ? 'Required' : null,
                     ),
@@ -145,6 +147,11 @@ class _LoginScreenState extends State<LoginScreen> {
                       controller: _passCtrl,
                       decoration: const InputDecoration(labelText: 'Password'),
                       obscureText: true,
+                      autofillHints: const [AutofillHints.password],
+                      onEditingComplete: () {
+                        TextInput.finishAutofillContext();
+                        _submit();
+                      },
                       validator: (v) =>
                           (v == null || v.isEmpty) ? 'Required' : null,
                     ),

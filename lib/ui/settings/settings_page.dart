@@ -2,9 +2,34 @@ import 'package:flutter/material.dart';
 import '../../main.dart'; // ServicesScope
 import '../../ui/login/login_screen.dart';
 import '../../core/download_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-class SettingsPage extends StatelessWidget {
+class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
+
+  @override
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<SettingsPage> {
+  bool? _wifiOnly;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPrefs();
+  }
+
+  Future<void> _loadPrefs() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      setState(() {
+        _wifiOnly = prefs.getBool('downloads_wifi_only') ?? false;
+      });
+    } catch (_) {
+      setState(() { _wifiOnly = false; });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -57,6 +82,16 @@ class SettingsPage extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
             child: Text('Downloads', style: Theme.of(context).textTheme.titleMedium),
           ),
+          SwitchListTile(
+            title: const Text('Wi‑Fi only downloads'),
+            subtitle: const Text('Disable to allow downloads on cellular data'),
+            value: _wifiOnly ?? false,
+            onChanged: (v) async {
+              await _setWifiOnly(v);
+              if (!mounted) return;
+              setState(() { _wifiOnly = v; });
+            },
+          ),
           FutureBuilder<String>(
             future: DownloadStorage.getBaseSubfolder(),
             builder: (context, snap) {
@@ -104,22 +139,6 @@ class SettingsPage extends StatelessWidget {
               );
             },
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: FilledButton.tonalIcon(
-              icon: const Icon(Icons.stop_circle_outlined),
-              label: const Text('Cancel running downloads'),
-              onPressed: () async {
-                final downloads = services.downloads;
-                await downloads.cancelAll();
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('All running downloads canceled')),
-                  );
-                }
-              },
-            ),
-          ),
           const Divider(height: 32),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
@@ -150,4 +169,12 @@ class SettingsPage extends StatelessWidget {
       ),
     );
   }
+}
+
+// --- Helpers for Wi‑Fi-only downloads preference ---
+Future<void> _setWifiOnly(bool value) async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('downloads_wifi_only', value);
+  } catch (_) {}
 }
