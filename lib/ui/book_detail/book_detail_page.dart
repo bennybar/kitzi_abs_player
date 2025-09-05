@@ -9,6 +9,8 @@ import '../../widgets/mini_player.dart';
 import '../../widgets/download_button.dart';
 import '../../main.dart'; // ServicesScope
 import '../../ui/player/full_player_page.dart'; // Added import for FullPlayerPage
+import 'dart:io';
+import '../../core/books_repository.dart' as repo_helpers;
 
 class BookDetailPage extends StatefulWidget {
   const BookDetailPage({super.key, required this.bookId});
@@ -27,7 +29,27 @@ class _BookDetailPageState extends State<BookDetailPage> {
   void initState() {
     super.initState();
     _repoFut = BooksRepository.create();
-    _bookFut = _repoFut.then((r) => r.getBook(widget.bookId));
+    _bookFut = _loadBook();
+  }
+
+  Future<Book> _tryLoadFromDb(BooksRepository r) async {
+    final cached = await r.getBookFromDb(widget.bookId);
+    if (cached != null) return cached;
+    throw Exception('Not cached');
+  }
+
+  Future<Book> _loadBook() async {
+    final repo = await _repoFut;
+    try {
+      // Try network first; on success, repo persists it
+      return await repo.getBook(widget.bookId);
+    } catch (_) {
+      // On failure (e.g., offline), try local DB
+      final cached = await repo.getBookFromDb(widget.bookId);
+      if (cached != null) return cached;
+      // still failing: surface a meaningful error
+      throw Exception('offline_not_cached');
+    }
   }
 
   @override
@@ -61,7 +83,9 @@ class _BookDetailPageState extends State<BookDetailPage> {
                   child: Padding(
                     padding: const EdgeInsets.all(16),
                     child: Text(
-                      'Failed to load book.',
+                      snap.error.toString().contains('offline_not_cached')
+                          ? 'This book has not been opened before. Connect to the internet once to cache details for offline access.'
+                          : 'Failed to load book.',
                       style: TextStyle(color: cs.error),
                     ),
                   ),
@@ -104,21 +128,38 @@ class _BookDetailPageState extends State<BookDetailPage> {
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: CachedNetworkImage(
-                              imageUrl: b.coverUrl,
-                              width: 140,
-                              height: 210,
-                              fit: BoxFit.cover,
-                              errorWidget: (_, __, ___) => Container(
-                                width: 140,
-                                height: 210,
-                                alignment: Alignment.center,
-                                color: cs.surfaceContainerHighest,
-                                child: const Icon(Icons.menu_book_outlined, size: 48),
-                              ),
-                            ),
+                          Builder(
+                            builder: (_) {
+                              final uri = Uri.tryParse(b.coverUrl);
+                              final radius = BorderRadius.circular(12);
+                              if (uri != null && uri.scheme == 'file') {
+                                return ClipRRect(
+                                  borderRadius: radius,
+                                  child: Image.file(
+                                    File(uri.toFilePath()),
+                                    width: 140,
+                                    height: 210,
+                                    fit: BoxFit.cover,
+                                  ),
+                                );
+                              }
+                              return ClipRRect(
+                                borderRadius: radius,
+                                child: CachedNetworkImage(
+                                  imageUrl: b.coverUrl,
+                                  width: 140,
+                                  height: 210,
+                                  fit: BoxFit.cover,
+                                  errorWidget: (_, __, ___) => Container(
+                                    width: 140,
+                                    height: 210,
+                                    alignment: Alignment.center,
+                                    color: cs.surfaceContainerHighest,
+                                    child: const Icon(Icons.menu_book_outlined, size: 48),
+                                  ),
+                                ),
+                              );
+                            },
                           ),
                           const SizedBox(width: 16),
                           Expanded(
@@ -494,7 +535,7 @@ class _MetaOrDescription extends StatelessWidget {
       children: [
         Text('Description', style: text.titleMedium),
         const SizedBox(height: 8),
-        Text(book.description ?? '', style: text.bodyMedium),
+        _RichDescription(book: book),
       ],
     );
   }
@@ -555,5 +596,55 @@ class _MetaOrDescription extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _RichDescription extends StatelessWidget {
+  const _RichDescription({required this.book});
+  final Book book;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final raw = book.description ?? '';
+    if (raw.isEmpty) return const SizedBox.shrink();
+    final re = RegExp(r'https?://[^\s"\)]+\.(?:png|jpg|jpeg|webp|gif)', caseSensitive: false);
+    final parts = <InlineSpan>[];
+    int last = 0;
+    for (final m in re.allMatches(raw)) {
+      if (m.start > last) {
+        parts.add(TextSpan(text: raw.substring(last, m.start)));
+      }
+      final url = m.group(0)!;
+      parts.add(WidgetSpan(
+        alignment: PlaceholderAlignment.baseline,
+        baseline: TextBaseline.alphabetic,
+        child: FutureBuilder<Uri>(
+          future: repo_helpers.BooksRepository.localOrRemoteDescriptionImageUri(book.id, url),
+          builder: (_, snap) {
+            final uri = snap.data;
+            if (uri == null) return const SizedBox.shrink();
+            if (uri.scheme == 'file') {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Image.file(
+                  File(uri.toFilePath()),
+                  fit: BoxFit.cover,
+                ),
+              );
+            }
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Image.network(uri.toString(), fit: BoxFit.cover),
+            );
+          },
+        ),
+      ));
+      last = m.end;
+    }
+    if (last < raw.length) {
+      parts.add(TextSpan(text: raw.substring(last)));
+    }
+    return RichText(text: TextSpan(style: text.bodyMedium, children: parts));
   }
 }

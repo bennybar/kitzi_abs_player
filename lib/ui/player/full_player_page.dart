@@ -38,6 +38,45 @@ class FullPlayerPage extends StatefulWidget {
 class _FullPlayerPageState extends State<FullPlayerPage> {
   double _dragY = 0.0;
 
+  PopupMenuItem<double> _speedItem(BuildContext context, double current, double value) {
+    final sel = (current - value).abs() < 0.001;
+    return PopupMenuItem<double>(
+      value: value,
+      child: Row(
+        children: [
+          if (sel) ...[
+            Icon(Icons.check_rounded, size: 18, color: Theme.of(context).colorScheme.primary),
+            const SizedBox(width: 6),
+          ] else ...[
+            const SizedBox(width: 24),
+          ],
+          Text('${value.toStringAsFixed(2)}×'),
+        ],
+      ),
+    );
+  }
+
+  Widget _speedIndicator(double current, ColorScheme cs, TextTheme text) {
+    if ((current - 1.0).abs() < 0.001) {
+      return Icon(
+        Icons.speed_rounded,
+        color: cs.onSurfaceVariant,
+      );
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: cs.outline.withOpacity(0.2)),
+      ),
+      child: Text(
+        '${current.toStringAsFixed(2)}×',
+        style: text.labelLarge?.copyWith(color: cs.onSurfaceVariant, fontWeight: FontWeight.w600),
+      ),
+    );
+  }
+
   String _fmt(Duration d) {
     final h = d.inHours;
     final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
@@ -281,21 +320,25 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
                               }
                             },
                           ),
-                          PopupMenuButton<double>(
-                            tooltip: 'Playback speed',
-                            icon: Icon(
-                              Icons.speed_rounded,
-                              color: cs.onSurfaceVariant,
-                            ),
-                            onSelected: (v) => playback.setSpeed(v),
-                            itemBuilder: (context) => const [
-                              PopupMenuItem(value: 0.75, child: Text('0.75×')),
-                              PopupMenuItem(value: 1.0, child: Text('1.0×')),
-                              PopupMenuItem(value: 1.25, child: Text('1.25×')),
-                              PopupMenuItem(value: 1.5, child: Text('1.5×')),
-                              PopupMenuItem(value: 1.75, child: Text('1.75×')),
-                              PopupMenuItem(value: 2.0, child: Text('2.0×')),
-                            ],
+                          StreamBuilder<double>(
+                            stream: ServicesScope.of(context).services.playback.player.speedStream,
+                            initialData: ServicesScope.of(context).services.playback.player.speed,
+                            builder: (_, speedSnap) {
+                              final cur = speedSnap.data ?? 1.0;
+                              return PopupMenuButton<double>(
+                                tooltip: 'Playback speed',
+                                icon: _speedIndicator(cur, cs, text),
+                                onSelected: (v) => playback.setSpeed(v),
+                                itemBuilder: (context) => [
+                                  _speedItem(context, cur, 0.75),
+                                  _speedItem(context, cur, 0.9),
+                                  _speedItem(context, cur, 1.0),
+                                  _speedItem(context, cur, 1.25),
+                                  _speedItem(context, cur, 1.5),
+                                  _speedItem(context, cur, 2.0),
+                                ],
+                              );
+                            },
                           ),
                         ],
                       ),

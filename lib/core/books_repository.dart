@@ -5,6 +5,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
 import 'dart:io';
+import 'dart:math';
+import 'package:crypto/crypto.dart';
+import 'dart:convert' show utf8;
 import '../models/book.dart';
 import 'auth_repository.dart';
 
@@ -144,7 +147,12 @@ class BooksRepository {
         ? (body['item'] as Map).cast<String, dynamic>()
         : (body as Map).cast<String, dynamic>();
 
-    return Book.fromLibraryItemJson(item, baseUrl: baseUrl, token: token);
+    final b = Book.fromLibraryItemJson(item, baseUrl: baseUrl, token: token);
+    // Persist to DB for offline access
+    await _upsertBooks([b]);
+    // Best-effort: cache description images in background
+    unawaited(_persistDescriptionImages(b));
+    return b;
   }
 
   static Future<BooksRepository> create() async {
@@ -240,6 +248,162 @@ class BooksRepository {
             : null,
       );
     }).toList();
+  }
+
+  /// Get a single book from local database (offline fallback). Returns null if not found.
+  Future<Book?> getBookFromDb(String id) async {
+    final db = _db;
+    if (db == null) return null;
+    final rows = await db.query('books', where: 'id = ?', whereArgs: [id], limit: 1);
+    if (rows.isEmpty) return null;
+    final m = rows.first;
+    final baseUrl = _auth.api.baseUrl ?? '';
+    final token = await _auth.api.accessToken();
+    final localPath = (m['coverPath'] as String?);
+    var coverUrl = '$baseUrl/api/items/$id/cover';
+    if (token != null && token.isNotEmpty) coverUrl = '$coverUrl?token=$token';
+    if (localPath != null && File(localPath).existsSync()) {
+      coverUrl = 'file://$localPath';
+    }
+    return Book(
+      id: id,
+      title: (m['title'] as String),
+      author: m['author'] as String?,
+      coverUrl: coverUrl,
+      description: m['description'] as String?,
+      durationMs: m['durationMs'] as int?,
+      sizeBytes: m['sizeBytes'] as int?,
+      updatedAt: (m['updatedAt'] as int?) != null
+          ? DateTime.fromMillisecondsSinceEpoch((m['updatedAt'] as int), isUtc: true)
+          : null,
+    );
+  }
+
+  /// Upsert a single book into the local DB (convenience)
+  Future<void> upsertBook(Book b) async {
+    await _upsertBooks([b]);
+  }
+
+  // ================== Description images caching ==================
+  Future<Directory> _descImagesDirFor(String bookId) async {
+    final dbPath = await getDatabasesPath();
+    final dir = Directory(p.join(dbPath, 'kitzi_desc_images', bookId));
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+    return dir;
+  }
+
+  static String _hashUrl(String url) {
+    final d = sha1.convert(utf8.encode(url));
+    return d.toString();
+  }
+
+  static String _extensionFromUrl(String url) {
+    final lower = url.toLowerCase();
+    // Look for extension before optional query string
+    final re = RegExp(r'\.((?:jpg|jpeg|png|webp|gif))(?:\?|$)', caseSensitive: false);
+    final m = re.firstMatch(lower);
+    if (m != null && m.groupCount >= 1) return m.group(1)!.toLowerCase();
+    return 'img';
+  }
+
+  static String _extensionFromContentType(String? ct) {
+    if (ct == null) return 'img';
+    final lower = ct.toLowerCase();
+    if (lower.contains('jpeg')) return 'jpg';
+    if (lower.contains('png')) return 'png';
+    if (lower.contains('webp')) return 'webp';
+    if (lower.contains('gif')) return 'gif';
+    return 'img';
+  }
+
+  Future<void> _persistDescriptionImages(Book b) async {
+    final urls = _extractImageUrlsFromDescription(b.description);
+    if (urls.isEmpty) return;
+    final dir = await _descImagesDirFor(b.id);
+    final client = http.Client();
+    try {
+      for (final u in urls) {
+        try {
+          final name = _hashUrl(u);
+          // Try any existing ext variants first
+          File file = File(p.join(dir.path, '$name.jpg'));
+          if (!await file.exists()) file = File(p.join(dir.path, '$name.jpeg'));
+          if (!await file.exists()) file = File(p.join(dir.path, '$name.png'));
+          if (!await file.exists()) file = File(p.join(dir.path, '$name.webp'));
+          if (!await file.exists()) file = File(p.join(dir.path, '$name.gif'));
+          if (!await file.exists()) file = File(p.join(dir.path, '$name.img'));
+          if (await file.exists()) continue;
+          final resp = await client.get(Uri.parse(u));
+          if (resp.statusCode == 200 && resp.bodyBytes.isNotEmpty) {
+            final ct = resp.headers['content-type'];
+            final extCt = _extensionFromContentType(ct);
+            final extUrl = _extensionFromUrl(u);
+            final chosen = extCt != 'img' ? extCt : extUrl;
+            final out = File(p.join(dir.path, '$name.$chosen'));
+            await out.writeAsBytes(resp.bodyBytes, flush: true);
+          }
+        } catch (_) {}
+      }
+    } finally {
+      client.close();
+    }
+  }
+
+  List<String> _extractImageUrlsFromDescription(String? description) {
+    if (description == null || description.isEmpty) return const [];
+    final urls = <String>{};
+    // Try JSON shapes first
+    try {
+      final parsed = jsonDecode(description);
+      if (parsed is Map<String, dynamic>) {
+        final cand = parsed['images'] ?? parsed['imageUrls'] ?? parsed['imagesUrls'];
+        if (cand is List) {
+          for (final it in cand) {
+            if (it is String && _looksLikeImageUrl(it)) urls.add(it);
+          }
+        }
+        // generic scan over all string values
+        for (final v in parsed.values) {
+          if (v is String && _looksLikeImageUrl(v)) urls.add(v);
+        }
+      } else if (parsed is List) {
+        for (final it in parsed) {
+          if (it is String && _looksLikeImageUrl(it)) urls.add(it);
+          if (it is Map) {
+            for (final v in it.values) {
+              if (v is String && _looksLikeImageUrl(v)) urls.add(v);
+            }
+          }
+        }
+      }
+    } catch (_) {
+      // Not JSON; fall back to regex
+      final re = RegExp(r'https?://[^\s"\)]+\.(?:png|jpg|jpeg|webp|gif)', caseSensitive: false);
+      for (final m in re.allMatches(description)) {
+        urls.add(m.group(0)!);
+      }
+    }
+    return urls.toList();
+  }
+
+  bool _looksLikeImageUrl(String s) {
+    final lower = s.toLowerCase();
+    return lower.startsWith('http') && (lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.webp') || lower.endsWith('.gif'));
+  }
+
+  static Future<Uri> localOrRemoteDescriptionImageUri(String bookId, String url) async {
+    final dbPath = await getDatabasesPath();
+    final dir = Directory(p.join(dbPath, 'kitzi_desc_images', bookId));
+    final name = _hashUrl(url);
+    for (final ext in ['jpg','jpeg','png','webp','gif','img']) {
+      final file = File(p.join(dir.path, '$name.$ext'));
+      if (await file.exists()) {
+        return Uri.file(file.path);
+      }
+    }
+    return Uri.parse(url);
   }
 
   /// Clear ETag cache to force fresh data on next request

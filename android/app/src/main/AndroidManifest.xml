@@ -60,7 +60,19 @@
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
 
-        <!-- Android Auto discovery is handled by the audio_service plugin's service above -->
+        <!-- Media browser service for Android Auto -->
+        <service
+            android:name="com.ryanheise.audioservice.MediaBrowserService"
+            android:exported="true"
+            android:permission="android.permission.BIND_MEDIA_BROWSER_SERVICE">
+            <intent-filter>
+                <action android:name="android.media.browse.MediaBrowserService" />
+                <category android:name="android.media.intent.category.CAR_MEDIA" />
+            </intent-filter>
+            <meta-data
+                android:name="com.google.android.gms.car.application"
+                android:resource="@xml/automotive_app_desc" />
+        </service>
 
     </application>
 

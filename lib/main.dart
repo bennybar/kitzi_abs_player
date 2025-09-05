@@ -106,6 +106,8 @@ class _AbsAppState extends State<AbsApp> {
       try {
         final services = ServicesScope.of(context).services;
         AudioServiceBinding.instance.bindAudioService(services.playback);
+        // Warm-load last played item into the mini player at the saved position (no auto-play)
+        services.playback.warmLoadLastItem(playAfterLoad: false);
       } catch (e) {
         debugPrint('Error in post frame callback: $e');
       }

@@ -12,10 +12,11 @@ class PlaybackSpeedService {
   static const String _speedKey = 'playback_speed';
   static const double _defaultSpeed = 1.0;
   static const List<double> _availableSpeeds = [
-    0.5, 0.75, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0
+    0.75, 0.9, 1.0, 1.25, 1.5, 2.0
   ];
 
   double _currentSpeed = _defaultSpeed;
+  final ValueNotifier<double> speed = ValueNotifier<double>(_defaultSpeed);
   PlaybackRepository? _playbackRepository;
 
   void initialize(PlaybackRepository playbackRepository) {
@@ -39,6 +40,7 @@ class PlaybackSpeedService {
     try {
       await _playbackRepository?.setSpeed(speed);
       _currentSpeed = speed;
+      this.speed.value = speed;
       await _saveSpeed();
       debugPrint('Playback speed set to: ${speed}x');
     } catch (e) {
@@ -106,6 +108,7 @@ class PlaybackSpeedService {
       final savedSpeed = prefs.getDouble(_speedKey);
       if (savedSpeed != null && _availableSpeeds.contains(savedSpeed)) {
         _currentSpeed = savedSpeed;
+        speed.value = savedSpeed;
         debugPrint('Loaded saved speed: ${savedSpeed}x');
       }
     } catch (e) {

@@ -3,6 +3,7 @@ import '../../main.dart'; // ServicesScope
 import '../../ui/login/login_screen.dart';
 import '../../core/download_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../core/playback_speed_service.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -35,6 +36,7 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget build(BuildContext context) {
     final services = ServicesScope.of(context).services;
     final theme = services.theme;
+    final playbackSpeed = PlaybackSpeedService.instance; // singleton service
 
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
@@ -136,6 +138,35 @@ class _SettingsPageState extends State<SettingsPage> {
                     }
                   }
                 },
+              );
+            },
+          ),
+          const Divider(height: 32),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            child: Text('Playback', style: Theme.of(context).textTheme.titleMedium),
+          ),
+          ValueListenableBuilder<double>(
+            valueListenable: playbackSpeed.speed,
+            builder: (_, spd, __) {
+              return ListTile(
+                title: const Text('Playback speed'),
+                subtitle: Text('${spd.toStringAsFixed(2)}×'),
+                trailing: DropdownButton<double>(
+                  value: spd,
+                  items: const [
+                    DropdownMenuItem(value: 0.75, child: Text('0.75×')),
+                    DropdownMenuItem(value: 0.9, child: Text('0.90×')),
+                    DropdownMenuItem(value: 1.0, child: Text('1.00×')),
+                    DropdownMenuItem(value: 1.25, child: Text('1.25×')),
+                    DropdownMenuItem(value: 1.5, child: Text('1.50×')),
+                    DropdownMenuItem(value: 2.0, child: Text('2.00×')),
+                  ],
+                  onChanged: (v) async {
+                    if (v == null) return;
+                    await playbackSpeed.setSpeed(v);
+                  },
+                ),
               );
             },
           ),

@@ -3,6 +3,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:flutter/material.dart';
 
 import 'playback_repository.dart';
+import 'books_repository.dart';
 
 class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   final PlaybackRepository _playback;
@@ -253,6 +254,50 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
             }
     } catch (e) {
       debugPrint('Error forcing media session update: $e');
+    }
+  }
+
+  // =================== Android Auto / Browse Tree ===================
+  @override
+  Future<String> getRoot([Map<String, dynamic>? extras]) async {
+    // Single root for entire library
+    return 'root';
+  }
+
+  @override
+  Future<List<MediaItem>> getChildren(String parentMediaId, [Map<String, dynamic>? options]) async {
+    if (parentMediaId != 'root') return const <MediaItem>[];
+    try {
+      final repo = await BooksRepository.create();
+      final books = await repo.listBooks();
+      return books.map((b) {
+        return MediaItem(
+          id: b.id,
+          album: 'Audiobooks',
+          title: b.title,
+          artist: b.author ?? 'Unknown author',
+          artUri: Uri.tryParse(b.coverUrl),
+          playable: true,
+        );
+      }).toList(growable: false);
+    } catch (e) {
+      debugPrint('Browse getChildren failed: $e');
+      return const <MediaItem>[];
+    }
+  }
+
+  @override
+  Future<void> playFromMediaId(String mediaId, [Map<String, dynamic>? extras]) async {
+    try {
+      await _playback.playItem(mediaId);
+      // Ensure queue reflects current now playing model
+      final np = _playback.nowPlaying;
+      if (np != null) {
+        await updateQueueFromNowPlaying(np);
+      }
+      await play();
+    } catch (e) {
+      debugPrint('playFromMediaId failed: $e');
     }
   }
 }

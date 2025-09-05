@@ -194,23 +194,28 @@ class PlaybackRepository {
   }
 
   Future<double?> fetchServerProgress(String libraryItemId) async {
-    final api = _auth.api;
-    final resp = await api.request('GET', '/api/me/progress/$libraryItemId');
-    if (resp.statusCode != 200) return null;
     try {
-      final data = jsonDecode(resp.body);
-      if (data is Map<String, dynamic>) {
-        if (data['currentTime'] is num) return (data['currentTime'] as num).toDouble();
-        if (data['currentTime'] is String) return double.tryParse(data['currentTime'] as String);
-        final first = _firstMapValue(data);
-        if (first != null) {
-          final v = first['currentTime'];
-          if (v is num) return v.toDouble();
-          if (v is String) return double.tryParse(v);
+      final api = _auth.api;
+      final resp = await api.request('GET', '/api/me/progress/$libraryItemId');
+      if (resp.statusCode != 200) return null;
+      try {
+        final data = jsonDecode(resp.body);
+        if (data is Map<String, dynamic>) {
+          if (data['currentTime'] is num) return (data['currentTime'] as num).toDouble();
+          if (data['currentTime'] is String) return double.tryParse(data['currentTime'] as String);
+          final first = _firstMapValue(data);
+          if (first != null) {
+            final v = first['currentTime'];
+            if (v is num) return v.toDouble();
+            if (v is String) return double.tryParse(v);
+          }
         }
-      }
-    } catch (_) {}
-    return null;
+      } catch (_) {}
+      return null;
+    } on SocketException catch (_) {
+      // Offline
+      return null;
+    }
   }
 
   Future<void> playItem(String libraryItemId, {String? episodeId}) async {
@@ -268,7 +273,12 @@ class PlaybackRepository {
     }
 
     // SERVER WINS: try server position first; fallback to local cache
-    double? resumeSec = await fetchServerProgress(libraryItemId);
+    double? resumeSec;
+    try {
+      resumeSec = await fetchServerProgress(libraryItemId);
+    } catch (_) {
+      // offline: ignore
+    }
     resumeSec ??= prefs.getDouble('$_kLocalProgPrefix$libraryItemId');
 
     if (resumeSec != null && resumeSec > 0) {
