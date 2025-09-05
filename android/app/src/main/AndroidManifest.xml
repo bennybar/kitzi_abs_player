@@ -64,15 +64,21 @@
         <service
             android:name="com.ryanheise.audioservice.MediaBrowserService"
             android:exported="true"
+            android:enabled="true"
             android:permission="android.permission.BIND_MEDIA_BROWSER_SERVICE">
             <intent-filter>
                 <action android:name="android.media.browse.MediaBrowserService" />
+                <!-- Also declare the androidx media action for broader compatibility -->
+                <action android:name="androidx.media.MediaBrowserService" />
+                <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.media.intent.category.CAR_MEDIA" />
             </intent-filter>
-            <meta-data
-                android:name="com.google.android.gms.car.application"
-                android:resource="@xml/automotive_app_desc" />
         </service>
+
+        <!-- Required by Android Auto to detect this as a media app -->
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc" />
 
     </application>
 

@@ -70,6 +70,10 @@ Future<void> main() async {
     theme: theme,
   );
 
+  // Ensure AudioService is initialized early so Android Auto can discover the
+  // MediaBrowserService without requiring the UI to build first.
+  await AudioServiceBinding.instance.bindAudioService(services.playback);
+
   runApp(ServicesScope(
     services: services,
     child: const AbsApp(),
@@ -100,16 +104,13 @@ class _AbsAppState extends State<AbsApp> {
       }
     });
     
-    // Initialize audio service after app is ready
+    // Warm-load last played item into the mini player at the saved position (no auto-play)
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      debugPrint('Post frame callback - binding audio service...');
       try {
         final services = ServicesScope.of(context).services;
-        AudioServiceBinding.instance.bindAudioService(services.playback);
-        // Warm-load last played item into the mini player at the saved position (no auto-play)
         services.playback.warmLoadLastItem(playAfterLoad: false);
       } catch (e) {
-        debugPrint('Error in post frame callback: $e');
+        debugPrint('Error warming last item: $e');
       }
     });
   }

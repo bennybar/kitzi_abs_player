@@ -270,6 +270,18 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
     try {
       final repo = await BooksRepository.create();
       final books = await repo.listBooks();
+      if (books.isEmpty) {
+        // Ensure Android Auto shows the app even when there is no content yet
+        return <MediaItem>[
+          const MediaItem(
+            id: 'kitzi_placeholder_no_content',
+            album: 'Kitzi',
+            title: 'Open Kitzi on phone to sign in or add books',
+            artist: ' ',
+            playable: false,
+          ),
+        ];
+      }
       return books.map((b) {
         return MediaItem(
           id: b.id,
@@ -282,13 +294,26 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
       }).toList(growable: false);
     } catch (e) {
       debugPrint('Browse getChildren failed: $e');
-      return const <MediaItem>[];
+      // Provide a placeholder item so the app remains visible in Android Auto
+      return const <MediaItem>[
+        MediaItem(
+          id: 'kitzi_placeholder_error',
+          album: 'Kitzi',
+          title: 'Unable to load library. Open app on phone.',
+          artist: ' ',
+          playable: false,
+        ),
+      ];
     }
   }
 
   @override
   Future<void> playFromMediaId(String mediaId, [Map<String, dynamic>? extras]) async {
     try {
+      if (mediaId.startsWith('kitzi_placeholder_')) {
+        // Ignore placeholder items in Android Auto
+        return;
+      }
       await _playback.playItem(mediaId);
       // Ensure queue reflects current now playing model
       final np = _playback.nowPlaying;
