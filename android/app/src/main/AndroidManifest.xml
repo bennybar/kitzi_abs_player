@@ -57,28 +57,31 @@
             android:value="2" />
         <service
             android:name="com.ryanheise.audioservice.AudioService"
-            android:exported="false"
-            android:foregroundServiceType="mediaPlayback" />
-
-        <!-- Media browser service for Android Auto -->
-        <service
-            android:name="com.ryanheise.audioservice.MediaBrowserService"
             android:exported="true"
             android:enabled="true"
-            android:permission="android.permission.BIND_MEDIA_BROWSER_SERVICE">
+            android:foregroundServiceType="mediaPlayback">
             <intent-filter>
                 <action android:name="android.media.browse.MediaBrowserService" />
-                <!-- Also declare the androidx media action for broader compatibility -->
-                <action android:name="androidx.media.MediaBrowserService" />
-                <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.media.intent.category.CAR_MEDIA" />
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </service>
+
+        <!-- No separate MediaBrowserService class needed; AudioService handles browsing -->
 
         <!-- Required by Android Auto to detect this as a media app -->
         <meta-data
             android:name="com.google.android.gms.car.application"
             android:resource="@xml/automotive_app_desc" />
+
+        <!-- Ensure hardware/media button events are handled via MediaSession -->
+        <receiver
+            android:name="androidx.media.session.MediaButtonReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </receiver>
 
     </application>
 

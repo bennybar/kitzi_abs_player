@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 
 import 'playback_repository.dart';
 import 'books_repository.dart';
+import 'play_history_service.dart';
+import '../models/book.dart';
 
 class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   final PlaybackRepository _playback;
@@ -75,6 +77,7 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
       if (currentIndex >= 0 && currentIndex < q.length) {
         final currentItem = q[currentIndex];
         mediaItem.add(currentItem);
+        // Current media item changed; AA will refresh on next browse request
             }
     });
   }
@@ -260,6 +263,7 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
   // =================== Android Auto / Browse Tree ===================
   @override
   Future<String> getRoot([Map<String, dynamic>? extras]) async {
+    debugPrint('AA:getRoot called');
     // Single root for entire library
     return 'root';
   }
@@ -267,44 +271,59 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
   @override
   Future<List<MediaItem>> getChildren(String parentMediaId, [Map<String, dynamic>? options]) async {
     if (parentMediaId != 'root') return const <MediaItem>[];
+    debugPrint('AA:getChildren for parent=$parentMediaId');
+
+    // 1) Load up to 3 recent books from local play history (fast, no network)
+    List<Book> recent = const <Book>[];
+    try {
+      recent = await PlayHistoryService.getLastPlayedBooks(3);
+    } catch (_) {}
+
+    // 2) Attempt to load additional books with a short timeout to avoid long spinners
+    List<Book> extra = const <Book>[];
     try {
       final repo = await BooksRepository.create();
-      final books = await repo.listBooks();
-      if (books.isEmpty) {
-        // Ensure Android Auto shows the app even when there is no content yet
-        return <MediaItem>[
-          const MediaItem(
-            id: 'kitzi_placeholder_no_content',
-            album: 'Kitzi',
-            title: 'Open Kitzi on phone to sign in or add books',
-            artist: ' ',
-            playable: false,
-          ),
-        ];
+      extra = await repo.listBooks().timeout(const Duration(milliseconds: 1200));
+    } catch (_) {}
+
+    // 3) Compose unique list: recent first, then others not already included
+    final seen = <String>{for (final b in recent) b.id};
+    final ordered = <Book>[...recent];
+    for (final b in extra) {
+      if (!seen.contains(b.id)) {
+        ordered.add(b);
+        seen.add(b.id);
       }
-      return books.map((b) {
-        return MediaItem(
-          id: b.id,
-          album: 'Audiobooks',
-          title: b.title,
-          artist: b.author ?? 'Unknown author',
-          artUri: Uri.tryParse(b.coverUrl),
-          playable: true,
-        );
-      }).toList(growable: false);
-    } catch (e) {
-      debugPrint('Browse getChildren failed: $e');
-      // Provide a placeholder item so the app remains visible in Android Auto
+      if (ordered.length >= 20) break; // keep list concise for AA UI
+    }
+
+    if (ordered.isEmpty) {
       return const <MediaItem>[
         MediaItem(
-          id: 'kitzi_placeholder_error',
+          id: 'kitzi_placeholder_open_phone',
           album: 'Kitzi',
-          title: 'Unable to load library. Open app on phone.',
+          title: 'Open Kitzi on phone to browse your library',
           artist: ' ',
           playable: false,
         ),
       ];
     }
+
+    final List<MediaItem> items = ordered.map<MediaItem>((b) {
+      final isRecent = recent.any((r) => r.id == b.id);
+      final title = isRecent ? 'Continue: ${b.title}' : b.title;
+      return MediaItem(
+        id: b.id,
+        album: 'Audiobooks',
+        title: title,
+        artist: b.author ?? 'Unknown author',
+        artUri: Uri.tryParse(b.coverUrl),
+        playable: true,
+      );
+    }).toList(growable: false);
+
+    debugPrint('AA:getChildren returning ${items.length} items (recent=${recent.length})');
+    return items;
   }
 
   @override
@@ -312,6 +331,10 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
     try {
       if (mediaId.startsWith('kitzi_placeholder_')) {
         // Ignore placeholder items in Android Auto
+        return;
+      }
+      if (mediaId == 'kitzi_resume_current') {
+        await play();
         return;
       }
       await _playback.playItem(mediaId);
@@ -326,3 +349,5 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
     }
   }
 }
+
+// No headless factory required for current setup
