@@ -2,6 +2,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api_client.dart';
+import 'package:flutter/foundation.dart';
 
 /// AuthRepository
 /// -------------------------
@@ -33,6 +34,7 @@ class AuthRepository {
     final prefs = await SharedPreferences.getInstance();
     const secure = FlutterSecureStorage();
     _instanceInternal = AuthRepository._(prefs, secure);
+    debugPrint('[AUTH] ensure: baseUrl=${_instanceInternal!._api.baseUrl ?? '(none)'}');
     return _instanceInternal!;
   }
 

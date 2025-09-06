@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -12,11 +13,13 @@ class ApiClient {
   String? get baseUrl => _prefs.getString('abs_base_url');
 
   Future<void> setBaseUrl(String url) async {
+    final original = url;
     url = url.trim();
     if (!url.startsWith('http://') && !url.startsWith('https://')) {
       url = 'https://$url';
     }
     url = url.replaceAll(RegExp(r'/+$'), '');
+    debugPrint('[API] setBaseUrl: input="$original" -> stored="$url"');
     await _prefs.setString('abs_base_url', url);
   }
 
@@ -152,26 +155,53 @@ class ApiClient {
     required String password,
   }) async {
     await setBaseUrl(baseUrl);
-    final resp = await http.post(
-      Uri.parse('$baseUrl/login'),
-      headers: {
-        'Content-Type': 'application/json',
-        'x-return-tokens': 'true',
-      },
-      body: jsonEncode({'username': username, 'password': password}),
-    );
+    final loginUrl = '$baseUrl/login';
+    debugPrint('[API] login: url="$loginUrl" user="$username" hasPassword=${password.isNotEmpty}');
+    http.Response resp;
+    try {
+      resp = await http.post(
+        Uri.parse(loginUrl),
+        headers: const {
+          'Content-Type': 'application/json',
+          'x-return-tokens': 'true',
+        },
+        body: jsonEncode({'username': username, 'password': password}),
+      );
+      debugPrint('[API] login: status=${resp.statusCode} len=${resp.body.length}');
+    } catch (e) {
+      debugPrint('[API] login: network error: $e');
+      return false;
+    }
 
     if (resp.statusCode != 200) return false;
 
-    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    Map<String, dynamic> data;
+    try {
+      data = jsonDecode(resp.body) as Map<String, dynamic>;
+    } catch (e) {
+      debugPrint('[API] login: JSON decode error: $e');
+      return false;
+    }
     final user = data['user'] as Map<String, dynamic>?;
     final access = user?['accessToken'] as String?;
     final refresh = user?['refreshToken'] as String?;
-    if (access == null || refresh == null) return false;
+    // Some servers may return tokens at top-level instead of nested user
+    final topLevelAccess = data['accessToken'] as String?;
+    final topLevelRefresh = data['refreshToken'] as String?;
+    final chosenAccess = access ?? topLevelAccess;
+    final chosenRefresh = refresh ?? topLevelRefresh;
+    debugPrint('[API] login: tokens present -> access=${chosenAccess != null} refresh=${chosenRefresh != null}');
+    if (chosenAccess == null) return false;
 
-    final assumedExpiry = DateTime.now().toUtc().add(const Duration(hours: 12));
-    await _setAccessToken(access, assumedExpiry);
-    await _setRefreshToken(refresh);
+    final assumedExpiry = DateTime.now().toUtc().add(
+      (chosenRefresh == null || chosenRefresh.isEmpty)
+          ? const Duration(hours: 1)
+          : const Duration(hours: 12),
+    );
+    await _setAccessToken(chosenAccess, assumedExpiry);
+    if (chosenRefresh != null && chosenRefresh.isNotEmpty) {
+      await _setRefreshToken(chosenRefresh);
+    }
     return true;
   }
 

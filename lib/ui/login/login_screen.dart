@@ -42,11 +42,34 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!url.startsWith('http://') && !url.startsWith('https://')) {
         url = 'https://$url';
       }
-      return url.replaceAll(RegExp(r'/+$'), '');
+      url = url.replaceAll(RegExp(r'/+$'), '');
+
+      // If user pasted a login page URL (e.g., https://host/subpath/login),
+      // strip the trailing /login so our client posts to {base}/login once.
+      try {
+        final u = Uri.parse(url);
+        final segs = List<String>.from(u.pathSegments);
+        while (segs.isNotEmpty &&
+            (segs.last.toLowerCase() == 'login' ||
+             segs.last.toLowerCase() == 'signin')) {
+          segs.removeLast();
+        }
+        final trimmedPath = segs.join('/');
+        final rebuilt = Uri(
+          scheme: u.scheme,
+          host: u.host,
+          port: u.hasPort ? u.port : null,
+          path: trimmedPath.isEmpty ? null : '/$trimmedPath',
+        ).toString();
+        return rebuilt.replaceAll(RegExp(r'/+$'), '');
+      } catch (_) {
+        return url;
+      }
     }
 
     bool ok = false;
     try {
+      debugPrint('[LOGIN] submit: rawServer="${_serverCtrl.text}" user="${_userCtrl.text}"');
       ok = await widget.auth
           .login(
             baseUrl: normalizeBaseUrl(_serverCtrl.text),
@@ -55,6 +78,7 @@ class _LoginScreenState extends State<LoginScreen> {
           )
           .timeout(const Duration(seconds: 10));
     } catch (e) {
+      debugPrint('[LOGIN] submit: error: $e');
       ok = false;
     }
 
@@ -62,6 +86,7 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _loading = false);
 
     if (ok) {
+      debugPrint('[LOGIN] success');
       // Prompt a folder name once after successful login (simple dialog),
       // and request storage/media permissions on Android for public Music dir.
       try {
@@ -99,6 +124,7 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       );
     } else {
+      debugPrint('[LOGIN] failed');
       setState(() => _error = 'Login failed. Check server URL and credentials.');
       // Only clear password on failure (keep server & username)
       _passCtrl.clear();
