@@ -240,7 +240,7 @@ class DownloadsRepository {
     _globalDownloadQueue.removeWhere((entry) => entry.key == libraryItemId);
     _itemsInGlobalQueue.remove(libraryItemId);
     
-    // Cancel any active/enqueued tasks for this item
+    // Cancel any active/enqueued tasks for this item and remove any downloaded files immediately
     try {
       // Cancel by group, DB, and live-tracked task ids to be thorough
       final liveIds = (_itemTaskIds[libraryItemId] ?? const <String>{}).toList();
@@ -289,6 +289,14 @@ class DownloadsRepository {
               }
             }
           }
+        }
+      } catch (_) {}
+
+      // Remove entire item directory (all downloaded tracks) on cancel per requirement
+      try {
+        final dir = await _itemDir(libraryItemId);
+        if (await dir.exists()) {
+          await dir.delete(recursive: true);
         }
       } catch (_) {}
     } catch (_) {}

@@ -116,9 +116,13 @@ class PlaybackRepository {
       player.processingStateStream;
 
   String? _progressItemId;
+  String? _activeSessionId; // Remote streaming session id (if any)
 
   late final WidgetsBindingObserver _lifecycleHook = _LifecycleHook(
-    onPauseOrDetach: () => _sendProgressImmediate(),
+    onPauseOrDetach: () async {
+      await _sendProgressImmediate(paused: true);
+      await _closeActiveSession();
+    },
   );
 
   Future<List<PlaybackTrack>> getPlayableTracks(String libraryItemId,
@@ -200,15 +204,23 @@ class PlaybackRepository {
         return;
       }
 
-      // Fallback to original online path if no local audio is available
+      // Fallback to original online path if no local audio is available.
+      // IMPORTANT: Do not open a remote streaming session here unless we will actually play.
+      // Avoid calling /play on warm load to prevent opening sessions prematurely.
+      if (!playAfterLoad) {
+        _log('Warm load: skipping remote /play to avoid opening session. Will defer until actual playback.');
+        return;
+      }
+
       final meta = await _getItemMeta(last);
-      _log('Warm load metadata for $last: keys=${meta.keys.toList()}');
+      _log('Warm load (playAfterLoad=true) metadata for $last: keys=${meta.keys.toList()}');
       var chapters = _extractChapters(meta);
       _log('Warm load extracted ${chapters.length} chapters');
-      final tracks = await _getTracksPreferLocal(last);
-      _log('Warm load fetched ${tracks.length} tracks');
-      final tracksWithDur = await _ensureDurations(tracks, last);
-      _log('Warm load ensured durations');
+
+      final open = await _openSessionAndGetTracks(last);
+      final tracksWithDur = open.tracks;
+      _activeSessionId = open.sessionId;
+      _log('Warm load opened playback session: ${_activeSessionId ?? 'none'} with ${tracksWithDur.length} tracks');
       if (chapters.isEmpty && tracksWithDur.isNotEmpty) {
         chapters = _chaptersFromTracks(tracksWithDur);
         _log('Warm load generated ${chapters.length} chapters from tracks');
@@ -237,10 +249,8 @@ class PlaybackRepository {
         await _setTrackAt(0, preload: true);
       }
 
-      if (playAfterLoad) {
-        await player.play();
-        await _sendProgressImmediate();
-      }
+      await player.play();
+      await _sendProgressImmediate();
     } catch (e) {
       _log('warmLoadLastItem error: $e');
     }
@@ -283,10 +293,19 @@ class PlaybackRepository {
     var chapters = _extractChapters(meta);
     _log('Extracted ${chapters.length} chapters');
 
-    var tracks = await _getTracksPreferLocal(libraryItemId, episodeId: episodeId);
-    _log('Fetched ${tracks.length} tracks (localFirst)');
-    tracks = await _ensureDurations(tracks, libraryItemId, episodeId: episodeId);
-    _log('Ensured track durations; firstDur=${tracks.isNotEmpty ? tracks.first.duration : 'n/a'}');
+    // Determine tracks and open a remote session only if we need to stream
+    List<PlaybackTrack> tracks;
+    String? openedSessionId;
+    final localTracks = await _localTracks(libraryItemId);
+    if (localTracks.isNotEmpty) {
+      tracks = localTracks;
+      _log('Using ${tracks.length} local tracks (no remote session opened)');
+    } else {
+      final open = await _openSessionAndGetTracks(libraryItemId, episodeId: episodeId);
+      tracks = open.tracks;
+      openedSessionId = open.sessionId;
+      _log('Opened remote session ${openedSessionId ?? 'none'}; fetched ${tracks.length} streaming tracks');
+    }
     if (chapters.isEmpty && tracks.isNotEmpty) {
       chapters = _chaptersFromTracks(tracks);
       _log('No chapters from metadata; generated ${chapters.length} from tracks');
@@ -315,6 +334,7 @@ class PlaybackRepository {
     }
     _setNowPlaying(np);
     _progressItemId = libraryItemId;
+    _activeSessionId = openedSessionId;
 
     // Update audio service with new now playing info
     _log('Updating audio service with now playing: ${np.title}');
@@ -353,6 +373,10 @@ class PlaybackRepository {
           await _setTrackAt(next, preload: true);
           await player.play();
           await _sendProgressImmediate();
+        } else {
+          // Completed last track; mark finished and close session to stop transcodes
+          await _sendProgressImmediate(finished: true);
+          await _closeActiveSession();
         }
       }
     });
@@ -364,14 +388,34 @@ class PlaybackRepository {
   /// UPDATED: Send position to server on pause
   Future<void> pause() async {
     await player.pause();
-    await _sendProgressImmediate();
+    await _sendProgressImmediate(paused: true);
+    await _closeActiveSession();
   }
 
   /// UPDATED: Check server position and sync before resuming
   Future<void> resume() async {
     final itemId = _progressItemId;
-    if (itemId != null) {
+    final np = _nowPlaying;
+    if (itemId != null && np != null) {
       await _syncPositionFromServer();
+      if ((_activeSessionId == null || _activeSessionId!.isEmpty) && np.tracks.isNotEmpty && !np.tracks.first.isLocal) {
+        // Re-open streaming session after pause/close
+        try {
+          final open = await _openSessionAndGetTracks(itemId, episodeId: np.episodeId);
+          _activeSessionId = open.sessionId;
+          final tracks = open.tracks;
+          // Preserve current global position
+          final curSec = _computeGlobalPositionSec() ?? _trackOnlyPosSec() ?? 0.0;
+          // Update nowPlaying with fresh tracks and seek appropriately
+          final updated = np.copyWith(tracks: tracks);
+          _setNowPlaying(updated);
+          final map = _mapGlobalSecondsToTrack(curSec, tracks);
+          await _setTrackAt(map.index, preload: true);
+          await player.seek(Duration(milliseconds: (map.offsetSec * 1000).round()));
+        } catch (e) {
+          _log('Failed to reopen session on resume: $e');
+        }
+      }
     }
     await player.play();
     await _sendProgressImmediate();
@@ -466,6 +510,7 @@ class PlaybackRepository {
     _stopProgressSync();
     _setNowPlaying(null);
     _progressItemId = null;
+    await _closeActiveSession();
   }
 
   // ---- Progress sync ----
@@ -517,6 +562,7 @@ class PlaybackRepository {
   Future<void> _sendProgressImmediate({
     double? overrideTrackPosSec,
     bool finished = false,
+    bool paused = false,
   }) async {
     final itemId = _progressItemId;
     final np = _nowPlaying;
@@ -536,6 +582,11 @@ class PlaybackRepository {
 
     _lastSentSec = cur;
 
+    // Prefer syncing an active streaming session when available
+    final synced = await _syncSession(cur: cur, total: total, finished: finished, paused: paused);
+    if (synced) return;
+
+    // Fallback: legacy progress update endpoint
     final api = _auth.api;
     final path = (np.episodeId == null)
         ? '/api/me/progress/$itemId'
@@ -551,7 +602,7 @@ class PlaybackRepository {
     }
 
     http.Response? resp;
-    _log("Sending progress: cur=$cur, total=$total, finished=$finished");
+    _log("Sending progress via PATCH fallback: cur=$cur, total=$total, finished=$finished");
 
     try {
       resp = await api.request('PATCH', path,
@@ -715,6 +766,128 @@ class PlaybackRepository {
       );
     }).toList()
       ..sort((a, b) => a.index.compareTo(b.index));
+  }
+
+  // Open a streaming session and return tracks + session id
+  Future<StreamTracksResult> _openSessionAndGetTracks(String libraryItemId, {String? episodeId}) async {
+    final api = _auth.api;
+    final token = await api.accessToken();
+    final baseStr = api.baseUrl ?? '';
+    final base = Uri.parse(baseStr);
+
+    final path = episodeId == null
+        ? '/api/items/$libraryItemId/play'
+        : '/api/items/$libraryItemId/play/$episodeId';
+
+    final resp = await api.request('POST', path,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'deviceInfo': {'clientVersion': 'kitzi-android-0.1.0'},
+          'supportedMimeTypes': ['audio/mpeg', 'audio/mp4', 'audio/aac', 'audio/flac']
+        }));
+
+    if (resp.statusCode != 200) {
+      throw Exception('Failed to open session: ${resp.statusCode}');
+    }
+
+    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    final sessionId = (data['sessionId'] ?? data['id'] ?? data['_id'])?.toString();
+    final tracks = (data['audioTracks'] as List?) ?? const [];
+    final list = tracks.map((t) {
+      final m = (t as Map).cast<String, dynamic>();
+      final idx = (m['index'] as num?)?.toInt() ?? 0;
+      final dur = (m['duration'] as num?)?.toDouble() ?? 0.0; // seconds
+      final mime = (m['mimeType'] ?? 'audio/mpeg').toString();
+      final contentUrl = (m['contentUrl'] ?? '').toString();
+
+      Uri abs = Uri.tryParse(contentUrl) ?? Uri(path: contentUrl);
+      if (!abs.hasScheme) {
+        final rel = contentUrl.startsWith('/') ? contentUrl.substring(1) : contentUrl;
+        abs = Uri.parse(baseStr).resolve(rel);
+      }
+      if (token != null && token.isNotEmpty) {
+        abs = abs.replace(queryParameters: {
+          ...abs.queryParameters,
+          'token': token,
+        });
+      }
+
+      return PlaybackTrack(
+        index: idx,
+        url: abs.toString(),
+        mimeType: mime,
+        duration: dur,
+        isLocal: false,
+      );
+    }).toList()
+      ..sort((a, b) => a.index.compareTo(b.index));
+
+    return StreamTracksResult(tracks: list, sessionId: sessionId);
+  }
+
+  Future<bool> _syncSession({required double cur, double? total, required bool finished, required bool paused}) async {
+    final sessionId = _activeSessionId;
+    if (sessionId == null || sessionId.isEmpty) return false;
+    try {
+      final api = _auth.api;
+      final payload = <String, dynamic>{
+        'currentTime': cur,
+        'position': (cur * 1000).round(),
+        'isPaused': paused,
+        'isFinished': finished,
+      };
+      if (total != null && total > 0) {
+        payload['duration'] = total;
+        payload['progress'] = (cur / total).clamp(0.0, 1.0);
+      }
+
+      // Try a few likely endpoints; ignore failures and fall back to legacy progress
+      final candidates = <List<String>>[
+        ['POST', '/api/me/sessions/$sessionId/sync'],
+        ['PATCH', '/api/me/sessions/$sessionId'],
+        ['POST', '/api/sessions/$sessionId/sync'],
+        ['PATCH', '/api/sessions/$sessionId'],
+      ];
+      for (final c in candidates) {
+        try {
+          final r = await api.request(c[0], c[1],
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode(payload));
+          if (r.statusCode == 200 || r.statusCode == 204) {
+            _log('Session sync OK via ${c[0]} ${c[1]}');
+            return true;
+          }
+        } catch (_) {}
+      }
+    } catch (e) {
+      _log('Session sync error: $e');
+    }
+    return false;
+  }
+
+  Future<void> _closeActiveSession() async {
+    final sessionId = _activeSessionId;
+    if (sessionId == null || sessionId.isEmpty) return;
+    _activeSessionId = null; // Prevent duplicate closes
+    try {
+      final api = _auth.api;
+      final candidates = <List<String>>[
+        ['DELETE', '/api/me/sessions/$sessionId'],
+        ['POST', '/api/me/sessions/$sessionId/close'],
+        ['POST', '/api/sessions/$sessionId/close'],
+      ];
+      for (final c in candidates) {
+        try {
+          final r = await api.request(c[0], c[1], headers: {'Content-Type': 'application/json'});
+          if (r.statusCode == 200 || r.statusCode == 204 || r.statusCode == 404) {
+            _log('Closed session via ${c[0]} ${c[1]} (status ${r.statusCode})');
+            break;
+          }
+        } catch (_) {}
+      }
+    } catch (e) {
+      _log('Session close error: $e');
+    }
   }
 
   Future<List<PlaybackTrack>> _localTracks(String libraryItemId) async {
@@ -986,4 +1159,10 @@ class _TrackMap {
   final int index;
   final double offsetSec;
   _TrackMap({required this.index, required this.offsetSec});
+}
+
+class StreamTracksResult {
+  final List<PlaybackTrack> tracks;
+  final String? sessionId;
+  StreamTracksResult({required this.tracks, required this.sessionId});
 }
