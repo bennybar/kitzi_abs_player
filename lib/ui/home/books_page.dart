@@ -23,6 +23,9 @@ class BooksPage extends StatefulWidget {
 class _BooksPageState extends State<BooksPage> {
   late final Future<BooksRepository> _repoFut;
   List<Book> _books = [];
+  int _currentPage = 1;
+  bool _hasMore = true;
+  bool _loadingMore = false;
   List<Book> _recentBooks = [];
   bool _loading = true;
   String? _error;
@@ -156,9 +159,9 @@ class _BooksPageState extends State<BooksPage> {
       setState(() {
         _books = items;
         _loading = false;
+        _currentPage = 1;
+        _hasMore = items.length >= 50;
       });
-      // Always warm covers in background; UI is already updated
-      _warmCacheCovers(items);
       
       // Load recent books after main library
       if (!initial) {
@@ -293,7 +296,7 @@ class _BooksPageState extends State<BooksPage> {
         backgroundColor: cs.surface,
         child: CustomScrollView(
           physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
-          cacheExtent: 1200,
+          cacheExtent: 800,
           slivers: [
           // Enhanced App Bar with modern design
           SliverAppBar(
@@ -418,6 +421,7 @@ class _BooksPageState extends State<BooksPage> {
                       onChanged: (val) {
                         setState(() => _query = val);
                         _saveSearchPref(val);
+                        _restartSearchPagination();
                       },
                       trailing: [
                         if (_query.isNotEmpty)
@@ -553,6 +557,7 @@ class _BooksPageState extends State<BooksPage> {
             // Resume Playing Section
             if (_recentBooks.isNotEmpty) _buildResumePlayingSection(),
             _buildList(visible),
+            _buildLoadMore(),
           ],
         ],
         ),
@@ -642,6 +647,9 @@ class _BooksPageState extends State<BooksPage> {
         separatorBuilder: (_, __) => const SizedBox(height: 8),
         itemBuilder: (context, i) {
           final b = list[i];
+          if (!_loadingMore && _hasMore && i >= list.length - 8) {
+            _loadMore();
+          }
           return _BookListTile(
             book: b,
             onTap: () => _openDetails(b),
@@ -649,6 +657,64 @@ class _BooksPageState extends State<BooksPage> {
         },
       ),
     );
+  }
+
+  Widget _buildLoadMore() {
+    if (!_hasMore) return const SliverToBoxAdapter(child: SizedBox.shrink());
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        child: Center(
+          child: _loadingMore
+              ? const CircularProgressIndicator()
+              : const SizedBox.shrink(),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _loadMore() async {
+    if (_loadingMore || !_hasMore) return;
+    setState(() => _loadingMore = true);
+    try {
+      final repo = await _repoFut;
+      final nextPage = _currentPage + 1;
+      final q = _query.trim();
+      final page = await repo.fetchBooksPage(page: nextPage, limit: 50, query: q.isEmpty ? null : q);
+      if (!mounted) return;
+      setState(() {
+        _books.addAll(page);
+        _currentPage = nextPage;
+        _hasMore = page.length >= 50;
+      });
+    } catch (_) {
+      // ignore
+    } finally {
+      if (mounted) setState(() => _loadingMore = false);
+    }
+  }
+
+  Future<void> _restartSearchPagination() async {
+    // Reset and fetch page 1 for current query
+    setState(() {
+      _loading = true;
+      _currentPage = 1;
+      _hasMore = true;
+    });
+    try {
+      final repo = await _repoFut;
+      final q = _query.trim();
+      final first = await repo.fetchBooksPage(page: 1, limit: 50, query: q.isEmpty ? null : q);
+      if (!mounted) return;
+      setState(() {
+        _books = first;
+        _loading = false;
+        _hasMore = first.length >= 50;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
   }
 }
 

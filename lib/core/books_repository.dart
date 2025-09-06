@@ -101,10 +101,10 @@ class BooksRepository {
     print('BooksRepository: listBooks() called - checking server first');
     
     try {
-      // Always try to get fresh data from server first
-      print('BooksRepository: Attempting to fetch fresh data from server...');
-      final fetched = await refreshFromServer();
-      print('BooksRepository: Successfully fetched ${fetched.length} books from server');
+      // Try to fetch first page from server for bandwidth efficiency
+      print('BooksRepository: Attempting to fetch first page from server...');
+      final fetched = await fetchBooksPage(page: 1, limit: 50);
+      print('BooksRepository: Successfully fetched ${fetched.length} books from server (page 1)');
       return fetched;
     } catch (e) {
       print('BooksRepository: Server fetch failed: $e');
@@ -114,9 +114,7 @@ class BooksRepository {
       final local = await _listBooksFromDb();
       print('BooksRepository: Retrieved ${local.length} books from local database');
       
-      // Best-effort: ensure covers exist locally in background
-      // without blocking UI. Missing covers will be fetched once.
-      unawaited(_persistCovers(local));
+      // Do not prefetch covers here; they will load on-demand as displayed
       return local;
     }
   }
@@ -428,7 +426,7 @@ class BooksRepository {
     final headers = <String, String>{};
     if (etag != null) headers['If-None-Match'] = etag;
 
-    final path = '/api/libraries/$libId/items?limit=200&sort=updatedAt:desc$tokenQS';
+    final path = '/api/libraries/$libId/items?limit=50&sort=updatedAt:desc$tokenQS';
     print('BooksRepository: Requesting from path: $path');
     
     final bool localEmpty = await _isDbEmpty();
@@ -466,14 +464,57 @@ class BooksRepository {
       await _upsertBooks(books);
       print('BooksRepository: Books persisted to database');
       
-      // Persist covers in background, then update DB with coverPath when done
-      unawaited(_persistCovers(books).then((_) => _upsertBooks(books)));
+      // Do not prefetch covers here; allow UI to load covers on-demand
       return await _listBooksFromDb();
     }
 
     print('BooksRepository: Server request failed, falling back to local DB');
     // On error, return local DB
     return await _listBooksFromDb();
+  }
+
+  /// Fetch one page of books from server, persist to DB, and return the page
+  Future<List<Book>> fetchBooksPage({required int page, int limit = 50, String sort = 'updatedAt:desc', String? query}) async {
+    final api = _auth.api;
+    final token = await api.accessToken();
+    final libId = await _ensureLibraryId();
+    final tokenQS = (token != null && token.isNotEmpty) ? '&token=$token' : '';
+    final base = '/api/libraries/$libId/items?limit=$limit&page=$page&sort=$sort';
+    final encodedQ = (query != null && query.trim().isNotEmpty)
+        ? Uri.encodeQueryComponent(query.trim())
+        : null;
+
+    http.Response resp;
+    // Try with 'search' parameter first
+    String path = (encodedQ != null)
+        ? '$base&search=$encodedQ$tokenQS'
+        : '$base$tokenQS';
+    print('BooksRepository: fetchBooksPage path: $path');
+    resp = await api.request('GET', path, headers: {});
+
+    // If server doesn't support 'search', try 'q'
+    if (resp.statusCode != 200 && encodedQ != null) {
+      final alt = '$base&q=$encodedQ$tokenQS';
+      print('BooksRepository: retrying with q param: $alt');
+      resp = await api.request('GET', alt, headers: {});
+    }
+
+    // As a last resort, drop the query
+    if (resp.statusCode != 200) {
+      final fallback = '$base$tokenQS';
+      print('BooksRepository: fallback without query: $fallback');
+      resp = await api.request('GET', fallback, headers: {});
+    }
+
+    if (resp.statusCode != 200) {
+      throw Exception('Failed to fetch page $page: ${resp.statusCode}');
+    }
+    final bodyStr = resp.body;
+    final body = bodyStr.isNotEmpty ? jsonDecode(bodyStr) : null;
+    final items = _extractItems(body);
+    final books = await _toBooks(items);
+    await _upsertBooks(books);
+    return books;
   }
 
   Future<bool> _isDbEmpty() async {
