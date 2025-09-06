@@ -138,7 +138,17 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
   }
 
   @override
-  Future<void> play() => _playback.resume();
+  Future<void> play() async {
+    // If we already have an active item, just resume
+    if (_playback.nowPlaying != null) {
+      await _playback.resume();
+      return;
+    }
+    // Offline-friendly: warm load last item and start playback from cached position
+    try {
+      await _playback.warmLoadLastItem(playAfterLoad: true);
+    } catch (_) {}
+  }
 
   @override
   Future<void> pause() => _playback.pause();
@@ -334,7 +344,12 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
         return;
       }
       if (mediaId == 'kitzi_resume_current') {
-        await play();
+        // If we have a current item, resume; else warm-load last cached and play
+        if (_playback.nowPlaying != null) {
+          await _playback.resume();
+        } else {
+          await _playback.warmLoadLastItem(playAfterLoad: true);
+        }
         return;
       }
       await _playback.playItem(mediaId);

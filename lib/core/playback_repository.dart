@@ -17,6 +17,7 @@ import 'playback_speed_service.dart';
 import 'download_storage.dart';
 import 'play_history_service.dart';
 import '../models/book.dart';
+import 'books_repository.dart';
 
 const _kProgressPing = Duration(seconds: 10);
 const _kLocalProgPrefix = 'abs_progress:';      // local fallback per item
@@ -147,6 +148,59 @@ class PlaybackRepository {
       final last = prefs.getString(_kLastItemKey);
       if (last == null || last.isEmpty) return;
 
+      // Try fast local path first for offline support
+      final localTracks = await _localTracks(last);
+      if (localTracks.isNotEmpty) {
+        _log('Warm load (offline/local): found ${localTracks.length} local tracks');
+        // Try to get cached book metadata from local DB
+        String title = 'Audiobook';
+        String? author;
+        String? coverUrl;
+        try {
+          final repo = await BooksRepository.create();
+          final b = await repo.getBookFromDb(last);
+          if (b != null) {
+            title = b.title.isNotEmpty ? b.title : title;
+            author = b.author;
+            coverUrl = b.coverUrl;
+          }
+        } catch (_) {}
+
+        // Do not attempt to ensure durations online; play with what we have
+        final chapters = _chaptersFromTracks(localTracks);
+        final np = NowPlaying(
+          libraryItemId: last,
+          title: title,
+          author: author,
+          coverUrl: coverUrl,
+          tracks: localTracks,
+          currentIndex: 0,
+          chapters: chapters,
+        );
+        _setNowPlaying(np);
+        _progressItemId = last;
+
+        // Resume from cached position (local or server if available)
+        double? resumeSec;
+        try { resumeSec = await fetchServerProgress(last); } catch (_) {}
+        resumeSec ??= prefs.getDouble('$_kLocalProgPrefix$last');
+
+        if (resumeSec != null && resumeSec > 0) {
+          final map = _mapGlobalSecondsToTrack(resumeSec, np.tracks);
+          await _setTrackAt(map.index, preload: true);
+          await player.seek(Duration(milliseconds: (map.offsetSec * 1000).round()));
+        } else {
+          await _setTrackAt(0, preload: true);
+        }
+
+        if (playAfterLoad) {
+          await player.play();
+          await _sendProgressImmediate();
+        }
+        return;
+      }
+
+      // Fallback to original online path if no local audio is available
       final meta = await _getItemMeta(last);
       _log('Warm load metadata for $last: keys=${meta.keys.toList()}');
       var chapters = _extractChapters(meta);
@@ -175,7 +229,6 @@ class PlaybackRepository {
       final resumeSec = await fetchServerProgress(last) ??
           prefs.getDouble('$_kLocalProgPrefix$last');
 
-      // Map to track and seek BEFORE starting
       if (resumeSec != null && resumeSec > 0) {
         final map = _mapGlobalSecondsToTrack(resumeSec, np.tracks);
         await _setTrackAt(map.index, preload: true);
