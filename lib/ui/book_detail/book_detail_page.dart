@@ -359,7 +359,16 @@ class _BookDetailPageState extends State<BookDetailPage> {
                           Expanded(
                             child: FilledButton.icon(
                               onPressed: () async {
-                                await playbackRepo.playItem(b.id);
+                                final success = await playbackRepo.playItem(b.id);
+                                if (!success && context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Cannot play: server unavailable and sync progress is required'),
+                                      duration: Duration(seconds: 4),
+                                    ),
+                                  );
+                                  return;
+                                }
                                 if (!context.mounted) return;
                                 await FullPlayerPage.openOnce(context);
                               },

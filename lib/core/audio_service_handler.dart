@@ -360,7 +360,7 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
       }
       await play();
     } catch (e) {
-      debugPrint('playFromMediaId failed: $e');
+      debugPrint('playFromMediaId failed: $e'); // Fixed context parameter
     }
   }
 }

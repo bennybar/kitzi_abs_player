@@ -199,7 +199,17 @@ class MiniPlayer extends StatelessWidget {
                                         shape: const CircleBorder(),
                                         child: InkWell(
                                           customBorder: const CircleBorder(),
-                                          onTap: () async { await playback.resume(); },
+                                          onTap: () async { 
+                                            final success = await playback.resume();
+                                            if (!success && context.mounted) {
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                const SnackBar(
+                                                  content: Text('Cannot play: server unavailable and sync progress is required'),
+                                                  duration: Duration(seconds: 4),
+                                                ),
+                                              );
+                                            }
+                                          },
                                           child: SizedBox(
                                             width: 46,
                                             height: 46,

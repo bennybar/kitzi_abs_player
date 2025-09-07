@@ -6,6 +6,7 @@ import '../../ui/login/login_screen.dart';
 import '../../core/download_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/playback_speed_service.dart';
+import '../../core/play_history_service.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -16,6 +17,7 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   bool? _wifiOnly;
+  bool? _syncProgressBeforePlay;
 
   @override
   void initState() {
@@ -28,9 +30,13 @@ class _SettingsPageState extends State<SettingsPage> {
       final prefs = await SharedPreferences.getInstance();
       setState(() {
         _wifiOnly = prefs.getBool('downloads_wifi_only') ?? false;
+        _syncProgressBeforePlay = prefs.getBool('sync_progress_before_play') ?? true;
       });
     } catch (_) {
-      setState(() { _wifiOnly = false; });
+      setState(() { 
+        _wifiOnly = false;
+        _syncProgressBeforePlay = true;
+      });
     }
   }
 
@@ -148,6 +154,16 @@ class _SettingsPageState extends State<SettingsPage> {
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
             child: Text('Playback', style: Theme.of(context).textTheme.titleMedium),
           ),
+          SwitchListTile(
+            title: const Text('Sync progress before play'),
+            subtitle: const Text('Fetch latest progress from server before starting playback'),
+            value: _syncProgressBeforePlay ?? true,
+            onChanged: (v) async {
+              await _setSyncProgressBeforePlay(v);
+              if (!mounted) return;
+              setState(() { _syncProgressBeforePlay = v; });
+            },
+          ),
           ValueListenableBuilder<double>(
             valueListenable: playbackSpeed.speed,
             builder: (_, spd, __) {
@@ -198,6 +214,10 @@ class _SettingsPageState extends State<SettingsPage> {
                   await AudioServiceBinding.instance.unbind();
                 } catch (_) {}
                 try {
+                  // Clear playback state
+                  await services.playback.clearState();
+                } catch (_) {}
+                try {
                   // Cancel all downloads and delete all local files
                   await services.downloads.cancelAll();
                 } catch (_) {}
@@ -211,6 +231,10 @@ class _SettingsPageState extends State<SettingsPage> {
                 try {
                   // Wipe cached books DB and images
                   await BooksRepository.wipeLocalCache();
+                } catch (_) {}
+                try {
+                  // Clear play history
+                  await PlayHistoryService.clearHistory();
                 } catch (_) {}
                 if (!context.mounted) return;
                 Navigator.of(context).pushAndRemoveUntil(
@@ -229,10 +253,17 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 }
 
-// --- Helpers for Wi‑Fi-only downloads preference ---
+// --- Helpers for preferences ---
 Future<void> _setWifiOnly(bool value) async {
   try {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('downloads_wifi_only', value);
+  } catch (_) {}
+}
+
+Future<void> _setSyncProgressBeforePlay(bool value) async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('sync_progress_before_play', value);
   } catch (_) {}
 }

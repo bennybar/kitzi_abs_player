@@ -287,7 +287,71 @@ class PlaybackRepository {
     }
   }
 
-  Future<void> playItem(String libraryItemId, {String? episodeId}) async {
+  /// Check if sync progress before play is enabled
+  Future<bool> _shouldSyncProgressBeforePlay() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getBool('sync_progress_before_play') ?? true;
+    } catch (_) {
+      return true; // Default to true if error
+    }
+  }
+
+  /// Check if sync is required and server is available
+  /// Returns true if sync is not required or if server is available
+  /// Returns false if sync is required but server is unavailable
+  Future<bool> _checkSyncRequirement() async {
+    final shouldSync = await _shouldSyncProgressBeforePlay();
+    if (!shouldSync) return true; // Sync not required, proceed
+    
+    try {
+      // Try to make a simple API call to check server availability
+      final api = _auth.api;
+      await api.request('GET', '/api/me', auth: true);
+      return true; // Server is available
+    } catch (e) {
+      _log('Server unavailable for sync: $e');
+      return false; // Server is unavailable
+    }
+  }
+
+  /// Clear all playback state (called on logout)
+  Future<void> clearState() async {
+    try {
+      // Stop any active playback
+      await player.stop();
+      
+      // Clear now playing state
+      _setNowPlaying(null);
+      _progressItemId = null;
+      _activeSessionId = null;
+      
+      // Stop progress sync
+      _stopProgressSync();
+      
+      // Clear local progress cache
+      final prefs = await SharedPreferences.getInstance();
+      final keys = prefs.getKeys();
+      for (final key in keys) {
+        if (key.startsWith(_kLocalProgPrefix) || key == _kLastItemKey) {
+          await prefs.remove(key);
+        }
+      }
+      
+      _log('Playback state cleared');
+    } catch (e) {
+      _log('Error clearing playback state: $e');
+    }
+  }
+
+  Future<bool> playItem(String libraryItemId, {String? episodeId}) async {
+    // Check if sync is required and server is available
+    final canProceed = await _checkSyncRequirement();
+    if (!canProceed) {
+      _log('Cannot play: server unavailable and sync progress is required');
+      return false;
+    }
+
     final session = await AudioSession.instance;
     await session.configure(const AudioSessionConfiguration.music());
 
@@ -389,6 +453,7 @@ class PlaybackRepository {
 
     await player.play();
     await _sendProgressImmediate();
+    return true;
   }
 
   /// UPDATED: Send position to server on pause
@@ -399,9 +464,17 @@ class PlaybackRepository {
   }
 
   /// UPDATED: Check server position and sync before resuming
-  Future<void> resume() async {
+  Future<bool> resume() async {
     final itemId = _progressItemId;
     final np = _nowPlaying;
+    
+    // Check if sync is required and server is available
+    final canProceed = await _checkSyncRequirement();
+    if (!canProceed) {
+      _log('Cannot resume: server unavailable and sync progress is required');
+      return false;
+    }
+    
     if (itemId != null && np != null) {
       await _syncPositionFromServer();
       if ((_activeSessionId == null || _activeSessionId!.isEmpty) && np.tracks.isNotEmpty && !np.tracks.first.isLocal) {
@@ -425,6 +498,7 @@ class PlaybackRepository {
     }
     await player.play();
     await _sendProgressImmediate();
+    return true;
   }
 
   /// New method: Sync position from server before playing
