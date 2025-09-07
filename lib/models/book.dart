@@ -65,7 +65,11 @@ class Book {
     final durationSecs = media['duration'] is num
         ? (media['duration'] as num).toDouble()
         : (meta['duration'] is num ? (meta['duration'] as num).toDouble() : null);
-    final updatedEpoch = j['updatedAt'] is num ? j['updatedAt'] as num : null;
+    // Prefer updatedAt (original behavior), then fall back to added/created
+    DateTime? bestTimestamp;
+    dynamic updatedRaw = j['updatedAt'];
+    dynamic addedRaw = j['addedAt'] ?? j['createdAt'];
+    bestTimestamp = _parseTimestampFlexible(updatedRaw) ?? _parseTimestampFlexible(addedRaw);
     final sizeBytes = media['size'] is num ? (media['size'] as num).toInt() : null;
 
     // More metadata
@@ -105,9 +109,7 @@ class Book {
       description: description,
       durationMs: durationSecs != null ? (durationSecs * 1000).round() : null,
       sizeBytes: sizeBytes,
-      updatedAt: updatedEpoch != null
-          ? DateTime.fromMillisecondsSinceEpoch(updatedEpoch.toInt(), isUtc: true)
-          : null,
+      updatedAt: bestTimestamp,
       authors: authorsList,
       narrators: narratorsList,
       publisher: publisher,
@@ -115,4 +117,26 @@ class Book {
       genres: genresList,
     );
   }
+}
+
+/// Flexible timestamp parser supporting int epoch ms/sec and ISO8601 strings
+DateTime? _parseTimestampFlexible(dynamic value) {
+  try {
+    if (value == null) return null;
+    if (value is num) {
+      // Heuristic: treat > 10^12 as ms, else seconds
+      final n = value.toDouble();
+      if (n > 1000000000000) {
+        return DateTime.fromMillisecondsSinceEpoch(n.round(), isUtc: true);
+      } else if (n > 1000000000) {
+        return DateTime.fromMillisecondsSinceEpoch((n * 1000).round(), isUtc: true);
+      } else {
+        return DateTime.fromMillisecondsSinceEpoch(n.round(), isUtc: true);
+      }
+    }
+    if (value is String) {
+      return DateTime.tryParse(value);
+    }
+  } catch (_) {}
+  return null;
 }

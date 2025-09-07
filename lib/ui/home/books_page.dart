@@ -132,10 +132,22 @@ class _BooksPageState extends State<BooksPage> {
       final conn = await Connectivity().checkConnectivity();
       final online = conn.contains(ConnectivityResult.mobile) || conn.contains(ConnectivityResult.wifi) || conn.contains(ConnectivityResult.ethernet);
       if (online) {
-        // Ensure first page is fresh
-        await repo.ensureServerPageIntoDb(page: 1, limit: 50, query: q.isEmpty ? null : q);
-        // Optionally prefetch page 2 to reduce spinner on scroll
-        await repo.ensureServerPageIntoDb(page: 2, limit: 50, query: q.isEmpty ? null : q);
+        // Ensure first page is fresh from server
+        await repo.fetchBooksPage(page: 1, limit: 50, query: q.isEmpty ? null : q);
+        // Kick off background full sync for current mode (all or search)
+        Future.microtask(() async {
+          try {
+            await repo.syncAllBooksToDb(pageSize: 100, query: q.isEmpty ? null : q);
+            if (!mounted) return;
+            // Reload first page from DB after sync to update counts
+            final fresh = await repo.listBooksFromDbPaged(page: 1, limit: 50, query: q.isEmpty ? null : q);
+            if (!mounted) return;
+            setState(() {
+              _books = fresh;
+              _hasMore = fresh.length >= 50;
+            });
+          } catch (_) {}
+        });
       } else if (initial && mounted) {
         _showNoInternetSnack();
       }
@@ -406,6 +418,7 @@ class _BooksPageState extends State<BooksPage> {
                               _searchCtrl.clear();
                               setState(() => _query = '');
                               _saveSearchPref('');
+                              _restartSearchPagination();
                             },
                             icon: Icon(
                               Icons.clear_rounded,
@@ -655,10 +668,13 @@ class _BooksPageState extends State<BooksPage> {
       final repo = await _repoFut;
       final nextPage = _currentPage + 1;
       final q = _query.trim();
-      await repo.ensureServerPageIntoDb(page: nextPage, limit: 50, query: q.isEmpty ? null : q);
+      // Try offset-first via full sync helper by requesting exactly one chunk
+      await repo.syncAllBooksToDb(pageSize: 50, query: q.isEmpty ? null : q, onProgress: (p, _) {});
+      // Then read the next page from DB
       final page = await repo.listBooksFromDbPaged(page: nextPage, limit: 50, query: q.isEmpty ? null : q);
       if (!mounted) return;
       setState(() {
+        // Use DB-mapped rows to keep sorting consistent
         _books.addAll(page);
         _currentPage = nextPage;
         _hasMore = page.length >= 50;

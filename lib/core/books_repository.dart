@@ -162,14 +162,28 @@ class BooksRepository {
 
   /// Remove all locally cached book data: DB, covers, and description images.
   static Future<void> wipeLocalCache() async {
+    // Best-effort: clear any persisted caches/metadata first
     try {
-      // Delete DB file
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_etagKey);
+      await prefs.remove(_cacheKey);
+      await prefs.remove(_libIdKey);
+    } catch (_) {}
+
+    // Clear DB contents even if another connection is open
+    try {
+      final dbPath = await getDatabasesPath();
+      final path = p.join(dbPath, 'kitzi_books.db');
+      final db = await openDatabase(path);
+      await db.execute('DELETE FROM books');
+      await db.close();
+    } catch (_) {}
+
+    try {
+      // Delete DB file (best effort; may fail if another connection is open)
       final dbPath = await getDatabasesPath();
       final dbFile = p.join(dbPath, 'kitzi_books.db');
-      final f = File(dbFile);
-      if (await f.exists()) {
-        await f.delete();
-      }
+      await deleteDatabase(dbFile);
     } catch (_) {}
 
     try {
@@ -251,7 +265,7 @@ class BooksRepository {
   Future<List<Book>> _listBooksFromDb() async {
     final db = _db;
     if (db == null) return <Book>[];
-    final rows = await db.query('books', orderBy: 'updatedAt DESC NULLS LAST');
+    final rows = await db.query('books', orderBy: 'updatedAt IS NULL, updatedAt DESC');
     if (rows.isEmpty) return <Book>[];
     final baseUrl = _auth.api.baseUrl ?? '';
     final token = await _auth.api.accessToken();
@@ -307,7 +321,7 @@ class BooksRepository {
         break;
       case 'updatedAt:desc':
       default:
-        orderBy = 'updatedAt DESC NULLS LAST';
+        orderBy = 'updatedAt IS NULL, updatedAt DESC';
         break;
     }
 
@@ -574,37 +588,62 @@ class BooksRepository {
     final token = await api.accessToken();
     final libId = await _ensureLibraryId();
     final tokenQS = (token != null && token.isNotEmpty) ? '&token=$token' : '';
-    final base = '/api/libraries/$libId/items?limit=$limit&page=$page&sort=$sort';
     final encodedQ = (query != null && query.trim().isNotEmpty)
         ? Uri.encodeQueryComponent(query.trim())
         : null;
 
-    http.Response resp;
-    // Try with 'search' parameter first
-    String path = (encodedQ != null)
-        ? '$base&search=$encodedQ$tokenQS'
-        : '$base$tokenQS';
-    resp = await api.request('GET', path, headers: {});
-
-    // If server doesn't support 'search', try 'q'
-    if (resp.statusCode != 200 && encodedQ != null) {
-      final alt = '$base&q=$encodedQ$tokenQS';
-      resp = await api.request('GET', alt, headers: {});
+    Future<List<Book>> requestAndParse(String path) async {
+      final resp = await api.request('GET', path, headers: {});
+      if (resp.statusCode != 200) {
+        throw Exception('Failed to fetch: ${resp.statusCode}');
+      }
+      final bodyStr = resp.body;
+      final body = bodyStr.isNotEmpty ? jsonDecode(bodyStr) : null;
+      final items = _extractItems(body);
+      final books = await _toBooks(items);
+      return books;
     }
 
-    // As a last resort, drop the query
-    if (resp.statusCode != 200) {
-      final fallback = '$base$tokenQS';
-      resp = await api.request('GET', fallback, headers: {});
+    // 1) Try page-based
+    final basePage = '/api/libraries/$libId/items?limit=$limit&page=$page&sort=$sort';
+    final pathPage = (encodedQ != null)
+        ? '$basePage&search=$encodedQ$tokenQS'
+        : '$basePage$tokenQS';
+    List<Book> books = await requestAndParse(pathPage).catchError((e) async {
+      if (encodedQ != null) {
+        final alt = '$basePage&q=$encodedQ$tokenQS';
+        return requestAndParse(alt);
+      }
+      return Future.error(e);
+    });
+
+    // If page > 1 and all IDs already exist (server ignored page), try offset
+    if (page > 1 && await _allIdsExistInDb(books.map((b) => b.id))) {
+      final offset = (page - 1) * limit;
+      final baseOffset = '/api/libraries/$libId/items?limit=$limit&offset=$offset&sort=$sort';
+      final pathOffset = (encodedQ != null)
+          ? '$baseOffset&search=$encodedQ$tokenQS'
+          : '$baseOffset$tokenQS';
+      try {
+        final altBooks = await requestAndParse(pathOffset);
+        if (!await _allIdsExistInDb(altBooks.map((b) => b.id))) {
+          books = altBooks;
+        }
+      } catch (_) {
+        // Try skip as last resort
+        final baseSkip = '/api/libraries/$libId/items?limit=$limit&skip=$offset&sort=$sort';
+        final pathSkip = (encodedQ != null)
+            ? '$baseSkip&search=$encodedQ$tokenQS'
+            : '$baseSkip$tokenQS';
+        try {
+          final altBooks2 = await requestAndParse(pathSkip);
+          if (!await _allIdsExistInDb(altBooks2.map((b) => b.id))) {
+            books = altBooks2;
+          }
+        } catch (_) {}
+      }
     }
 
-    if (resp.statusCode != 200) {
-      throw Exception('Failed to fetch page $page: ${resp.statusCode}');
-    }
-    final bodyStr = resp.body;
-    final body = bodyStr.isNotEmpty ? jsonDecode(bodyStr) : null;
-    final items = _extractItems(body);
-    final books = await _toBooks(items);
     await _upsertBooks(books);
     return books;
   }
@@ -618,24 +657,38 @@ class BooksRepository {
     String? query,
     void Function(int page, int totalSynced)? onProgress,
   }) async {
-    int page = 1;
     int total = 0;
+    int offset = 0;
+    int page = 1;
+    final Set<String> seenIds = <String>{};
+    int noProgressStreak = 0;
     while (true) {
-      List<Book> pageItems = const <Book>[];
+      List<Book> chunk = const <Book>[];
       try {
-        pageItems = await fetchBooksPage(
-          page: page,
+        chunk = await _fetchBooksChunkPreferOffset(
+          offset: offset,
           limit: pageSize,
           sort: sort,
           query: query,
         );
       } catch (e) {
-        // Stop on network errors; partial sync is better than nothing
         break;
       }
-      total += pageItems.length;
+      if (chunk.isEmpty) break;
+      final ids = chunk.map((b) => b.id).where((id) => id.isNotEmpty).toSet();
+      final before = seenIds.length;
+      seenIds.addAll(ids);
+      final added = seenIds.length - before;
+      total += added;
+      if (added == 0) {
+        noProgressStreak += 1;
+      } else {
+        noProgressStreak = 0;
+      }
+      if (noProgressStreak >= 2) break;
       if (onProgress != null) onProgress(page, total);
-      if (pageItems.length < pageSize) break; // last page reached
+      if (chunk.length < pageSize) break;
+      offset += pageSize;
       page += 1;
     }
     return total;
@@ -646,6 +699,72 @@ class BooksRepository {
     if (db == null) return true;
     final count = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM books')) ?? 0;
     return count == 0;
+  }
+
+  Future<bool> _allIdsExistInDb(Iterable<String> ids) async {
+    final list = ids.where((e) => e.isNotEmpty).toList();
+    if (list.isEmpty) return true;
+    final db = _db;
+    if (db == null) return false;
+    // Build placeholders (?, ?, ...)
+    final placeholders = List.filled(list.length, '?').join(',');
+    final rows = await db.rawQuery('SELECT id FROM books WHERE id IN ($placeholders)', list);
+    return rows.length >= list.length;
+  }
+
+  /// Fetch a chunk of books preferring offset/skip; falls back to page-based.
+  Future<List<Book>> _fetchBooksChunkPreferOffset({
+    required int offset,
+    required int limit,
+    String sort = 'updatedAt:desc',
+    String? query,
+  }) async {
+    final api = _auth.api;
+    final token = await api.accessToken();
+    final libId = await _ensureLibraryId();
+    final tokenQS = (token != null && token.isNotEmpty) ? '&token=$token' : '';
+    final encodedQ = (query != null && query.trim().isNotEmpty)
+        ? Uri.encodeQueryComponent(query.trim())
+        : null;
+
+    Future<List<Book>> requestAndParse(String path) async {
+      final resp = await api.request('GET', path, headers: {});
+      if (resp.statusCode != 200) {
+        throw Exception('Failed to fetch: ${resp.statusCode}');
+      }
+      final bodyStr = resp.body;
+      final body = bodyStr.isNotEmpty ? jsonDecode(bodyStr) : null;
+      final items = _extractItems(body);
+      final books = await _toBooks(items);
+      await _upsertBooks(books);
+      return books;
+    }
+
+    // Try offset
+    final baseOffset = '/api/libraries/$libId/items?limit=$limit&offset=$offset&sort=$sort';
+    final pathOffset = (encodedQ != null)
+        ? '$baseOffset&search=$encodedQ$tokenQS'
+        : '$baseOffset$tokenQS';
+    try {
+      return await requestAndParse(pathOffset);
+    } catch (_) {}
+
+    // Try skip
+    final baseSkip = '/api/libraries/$libId/items?limit=$limit&skip=$offset&sort=$sort';
+    final pathSkip = (encodedQ != null)
+        ? '$baseSkip&search=$encodedQ$tokenQS'
+        : '$baseSkip$tokenQS';
+    try {
+      return await requestAndParse(pathSkip);
+    } catch (_) {}
+
+    // Fall back to page-based
+    final page = (offset ~/ limit) + 1;
+    final basePage = '/api/libraries/$libId/items?limit=$limit&page=$page&sort=$sort';
+    final pathPage = (encodedQ != null)
+        ? '$basePage&search=$encodedQ$tokenQS'
+        : '$basePage$tokenQS';
+    return await requestAndParse(pathPage);
   }
 
   // ---- Offline covers ----

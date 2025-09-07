@@ -115,7 +115,7 @@ class _LoginScreenState extends State<LoginScreen> {
         }
       } catch (_) {}
 
-      // Perform initial library sync with a blocking Material dialog
+      // Perform initial library sync with a blocking Material dialog (with timeout)
       try {
         await showDialog<void>(
           context: context,
@@ -124,7 +124,11 @@ class _LoginScreenState extends State<LoginScreen> {
             // Kick off the async sync after the first frame
             Future.microtask(() async {
               final repo = await BooksRepository.create();
-              await repo.syncAllBooksToDb(pageSize: 100);
+              try {
+                await repo
+                    .syncAllBooksToDb(pageSize: 100)
+                    .timeout(const Duration(seconds: 25));
+              } catch (_) {}
               if (Navigator.of(context).canPop()) {
                 Navigator.of(context).pop();
               }
