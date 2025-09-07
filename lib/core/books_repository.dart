@@ -3,6 +3,7 @@ import 'dart:async' show unawaited;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'dart:io';
 import 'dart:math';
