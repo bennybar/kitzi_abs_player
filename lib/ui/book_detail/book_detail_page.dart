@@ -93,16 +93,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
               }
 
               final b = snap.data!;
-              // Debug: Inspect raw description to understand formatting
-              // and confirm whether it is JSON we can parse
-              try {
-                final raw = b.description ?? '';
-                final preview = raw.length > 500 ? '${raw.substring(0, 500)}…' : raw;
-                debugPrint('[DETAILS] Book id=${b.id} title="${b.title}"');
-                debugPrint('[DETAILS] Author=${b.author} durationMs=${b.durationMs} sizeBytes=${b.sizeBytes}');
-                debugPrint('[DETAILS] description.length=${raw.length}');
-                debugPrint('[DETAILS] description.preview=${preview.replaceAll('\n', ' ')}');
-              } catch (_) {}
+              // No verbose logging in production
 
               String fmtDuration() {
                 if (b.durationMs == null || b.durationMs == 0) return 'Unknown';
@@ -478,16 +469,11 @@ class _MetaOrDescription extends StatelessWidget {
     dynamic parsed;
     try {
       final raw = book.description ?? '';
-      debugPrint('[DETAILS] Attempting jsonDecode for book=${book.id}');
       parsed = jsonDecode(raw);
-      debugPrint('[DETAILS] jsonDecode success: type=${parsed.runtimeType}');
-    } catch (e) {
-      debugPrint('[DETAILS] jsonDecode failed: $e');
-    }
+    } catch (_) {}
 
     if (parsed is Map<String, dynamic>) {
       final m = parsed;
-      debugPrint('[DETAILS] Parsed Map keys=${m.keys.toList()}');
 
       String title = book.title;
       final author = book.author ?? _fromList(m['authors']) ?? _fromList(book.authors);

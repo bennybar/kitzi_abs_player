@@ -4,6 +4,7 @@ import '../../core/auth_repository.dart';
 import '../../main.dart';
 import '../main/main_scaffold.dart';
 import '../../core/download_storage.dart';
+import '../../core/books_repository.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key, required this.auth});
@@ -69,7 +70,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
     bool ok = false;
     try {
-      debugPrint('[LOGIN] submit: rawServer="${_serverCtrl.text}" user="${_userCtrl.text}"');
       ok = await widget.auth
           .login(
             baseUrl: normalizeBaseUrl(_serverCtrl.text),
@@ -78,7 +78,6 @@ class _LoginScreenState extends State<LoginScreen> {
           )
           .timeout(const Duration(seconds: 10));
     } catch (e) {
-      debugPrint('[LOGIN] submit: error: $e');
       ok = false;
     }
 
@@ -86,7 +85,6 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _loading = false);
 
     if (ok) {
-      debugPrint('[LOGIN] success');
       // Prompt a folder name once after successful login (simple dialog),
       // and request storage/media permissions on Android for public Music dir.
       try {
@@ -117,6 +115,25 @@ class _LoginScreenState extends State<LoginScreen> {
         }
       } catch (_) {}
 
+      // Perform initial library sync with a blocking Material dialog
+      try {
+        await showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) {
+            // Kick off the async sync after the first frame
+            Future.microtask(() async {
+              final repo = await BooksRepository.create();
+              await repo.syncAllBooksToDb(pageSize: 100);
+              if (Navigator.of(context).canPop()) {
+                Navigator.of(context).pop();
+              }
+            });
+            return const _InitialLibraryDialog();
+          },
+        );
+      } catch (_) {}
+
       final services = ServicesScope.of(context).services;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
@@ -124,7 +141,6 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       );
     } else {
-      debugPrint('[LOGIN] failed');
       setState(() => _error = 'Login failed. Check server URL and credentials.');
       // Only clear password on failure (keep server & username)
       _passCtrl.clear();
@@ -203,6 +219,45 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _InitialLibraryDialog extends StatelessWidget {
+  const _InitialLibraryDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return AlertDialog(
+      contentPadding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(color: cs.primary, strokeWidth: 3),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                'Please wait for initial library load',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'We\'re syncing your books for fast browsing and correct sorting.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: cs.onSurfaceVariant,
+                ),
+          ),
+        ],
       ),
     );
   }

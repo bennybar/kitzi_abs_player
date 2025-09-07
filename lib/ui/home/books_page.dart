@@ -119,7 +119,6 @@ class _BooksPageState extends State<BooksPage> {
   }
 
   Future<void> _refresh({bool initial = false}) async {
-    print('BooksPage: _refresh() called, initial: $initial');
     setState(() {
       if (initial) _loading = true;
       _error = null;
@@ -141,7 +140,6 @@ class _BooksPageState extends State<BooksPage> {
         _showNoInternetSnack();
       }
       if (!mounted) return;
-      print('BooksPage: Received ${items.length} books from repository');
       setState(() {
         _books = items;
         _loading = false;
@@ -155,11 +153,9 @@ class _BooksPageState extends State<BooksPage> {
       }
     } catch (e) {
       // Fallback to local DB if network fails (offline)
-      print('BooksPage: Network request failed, attempting fallback to local DB');
       try {
         final repo = await _repoFut;
         final local = await repo.listBooks();
-        print('BooksPage: Fallback successful - got ${local.length} books from local DB');
         if (!mounted) return;
         setState(() {
           _books = local;
@@ -172,7 +168,6 @@ class _BooksPageState extends State<BooksPage> {
         _loadRecentBooks();
         return;
       } catch (_) {
-        print('BooksPage: Fallback to local DB also failed');
       }
       if (!mounted) return;
       setState(() {
@@ -189,21 +184,15 @@ class _BooksPageState extends State<BooksPage> {
   }
   
   Future<void> _loadRecentBooks() async {
-    print('BooksPage: _loadRecentBooks() called');
     try {
-      print('BooksPage: Calling PlayHistoryService.getLastPlayedBooks(4)');
       final recent = await PlayHistoryService.getLastPlayedBooks(4);
-      print('BooksPage: PlayHistoryService returned ${recent.length} recent books');
       if (mounted) {
         setState(() {
           _recentBooks = recent;
         });
-        print('BooksPage: Updated _recentBooks state with ${recent.length} books');
       }
     } catch (e) {
-      print('BooksPage: Failed to load recent books: $e');
       // Don't fail the main UI if recent books fail to load
-      debugPrint('Failed to load recent books: $e');
       // Set empty list to prevent UI errors
       if (mounted) {
         setState(() {

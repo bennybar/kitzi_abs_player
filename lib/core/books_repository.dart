@@ -22,23 +22,16 @@ class BooksRepository {
   static const _libIdKey = 'books_library_id';
 
   Future<String> _ensureLibraryId() async {
-    print('BooksRepository: _ensureLibraryId() called');
-    
     final cached = _prefs.getString(_libIdKey);
     if (cached != null && cached.isNotEmpty) {
-      print('BooksRepository: Using cached library ID: $cached');
       return cached;
     }
 
-    print('BooksRepository: No cached library ID, fetching from server...');
     final api = _auth.api;
     final token = await api.accessToken();
     final tokenQS = (token != null && token.isNotEmpty) ? '?token=$token' : '';
     final resp = await api.request('GET', '/api/libraries$tokenQS');
-
-    print('BooksRepository: Libraries API response status: ${resp.statusCode}');
     if (resp.statusCode != 200) {
-      print('BooksRepository: Failed to list libraries: ${resp.statusCode}');
       throw Exception('Failed to list libraries: ${resp.statusCode}');
     }
 
@@ -49,10 +42,7 @@ class BooksRepository {
         ? (body['libraries'] as List)
         : (body is List ? body : const []);
 
-    print('BooksRepository: Found ${libs.length} libraries');
-
     if (libs.isEmpty) {
-      print('BooksRepository: No libraries accessible for this user');
       throw Exception('No libraries accessible for this user');
     }
 
@@ -62,7 +52,6 @@ class BooksRepository {
       final mt = (m['mediaType'] ?? m['type'] ?? '').toString().toLowerCase();
       if (mt.contains('book')) {
         chosen = m;
-        print('BooksRepository: Selected book library: ${m['name'] ?? 'unnamed'} (ID: ${m['id'] ?? m['_id']})');
         break;
       }
     }
@@ -70,11 +59,8 @@ class BooksRepository {
 
     final id = (chosen['id'] ?? chosen['_id'] ?? '').toString();
     if (id.isEmpty) {
-      print('BooksRepository: Invalid library id from /api/libraries');
       throw Exception('Invalid library id from /api/libraries');
     }
-
-    print('BooksRepository: Setting library ID: $id');
 
     await _prefs.setString(_libIdKey, id);
     return id;
@@ -98,22 +84,12 @@ class BooksRepository {
   }
 
   Future<List<Book>> listBooks() async {
-    print('BooksRepository: listBooks() called - checking server first');
-    
     try {
-      // Try to fetch first page from server for bandwidth efficiency
-      print('BooksRepository: Attempting to fetch first page from server...');
       final fetched = await fetchBooksPage(page: 1, limit: 50);
-      print('BooksRepository: Successfully fetched ${fetched.length} books from server (page 1)');
       return fetched;
     } catch (e) {
-      print('BooksRepository: Server fetch failed: $e');
-      print('BooksRepository: Falling back to local database...');
-      
       // Fallback to local DB if server fails
       final local = await _listBooksFromDb();
-      print('BooksRepository: Retrieved ${local.length} books from local database');
-      
       // Do not prefetch covers here; they will load on-demand as displayed
       return local;
     }
@@ -535,42 +511,23 @@ class BooksRepository {
 
   /// Explicit refresh from server; persists to DB and cache, returns fresh list
   Future<List<Book>> refreshFromServer() async {
-    print('BooksRepository: refreshFromServer() called');
-    
     final api = _auth.api;
     final token = await api.accessToken();
     final libId = await _ensureLibraryId();
-    
-    print('BooksRepository: Library ID: $libId, Token present: ${token != null && token.isNotEmpty}');
-
     final tokenQS = (token != null && token.isNotEmpty) ? '&token=$token' : '';
     final etag = _prefs.getString(_etagKey);
     final headers = <String, String>{};
     if (etag != null) headers['If-None-Match'] = etag;
-
     final path = '/api/libraries/$libId/items?limit=50&sort=updatedAt:desc$tokenQS';
-    print('BooksRepository: Requesting from path: $path');
-    
     final bool localEmpty = await _isDbEmpty();
-    print('BooksRepository: Local DB empty: $localEmpty');
-    
     http.Response resp = await api.request('GET', path, headers: headers);
-    print('BooksRepository: Server response status: ${resp.statusCode}');
 
     if (resp.statusCode == 304) {
-      print('BooksRepository: Server returned 304 (Not Modified)');
-      print('BooksRepository: WARNING: 304 response detected - this might indicate stale ETag');
-      print('BooksRepository: Forcing fresh data fetch to ensure we have the latest books');
-      
       // Force a network fetch without ETag to get fresh data
-      // This ensures we always get the latest book list, even if ETag is stale
-      print('BooksRepository: Forcing network fetch without ETag');
       resp = await api.request('GET', path, headers: {});
-      print('BooksRepository: Force fetch response status: ${resp.statusCode}');
     }
 
     if (resp.statusCode == 200) {
-      print('BooksRepository: Processing successful response');
       final bodyStr = resp.body;
       final body = bodyStr.isNotEmpty ? jsonDecode(bodyStr) : null;
       final newEtag = resp.headers['etag'];
@@ -578,19 +535,12 @@ class BooksRepository {
       if (newEtag != null) await _prefs.setString(_etagKey, newEtag);
 
       final items = _extractItems(body);
-      print('BooksRepository: Extracted ${items.length} items from response');
       final books = await _toBooks(items);
-      print('BooksRepository: Converted to ${books.length} Book objects');
-      
       // Write DB immediately so UI can render without delay
       await _upsertBooks(books);
-      print('BooksRepository: Books persisted to database');
-      
       // Do not prefetch covers here; allow UI to load covers on-demand
       return await _listBooksFromDb();
     }
-
-    print('BooksRepository: Server request failed, falling back to local DB');
     // On error, return local DB
     return await _listBooksFromDb();
   }
@@ -611,20 +561,17 @@ class BooksRepository {
     String path = (encodedQ != null)
         ? '$base&search=$encodedQ$tokenQS'
         : '$base$tokenQS';
-    print('BooksRepository: fetchBooksPage path: $path');
     resp = await api.request('GET', path, headers: {});
 
     // If server doesn't support 'search', try 'q'
     if (resp.statusCode != 200 && encodedQ != null) {
       final alt = '$base&q=$encodedQ$tokenQS';
-      print('BooksRepository: retrying with q param: $alt');
       resp = await api.request('GET', alt, headers: {});
     }
 
     // As a last resort, drop the query
     if (resp.statusCode != 200) {
       final fallback = '$base$tokenQS';
-      print('BooksRepository: fallback without query: $fallback');
       resp = await api.request('GET', fallback, headers: {});
     }
 
@@ -637,6 +584,38 @@ class BooksRepository {
     final books = await _toBooks(items);
     await _upsertBooks(books);
     return books;
+  }
+
+  /// Perform a full-library sync into the local database by iterating pages
+  /// until exhaustion. Returns the total number of items synced. Optionally
+  /// reports progress via [onProgress] with (currentPage, totalSynced).
+  Future<int> syncAllBooksToDb({
+    int pageSize = 100,
+    String sort = 'updatedAt:desc',
+    String? query,
+    void Function(int page, int totalSynced)? onProgress,
+  }) async {
+    int page = 1;
+    int total = 0;
+    while (true) {
+      List<Book> pageItems = const <Book>[];
+      try {
+        pageItems = await fetchBooksPage(
+          page: page,
+          limit: pageSize,
+          sort: sort,
+          query: query,
+        );
+      } catch (e) {
+        // Stop on network errors; partial sync is better than nothing
+        break;
+      }
+      total += pageItems.length;
+      if (onProgress != null) onProgress(page, total);
+      if (pageItems.length < pageSize) break; // last page reached
+      page += 1;
+    }
+    return total;
   }
 
   Future<bool> _isDbEmpty() async {
