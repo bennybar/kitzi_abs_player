@@ -32,6 +32,7 @@ class _BooksPageState extends State<BooksPage> {
   Timer? _timer;
   StreamSubscription<List<ConnectivityResult>>? _connSub;
   bool _isOnline = true;
+  final ScrollController _scrollCtrl = ScrollController();
 
   LibraryView _view = LibraryView.list;
   SortMode _sort = SortMode.addedDesc;
@@ -60,6 +61,7 @@ class _BooksPageState extends State<BooksPage> {
     _timer?.cancel();
     _connSub?.cancel();
     _searchCtrl.dispose();
+    _scrollCtrl.dispose();
     super.dispose();
   }
 
@@ -75,6 +77,15 @@ class _BooksPageState extends State<BooksPage> {
       _query = q;
       _searchCtrl.text = q;
     }
+  }
+
+  void _scrollToTop() {
+    if (!_scrollCtrl.hasClients) return;
+    _scrollCtrl.animateTo(
+      0,
+      duration: const Duration(milliseconds: 350),
+      curve: Curves.easeOutCubic,
+    );
   }
 
   Future<void> _startConnectivityWatch() async {
@@ -282,6 +293,7 @@ class _BooksPageState extends State<BooksPage> {
         color: cs.primary,
         backgroundColor: cs.surface,
         child: CustomScrollView(
+          controller: _scrollCtrl,
           physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
           cacheExtent: 800,
           slivers: [
@@ -330,9 +342,9 @@ class _BooksPageState extends State<BooksPage> {
             ),
             actions: [
               IconButton.filledTonal(
-                tooltip: 'Refresh',
-                onPressed: _loading ? null : () => _refresh(),
-                icon: const Icon(Icons.refresh_rounded),
+                tooltip: 'Scroll to top',
+                onPressed: _loading ? null : _scrollToTop,
+                icon: const Icon(Icons.vertical_align_top_rounded),
                 style: IconButton.styleFrom(
                   backgroundColor: cs.surfaceContainerHighest,
                 ),
@@ -418,6 +430,7 @@ class _BooksPageState extends State<BooksPage> {
                               _searchCtrl.clear();
                               setState(() => _query = '');
                               _saveSearchPref('');
+                              // Force re-fetch first page from server and restart pagination
                               _restartSearchPagination();
                             },
                             icon: Icon(
@@ -636,7 +649,11 @@ class _BooksPageState extends State<BooksPage> {
         itemBuilder: (context, i) {
           final b = list[i];
           if (!_loadingMore && _hasMore && i >= list.length - 8) {
-            _loadMore();
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted && !_loadingMore && _hasMore) {
+                _loadMore();
+              }
+            });
           }
           return _BookListTile(
             book: b,

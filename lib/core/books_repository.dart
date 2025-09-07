@@ -693,7 +693,21 @@ class BooksRepository {
       total += added;
       debugPrint('[BOOKS] syncAll: page=$page chunk=${chunk.length} new=$added total=$total');
       if (added == 0) {
-        noProgressStreak += 1;
+        // Try page-based as fallback when offset/skip made no progress
+        try {
+          final pageChunk = await fetchBooksPage(page: page, limit: pageSize, sort: sort, query: query);
+          final before2 = seenIds.length;
+          seenIds.addAll(pageChunk.map((b) => b.id));
+          final added2 = seenIds.length - before2;
+          if (added2 > 0) {
+            debugPrint('[BOOKS] syncAll: fallback page-based yielded new=$added2');
+            noProgressStreak = 0;
+          } else {
+            noProgressStreak += 1;
+          }
+        } catch (_) {
+          noProgressStreak += 1;
+        }
       } else {
         noProgressStreak = 0;
       }
@@ -760,7 +774,12 @@ class BooksRepository {
         ? '$baseOffset&search=$encodedQ$tokenQS'
         : '$baseOffset$tokenQS';
     try {
-      return await requestAndParse(pathOffset);
+      final books = await requestAndParse(pathOffset);
+      if (offset > 0 && await _allIdsExistInDb(books.map((b) => b.id))) {
+        debugPrint('[BOOKS] chunk: offset returned known items, trying skip');
+      } else {
+        return books;
+      }
     } catch (_) {}
 
     // Try skip
@@ -769,7 +788,12 @@ class BooksRepository {
         ? '$baseSkip&search=$encodedQ$tokenQS'
         : '$baseSkip$tokenQS';
     try {
-      return await requestAndParse(pathSkip);
+      final books = await requestAndParse(pathSkip);
+      if (offset > 0 && await _allIdsExistInDb(books.map((b) => b.id))) {
+        debugPrint('[BOOKS] chunk: skip returned known items, falling back to page');
+      } else {
+        return books;
+      }
     } catch (_) {}
 
     // Fall back to page-based
