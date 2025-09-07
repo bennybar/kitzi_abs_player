@@ -704,6 +704,9 @@ class DownloadsRepository {
           headers['Authorization'] = 'Bearer ' + access;
         }
       } catch (_) {}
+      // Log the download URL with full details
+      _d('Downloading from ${next.url}');
+      
       final task = DownloadTask(
         url: next.url,
         filename: filename,
