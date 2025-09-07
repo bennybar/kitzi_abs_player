@@ -83,6 +83,8 @@ class DownloadsRepository {
   final Queue<MapEntry<String, String?>> _globalDownloadQueue = Queue<MapEntry<String, String?>>();
   bool _isProcessingGlobalQueue = false;
   final Set<String> _itemsInGlobalQueue = <String>{};
+  // Track active download session ids per item to enable closing on cancel
+  final Map<String, String> _downloadSessionByItem = <String, String>{};
 
   Future<void> init() async {
     // Configure ONE global notification. Do NOT set per-task displayName.
@@ -306,6 +308,13 @@ class DownloadsRepository {
     _notifyItem(libraryItemId);
     // Hide download notification on cancel
     try { await NotificationService.instance.hideDownloadNotification(); } catch (_) {}
+    // Close any open download session for this item
+    try {
+      final sid = _downloadSessionByItem.remove(libraryItemId);
+      if (sid != null && sid.isNotEmpty) {
+        unawaited(_playback.closeSessionById(sid));
+      }
+    } catch (_) {}
   }
 
   /// Remove local files for a book (and cancel tasks just in case).
@@ -357,6 +366,16 @@ class DownloadsRepository {
     _d('Canceled all downloads and cleared global queue');
     // Hide download notification on cancel all
     try { await NotificationService.instance.hideDownloadNotification(); } catch (_) {}
+    // Close all known download sessions
+    try {
+      final ids = List<String>.from(_downloadSessionByItem.values);
+      _downloadSessionByItem.clear();
+      for (final sid in ids) {
+        if (sid.isNotEmpty) {
+          unawaited(_playback.closeSessionById(sid));
+        }
+      }
+    } catch (_) {}
   }
 
   Future<List<TaskRecord>> listAll() =>
@@ -634,7 +653,12 @@ class DownloadsRepository {
       }
 
       // Determine next remote track not yet downloaded locally
-      final tracks = await _playback.getRemoteTracks(libraryItemId, episodeId: episodeId);
+      // Open a dedicated streaming session for downloads (separate from player)
+      final open = await _playback.openSessionAndGetTracks(libraryItemId, episodeId: episodeId);
+      if (open.sessionId != null && open.sessionId!.isNotEmpty) {
+        _downloadSessionByItem[libraryItemId] = open.sessionId!;
+      }
+      final tracks = open.tracks;
       tracks.sort((a, b) => a.index.toString().compareTo(b.index.toString()));
       _d('Found ${tracks.length} remote tracks for $libraryItemId');
       
@@ -672,11 +696,20 @@ class DownloadsRepository {
 
       final baseFolder = await DownloadStorage.taskDirectoryPrefix();
       final preferredBase = await DownloadStorage.preferredTaskBaseDirectory();
+      // Add Authorization header so background worker can access session URLs
+      final headers = <String, String>{};
+      try {
+        final access = await _auth.api.accessToken();
+        if (access != null && access.isNotEmpty) {
+          headers['Authorization'] = 'Bearer ' + access;
+        }
+      } catch (_) {}
       final task = DownloadTask(
         url: next.url,
         filename: filename,
         directory: '$baseFolder/$libraryItemId',
         baseDirectory: preferredBase,
+        headers: headers,
         // Request status and progress so we can compute accurate overall %
         updates: Updates.statusAndProgress,
         requiresWiFi: wifiOnly,
@@ -693,6 +726,10 @@ class DownloadsRepository {
       // The chain listener will handle continuing with the next track
 
       _ensureChainListener();
+      
+      // Best-effort: close session if no active downloads remain for this item after scheduling
+      // (Chain listener will close after the last file completes as well)
+      unawaited(_closeDownloadSessionWhenIdle(open.sessionId, libraryItemId));
     } finally {
       _schedulingItems.remove(libraryItemId);
     }
@@ -739,8 +776,10 @@ class DownloadsRepository {
       final hasActive = hasActiveDb || hasActiveLive;
 
       if (!hasActive) {
-        // Check if this book still has tracks to download
-        final tracks = await _playback.getRemoteTracks(id);
+        // Check if this book still has tracks to download using a dedicated session
+        final open = await _playback.openSessionAndGetTracks(id);
+        final sessionId = open.sessionId;
+        final tracks = open.tracks;
         final dir = await _itemDir(id);
         bool hasMoreTracks = false;
         for (final t in tracks) {
@@ -767,6 +806,9 @@ class DownloadsRepository {
           _itemsInGlobalQueue.remove(id);
           _uiActive[id] = false;
           _inFlightItems.remove(id);
+          if (sessionId != null && sessionId.isNotEmpty) {
+            unawaited(_playback.closeSessionById(sessionId));
+          }
           try {
             await NotificationService.instance.hideDownloadNotification();
             // Best-effort: show a short completion notification using the item id as title hint
@@ -778,6 +820,15 @@ class DownloadsRepository {
 
       _notifyItem(id);
     });
+  }
+
+  Future<void> _closeDownloadSessionWhenIdle(String? sessionId, String libraryItemId) async {
+    if (sessionId == null || sessionId.isEmpty) return;
+    await Future.delayed(const Duration(seconds: 2));
+    final recs = await _recordsForItem(libraryItemId);
+    final hasActive = recs.any((r) => r.status == TaskStatus.running || r.status == TaskStatus.enqueued);
+    if (hasActive) return;
+    unawaited(_playback.closeSessionById(sessionId));
   }
 
   /// Delete all downloaded files and cancel any active tasks (global).

@@ -134,6 +134,12 @@ class PlaybackRepository {
     return _streamTracks(libraryItemId, episodeId: episodeId);
   }
 
+  /// Expose opening a streaming session to callers that need the session id
+  /// (e.g., downloads) without affecting the player's own active session.
+  Future<StreamTracksResult> openSessionAndGetTracks(String libraryItemId, {String? episodeId}) {
+    return _openSessionAndGetTracks(libraryItemId, episodeId: episodeId);
+  }
+
   /// Total number of tracks for an item (remote preferred; fallback to local count).
   Future<int> getTotalTrackCount(String libraryItemId, {String? episodeId}) async {
     try {
@@ -887,6 +893,27 @@ class PlaybackRepository {
     } catch (e) {
       _log('Session close error: $e');
     }
+  }
+
+  /// Close a specific session by id (used by background downloads which manage their own sessions).
+  Future<void> closeSessionById(String sessionId) async {
+    if (sessionId.isEmpty) return;
+    try {
+      final api = _auth.api;
+      final candidates = <List<String>>[
+        ['DELETE', '/api/me/sessions/$sessionId'],
+        ['POST', '/api/me/sessions/$sessionId/close'],
+        ['POST', '/api/sessions/$sessionId/close'],
+      ];
+      for (final c in candidates) {
+        try {
+          final r = await api.request(c[0], c[1], headers: {'Content-Type': 'application/json'});
+          if (r.statusCode == 200 || r.statusCode == 204 || r.statusCode == 404) {
+            break;
+          }
+        } catch (_) {}
+      }
+    } catch (_) {}
   }
 
   Future<List<PlaybackTrack>> _localTracks(String libraryItemId) async {
