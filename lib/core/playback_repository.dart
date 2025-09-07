@@ -664,7 +664,18 @@ class PlaybackRepository {
     if (track.isLocal) {
       await player.setFilePath(track.url, preload: preload);
     } else {
-      await player.setUrl(track.url, preload: preload);
+      // Use Authorization header with Bearer token for secure session URLs
+      final headers = <String, String>{};
+      try {
+        final access = await _auth.api.accessToken();
+        if (access != null && access.isNotEmpty) {
+          headers['Authorization'] = 'Bearer $access';
+        }
+      } catch (_) {}
+      await player.setAudioSource(
+        AudioSource.uri(Uri.parse(track.url), headers: headers),
+        preload: preload,
+      );
     }
     
     final updatedNowPlaying = cur.copyWith(currentIndex: index);
@@ -750,12 +761,6 @@ class PlaybackRepository {
         final rel = contentUrl.startsWith('/') ? contentUrl.substring(1) : contentUrl;
         abs = base.resolve(rel);
       }
-      if (token != null && token.isNotEmpty) {
-        abs = abs.replace(queryParameters: {
-          ...abs.queryParameters,
-          'token': token,
-        });
-      }
 
       return PlaybackTrack(
         index: idx,
@@ -804,12 +809,6 @@ class PlaybackRepository {
       if (!abs.hasScheme) {
         final rel = contentUrl.startsWith('/') ? contentUrl.substring(1) : contentUrl;
         abs = Uri.parse(baseStr).resolve(rel);
-      }
-      if (token != null && token.isNotEmpty) {
-        abs = abs.replace(queryParameters: {
-          ...abs.queryParameters,
-          'token': token,
-        });
       }
 
       return PlaybackTrack(
