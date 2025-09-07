@@ -193,7 +193,7 @@ class _DownloadButtonState extends State<DownloadButton> {
       final pct = (snap.progress * 100).clamp(0, 100).toStringAsFixed(snap.totalTasks >= 50 ? 1 : 0);
       final frac = '${snap.completed}/${snap.totalTasks}';
       child = SizedBox(
-        height: 40, // lock height to avoid layout jump
+        height: 40, // keep aligned with play button
         child: Stack(
           fit: StackFit.expand,
           children: [
@@ -205,18 +205,46 @@ class _DownloadButtonState extends State<DownloadButton> {
                 backgroundColor: Colors.transparent,
               ),
             ),
-            FilledButton.icon(
-              onPressed: null, // disabled while running
-              icon: const Icon(Icons.download),
-              label: Text('Downloading… $frac ($pct%)'),
+            // Main button content (no long text to avoid overlap)
+            Padding(
+              padding: const EdgeInsets.only(right: 48),
+              child: FilledButton.icon(
+                onPressed: null, // disabled while running
+                icon: const Icon(Icons.download),
+                label: const Text('Downloading…'),
+              ),
+            ),
+            // Overlay progress text at bottom-left inside the button, not affecting layout
+            Positioned(
+              left: 12,
+              right: 48,
+              bottom: 4,
+              child: Text(
+                '$frac ($pct%)',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
             ),
             // Cancel hotspot on the right (per-book cancel)
             Align(
               alignment: Alignment.centerRight,
-              child: IconButton(
-                tooltip: 'Cancel download',
-                onPressed: _busy ? null : _cancelCurrent,
-                icon: const Icon(Icons.close),
+              child: Container(
+                margin: const EdgeInsets.only(right: 4),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.error,
+                  shape: BoxShape.circle,
+                ),
+                child: IconButton(
+                  constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                  padding: const EdgeInsets.all(8),
+                  tooltip: 'Cancel download',
+                  onPressed: _busy ? null : _cancelCurrent,
+                  icon: Icon(
+                    Icons.close,
+                    color: Theme.of(context).colorScheme.onError,
+                  ),
+                ),
               ),
             ),
           ],
