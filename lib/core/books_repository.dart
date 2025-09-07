@@ -557,6 +557,7 @@ class BooksRepository {
     if (etag != null) headers['If-None-Match'] = etag;
     final path = '/api/libraries/$libId/items?limit=50&sort=updatedAt:desc$tokenQS';
     final bool localEmpty = await _isDbEmpty();
+    debugPrint('[BOOKS] refreshFromServer: GET $path headers=${headers.keys.toList()}');
     http.Response resp = await api.request('GET', path, headers: headers);
 
     if (resp.statusCode == 304) {
@@ -566,6 +567,7 @@ class BooksRepository {
 
     if (resp.statusCode == 200) {
       final bodyStr = resp.body;
+      debugPrint('[BOOKS] refreshFromServer: 200 etag=${resp.headers['etag']} len=${bodyStr.length}');
       final body = bodyStr.isNotEmpty ? jsonDecode(bodyStr) : null;
       final newEtag = resp.headers['etag'];
       await _prefs.setString(_cacheKey, bodyStr);
@@ -579,6 +581,7 @@ class BooksRepository {
       return await _listBooksFromDb();
     }
     // On error, return local DB
+    debugPrint('[BOOKS] refreshFromServer: non-200=${resp.statusCode} -> returning local');
     return await _listBooksFromDb();
   }
 
@@ -593,6 +596,7 @@ class BooksRepository {
         : null;
 
     Future<List<Book>> requestAndParse(String path) async {
+      debugPrint('[BOOKS] fetchBooksPage: GET $path');
       final resp = await api.request('GET', path, headers: {});
       if (resp.statusCode != 200) {
         throw Exception('Failed to fetch: ${resp.statusCode}');
@@ -601,6 +605,7 @@ class BooksRepository {
       final body = bodyStr.isNotEmpty ? jsonDecode(bodyStr) : null;
       final items = _extractItems(body);
       final books = await _toBooks(items);
+      debugPrint('[BOOKS] fetchBooksPage: page=$page limit=$limit sort=$sort query=${encodedQ != null} -> items=${books.length}');
       return books;
     }
 
@@ -610,6 +615,7 @@ class BooksRepository {
         ? '$basePage&search=$encodedQ$tokenQS'
         : '$basePage$tokenQS';
     List<Book> books = await requestAndParse(pathPage).catchError((e) async {
+      debugPrint('[BOOKS] fetchBooksPage: primary failed -> trying q= fallback. err=$e');
       if (encodedQ != null) {
         final alt = '$basePage&q=$encodedQ$tokenQS';
         return requestAndParse(alt);
@@ -619,6 +625,7 @@ class BooksRepository {
 
     // If page > 1 and all IDs already exist (server ignored page), try offset
     if (page > 1 && await _allIdsExistInDb(books.map((b) => b.id))) {
+      debugPrint('[BOOKS] fetchBooksPage: page ignored? all ids known -> trying offset');
       final offset = (page - 1) * limit;
       final baseOffset = '/api/libraries/$libId/items?limit=$limit&offset=$offset&sort=$sort';
       final pathOffset = (encodedQ != null)
@@ -631,6 +638,7 @@ class BooksRepository {
         }
       } catch (_) {
         // Try skip as last resort
+        debugPrint('[BOOKS] fetchBooksPage: offset failed -> trying skip');
         final baseSkip = '/api/libraries/$libId/items?limit=$limit&skip=$offset&sort=$sort';
         final pathSkip = (encodedQ != null)
             ? '$baseSkip&search=$encodedQ$tokenQS'
@@ -645,6 +653,7 @@ class BooksRepository {
     }
 
     await _upsertBooks(books);
+    debugPrint('[BOOKS] fetchBooksPage: upserted=${books.length} page=$page');
     return books;
   }
 
@@ -672,6 +681,7 @@ class BooksRepository {
           query: query,
         );
       } catch (e) {
+        debugPrint('[BOOKS] syncAll: error: $e at page=$page offset=$offset');
         break;
       }
       if (chunk.isEmpty) break;
@@ -680,6 +690,7 @@ class BooksRepository {
       seenIds.addAll(ids);
       final added = seenIds.length - before;
       total += added;
+      debugPrint('[BOOKS] syncAll: page=$page chunk=${chunk.length} new=$added total=$total');
       if (added == 0) {
         noProgressStreak += 1;
       } else {
@@ -728,6 +739,7 @@ class BooksRepository {
         : null;
 
     Future<List<Book>> requestAndParse(String path) async {
+      debugPrint('[BOOKS] chunk: GET $path');
       final resp = await api.request('GET', path, headers: {});
       if (resp.statusCode != 200) {
         throw Exception('Failed to fetch: ${resp.statusCode}');
@@ -736,6 +748,7 @@ class BooksRepository {
       final body = bodyStr.isNotEmpty ? jsonDecode(bodyStr) : null;
       final items = _extractItems(body);
       final books = await _toBooks(items);
+      debugPrint('[BOOKS] chunk: offset=$offset limit=$limit items=${books.length}');
       await _upsertBooks(books);
       return books;
     }
