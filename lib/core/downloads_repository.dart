@@ -574,6 +574,93 @@ class DownloadsRepository {
   Future<List<TaskRecord>> listAll() =>
       FileDownloader().database.allRecords();
 
+  /// Best-effort total bytes estimate for an item. Tries /files endpoint first,
+  /// then falls back to HEAD (or ranged GET) on each download URL.
+  Future<int?> estimateTotalBytes(String libraryItemId, {String? episodeId}) async {
+    try {
+      final api = _auth.api;
+      int sum = 0;
+      // 1) Try explicit files endpoint
+      try {
+        final r = await api.request('GET', '/api/items/$libraryItemId/files');
+        if (r.statusCode == 200) {
+          final data = jsonDecode(r.body);
+          List list;
+          if (data is Map && data['files'] is List) list = data['files'] as List;
+          else if (data is List) list = data;
+          else list = const [];
+          for (final it in list) {
+            if (it is Map) {
+              final m = it.cast<String, dynamic>();
+              final v = m['size'] ?? m['bytes'] ?? m['fileSize'] ?? (m['stat'] is Map ? (m['stat']['size']) : null) ?? m['sizeBytes'];
+              if (v is num) sum += v.toInt();
+              else if (v is String) {
+                final n = int.tryParse(v);
+                if (n != null) sum += n;
+              }
+            }
+          }
+          if (sum > 0) return sum;
+        }
+      } catch (_) {}
+
+      // 2) Fall back: resolve plan and probe each URL for Content-Length
+      final plan = await _ensureDownloadPlan(libraryItemId, episodeId: episodeId);
+      if (plan.isEmpty) return null;
+
+      final access = await _auth.api.accessToken();
+      final client = HttpClient();
+      client.autoUncompress = false;
+
+      Future<int> _probe(String url) async {
+        // Prefer HEAD; fall back to ranged GET
+        try {
+          final req = await client.openUrl('HEAD', Uri.parse(url));
+          if (access != null && access.isNotEmpty) req.headers.add('Authorization', 'Bearer $access');
+          final resp = await req.close();
+          final cl = resp.headers.value(HttpHeaders.contentLengthHeader);
+          if (cl != null) {
+            final n = int.tryParse(cl);
+            if (n != null && n > 0) return n;
+          }
+        } catch (_) {}
+        try {
+          final req = await client.openUrl('GET', Uri.parse(url));
+          if (access != null && access.isNotEmpty) req.headers.add('Authorization', 'Bearer $access');
+          req.headers.add('Range', 'bytes=0-0');
+          final resp = await req.close();
+          final cr = resp.headers.value('content-range'); // bytes 0-0/12345
+          if (cr != null && cr.contains('/')) {
+            final totalStr = cr.split('/').last.trim();
+            final n = int.tryParse(totalStr);
+            if (n != null && n > 0) return n;
+          }
+          final cl = resp.headers.value(HttpHeaders.contentLengthHeader);
+          if (cl != null) {
+            final n = int.tryParse(cl);
+            if (n != null && n > 0) return n;
+          }
+        } catch (_) {}
+        return 0;
+      }
+
+      // Limit concurrency
+      const int maxParallel = 8;
+      int idx = 0;
+      while (idx < plan.length) {
+        final batch = plan.skip(idx).take(maxParallel).toList();
+        final futures = batch.map((t) => _probe(_downloadUrlFor(libraryItemId, t.fileId, episodeId: episodeId)));
+        final results = await Future.wait(futures);
+        for (final n in results) sum += n;
+        idx += batch.length;
+      }
+      try { client.close(force: true); } catch (_) {}
+      return sum > 0 ? sum : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Resume serial downloads for all tracked items (if applicable)
   Future<void> resumeAll() async {
     final ids = await listTrackedItemIds();

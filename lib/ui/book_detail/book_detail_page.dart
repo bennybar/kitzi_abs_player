@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:convert';
+import 'dart:async' show unawaited;
 import 'package:flutter/material.dart';
 
 import '../../core/books_repository.dart';
@@ -24,6 +25,39 @@ class _BookDetailPageState extends State<BookDetailPage> {
   late final Future<BooksRepository> _repoFut;
   Future<Book>? _bookFut;
   Future<double?>? _serverProgressFut;
+  int? _resolvedDurationMs;
+  int? _resolvedSizeBytes;
+  bool _kickedResolve = false;
+
+  Future<void> _resolveDurationIfNeeded(Book b, PlaybackRepository playbackRepo) async {
+    final current = _resolvedDurationMs ?? b.durationMs ?? 0;
+    if (current > 0) return;
+    try {
+      final open = await playbackRepo.openSessionAndGetTracks(b.id);
+      final totalSec = open.tracks.fold<double>(0.0, (a, t) => a + (t.duration > 0 ? t.duration : 0.0));
+      if (mounted && totalSec > 0) {
+        setState(() { _resolvedDurationMs = (totalSec * 1000).round(); });
+      }
+      if (open.sessionId != null && open.sessionId!.isNotEmpty) {
+        unawaited(playbackRepo.closeSessionById(open.sessionId!));
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _resolveSizeIfNeeded(BuildContext context, Book b) async {
+    final current = _resolvedSizeBytes ?? b.sizeBytes ?? 0;
+    if (current > 0) return;
+    try {
+      final downloads = ServicesScope.of(context).services.downloads;
+      final est = await downloads.estimateTotalBytes(b.id);
+      if (mounted && est != null && est > 0) {
+        setState(() { _resolvedSizeBytes = est; });
+        return;
+      }
+
+      // Fallback to 0 quietly; UI will keep showing '—'
+    } catch (_) {}
+  }
 
   @override
   void initState() {
@@ -96,16 +130,18 @@ class _BookDetailPageState extends State<BookDetailPage> {
               // No verbose logging in production
 
               String fmtDuration() {
-                if (b.durationMs == null || b.durationMs == 0) return 'Unknown';
-                final d = Duration(milliseconds: b.durationMs!);
+                final ms = _resolvedDurationMs ?? b.durationMs;
+                if (ms == null || ms == 0) return 'Unknown';
+                final d = Duration(milliseconds: ms);
                 final h = d.inHours;
                 final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
                 return h > 0 ? '$h h $m m' : '$m m';
               }
 
               String fmtSize() {
-                if (b.sizeBytes == null || b.sizeBytes == 0) return '—';
-                final mb = (b.sizeBytes! / (1024 * 1024));
+                final sz = _resolvedSizeBytes ?? b.sizeBytes;
+                if (sz == null || sz == 0) return '—';
+                final mb = (sz / (1024 * 1024));
                 return '${mb.toStringAsFixed(1)} MB';
               }
 
@@ -114,6 +150,17 @@ class _BookDetailPageState extends State<BookDetailPage> {
                 padding: const EdgeInsets.only(bottom: 112), // room for mini player
                 child: Column(
                   children: [
+                    if (!_kickedResolve) ...[
+                      // Kick best-effort resolves once when page builds with data
+                      FutureBuilder<void>(
+                        future: () async {
+                          _kickedResolve = true;
+                          await _resolveDurationIfNeeded(b, playbackRepo);
+                          await _resolveSizeIfNeeded(context, b);
+                        }(),
+                        builder: (_, __) => const SizedBox.shrink(),
+                      ),
+                    ],
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                       child: Row(
@@ -190,8 +237,66 @@ class _BookDetailPageState extends State<BookDetailPage> {
                                   spacing: 8,
                                   runSpacing: 8,
                                   children: [
-                                    _InfoChip(icon: Icons.schedule, label: fmtDuration()),
-                                    _InfoChip(icon: Icons.save_alt, label: fmtSize()),
+                                    _InfoChip(
+                                      icon: Icons.schedule,
+                                      label: fmtDuration(),
+                                      tooltip: 'Total length',
+                                      onTap: () async {
+                                        // If unknown, try resolving via streaming tracks (then close session)
+                                        if ((_resolvedDurationMs ?? b.durationMs ?? 0) == 0) {
+                                          try {
+                                            final open = await playbackRepo.openSessionAndGetTracks(b.id);
+                                            final totalSec = open.tracks.fold<double>(0.0, (a, t) => a + (t.duration > 0 ? t.duration : 0.0));
+                                            if (mounted) setState(() { _resolvedDurationMs = (totalSec * 1000).round(); });
+                                            if (open.sessionId != null && open.sessionId!.isNotEmpty) {
+                                              unawaited(playbackRepo.closeSessionById(open.sessionId!));
+                                            }
+                                          } catch (_) {}
+                                        }
+                                        final txt = fmtDuration();
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text('Total length: $txt')),
+                                        );
+                                      },
+                                    ),
+                                    _InfoChip(
+                                      icon: Icons.save_alt,
+                                      label: fmtSize(),
+                                      tooltip: 'Estimated download size',
+                                      onTap: () async {
+                                        // If unknown, try resolving via /api/items/{id}/files sum of sizes
+                                        if ((_resolvedSizeBytes ?? b.sizeBytes ?? 0) == 0) {
+                                          try {
+                                            final api = ServicesScope.of(context).services.auth.api;
+                                            final resp = await api.request('GET', '/api/items/${b.id}/files');
+                                            if (resp.statusCode == 200) {
+                                              final data = jsonDecode(resp.body);
+                                              List list;
+                                              if (data is Map && data['files'] is List) list = data['files'] as List;
+                                              else if (data is List) list = data;
+                                              else list = const [];
+                                              int sum = 0;
+                                              for (final it in list) {
+                                                if (it is Map) {
+                                                  final m = it.cast<String, dynamic>();
+                                                  final v = m['size'] ?? m['bytes'] ?? m['fileSize'];
+                                                  if (v is num) sum += v.toInt();
+                                                  if (v is String) {
+                                                    final n = int.tryParse(v);
+                                                    if (n != null) sum += n;
+                                                  }
+                                                }
+                                              }
+                                              if (mounted && sum > 0) setState(() { _resolvedSizeBytes = sum; });
+                                            }
+                                          } catch (_) {}
+                                        }
+                                        final txt = fmtSize();
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text('Estimated download size: $txt')),
+                                        );
+                                      },
+                                    ),
                                   ],
                                 ),
                               ],
@@ -264,14 +369,16 @@ class _BookDetailPageState extends State<BookDetailPage> {
 }
 
 class _InfoChip extends StatelessWidget {
-  const _InfoChip({required this.icon, required this.label});
+  const _InfoChip({required this.icon, required this.label, this.onTap, this.tooltip});
   final IconData icon;
   final String label;
+  final VoidCallback? onTap;
+  final String? tooltip;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Container(
+    final chip = Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest,
@@ -285,6 +392,15 @@ class _InfoChip extends StatelessWidget {
           Text(label, style: Theme.of(context).textTheme.labelLarge),
         ],
       ),
+    );
+    final withTooltip = (tooltip != null && tooltip!.isNotEmpty)
+        ? Tooltip(message: tooltip!, child: chip)
+        : chip;
+    if (onTap == null) return withTooltip;
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: onTap,
+      child: withTooltip,
     );
   }
 }
