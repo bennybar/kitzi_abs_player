@@ -37,30 +37,44 @@ class _MainScaffoldState extends State<MainScaffold> {
       stream: playback.nowPlayingStream,
       initialData: playback.nowPlaying,
       builder: (_, snap) {
-        final hasMini = snap.data != null;
+        final hasMini = snap.data != null && _index != 2; // hide on Settings
 
         return Scaffold(
           backgroundColor: cs.surface,
-          body: Stack(
-            children: [
-              Positioned.fill(
-                child: Padding(
-                  // let content extend fully; mini-player floats above
-                  padding: EdgeInsets.zero,
-                  child: pages[_index],
-                ),
-              ),
-              if (hasMini)
-                Align(
-                  alignment: Alignment.bottomCenter,
-                  child: SafeArea(
-                    top: false,
-                    child: const MiniPlayer(height: 72),
-                  ),
-                ),
-            ],
-          ),
-          bottomNavigationBar: NavigationBar(
+          body: pages[_index],
+          bottomNavigationBar: hasMini
+              ? Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SafeArea(top: false, child: MiniPlayer(height: 64)),
+                    NavigationBar(
+                      selectedIndex: _index,
+                      onDestinationSelected: (i) => setState(() => _index = i),
+                      backgroundColor: cs.surface,
+                      surfaceTintColor: cs.surfaceTint,
+                      elevation: 0,
+                      indicatorColor: cs.primaryContainer,
+                      destinations: const [
+                        NavigationDestination(
+                          icon: Icon(Icons.library_books_outlined),
+                          selectedIcon: Icon(Icons.library_books),
+                          label: 'Books',
+                        ),
+                        NavigationDestination(
+                          icon: Icon(Icons.download_outlined),
+                          selectedIcon: Icon(Icons.download),
+                          label: 'Downloads',
+                        ),
+                        NavigationDestination(
+                          icon: Icon(Icons.settings_outlined),
+                          selectedIcon: Icon(Icons.settings),
+                          label: 'Settings',
+                        ),
+                      ],
+                    ),
+                  ],
+                )
+              : NavigationBar(
             selectedIndex: _index,
             onDestinationSelected: (i) => setState(() => _index = i),
             backgroundColor: cs.surface,

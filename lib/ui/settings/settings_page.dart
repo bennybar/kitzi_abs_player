@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../main.dart'; // ServicesScope
+import '../../core/audio_service_binding.dart';
+import '../../core/books_repository.dart';
 import '../../ui/login/login_screen.dart';
 import '../../core/download_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -184,6 +186,31 @@ class _SettingsPageState extends State<SettingsPage> {
                 final auth = services.auth;
                 try {
                   await auth.logout();
+                } catch (_) {}
+                // Wipe all app data: prefs, secure, downloads, caches, DB
+                try {
+                  // Clear SharedPreferences keys we own
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.clear();
+                } catch (_) {}
+                try {
+                  // Stop and unbind audio service
+                  await AudioServiceBinding.instance.unbind();
+                } catch (_) {}
+                try {
+                  // Cancel all downloads and delete all local files
+                  await services.downloads.cancelAll();
+                } catch (_) {}
+                try {
+                  // Delete downloads root directory
+                  final base = await DownloadStorage.baseDir();
+                  if (await base.exists()) {
+                    await base.delete(recursive: true);
+                  }
+                } catch (_) {}
+                try {
+                  // Wipe cached books DB and images
+                  await BooksRepository.wipeLocalCache();
                 } catch (_) {}
                 if (!context.mounted) return;
                 Navigator.of(context).pushAndRemoveUntil(

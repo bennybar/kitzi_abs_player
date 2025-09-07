@@ -126,33 +126,19 @@ class _BooksPageState extends State<BooksPage> {
     });
     try {
       final repo = await _repoFut;
-      // Network status
+      // Always read first page from local DB (fast start), then optionally refresh in background
+      final q = _query.trim();
+      final items = await repo.listBooksFromDbPaged(page: 1, limit: 50, query: q.isEmpty ? null : q);
+      // Background refresh from server only when online
       final conn = await Connectivity().checkConnectivity();
       final online = conn.contains(ConnectivityResult.mobile) || conn.contains(ConnectivityResult.wifi) || conn.contains(ConnectivityResult.ethernet);
-      print('BooksPage: Network status - online: $online');
-      
-      // Strategy:
-      // - Initial: if online, fetch server then store; else use DB and show no-internet banner
-      // - Manual refresh: if online fetch server; else keep local and show no-internet banner
-      List<Book> items;
-      if (initial) {
-        if (online) {
-          print('BooksPage: Initial load with internet - calling refreshFromServer()');
-          items = await repo.refreshFromServer();
-        } else {
-          print('BooksPage: Initial load without internet - calling listBooks()');
-          items = await repo.listBooks();
-          if (mounted) _showNoInternetSnack();
-        }
-      } else {
-        if (online) {
-          print('BooksPage: Manual refresh with internet - calling refreshFromServer()');
-          items = await repo.refreshFromServer();
-        } else {
-          print('BooksPage: Manual refresh without internet - calling listBooks()');
-          items = await repo.listBooks();
-          if (mounted) _showNoInternetSnack();
-        }
+      if (online) {
+        // Ensure first page is fresh
+        await repo.ensureServerPageIntoDb(page: 1, limit: 50, query: q.isEmpty ? null : q);
+        // Optionally prefetch page 2 to reduce spinner on scroll
+        await repo.ensureServerPageIntoDb(page: 2, limit: 50, query: q.isEmpty ? null : q);
+      } else if (initial && mounted) {
+        _showNoInternetSnack();
       }
       if (!mounted) return;
       print('BooksPage: Received ${items.length} books from repository');
@@ -680,7 +666,8 @@ class _BooksPageState extends State<BooksPage> {
       final repo = await _repoFut;
       final nextPage = _currentPage + 1;
       final q = _query.trim();
-      final page = await repo.fetchBooksPage(page: nextPage, limit: 50, query: q.isEmpty ? null : q);
+      await repo.ensureServerPageIntoDb(page: nextPage, limit: 50, query: q.isEmpty ? null : q);
+      final page = await repo.listBooksFromDbPaged(page: nextPage, limit: 50, query: q.isEmpty ? null : q);
       if (!mounted) return;
       setState(() {
         _books.addAll(page);
@@ -704,7 +691,8 @@ class _BooksPageState extends State<BooksPage> {
     try {
       final repo = await _repoFut;
       final q = _query.trim();
-      final first = await repo.fetchBooksPage(page: 1, limit: 50, query: q.isEmpty ? null : q);
+      await repo.ensureServerPageIntoDb(page: 1, limit: 50, query: q.isEmpty ? null : q);
+      final first = await repo.listBooksFromDbPaged(page: 1, limit: 50, query: q.isEmpty ? null : q);
       if (!mounted) return;
       setState(() {
         _books = first;

@@ -17,15 +17,15 @@ class MiniPlayer extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      margin: const EdgeInsets.fromLTRB(8, 0, 8, 6),
       decoration: BoxDecoration(
         color: cs.surface,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: cs.shadow.withOpacity(0.15),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
+            color: cs.shadow.withOpacity(0.10),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
@@ -74,7 +74,7 @@ class MiniPlayer extends StatelessWidget {
                 }
 
                 return Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                  padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
                   child: Row(
                     children: [
                       // Enhanced cover with Hero
@@ -85,7 +85,7 @@ class MiniPlayer extends StatelessWidget {
                           child: _MiniCover(url: np.coverUrl, size: height - 18),
                         ),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 8),
 
                       // Title/author + progress bar with enhanced layout
                       Expanded(
@@ -112,7 +112,7 @@ class MiniPlayer extends StatelessWidget {
                                 ),
                               ),
                             ],
-                            const SizedBox(height: 4),
+                            const SizedBox(height: 3),
                             // Enhanced progress bar
                             StreamBuilder<Duration?>(
                               stream: playback.durationStream,
@@ -140,7 +140,7 @@ class MiniPlayer extends StatelessWidget {
                           ],
                         ),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 8),
 
                       // Controls: back 15s, play/pause, forward 30s
                       StreamBuilder<bool>(

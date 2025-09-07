@@ -161,6 +161,37 @@ class BooksRepository {
     return repo;
   }
 
+  /// Remove all locally cached book data: DB, covers, and description images.
+  static Future<void> wipeLocalCache() async {
+    try {
+      // Delete DB file
+      final dbPath = await getDatabasesPath();
+      final dbFile = p.join(dbPath, 'kitzi_books.db');
+      final f = File(dbFile);
+      if (await f.exists()) {
+        await f.delete();
+      }
+    } catch (_) {}
+
+    try {
+      // Delete covers directory
+      final dbPath = await getDatabasesPath();
+      final coversDir = Directory(p.join(dbPath, 'kitzi_covers'));
+      if (await coversDir.exists()) {
+        await coversDir.delete(recursive: true);
+      }
+    } catch (_) {}
+
+    try {
+      // Delete description images directory tree
+      final dbPath = await getDatabasesPath();
+      final descDir = Directory(p.join(dbPath, 'kitzi_desc_images'));
+      if (await descDir.exists()) {
+        await descDir.delete(recursive: true);
+      }
+    } catch (_) {}
+  }
+
   Future<void> _openDb() async {
     final dbPath = await getDatabasesPath();
     final path = p.join(dbPath, 'kitzi_books.db');
@@ -246,6 +277,97 @@ class BooksRepository {
             : null,
       );
     }).toList();
+  }
+
+  /// Paged local query of books from the on-device DB with optional search and sort.
+  Future<List<Book>> listBooksFromDbPaged({
+    required int page,
+    int limit = 50,
+    String sort = 'updatedAt:desc',
+    String? query,
+  }) async {
+    final db = _db;
+    if (db == null) return <Book>[];
+    final baseUrl = _auth.api.baseUrl ?? '';
+    final token = await _auth.api.accessToken();
+
+    final offset = (page <= 1) ? 0 : (page - 1) * limit;
+    final whereParts = <String>[];
+    final whereArgs = <Object?>[];
+    if (query != null && query.trim().isNotEmpty) {
+      final q = '%${query.trim().toLowerCase()}%';
+      whereParts.add('(LOWER(title) LIKE ? OR LOWER(author) LIKE ?)');
+      whereArgs..add(q)..add(q);
+    }
+    final where = whereParts.isEmpty ? null : whereParts.join(' AND ');
+
+    String orderBy;
+    switch (sort) {
+      case 'nameAsc':
+        orderBy = 'title COLLATE NOCASE ASC';
+        break;
+      case 'updatedAt:desc':
+      default:
+        orderBy = 'updatedAt DESC NULLS LAST';
+        break;
+    }
+
+    final rows = await db.query(
+      'books',
+      where: where,
+      whereArgs: whereArgs,
+      orderBy: orderBy,
+      limit: limit,
+      offset: offset,
+    );
+    if (rows.isEmpty) return <Book>[];
+    return rows.map((m) {
+      final id = (m['id'] as String);
+      final localPath = (m['coverPath'] as String?);
+      var coverUrl = '$baseUrl/api/items/$id/cover';
+      if (token != null && token.isNotEmpty) coverUrl = '$coverUrl?token=$token';
+      if (localPath != null && File(localPath).existsSync()) {
+        coverUrl = 'file://$localPath';
+      }
+      return Book(
+        id: id,
+        title: (m['title'] as String),
+        author: m['author'] as String?,
+        coverUrl: coverUrl,
+        description: m['description'] as String?,
+        durationMs: m['durationMs'] as int?,
+        sizeBytes: m['sizeBytes'] as int?,
+        updatedAt: (m['updatedAt'] as int?) != null
+            ? DateTime.fromMillisecondsSinceEpoch((m['updatedAt'] as int), isUtc: true)
+            : null,
+      );
+    }).toList();
+  }
+
+  Future<int> countBooksInDb({String? query}) async {
+    final db = _db;
+    if (db == null) return 0;
+    final whereParts = <String>[];
+    final whereArgs = <Object?>[];
+    if (query != null && query.trim().isNotEmpty) {
+      final q = '%${query.trim().toLowerCase()}%';
+      whereParts.add('(LOWER(title) LIKE ? OR LOWER(author) LIKE ?)');
+      whereArgs..add(q)..add(q);
+    }
+    final where = whereParts.isEmpty ? '' : 'WHERE ${whereParts.join(' AND ')}';
+    final rows = await db.rawQuery('SELECT COUNT(*) as c FROM books $where', whereArgs);
+    final n = rows.isNotEmpty ? rows.first['c'] as int? : 0;
+    return n ?? 0;
+  }
+
+  /// Ensure the given page exists in local DB; if not, fetch from server and upsert.
+  Future<void> ensureServerPageIntoDb({required int page, int limit = 50, String? query, String sort = 'updatedAt:desc'}) async {
+    // Simple heuristic: if DB has fewer than page*limit rows matching query, fetch page
+    final have = await countBooksInDb(query: query);
+    if (have >= page * limit) return;
+    try {
+      await fetchBooksPage(page: page, limit: limit, query: query, sort: sort);
+    } catch (_) {}
   }
 
   /// Get a single book from local database (offline fallback). Returns null if not found.
