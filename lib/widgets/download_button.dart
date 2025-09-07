@@ -63,7 +63,57 @@ class _DownloadButtonState extends State<DownloadButton> {
     if (_downloads == null) return;
     setState(() => _busy = true);
     try {
-      final proceed = await showDialog<bool>(
+      // If this item is already active, ignore duplicate enqueue taps
+      if (_snap != null && (_snap!.status == 'running' || _snap!.status == 'queued')) {
+        return;
+      }
+
+      // Check whether other items are active/queued
+      final othersActive = await _downloads!.hasActiveOrQueued();
+      bool requireCancelOthers = false;
+      if (othersActive) {
+        // If only this item is tracked or active, allow enqueue directly
+        try {
+          final tracked = await _downloads!.listTrackedItemIds();
+          final onlyThis = tracked.isNotEmpty && tracked.every((id) => id == widget.libraryItemId);
+          if (!onlyThis) requireCancelOthers = true;
+        } catch (_) {
+          requireCancelOthers = true; // be conservative if unknown
+        }
+      }
+
+      bool proceed = true;
+      bool cancelOthers = false;
+      if (requireCancelOthers) {
+        final ans = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Single download at a time'),
+            content: const Text(
+                'Another book is downloading. Cancel it and download this book now?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('No'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Yes, switch downloads'),
+              ),
+            ],
+          ),
+        );
+        proceed = ans == true;
+        cancelOthers = ans == true;
+      }
+
+      if (!proceed) return;
+
+      if (cancelOthers) {
+        await _downloads!.cancelAll();
+      }
+
+      final confirm = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('Single download at a time'),
@@ -81,8 +131,9 @@ class _DownloadButtonState extends State<DownloadButton> {
           ],
         ),
       );
-      if (proceed == true) {
-        await _downloads!.cancelAll();
+      // Regardless of answer to legacy dialog, if we reached here without cancelling others
+      // proceed to enqueue this item. Keep dialog for compatibility but avoid additional cancelAll.
+      if (confirm == true || !requireCancelOthers) {
         await _downloads!.enqueueItemDownloads(
           widget.libraryItemId,
           episodeId: widget.episodeId,
@@ -139,7 +190,8 @@ class _DownloadButtonState extends State<DownloadButton> {
     // 2) Running/Queued -> progress button + cancel
     else if (snap != null &&
         (snap.status == 'running' || snap.status == 'queued')) {
-      final pct = (snap.progress * 100).clamp(0, 100).toStringAsFixed(0);
+      final pct = (snap.progress * 100).clamp(0, 100).toStringAsFixed(snap.totalTasks >= 50 ? 1 : 0);
+      final frac = '${snap.completed}/${snap.totalTasks}';
       child = SizedBox(
         height: 40, // lock height to avoid layout jump
         child: Stack(
@@ -156,7 +208,7 @@ class _DownloadButtonState extends State<DownloadButton> {
             FilledButton.icon(
               onPressed: null, // disabled while running
               icon: const Icon(Icons.download),
-              label: Text('Downloading… $pct%'),
+              label: Text('Downloading… $frac ($pct%)'),
             ),
             // Cancel hotspot on the right (per-book cancel)
             Align(

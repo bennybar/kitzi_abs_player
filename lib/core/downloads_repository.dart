@@ -29,6 +29,13 @@ class ItemProgress {
   });
 }
 
+class _DlTrack {
+  final int index;
+  final String fileId;
+  final String mimeType;
+  _DlTrack({required this.index, required this.fileId, required this.mimeType});
+}
+
 class DownloadsRepository {
   DownloadsRepository(this._auth, this._playback);
   final AuthRepository _auth;
@@ -85,6 +92,8 @@ class DownloadsRepository {
   final Set<String> _itemsInGlobalQueue = <String>{};
   // Track active download session ids per item to enable closing on cancel
   final Map<String, String> _downloadSessionByItem = <String, String>{};
+  // Cached per-item download plan (fileIds, indices, mimeTypes) to avoid sessions entirely
+  final Map<String, List<_DlTrack>> _downloadPlanByItem = <String, List<_DlTrack>>{};
 
   Future<void> init() async {
     // Configure ONE global notification. Do NOT set per-task displayName.
@@ -114,6 +123,186 @@ class DownloadsRepository {
 
     // Ensure global listener is active so chaining continues even when UI is closed
     _ensureChainListener();
+  }
+
+  // === Download plan (no sessions) ===
+  Future<List<_DlTrack>> _ensureDownloadPlan(String libraryItemId, {String? episodeId}) async {
+    final existing = _downloadPlanByItem[libraryItemId];
+    if (existing != null && existing.isNotEmpty) return existing;
+
+    try {
+      final api = _auth.api;
+
+      // First attempt: explicit files endpoint (no sessions)
+      final filesResp = await api.request('GET', '/api/items/$libraryItemId/files');
+      Map<String, dynamic>? item;
+      List<dynamic>? filesList;
+      if (filesResp.statusCode == 200) {
+        try {
+          final parsed = jsonDecode(filesResp.body);
+          if (parsed is Map && parsed['files'] is List) {
+            filesList = parsed['files'] as List;
+          } else if (parsed is List) {
+            filesList = parsed;
+          }
+        } catch (_) {}
+      }
+
+      // Fallback: full item (may include tracks/audioFiles)
+      if (filesList == null) {
+        final resp = await api.request('GET', '/api/items/$libraryItemId');
+        if (resp.statusCode != 200) throw Exception('status ${resp.statusCode}');
+        final bodyStr = resp.body;
+        if (bodyStr.isEmpty) throw Exception('empty body');
+        final parsed = jsonDecode(bodyStr);
+        item = (parsed is Map && parsed['item'] is Map)
+            ? (parsed['item'] as Map).cast<String, dynamic>()
+            : (parsed as Map).cast<String, dynamic>();
+      }
+
+      Map<String, dynamic>? media = item != null && item['media'] is Map ? (item['media'] as Map).cast<String, dynamic>() : null;
+      List<dynamic>? episodesList;
+      if (episodeId != null) {
+        // Try both root and under media
+        if (item != null && item['episodes'] is List) episodesList = item['episodes'] as List;
+        if (episodesList == null && media != null && media['episodes'] is List) {
+          episodesList = media['episodes'] as List;
+        }
+        if (episodesList != null) {
+          for (final e in episodesList) {
+            if (e is Map) {
+              final em = e.cast<String, dynamic>();
+              final eid = (em['id'] ?? em['_id'] ?? '').toString();
+              if (eid == episodeId) {
+                media = em['media'] is Map ? (em['media'] as Map).cast<String, dynamic>() : em;
+                break;
+              }
+            }
+          }
+        }
+      }
+
+      final tracks = <_DlTrack>[];
+
+      if (filesList != null) {
+        for (var i = 0; i < filesList.length; i++) {
+          final f = filesList[i];
+          if (f is! Map) continue;
+          final m = f.cast<String, dynamic>();
+          final fidRaw = (m['id'] ?? m['_id']);
+          final fileId = fidRaw is String ? fidRaw : fidRaw?.toString();
+          final idx = ((m['index'] ?? m['order'] ?? m['track'] ?? m['trackNumber'] ?? i) as num).toInt();
+          final mime = (m['mimeType'] ?? m['contentType'] ?? 'audio/mpeg').toString();
+          if (fileId != null && fileId.isNotEmpty) {
+            tracks.add(_DlTrack(index: idx, fileId: fileId, mimeType: mime));
+          }
+        }
+      } else if (item != null) {
+        Map<String, dynamic> use = media ?? item;
+        // Try common shapes
+        List list;
+        if (use['tracks'] is List) {
+          list = (use['tracks'] as List);
+          for (var i = 0; i < list.length; i++) {
+            final t = list[i];
+            if (t is! Map) continue;
+            final m = t.cast<String, dynamic>();
+            final idx = ((m['index'] ?? m['track'] ?? m['trackNumber'] ?? i) as num).toInt();
+            String? fileId;
+            if (m['fileId'] is String) fileId = m['fileId'] as String;
+            if (fileId == null && m['file'] is Map) {
+              final fm = (m['file'] as Map).cast<String, dynamic>();
+              final fid = (fm['id'] ?? fm['_id']);
+              if (fid is String) fileId = fid;
+            }
+            if (fileId == null && m['id'] is String) fileId = m['id'] as String; // some servers
+            final mime = (m['mimeType'] ?? m['contentType'] ?? 'audio/mpeg').toString();
+            if (fileId != null && fileId.isNotEmpty) {
+              tracks.add(_DlTrack(index: idx, fileId: fileId, mimeType: mime));
+            }
+          }
+        } else if (use['audioFiles'] is List) {
+          list = (use['audioFiles'] as List);
+          for (var i = 0; i < list.length; i++) {
+            final f = list[i];
+            if (f is! Map) continue;
+            final m = f.cast<String, dynamic>();
+            final fidRaw = (m['id'] ?? m['_id']);
+            final fileId = fidRaw is String ? fidRaw : fidRaw?.toString();
+            final idx = ((m['index'] ?? m['order'] ?? m['track'] ?? m['trackNumber'] ?? i) as num).toInt();
+            final mime = (m['mimeType'] ?? m['contentType'] ?? 'audio/mpeg').toString();
+            if (fileId != null && fileId.isNotEmpty) {
+              tracks.add(_DlTrack(index: idx, fileId: fileId, mimeType: mime));
+            }
+          }
+        } else if (use['files'] is List) {
+          list = (use['files'] as List);
+          for (var i = 0; i < list.length; i++) {
+            final f = list[i];
+            if (f is! Map) continue;
+            final m = f.cast<String, dynamic>();
+            final fidRaw = (m['id'] ?? m['_id']);
+            final fileId = fidRaw is String ? fidRaw : fidRaw?.toString();
+            final idx = ((m['index'] ?? m['order'] ?? m['track'] ?? m['trackNumber'] ?? i) as num).toInt();
+            final mime = (m['mimeType'] ?? m['contentType'] ?? 'audio/mpeg').toString();
+            if (fileId != null && fileId.isNotEmpty) {
+              tracks.add(_DlTrack(index: idx, fileId: fileId, mimeType: mime));
+            }
+          }
+        }
+      }
+
+      // Fallback: open a single session to derive fileIds from track URLs, then close it
+      if (tracks.isEmpty) {
+        try {
+          final open = await _playback.openSessionAndGetTracks(libraryItemId, episodeId: episodeId);
+          final sessionId = open.sessionId;
+          for (final t in open.tracks) {
+            try {
+              final u = Uri.tryParse(t.url);
+              String? fileId;
+              if (u != null) {
+                final segs = u.pathSegments;
+                // Look for "file/{id}" or "files/{id}"
+                for (int i = 0; i < segs.length - 1; i++) {
+                  final s = segs[i].toLowerCase();
+                  if (s == 'file' || s == 'files') {
+                    fileId = segs[i + 1];
+                    break;
+                  }
+                }
+                // Some servers may encode as query param
+                fileId ??= u.queryParameters['fileId'] ?? u.queryParameters['id'];
+              }
+              if (fileId != null && fileId.isNotEmpty) {
+                tracks.add(_DlTrack(index: t.index, fileId: fileId, mimeType: t.mimeType));
+              }
+            } catch (_) {}
+          }
+          // Close the session quickly; downloads don't need streaming sessions
+          if (sessionId != null && sessionId.isNotEmpty) {
+            unawaited(_playback.closeSessionById(sessionId));
+          }
+        } catch (_) {}
+      }
+
+      tracks.sort((a, b) => a.index.compareTo(b.index));
+      _downloadPlanByItem[libraryItemId] = tracks;
+      return tracks;
+    } catch (_) {
+      return _downloadPlanByItem[libraryItemId] ?? const <_DlTrack>[];
+    }
+  }
+
+  Future<int> _getTotalTracksWithoutSession(String libraryItemId, {String? episodeId}) async {
+    final plan = await _ensureDownloadPlan(libraryItemId, episodeId: episodeId);
+    return plan.length;
+  }
+
+  String _downloadUrlFor(String libraryItemId, String fileId, {String? episodeId}) {
+    final base = _auth.api.baseUrl ?? '';
+    // Use singular 'file' segment as commonly used by ABS; adjust if server expects 'files'
+    return '$base/api/items/$libraryItemId/file/$fileId/download';
   }
 
   /// Start (or get) an aggregated progress stream for a specific book.
@@ -207,7 +396,11 @@ class DownloadsRepository {
     // Immediately publish a queued snapshot so UI updates without waiting for DB
     try {
       _pendingQueuedUntil[libraryItemId] = DateTime.now().add(const Duration(seconds: 12));
-      final totalTracks = await _playback.getTotalTrackCount(libraryItemId);
+      int totalTracks = await _getTotalTracksWithoutSession(libraryItemId, episodeId: episodeId);
+      if (totalTracks == 0) {
+        // Fallback to previous method if metadata missing
+        try { totalTracks = await _playback.getTotalTrackCount(libraryItemId); } catch (_) {}
+      }
       final snap = ItemProgress(
         libraryItemId: libraryItemId,
         status: 'queued',
@@ -460,7 +653,10 @@ class DownloadsRepository {
 
   Future<ItemProgress> _computeItemProgress(String libraryItemId) async {
     final recs = await _recordsForItem(libraryItemId);
-    final totalTracks = await _playback.getTotalTrackCount(libraryItemId);
+    int totalTracks = await _getTotalTracksWithoutSession(libraryItemId);
+    if (totalTracks == 0) {
+      try { totalTracks = await _playback.getTotalTrackCount(libraryItemId); } catch (_) {}
+    }
     final completedLocal = await _countLocalFiles(libraryItemId);
 
     // Determine per-file running progress using live cache for stability
@@ -652,17 +848,11 @@ class DownloadsRepository {
         return;
       }
 
-      // Determine next remote track not yet downloaded locally
-      // Open a dedicated streaming session for downloads (separate from player)
-      final open = await _playback.openSessionAndGetTracks(libraryItemId, episodeId: episodeId);
-      if (open.sessionId != null && open.sessionId!.isNotEmpty) {
-        _downloadSessionByItem[libraryItemId] = open.sessionId!;
-      }
-      final tracks = open.tracks;
-      tracks.sort((a, b) => a.index.toString().compareTo(b.index.toString()));
-      _d('Found ${tracks.length} remote tracks for $libraryItemId');
+      // Build or reuse download plan without opening playback sessions
+      final plan = await _ensureDownloadPlan(libraryItemId, episodeId: episodeId);
+      _d('Found ${plan.length} downloadable tracks for $libraryItemId');
       
-      if (tracks.isEmpty) {
+      if (plan.isEmpty) {
         _d('No remote tracks found for $libraryItemId');
         _notifyItem(libraryItemId);
         return;
@@ -670,8 +860,8 @@ class DownloadsRepository {
 
       // Find first track whose file does NOT exist locally
       final dir = await _itemDir(libraryItemId);
-      PlaybackTrack? next;
-      for (final t in tracks) {
+      _DlTrack? next;
+      for (final t in plan) {
         final filename = 'track_${t.index.toString().padLeft(3, '0')}.${_extFromMime(t.mimeType)}';
         final f = File('${dir.path}/$filename');
         if (!f.existsSync()) {
@@ -696,7 +886,7 @@ class DownloadsRepository {
 
       final baseFolder = await DownloadStorage.taskDirectoryPrefix();
       final preferredBase = await DownloadStorage.preferredTaskBaseDirectory();
-      // Add Authorization header so background worker can access session URLs
+      // Add Authorization header so background worker can access protected URLs
       final headers = <String, String>{};
       try {
         final access = await _auth.api.accessToken();
@@ -704,11 +894,13 @@ class DownloadsRepository {
           headers['Authorization'] = 'Bearer ' + access;
         }
       } catch (_) {}
+      // Build /download endpoint URL (no playback session)
+      final url = _downloadUrlFor(libraryItemId, next.fileId, episodeId: episodeId);
       // Log the download URL with full details
-      _d('Downloading from ${next.url}');
+      _d('Downloading from $url');
       
       final task = DownloadTask(
-        url: next.url,
+        url: url,
         filename: filename,
         directory: '$baseFolder/$libraryItemId',
         baseDirectory: preferredBase,
@@ -729,10 +921,6 @@ class DownloadsRepository {
       // The chain listener will handle continuing with the next track
 
       _ensureChainListener();
-      
-      // Best-effort: close session if no active downloads remain for this item after scheduling
-      // (Chain listener will close after the last file completes as well)
-      unawaited(_closeDownloadSessionWhenIdle(open.sessionId, libraryItemId));
     } finally {
       _schedulingItems.remove(libraryItemId);
     }
@@ -754,6 +942,22 @@ class DownloadsRepository {
           await FileDownloader().cancelTaskWithId(u.task.taskId);
           try { await FileDownloader().database.deleteRecordWithId(u.task.taskId); } catch (_) {}
         } catch (_) {}
+        return;
+      }
+      // Fast-path: when a task completes, clear live flags and try to schedule the next immediately
+      if (u is TaskStatusUpdate && u.status == TaskStatus.complete) {
+        _uiActive[id] = false;
+        _inFlightItems.remove(id);
+        _lastRunningProgress.remove(id);
+        _lastUpdateAt[id] = DateTime.now();
+        // Allow DB to settle, then schedule next if nothing else is active
+        await Future.delayed(const Duration(milliseconds: 150));
+        final recs = await _recordsForItem(id);
+        final hasActiveDb = recs.any((r) => r.status == TaskStatus.running || r.status == TaskStatus.enqueued);
+        if (!hasActiveDb) {
+          _nextAllowedSchedule[id] = DateTime.now();
+          await _startNextForItem(id);
+        }
         return;
       }
       // Only respond to items the user activated
@@ -779,13 +983,11 @@ class DownloadsRepository {
       final hasActive = hasActiveDb || hasActiveLive;
 
       if (!hasActive) {
-        // Check if this book still has tracks to download using a dedicated session
-        final open = await _playback.openSessionAndGetTracks(id);
-        final sessionId = open.sessionId;
-        final tracks = open.tracks;
+        // Check if this book still has tracks to download using cached plan
+        final plan = await _ensureDownloadPlan(id);
         final dir = await _itemDir(id);
         bool hasMoreTracks = false;
-        for (final t in tracks) {
+        for (final t in plan) {
           final filename = 'track_${t.index.toString().padLeft(3, '0')}.${_extFromMime(t.mimeType)}';
           final f = File('${dir.path}/$filename');
           if (!f.existsSync()) {
@@ -800,7 +1002,6 @@ class DownloadsRepository {
           if (_globalHaltUntil != null && now.isBefore(_globalHaltUntil!)) return;
           final nextOk = _nextAllowedSchedule[id] ?? DateTime.fromMillisecondsSinceEpoch(0);
           if (now.isBefore(nextOk)) return;
-          if (_inFlightItems.isNotEmpty) return;
           _nextAllowedSchedule[id] = now.add(const Duration(milliseconds: 750));
           await _startNextForItem(id);
         } else {
@@ -809,9 +1010,6 @@ class DownloadsRepository {
           _itemsInGlobalQueue.remove(id);
           _uiActive[id] = false;
           _inFlightItems.remove(id);
-          if (sessionId != null && sessionId.isNotEmpty) {
-            unawaited(_playback.closeSessionById(sessionId));
-          }
           try {
             await NotificationService.instance.hideDownloadNotification();
             // Best-effort: show a short completion notification using the item id as title hint
