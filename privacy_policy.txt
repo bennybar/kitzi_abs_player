@@ -1,0 +1,81 @@
+PRIVACY POLICY
+
+Last updated: [Date]
+
+INTRODUCTION
+
+Kitzi ("we," "our," or "us") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our mobile application (the "App"). Please read this privacy policy carefully. If you do not agree with the terms of this privacy policy, please do not access the application.
+
+INFORMATION WE COLLECT
+
+Personal Information
+- Account information (email address, username)
+- Authentication credentials
+- User preferences and settings
+
+Usage Information
+- App usage patterns and interactions
+- Audio playback history and progress
+- Download history and preferences
+- Device information (device type, operating system version)
+
+Content Information
+- Downloaded audiobook files (stored locally on your device)
+- Playback position and bookmarks
+- Reading/listening progress
+
+HOW WE USE YOUR INFORMATION
+
+We use the information we collect to:
+- Provide and maintain the App's functionality
+- Authenticate users and manage accounts
+- Track reading/listening progress
+- Enable offline playback of downloaded content
+- Improve user experience and app performance
+- Provide customer support
+- Send important updates and notifications
+
+DATA STORAGE AND SECURITY
+
+- Personal data is stored securely using industry-standard encryption
+- Downloaded audiobooks are stored locally on your device
+- We implement appropriate security measures to protect your information
+- Your data is not shared with third parties without your consent
+
+YOUR RIGHTS
+
+You have the right to:
+- Access your personal information
+- Correct inaccurate information
+- Delete your account and associated data
+- Opt out of certain data collection practices
+- Export your data
+
+THIRD-PARTY SERVICES
+
+The App may integrate with third-party services for:
+- Authentication and user management
+- Content delivery and streaming
+- Analytics and crash reporting
+
+These services have their own privacy policies, and we encourage you to review them.
+
+DATA RETENTION
+
+We retain your information for as long as necessary to provide our services and as required by law. When you delete your account, we will delete your personal information, though some data may be retained for legitimate business purposes or legal compliance.
+
+CHILDREN'S PRIVACY
+
+Our App is not intended for children under 13. We do not knowingly collect personal information from children under 13. If you are a parent or guardian and believe your child has provided us with personal information, please contact us.
+
+CHANGES TO THIS PRIVACY POLICY
+
+We may update this Privacy Policy from time to time. We will notify you of any changes by posting the new Privacy Policy in the App and updating the "Last updated" date.
+
+CONTACT US
+
+If you have any questions about this Privacy Policy, please contact us at:
+- Email: [Your contact email]
+- Address: [Your business address]
+
+By using our App, you agree to the collection and use of information in accordance with this Privacy Policy.
