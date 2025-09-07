@@ -68,3 +68,10 @@ Thumbs.db
 *.g.dart
 *.freezed.dart
 *.mocks.dart
+
+# Android signing files (keep out of open source repo)
+android/key.properties
+android/*.jks
+android/*.keystore
+*.jks
+*.keystore
