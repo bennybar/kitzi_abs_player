@@ -601,23 +601,23 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
                                 ),
                               ),
                               const SizedBox(width: 16),
-                              Expanded(
-                                child: FilledButton.tonalIcon(
-                                  icon: const Icon(Icons.queue_music_rounded),
-                                  label: const Text('Queue'),
-                                  onPressed: () {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('Queue view not implemented yet')),
-                                    );
-                                  },
-                                  style: FilledButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(vertical: 16),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(16),
-                                    ),
-                                  ),
-                                ),
-                              ),
+                              // Expanded(
+                              //   child: FilledButton.tonalIcon(
+                              //     icon: const Icon(Icons.queue_music_rounded),
+                              //     label: const Text('Queue'),
+                              //     onPressed: () {
+                              //       ScaffoldMessenger.of(context).showSnackBar(
+                              //         const SnackBar(content: Text('Queue view not implemented yet')),
+                              //       );
+                              //     },
+                              //     style: FilledButton.styleFrom(
+                              //       padding: const EdgeInsets.symmetric(vertical: 16),
+                              //       shape: RoundedRectangleBorder(
+                              //         borderRadius: BorderRadius.circular(16),
+                              //       ),
+                              //     ),
+                              //   ),
+                              // ),
                             ],
                           ),
                         ],

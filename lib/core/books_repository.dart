@@ -121,7 +121,30 @@ class BooksRepository {
         ? (body['item'] as Map).cast<String, dynamic>()
         : (body as Map).cast<String, dynamic>();
 
-    final b = Book.fromLibraryItemJson(item, baseUrl: baseUrl, token: token);
+    // Prefer preserving locally cached fields (e.g., sizeBytes/durationMs) when server omits them
+    Book b = Book.fromLibraryItemJson(item, baseUrl: baseUrl, token: token);
+    try {
+      final prev = await getBookFromDb(id);
+      if (prev != null) {
+        final merged = Book(
+          id: b.id,
+          title: b.title,
+          author: b.author,
+          coverUrl: b.coverUrl,
+          description: b.description,
+          durationMs: b.durationMs ?? prev.durationMs,
+          sizeBytes: b.sizeBytes ?? prev.sizeBytes,
+          updatedAt: b.updatedAt ?? prev.updatedAt,
+          authors: b.authors ?? prev.authors,
+          narrators: b.narrators ?? prev.narrators,
+          publisher: b.publisher ?? prev.publisher,
+          publishYear: b.publishYear ?? prev.publishYear,
+          genres: b.genres ?? prev.genres,
+        );
+        b = merged;
+      }
+    } catch (_) {}
+
     // Persist to DB for offline access
     await _upsertBooks([b]);
     // Best-effort: cache description images in background

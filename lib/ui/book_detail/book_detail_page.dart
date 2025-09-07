@@ -36,7 +36,27 @@ class _BookDetailPageState extends State<BookDetailPage> {
       final open = await playbackRepo.openSessionAndGetTracks(b.id);
       final totalSec = open.tracks.fold<double>(0.0, (a, t) => a + (t.duration > 0 ? t.duration : 0.0));
       if (mounted && totalSec > 0) {
-        setState(() { _resolvedDurationMs = (totalSec * 1000).round(); });
+        final ms = (totalSec * 1000).round();
+        setState(() { _resolvedDurationMs = ms; });
+        // Persist duration so next open is instant
+        try {
+          final repo = await _repoFut;
+          await repo.upsertBook(Book(
+            id: b.id,
+            title: b.title,
+            author: b.author,
+            coverUrl: b.coverUrl,
+            description: b.description,
+            durationMs: ms,
+            sizeBytes: b.sizeBytes,
+            updatedAt: b.updatedAt,
+            authors: b.authors,
+            narrators: b.narrators,
+            publisher: b.publisher,
+            publishYear: b.publishYear,
+            genres: b.genres,
+          ));
+        } catch (_) {}
       }
       if (open.sessionId != null && open.sessionId!.isNotEmpty) {
         unawaited(playbackRepo.closeSessionById(open.sessionId!));
@@ -52,6 +72,25 @@ class _BookDetailPageState extends State<BookDetailPage> {
       final est = await downloads.estimateTotalBytes(b.id);
       if (mounted && est != null && est > 0) {
         setState(() { _resolvedSizeBytes = est; });
+        // Persist estimated size so next open is instant
+        try {
+          final repo = await _repoFut;
+          await repo.upsertBook(Book(
+            id: b.id,
+            title: b.title,
+            author: b.author,
+            coverUrl: b.coverUrl,
+            description: b.description,
+            durationMs: b.durationMs,
+            sizeBytes: est,
+            updatedAt: b.updatedAt,
+            authors: b.authors,
+            narrators: b.narrators,
+            publisher: b.publisher,
+            publishYear: b.publishYear,
+            genres: b.genres,
+          ));
+        } catch (_) {}
         return;
       }
 
