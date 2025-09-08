@@ -85,34 +85,10 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _loading = false);
 
     if (ok) {
-      // Prompt a folder name once after successful login (simple dialog),
-      // and request storage/media permissions on Android for public Music dir.
+      // Request storage/media permissions on Android for public Music dir.
+      // Use default folder name without prompting user.
       try {
         await DownloadStorage.requestStoragePermissions();
-        final services = ServicesScope.of(context).services;
-        final current = await DownloadStorage.getBaseSubfolder();
-        final controller = TextEditingController(text: current);
-        final chosen = await showDialog<String>(
-          context: context,
-          builder: (context) {
-            return AlertDialog(
-              title: const Text('Choose download folder name'),
-              content: TextField(
-                controller: controller,
-                decoration: const InputDecoration(
-                  labelText: 'Folder (under app documents)'
-                ),
-              ),
-              actions: [
-                TextButton(onPressed: () => Navigator.pop(context), child: const Text('Skip')),
-                FilledButton(onPressed: () => Navigator.pop(context, controller.text.trim()), child: const Text('Save')),
-              ],
-            );
-          },
-        );
-        if (chosen != null && chosen.trim().isNotEmpty && chosen.trim() != current) {
-          await DownloadStorage.setBaseSubfolder(chosen.trim());
-        }
       } catch (_) {}
 
       // Perform initial library sync with a blocking Material dialog (with timeout)

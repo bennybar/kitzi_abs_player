@@ -102,53 +102,53 @@ class _SettingsPageState extends State<SettingsPage> {
               setState(() { _wifiOnly = v; });
             },
           ),
-          FutureBuilder<String>(
-            future: DownloadStorage.getBaseSubfolder(),
-            builder: (context, snap) {
-              final current = snap.data ?? 'abs';
-              return ListTile(
-                title: const Text('Download folder name'),
-                subtitle: Text(current),
-                trailing: const Icon(Icons.edit_outlined),
-                onTap: () async {
-                  final controller = TextEditingController(text: current);
-                  final newName = await showDialog<String>(
-                    context: context,
-                    builder: (context) {
-                      return AlertDialog(
-                        title: const Text('Set download folder name'),
-                        content: TextField(
-                          controller: controller,
-                          decoration: const InputDecoration(
-                            labelText: 'Folder (under app documents)'
-                          ),
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context),
-                            child: const Text('Cancel'),
-                          ),
-                          FilledButton(
-                            onPressed: () => Navigator.pop(context, controller.text.trim()),
-                            child: const Text('Save'),
-                          )
-                        ],
-                      );
-                    },
-                  );
-                  if (newName != null && newName.trim().isNotEmpty) {
-                    // Migrate storage and refresh tile
-                    await DownloadStorage.setBaseSubfolder(newName.trim());
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Download folder updated')),
-                      );
-                    }
-                  }
-                },
-              );
-            },
-          ),
+          // FutureBuilder<String>(
+          //   future: DownloadStorage.getBaseSubfolder(),
+          //   builder: (context, snap) {
+          //     final current = snap.data ?? 'abs';
+          //     return ListTile(
+          //       title: const Text('Download folder name'),
+          //       subtitle: Text(current),
+          //       trailing: const Icon(Icons.edit_outlined),
+          //       onTap: () async {
+          //         final controller = TextEditingController(text: current);
+          //         final newName = await showDialog<String>(
+          //           context: context,
+          //           builder: (context) {
+          //             return AlertDialog(
+          //               title: const Text('Set download folder name'),
+          //               content: TextField(
+          //                 controller: controller,
+          //                 decoration: const InputDecoration(
+          //                   labelText: 'Folder (under app documents)'
+          //                 ),
+          //               ),
+          //               actions: [
+          //                 TextButton(
+          //                   onPressed: () => Navigator.pop(context),
+          //                   child: const Text('Cancel'),
+          //                 ),
+          //                 FilledButton(
+          //                   onPressed: () => Navigator.pop(context, controller.text.trim()),
+          //                   child: const Text('Save'),
+          //                 )
+          //               ],
+          //             );
+          //           },
+          //         );
+          //         if (newName != null && newName.trim().isNotEmpty) {
+          //           // Migrate storage and refresh tile
+          //           await DownloadStorage.setBaseSubfolder(newName.trim());
+          //           if (context.mounted) {
+          //             ScaffoldMessenger.of(context).showSnackBar(
+          //               const SnackBar(content: Text('Download folder updated')),
+          //             );
+          //           }
+          //         }
+          //       },
+          //     );
+          //   },
+          // ),
           const Divider(height: 32),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
