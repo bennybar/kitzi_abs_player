@@ -12,7 +12,9 @@ class PlaybackSpeedService {
   static const String _speedKey = 'playback_speed';
   static const double _defaultSpeed = 1.0;
   static const List<double> _availableSpeeds = [
-    0.75, 0.9, 1.0, 1.25, 1.5, 2.0
+    0.75, 0.80, 0.85, 0.90, 0.95,
+    1.00, 1.05, 1.10, 1.15, 1.20,
+    1.30, 1.40, 1.50, 1.75, 2.00
   ];
 
   double _currentSpeed = _defaultSpeed;

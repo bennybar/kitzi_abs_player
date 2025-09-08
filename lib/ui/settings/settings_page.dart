@@ -167,19 +167,19 @@ class _SettingsPageState extends State<SettingsPage> {
           ValueListenableBuilder<double>(
             valueListenable: playbackSpeed.speed,
             builder: (_, spd, __) {
+              // Ensure current value is always selectable, even if persisted from legacy list
+              final speeds = playbackSpeed.availableSpeeds;
+              final items = [
+                for (final s in speeds)
+                  DropdownMenuItem(value: s, child: Text('${s.toStringAsFixed(2)}×')),
+              ];
+              final value = speeds.contains(spd) ? spd : playbackSpeed.currentSpeed;
               return ListTile(
                 title: const Text('Playback speed'),
-                subtitle: Text('${spd.toStringAsFixed(2)}×'),
+                subtitle: Text('${value.toStringAsFixed(2)}×'),
                 trailing: DropdownButton<double>(
-                  value: spd,
-                  items: const [
-                    DropdownMenuItem(value: 0.75, child: Text('0.75×')),
-                    DropdownMenuItem(value: 0.9, child: Text('0.90×')),
-                    DropdownMenuItem(value: 1.0, child: Text('1.00×')),
-                    DropdownMenuItem(value: 1.25, child: Text('1.25×')),
-                    DropdownMenuItem(value: 1.5, child: Text('1.50×')),
-                    DropdownMenuItem(value: 2.0, child: Text('2.00×')),
-                  ],
+                  value: value,
+                  items: items,
                   onChanged: (v) async {
                     if (v == null) return;
                     await playbackSpeed.setSpeed(v);

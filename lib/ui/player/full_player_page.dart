@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/playback_repository.dart';
+import '../../core/playback_speed_service.dart';
 import '../../main.dart'; // ServicesScope
 
 class FullPlayerPage extends StatefulWidget {
@@ -325,17 +326,15 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
                             initialData: ServicesScope.of(context).services.playback.player.speed,
                             builder: (_, speedSnap) {
                               final cur = speedSnap.data ?? 1.0;
+                              final speeds = PlaybackSpeedService.instance.availableSpeeds;
                               return PopupMenuButton<double>(
                                 tooltip: 'Playback speed',
                                 icon: _speedIndicator(cur, cs, text),
-                                onSelected: (v) => playback.setSpeed(v),
+                                onSelected: (v) async {
+                                  await PlaybackSpeedService.instance.setSpeed(v);
+                                },
                                 itemBuilder: (context) => [
-                                  _speedItem(context, cur, 0.75),
-                                  _speedItem(context, cur, 0.9),
-                                  _speedItem(context, cur, 1.0),
-                                  _speedItem(context, cur, 1.25),
-                                  _speedItem(context, cur, 1.5),
-                                  _speedItem(context, cur, 2.0),
+                                  for (final s in speeds) _speedItem(context, cur, s),
                                 ],
                               );
                             },
