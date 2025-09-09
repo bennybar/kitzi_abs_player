@@ -168,7 +168,7 @@ class _SettingsPageState extends State<SettingsPage> {
             },
           ),
           SwitchListTile(
-            title: const Text('Pause cancels timer'),
+            title: const Text('Pause to cancel timer'),
             subtitle: const Text('Stop the sleep timer when pausing playback'),
             value: _pauseCancelsSleepTimer ?? true,
             onChanged: (v) async {
