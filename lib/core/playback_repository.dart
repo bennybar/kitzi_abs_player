@@ -767,11 +767,15 @@ class PlaybackRepository {
     });
 
     session.interruptionEventStream.listen((event) async {
+      // Feature: navigation-aware auto pause/rewind when ducked
       if (event.begin) {
-        // On any interruption start, pause playback
+        // For transient ducks (e.g., navigation prompts), briefly rewind before pausing
+        if (event.type == AudioInterruptionType.duck) {
+          try { await nudgeSeconds(-3); } catch (_) {}
+        }
         await pause();
       }
-      // We avoid auto-resume to be conservative for user intent/battery
+      // Do not auto-resume by default; we could add a user pref later
     });
   }
 

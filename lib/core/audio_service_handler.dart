@@ -212,12 +212,14 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
 
   @override
   Future<void> skipToNext() async {
-    await _playback.nextTrack();
+    // Map skip to next as a 30s nudge for better hardware button UX in Android Auto
+    await _playback.nudgeSeconds(30);
   }
 
   @override
   Future<void> skipToPrevious() async {
-    await _playback.prevTrack();
+    // Map skip to previous as a 15s rewind for better hardware button UX in Android Auto
+    await _playback.nudgeSeconds(-15);
   }
 
   @override
@@ -403,7 +405,7 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
       if (np != null) {
         await updateQueueFromNowPlaying(np);
       }
-      await play();
+      // No extra play() here; playItem already handles starting playback
     } catch (e) {
       debugPrint('playFromMediaId failed: $e'); // Fixed context parameter
     }
