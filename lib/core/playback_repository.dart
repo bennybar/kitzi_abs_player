@@ -459,6 +459,14 @@ class PlaybackRepository {
 
   /// UPDATED: Send position to server on pause
   Future<void> pause() async {
+    // Optionally stop any active sleep timer based on user setting
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final shouldCancel = prefs.getBool('pause_cancels_sleep_timer') ?? true;
+      if (shouldCancel) {
+        SleepTimerService.instance.stopTimer();
+      }
+    } catch (_) {}
     await player.pause();
     await _sendProgressImmediate(paused: true);
     await _closeActiveSession();

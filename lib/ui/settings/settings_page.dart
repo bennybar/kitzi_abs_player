@@ -18,6 +18,7 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> {
   bool? _wifiOnly;
   bool? _syncProgressBeforePlay;
+  bool? _pauseCancelsSleepTimer;
 
   @override
   void initState() {
@@ -31,11 +32,13 @@ class _SettingsPageState extends State<SettingsPage> {
       setState(() {
         _wifiOnly = prefs.getBool('downloads_wifi_only') ?? false;
         _syncProgressBeforePlay = prefs.getBool('sync_progress_before_play') ?? true;
+        _pauseCancelsSleepTimer = prefs.getBool('pause_cancels_sleep_timer') ?? true;
       });
     } catch (_) {
       setState(() { 
         _wifiOnly = false;
         _syncProgressBeforePlay = true;
+        _pauseCancelsSleepTimer = true;
       });
     }
   }
@@ -164,6 +167,16 @@ class _SettingsPageState extends State<SettingsPage> {
               setState(() { _syncProgressBeforePlay = v; });
             },
           ),
+          SwitchListTile(
+            title: const Text('Pause cancels timer'),
+            subtitle: const Text('Stop the sleep timer when pausing playback'),
+            value: _pauseCancelsSleepTimer ?? true,
+            onChanged: (v) async {
+              await _setPauseCancelsSleepTimer(v);
+              if (!mounted) return;
+              setState(() { _pauseCancelsSleepTimer = v; });
+            },
+          ),
           ValueListenableBuilder<double>(
             valueListenable: playbackSpeed.speed,
             builder: (_, spd, __) {
@@ -265,5 +278,12 @@ Future<void> _setSyncProgressBeforePlay(bool value) async {
   try {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('sync_progress_before_play', value);
+  } catch (_) {}
+}
+
+Future<void> _setPauseCancelsSleepTimer(bool value) async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('pause_cancels_sleep_timer', value);
   } catch (_) {}
 }
