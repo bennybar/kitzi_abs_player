@@ -586,6 +586,8 @@ class PlaybackRepository {
   }
 
   Future<void> stop() async {
+    // Also stop any active sleep timer
+    try { SleepTimerService.instance.stopTimer(); } catch (_) {}
     await player.stop();
     await _sendProgressImmediate(finished: true);
     _stopProgressSync();

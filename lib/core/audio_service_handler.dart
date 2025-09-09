@@ -199,7 +199,7 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
   Future<void> pause() => _playback.pause();
 
   @override
-  Future<void> stop() => _player.stop();
+  Future<void> stop() => _playback.stop();
 
   @override
   Future<void> seek(Duration position) => _playback.seek(position, reportNow: true);

@@ -3,11 +3,6 @@ import 'package:flutter/material.dart';
 
 import 'playback_repository.dart';
 
-enum SleepTimerMode {
-  duration,
-  endOfChapter,
-}
-
 class SleepTimerService {
   static SleepTimerService? _instance;
   static SleepTimerService get instance => _instance ??= SleepTimerService._();
@@ -18,9 +13,6 @@ class SleepTimerService {
   Duration? _remainingTime;
   bool _isActive = false;
   PlaybackRepository? _playbackRepository;
-  SleepTimerMode? _mode;
-  int? _startChapterIndex;
-  StreamSubscription<Duration>? _positionSub;
   final StreamController<Duration?> _remainingCtr = StreamController.broadcast();
   
   Stream<Duration?> get remainingTimeStream => _remainingCtr.stream;
@@ -32,8 +24,6 @@ class SleepTimerService {
   /// Start sleep timer with specified duration
   void startTimer(Duration duration) {
     _stopTimer(); // Stop any existing timer
-    _mode = SleepTimerMode.duration;
-    _startChapterIndex = null;
     
     _remainingTime = duration;
     _isActive = true;
@@ -72,11 +62,11 @@ class SleepTimerService {
   void resumeTimer() {
     if (_remainingTime != null && !_isActive) {
       _isActive = true;
-      _sleepTimer = Timer.periodic(const Duration(minutes: 1), (timer) {
+      _sleepTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
         if (_remainingTime != null) {
-          _remainingTime = _remainingTime! - const Duration(minutes: 1);
-          
-          if (_remainingTime!.inMinutes <= 0) {
+          _remainingTime = _remainingTime! - const Duration(seconds: 1);
+          _remainingCtr.add(_remainingTime);
+          if (_remainingTime! <= Duration.zero) {
             _stopTimer();
             _pausePlayback();
           }
@@ -86,66 +76,12 @@ class SleepTimerService {
     }
   }
 
-  /// Start an end-of-chapter sleep timer. Cancels if chapter changes.
-  void startEndOfChapter() {
-    final repo = _playbackRepository;
-    if (repo == null) return;
-    final np = repo.nowPlaying;
-    if (np == null || np.chapters.isEmpty) {
-      debugPrint('Sleep timer: no chapters available for end-of-chapter mode');
-      return;
-    }
-
-    _stopTimer();
-    _mode = SleepTimerMode.endOfChapter;
-    _isActive = true;
-
-    // Determine current chapter index at start
-    _startChapterIndex = _currentChapterIndex();
-    if (_startChapterIndex == null) {
-      // Fallback: cancel if cannot determine
-      _stopTimer();
-      return;
-    }
-
-    _updateEndOfChapterRemaining();
-    _remainingCtr.add(_remainingTime);
-
-    // Listen to position updates to recompute remaining and detect chapter changes
-    _positionSub?.cancel();
-    _positionSub = repo.positionStream.listen((_) {
-      if (_mode != SleepTimerMode.endOfChapter) return;
-      final currentIdx = _currentChapterIndex();
-      if (currentIdx == null) {
-        _stopTimer();
-        return;
-      }
-      if (currentIdx != _startChapterIndex) {
-        debugPrint('Sleep timer (EOC): chapter changed from $_startChapterIndex to $currentIdx → cancel');
-        _stopTimer();
-        return;
-      }
-
-      _updateEndOfChapterRemaining();
-      _remainingCtr.add(_remainingTime);
-      if (_remainingTime != null && _remainingTime! <= Duration.zero) {
-        _stopTimer();
-        _pausePlayback();
-      }
-    });
-
-    debugPrint('Sleep timer started: end of chapter (index=$_startChapterIndex)');
-  }
-
   /// Get remaining time
   Duration? get remainingTime => _remainingTime;
 
   /// Check if timer is active
   bool get isActive => _isActive;
 
-  /// Current mode
-  SleepTimerMode? get mode => _mode;
-  bool get isEndOfChapter => _mode == SleepTimerMode.endOfChapter;
 
   /// Get formatted remaining time string
   String get formattedRemainingTime {
@@ -190,10 +126,6 @@ class SleepTimerService {
     _sleepTimer = null;
     _isActive = false;
     _remainingTime = null;
-    _mode = null;
-    _startChapterIndex = null;
-    _positionSub?.cancel();
-    _positionSub = null;
     _remainingCtr.add(null);
     debugPrint('Sleep timer stopped');
   }
@@ -207,58 +139,7 @@ class SleepTimerService {
     }
   }
 
-  int? _currentChapterIndex() {
-    final repo = _playbackRepository;
-    if (repo == null) return null;
-    final np = repo.nowPlaying;
-    if (np == null || np.chapters.isEmpty) return null;
-    final pos = repo.player.position;
-    int idx = 0;
-    for (int i = 0; i < np.chapters.length; i++) {
-      if (pos >= np.chapters[i].start) {
-        idx = i;
-      } else {
-        break;
-      }
-    }
-    return idx;
-  }
-
-  void _updateEndOfChapterRemaining() {
-    final repo = _playbackRepository;
-    if (repo == null) return;
-    final np = repo.nowPlaying;
-    if (np == null) return;
-
-    final pos = repo.player.position;
-    final chapters = np.chapters;
-    if (chapters.isEmpty) {
-      _remainingTime = null;
-      return;
-    }
-
-    // Find next chapter start
-    Duration? nextStart;
-    for (final c in chapters) {
-      if (c.start > pos) {
-        nextStart = c.start;
-        break;
-      }
-    }
-
-    if (nextStart != null) {
-      _remainingTime = nextStart - pos;
-      return;
-    }
-
-    // If last chapter, use end of book based on total track durations
-    double totalSec = 0.0;
-    for (final t in np.tracks) {
-      totalSec += t.duration > 0 ? t.duration : 0.0;
-    }
-    final total = Duration(milliseconds: (totalSec * 1000).round());
-    _remainingTime = total - pos;
-  }
+  
 
   /// Dispose service
   void dispose() {

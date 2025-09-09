@@ -248,11 +248,10 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
     final cs = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
 
-    final hasChapters = np.chapters.isNotEmpty;
     final timer = SleepTimerService.instance;
 
     Duration? selected;
-    bool eoc = timer.isEndOfChapter;
+    bool eoc = false;
 
     String fmt(Duration d) {
       final h = d.inHours;
@@ -271,13 +270,17 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
         return StatefulBuilder(
           builder: (ctx, setState) {
             Widget chip(String label, Duration d) {
-              final sel = selected == d && !eoc;
+              final sel = selected == d;
               return ChoiceChip(
-                label: Text(label),
+                label: Text(
+                  label,
+                  style: text.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+                ),
+                labelPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                 selected: sel,
                 onSelected: (_) {
                   setState(() {
-                    eoc = false;
                     selected = d;
                   });
                 },
@@ -311,30 +314,14 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      chip('1 min', const Duration(minutes: 1)),
-                      chip('5 min', const Duration(minutes: 5)),
-                      chip('15 min', const Duration(minutes: 15)),
-                      chip('30 min', const Duration(minutes: 30)),
-                      chip('45 min', const Duration(minutes: 45)),
-                      chip('60 min', const Duration(minutes: 60)),
-                      chip('90 min', const Duration(minutes: 90)),
+                      chip('15', const Duration(minutes: 15)),
+                      chip('30', const Duration(minutes: 30)),
+                      chip('45', const Duration(minutes: 45)),
+                      chip('60', const Duration(minutes: 60)),
+                      chip('90', const Duration(minutes: 90)),
                     ],
                   ),
-                  if (hasChapters) ...[
-                    const SizedBox(height: 8),
-                    SwitchListTile.adaptive(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('At end of chapter'),
-                      subtitle: const Text('Auto-cancels if you change chapters'),
-                      value: eoc,
-                      onChanged: (v) {
-                        setState(() {
-                          eoc = v;
-                          if (v) selected = null;
-                        });
-                      },
-                    ),
-                  ],
+                  // End-of-chapter option removed
                   const SizedBox(height: 8),
                   StreamBuilder<Duration?>(
                     stream: timer.remainingTimeStream,
@@ -342,7 +329,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
                     builder: (ctx, snap) {
                       final rem = snap.data;
                       if (!timer.isActive || rem == null) return const SizedBox.shrink();
-                      final modeLabel = timer.isEndOfChapter ? 'End of chapter' : 'Time remaining';
+                      const modeLabel = 'Time remaining';
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 8),
                         child: Row(
@@ -361,9 +348,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
                       Expanded(
                         child: FilledButton(
                           onPressed: () {
-                            if (eoc) {
-                              timer.startEndOfChapter();
-                            } else if (selected != null) {
+                            if (selected != null) {
                               timer.startTimer(selected!);
                             }
                             Navigator.of(ctx).pop();
@@ -774,43 +759,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
                               ),
                             ],
                           ),
-                          const SizedBox(height: 8),
-                          StreamBuilder<Duration?>(
-                            stream: SleepTimerService.instance.remainingTimeStream,
-                            initialData: SleepTimerService.instance.remainingTime,
-                            builder: (ctx, snap) {
-                              final active = SleepTimerService.instance.isActive;
-                              if (!active || snap.data == null) return const SizedBox.shrink();
-                              final isEoc = SleepTimerService.instance.isEndOfChapter;
-                              return Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                decoration: BoxDecoration(
-                                  color: cs.surfaceContainerHighest,
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(color: cs.outline.withOpacity(0.2)),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.timer_rounded, size: 18, color: cs.onSurfaceVariant),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(
-                                        isEoc
-                                            ? 'Sleeping at end of chapter · ${SleepTimerService.instance.formattedRemainingTime}'
-                                            : 'Sleep timer · ${SleepTimerService.instance.formattedRemainingTime}',
-                                        style: text.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                    TextButton(
-                                      onPressed: () => SleepTimerService.instance.stopTimer(),
-                                      child: const Text('Cancel'),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            },
-                          ),
+                          // Removed redundant countdown widget (countdown shown on Sleep button only)
                         ],
                       ),
                     ),
