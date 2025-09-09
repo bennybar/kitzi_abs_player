@@ -15,6 +15,7 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
     _loadEmptyPlaylist();
     _notifyAudioHandlerAboutPlaybackEvents();
     _listenForDurationChanges();
+    _listenForPositionChanges();
     _listenForCurrentSongIndexChanges();
     _listenForSequenceStateChanges();
     _listenForNowPlayingChanges();
@@ -93,10 +94,28 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
           final newQueue = List<MediaItem>.from(currentQueue);
           newQueue[index] = newMediaItem;
           queue.add(newQueue);
+          // If this is the currently displayed item, update it too so
+          // the system notification/lock screen gets a determinate duration
+          final curIdx = playbackState.value.queueIndex ?? index;
+          if (curIdx == index) {
+            mediaItem.add(newMediaItem);
+          }
         } catch (e) {
           debugPrint('Error updating MediaItem duration: $e');
         }
             }
+    });
+  }
+
+  void _listenForPositionChanges() {
+    // Push frequent position/buffer updates so Android notification/lock screen
+    // show a moving progress bar between playback events.
+    _player.positionStream.listen((pos) {
+      playbackState.add(playbackState.value.copyWith(
+        updatePosition: pos,
+        bufferedPosition: _player.bufferedPosition,
+        speed: _player.speed,
+      ));
     });
   }
 

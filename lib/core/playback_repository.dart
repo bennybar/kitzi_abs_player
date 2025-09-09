@@ -171,7 +171,9 @@ class PlaybackRepository {
           final b = await repo.getBookFromDb(last);
           if (b != null) {
             title = b.title.isNotEmpty ? b.title : title;
-            author = b.author;
+            author = b.author ?? (b.narrators != null && b.narrators!.isNotEmpty
+                ? b.narrators!.join(', ')
+                : null);
             coverUrl = b.coverUrl;
           }
         } catch (_) {}
@@ -235,7 +237,7 @@ class PlaybackRepository {
       final np = NowPlaying(
         libraryItemId: last,
         title: _titleFromMeta(meta) ?? 'Audiobook',
-        author: _authorFromMeta(meta),
+        author: _authorFromMeta(meta) ?? _narratorFromMeta(meta),
         coverUrl: await _coverUrl(last),
         tracks: tracksWithDur,
         currentIndex: 0,
@@ -384,7 +386,7 @@ class PlaybackRepository {
     final np = NowPlaying(
       libraryItemId: libraryItemId,
       title: _titleFromMeta(meta) ?? 'Audiobook',
-      author: _authorFromMeta(meta),
+      author: _authorFromMeta(meta) ?? _narratorFromMeta(meta),
       coverUrl: await _coverUrl(libraryItemId),
       tracks: tracks,
       currentIndex: 0,
@@ -1137,6 +1139,21 @@ class PlaybackRepository {
       if (first is Map && first['name'] is String) return first['name'] as String;
       if (first is String) return first;
     }
+    return null;
+  }
+
+  String? _narratorFromMeta(Map<String, dynamic> meta) {
+    final narrList = meta['narrators'] ?? meta['media']?['metadata']?['narrators'];
+    if (narrList is List) {
+      final names = <String>[];
+      for (final it in narrList) {
+        if (it is Map && it['name'] is String) names.add(it['name'] as String);
+        if (it is String) names.add(it);
+      }
+      if (names.isNotEmpty) return names.join(', ');
+    }
+    final single = meta['narrator'] ?? meta['media']?['metadata']?['narrator'];
+    if (single is String && single.trim().isNotEmpty) return single;
     return null;
   }
 
