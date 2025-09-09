@@ -85,9 +85,13 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
 
   void _listenForDurationChanges() {
     _player.durationStream.listen((duration) {
-      var index = _player.currentIndex;
+      int? index = _player.currentIndex;
       final currentQueue = queue.value;
-      if (index != null && index < currentQueue.length) {
+      // For single-source (local file) playback, currentIndex can be null.
+      // Fall back to the known queue index or 0 when we have items.
+      index ??= playbackState.value.queueIndex;
+      index ??= currentQueue.isNotEmpty ? 0 : null;
+      if (index != null && index >= 0 && index < currentQueue.length) {
         final oldMediaItem = currentQueue[index];
         try {
           final newMediaItem = oldMediaItem.copyWith(duration: duration);
@@ -103,7 +107,7 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
         } catch (e) {
           debugPrint('Error updating MediaItem duration: $e');
         }
-            }
+      }
     });
   }
 
@@ -116,6 +120,28 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
         bufferedPosition: _player.bufferedPosition,
         speed: _player.speed,
       ));
+
+      // If the current mediaItem has no duration yet but the player knows it
+      // (common with local files), update it so system UIs can render progress.
+      try {
+        final d = _player.duration;
+        if (d != null) {
+          final q = queue.value;
+          int? idx = playbackState.value.queueIndex;
+          idx ??= _player.currentIndex;
+          idx ??= q.isNotEmpty ? 0 : null;
+          if (idx != null && idx >= 0 && idx < q.length) {
+            final current = q[idx];
+            if (current.duration == null || current.duration == Duration.zero) {
+              final updated = current.copyWith(duration: d);
+              final newQ = List<MediaItem>.from(q);
+              newQ[idx] = updated;
+              queue.add(newQ);
+              mediaItem.add(updated);
+            }
+          }
+        }
+      } catch (_) {}
     });
   }
 

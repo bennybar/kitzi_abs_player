@@ -1102,6 +1102,10 @@ class DownloadsRepository {
             // Best-effort: show a short completion notification using the item id as title hint
             await NotificationService.instance.showDownloadComplete('Book ready');
           } catch (_) {}
+          // If the completed item is currently playing from stream, switch to local seamlessly
+          try {
+            await _playback.switchToLocalIfAvailableFor(id);
+          } catch (_) {}
           // Optional: toast/snackbar via notification channel could be added here
         }
       }

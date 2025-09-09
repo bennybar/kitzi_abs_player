@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:audio_session/audio_session.dart';
+import 'package:audio_service/audio_service.dart';
 import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
 import 'package:just_audio/just_audio.dart';
@@ -593,6 +594,43 @@ class PlaybackRepository {
     await _closeActiveSession();
   }
 
+  /// If the current item has fully downloaded local files, switch playback from
+  /// streaming URLs to local file paths seamlessly, preserving track index and
+  /// in-track position. Returns true if a switch occurred.
+  Future<bool> switchToLocalIfAvailableFor(String libraryItemId) async {
+    final np = _nowPlaying;
+    if (np == null) return false;
+    if (np.libraryItemId != libraryItemId) return false;
+
+    // Ensure local files exist (ideally full set)
+    final local = await _localTracks(libraryItemId);
+    if (local.isEmpty) return false;
+    // Require that the current index is valid within local tracks
+    if (np.currentIndex >= local.length) return false;
+
+    final wasPlaying = player.playing;
+    final curPos = player.position;
+    final curIndex = np.currentIndex;
+
+    // Replace tracks with local without changing metadata/author
+    final updated = np.copyWith(tracks: local);
+    _setNowPlaying(updated);
+
+    // Load corresponding local track and seek to the same position
+    await _setTrackAt(curIndex, preload: true);
+    if (curPos > Duration.zero) {
+      await player.seek(curPos);
+    }
+    if (wasPlaying) {
+      await player.play();
+    }
+
+    // Close any active streaming session to stop server-side work
+    await _closeActiveSession();
+    await _sendProgressImmediate();
+    return true;
+  }
+
   // ---- Progress sync ----
 
   Timer? _progressTimer;
@@ -741,8 +779,9 @@ class PlaybackRepository {
     final cur = _nowPlaying!;
     final track = cur.tracks[index];
 
+    Duration? loadedDuration;
     if (track.isLocal) {
-      await player.setFilePath(track.url, preload: preload);
+      loadedDuration = await player.setFilePath(track.url, preload: preload);
     } else {
       // Use Authorization header with Bearer token for secure session URLs
       final headers = <String, String>{};
@@ -752,7 +791,7 @@ class PlaybackRepository {
           headers['Authorization'] = 'Bearer $access';
         }
       } catch (_) {}
-      await player.setAudioSource(
+      loadedDuration = await player.setAudioSource(
         AudioSource.uri(Uri.parse(track.url), headers: headers),
         preload: preload,
       );
@@ -772,6 +811,28 @@ class PlaybackRepository {
     
     // Update playback speed service
     PlaybackSpeedService.instance.initialize(this);
+
+    // If we know the duration after loading, update the queue/media item so
+    // system UIs (notification/lockscreen) can show a determinate progress bar.
+    try {
+      final d = loadedDuration ?? player.duration;
+      if (d != null) {
+        // Update only the current index in the audio service queue
+        final handler = AudioServiceBinding.instance.audioHandler;
+        if (handler != null) {
+          final q = handler.queue.value;
+          if (index >= 0 && index < q.length) {
+            final old = q[index];
+            final updated = old.copyWith(duration: d);
+            final newQ = List<MediaItem>.from(q);
+            newQ[index] = updated;
+            handler.queue.add(newQ);
+            // Also update the current mediaItem
+            handler.mediaItem.add(updated);
+          }
+        }
+      }
+    } catch (_) {}
   }
 
   void _notifyAudioServiceTrackChange(int trackIndex) {
