@@ -171,9 +171,7 @@ class PlaybackRepository {
           final b = await repo.getBookFromDb(last);
           if (b != null) {
             title = b.title.isNotEmpty ? b.title : title;
-            author = b.author ?? (b.narrators != null && b.narrators!.isNotEmpty
-                ? b.narrators!.join(', ')
-                : null);
+            author = b.author; // Do not fall back to narrator for artist
             coverUrl = b.coverUrl;
           }
         } catch (_) {}
@@ -237,7 +235,7 @@ class PlaybackRepository {
       final np = NowPlaying(
         libraryItemId: last,
         title: _titleFromMeta(meta) ?? 'Audiobook',
-        author: _authorFromMeta(meta) ?? _narratorFromMeta(meta),
+        author: _authorFromMeta(meta), // Writer only; no narrator fallback for artist
         coverUrl: await _coverUrl(last),
         tracks: tracksWithDur,
         currentIndex: 0,
@@ -386,7 +384,7 @@ class PlaybackRepository {
     final np = NowPlaying(
       libraryItemId: libraryItemId,
       title: _titleFromMeta(meta) ?? 'Audiobook',
-      author: _authorFromMeta(meta) ?? _narratorFromMeta(meta),
+      author: _authorFromMeta(meta), // Writer only; no narrator fallback for artist
       coverUrl: await _coverUrl(libraryItemId),
       tracks: tracks,
       currentIndex: 0,
@@ -1130,14 +1128,33 @@ class PlaybackRepository {
   }
 
   String? _authorFromMeta(Map<String, dynamic> meta) {
-    final a = (meta['author'] as String?) ??
-        (meta['media']?['metadata']?['author'] as String?);
-    if (a != null) return a;
-    final authors = meta['authors'];
-    if (authors is List && authors.isNotEmpty) {
-      final first = authors.first;
-      if (first is Map && first['name'] is String) return first['name'] as String;
-      if (first is String) return first;
+    String? _pick(String? s) => (s != null && s.trim().isNotEmpty) ? s : null;
+
+    // Prefer simple string fields across common locations
+    final simple = _pick(meta['author'] as String?) ??
+        _pick(meta['authorName'] as String?) ??
+        _pick(meta['media']?['metadata']?['author'] as String?) ??
+        _pick(meta['media']?['metadata']?['authorName'] as String?) ??
+        _pick(meta['book']?['author'] as String?) ??
+        _pick(meta['book']?['authorName'] as String?);
+    if (simple != null) return simple;
+
+    // Fallback to authors list across possible locations
+    List<dynamic>? list = (meta['authors'] as List?) ??
+        (meta['media']?['metadata']?['authors'] as List?) ??
+        (meta['book']?['authors'] as List?);
+    if (list != null && list.isNotEmpty) {
+      final names = <String>[];
+      for (final it in list) {
+        if (it is Map && it['name'] is String) {
+          final n = (it['name'] as String).trim();
+          if (n.isNotEmpty) names.add(n);
+        } else if (it is String) {
+          final n = it.trim();
+          if (n.isNotEmpty) names.add(n);
+        }
+      }
+      if (names.isNotEmpty) return names.join(', ');
     }
     return null;
   }
