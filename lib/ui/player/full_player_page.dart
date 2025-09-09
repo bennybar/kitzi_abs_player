@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/playback_repository.dart';
 import '../../core/playback_speed_service.dart';
+import '../../core/sleep_timer_service.dart';
 import '../../main.dart'; // ServicesScope
 
 class FullPlayerPage extends StatefulWidget {
@@ -238,6 +239,154 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
               ),
             ],
           ),
+        );
+      },
+    );
+  }
+
+  Future<void> _showSleepTimerSheet(BuildContext context, NowPlaying np) async {
+    final cs = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+
+    final hasChapters = np.chapters.isNotEmpty;
+    final timer = SleepTimerService.instance;
+
+    Duration? selected;
+    bool eoc = timer.isEndOfChapter;
+
+    String fmt(Duration d) {
+      final h = d.inHours;
+      final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+      final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+      return h > 0 ? '$h:$m:$s' : '$m:$s';
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      showDragHandle: true,
+      isScrollControlled: true,
+      backgroundColor: cs.surface,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setState) {
+            Widget chip(String label, Duration d) {
+              final sel = selected == d && !eoc;
+              return ChoiceChip(
+                label: Text(label),
+                selected: sel,
+                onSelected: (_) {
+                  setState(() {
+                    eoc = false;
+                    selected = d;
+                  });
+                },
+              );
+            }
+
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.nights_stay_rounded, color: cs.primary),
+                      const SizedBox(width: 12),
+                      Text('Sleep timer', style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600)),
+                      const Spacer(),
+                      if (timer.isActive)
+                        TextButton(
+                          onPressed: () {
+                            timer.stopTimer();
+                            setState(() {});
+                          },
+                          child: const Text('Clear'),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      chip('1 min', const Duration(minutes: 1)),
+                      chip('5 min', const Duration(minutes: 5)),
+                      chip('15 min', const Duration(minutes: 15)),
+                      chip('30 min', const Duration(minutes: 30)),
+                      chip('45 min', const Duration(minutes: 45)),
+                      chip('60 min', const Duration(minutes: 60)),
+                      chip('90 min', const Duration(minutes: 90)),
+                    ],
+                  ),
+                  if (hasChapters) ...[
+                    const SizedBox(height: 8),
+                    SwitchListTile.adaptive(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('At end of chapter'),
+                      subtitle: const Text('Auto-cancels if you change chapters'),
+                      value: eoc,
+                      onChanged: (v) {
+                        setState(() {
+                          eoc = v;
+                          if (v) selected = null;
+                        });
+                      },
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  StreamBuilder<Duration?>(
+                    stream: timer.remainingTimeStream,
+                    initialData: timer.remainingTime,
+                    builder: (ctx, snap) {
+                      final rem = snap.data;
+                      if (!timer.isActive || rem == null) return const SizedBox.shrink();
+                      final modeLabel = timer.isEndOfChapter ? 'End of chapter' : 'Time remaining';
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Row(
+                          children: [
+                            Icon(Icons.timer_rounded, size: 18, color: cs.onSurfaceVariant),
+                            const SizedBox(width: 8),
+                            Text('$modeLabel: ${fmt(rem)}', style: text.bodyMedium?.copyWith(color: cs.onSurfaceVariant)),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: FilledButton(
+                          onPressed: () {
+                            if (eoc) {
+                              timer.startEndOfChapter();
+                            } else if (selected != null) {
+                              timer.startTimer(selected!);
+                            }
+                            Navigator.of(ctx).pop();
+                          },
+                          child: const Text('Start'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () {
+                            timer.stopTimer();
+                            Navigator.of(ctx).pop();
+                          },
+                          child: const Text('Cancel timer'),
+                        ),
+                      ),
+                    ],
+                  )
+                ],
+              ),
+            );
+          },
         );
       },
     );
@@ -583,7 +732,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
 
                           const SizedBox(height: 24),
 
-                          // Chapters + Queue controls with enhanced design
+                          // Chapters + Sleep controls with enhanced design
                           Row(
                             children: [
                               Expanded(
@@ -600,24 +749,67 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
                                 ),
                               ),
                               const SizedBox(width: 16),
-                              // Expanded(
-                              //   child: FilledButton.tonalIcon(
-                              //     icon: const Icon(Icons.queue_music_rounded),
-                              //     label: const Text('Queue'),
-                              //     onPressed: () {
-                              //       ScaffoldMessenger.of(context).showSnackBar(
-                              //         const SnackBar(content: Text('Queue view not implemented yet')),
-                              //       );
-                              //     },
-                              //     style: FilledButton.styleFrom(
-                              //       padding: const EdgeInsets.symmetric(vertical: 16),
-                              //       shape: RoundedRectangleBorder(
-                              //         borderRadius: BorderRadius.circular(16),
-                              //       ),
-                              //     ),
-                              //   ),
-                              // ),
+                              Expanded(
+                                child: StreamBuilder<Duration?>(
+                                  stream: SleepTimerService.instance.remainingTimeStream,
+                                  initialData: SleepTimerService.instance.remainingTime,
+                                  builder: (ctx, snap) {
+                                    final active = SleepTimerService.instance.isActive;
+                                    final label = active && snap.data != null
+                                        ? 'Sleep · ${SleepTimerService.instance.formattedRemainingTime}'
+                                        : 'Sleep';
+                                    return FilledButton.tonalIcon(
+                                      icon: const Icon(Icons.nightlight_round),
+                                      label: Text(label),
+                                      onPressed: () => _showSleepTimerSheet(context, np),
+                                      style: FilledButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(vertical: 16),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(16),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
                             ],
+                          ),
+                          const SizedBox(height: 8),
+                          StreamBuilder<Duration?>(
+                            stream: SleepTimerService.instance.remainingTimeStream,
+                            initialData: SleepTimerService.instance.remainingTime,
+                            builder: (ctx, snap) {
+                              final active = SleepTimerService.instance.isActive;
+                              if (!active || snap.data == null) return const SizedBox.shrink();
+                              final isEoc = SleepTimerService.instance.isEndOfChapter;
+                              return Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: cs.surfaceContainerHighest,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: cs.outline.withOpacity(0.2)),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.timer_rounded, size: 18, color: cs.onSurfaceVariant),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        isEoc
+                                            ? 'Sleeping at end of chapter · ${SleepTimerService.instance.formattedRemainingTime}'
+                                            : 'Sleep timer · ${SleepTimerService.instance.formattedRemainingTime}',
+                                        style: text.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    TextButton(
+                                      onPressed: () => SleepTimerService.instance.stopTimer(),
+                                      child: const Text('Cancel'),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
                           ),
                         ],
                       ),
