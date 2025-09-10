@@ -1,5 +1,6 @@
 // lib/ui/player/full_player_page.dart
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/playback_repository.dart';
 import '../../core/playback_speed_service.dart';
@@ -39,6 +40,22 @@ class FullPlayerPage extends StatefulWidget {
 
 class _FullPlayerPageState extends State<FullPlayerPage> {
   double _dragY = 0.0;
+  bool _dualProgressEnabled = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDualProgressPref();
+  }
+
+  Future<void> _loadDualProgressPref() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      setState(() {
+        _dualProgressEnabled = prefs.getBool('ui_dual_progress_enabled') ?? true;
+      });
+    } catch (_) {}
+  }
 
   PopupMenuItem<double> _speedItem(BuildContext context, double current, double value) {
     final sel = (current - value).abs() < 0.001;
@@ -551,79 +568,197 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
                     // POSITION + SLIDER
                     Padding(
                       padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                      child: StreamBuilder<Duration?>(
-                        stream: playback.durationStream,
-                        initialData: playback.player.duration,
-                        builder: (_, durSnap) {
-                          final total = durSnap.data ?? Duration.zero;
-                          return StreamBuilder<Duration>(
-                            stream: playback.positionStream,
-                            initialData: playback.player.position,
-                            builder: (_, posSnap) {
-                              final pos = posSnap.data ?? Duration.zero;
-                              final max = total.inMilliseconds.toDouble().clamp(0.0, double.infinity);
-                              final value = pos.inMilliseconds.toDouble().clamp(0.0, max);
+                      child: StreamBuilder<Duration>(
+                        stream: playback.positionStream,
+                        initialData: playback.player.position,
+                        builder: (_, posSnap) {
+                          // Prefer global book progress when enabled and available; otherwise fall back to per-track
+                          final globalTotal = playback.totalBookDuration;
+                          final useGlobal = _dualProgressEnabled && globalTotal != null && globalTotal > Duration.zero;
 
-                              return Column(
-                                children: [
-                                  // Enhanced slider with custom theme
-                                  SliderTheme(
-                                    data: SliderTheme.of(context).copyWith(
-                                      trackHeight: 6,
-                                      thumbShape: const RoundSliderThumbShape(
-                                        enabledThumbRadius: 10,
-                                        elevation: 4,
-                                      ),
-                                      overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
-                                      activeTrackColor: cs.primary,
-                                      inactiveTrackColor: cs.surfaceContainerHighest,
-                                      thumbColor: cs.primary,
-                                      overlayColor: cs.primary.withOpacity(0.2),
+                          if (useGlobal) {
+                            final globalPos = playback.globalBookPosition ?? Duration.zero;
+                            final max = globalTotal!.inMilliseconds.toDouble();
+                            final value = globalPos.inMilliseconds.toDouble().clamp(0.0, max > 0 ? max : 1.0);
+
+                            // Determine chapter info for display
+                            final np = playback.nowPlaying;
+                            int chapterIdx = 0;
+                            Duration? chapterStart;
+                            Duration? chapterEnd;
+                            if (np != null && np.chapters.isNotEmpty) {
+                              for (int i = 0; i < np.chapters.length; i++) {
+                                if (globalPos >= np.chapters[i].start) {
+                                  chapterIdx = i;
+                                } else {
+                                  break;
+                                }
+                              }
+                              chapterStart = np.chapters[chapterIdx].start;
+                              if (chapterIdx + 1 < np.chapters.length) {
+                                chapterEnd = np.chapters[chapterIdx + 1].start;
+                              } else if (globalTotal != null) {
+                                chapterEnd = globalTotal;
+                              }
+                            }
+
+                            final chapterElapsed = (chapterStart != null)
+                                ? globalPos - chapterStart
+                                : null;
+                            final chapterDuration = (chapterStart != null && chapterEnd != null)
+                                ? (chapterEnd - chapterStart)
+                                : null;
+
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                SliderTheme(
+                                  data: SliderTheme.of(context).copyWith(
+                                    trackHeight: 6,
+                                    thumbShape: const RoundSliderThumbShape(
+                                      enabledThumbRadius: 10,
+                                      elevation: 4,
                                     ),
-                                    child: Slider(
-                                      min: 0.0,
-                                      max: max > 0 ? max : 1.0,
-                                      value: value,
-                                      onChanged: (v) async {
-                                        await playback.seek(
-                                          Duration(milliseconds: v.round()),
-                                          reportNow: false,
-                                        );
-                                      },
-                                      onChangeEnd: (v) async {
-                                        await playback.seek(
-                                          Duration(milliseconds: v.round()),
-                                          reportNow: true,
-                                        );
-                                      },
-                                    ),
+                                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
+                                    activeTrackColor: cs.primary,
+                                    inactiveTrackColor: cs.surfaceContainerHighest,
+                                    thumbColor: cs.primary,
+                                    overlayColor: cs.primary.withOpacity(0.2),
                                   ),
-                                  // Time indicators
+                                  child: Slider(
+                                    min: 0.0,
+                                    max: max > 0 ? max : 1.0,
+                                    value: value,
+                                    onChanged: (v) async {
+                                      await playback.seekGlobal(
+                                        Duration(milliseconds: v.round()),
+                                        reportNow: false,
+                                      );
+                                    },
+                                    onChangeEnd: (v) async {
+                                      await playback.seekGlobal(
+                                        Duration(milliseconds: v.round()),
+                                        reportNow: true,
+                                      );
+                                    },
+                                  ),
+                                ),
+                                // Global time indicators
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        _fmt(globalPos),
+                                        style: text.labelLarge?.copyWith(
+                                          color: cs.onSurfaceVariant,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                      Text(
+                                        '-${_fmt(globalTotal - globalPos)}',
+                                        style: text.labelLarge?.copyWith(
+                                          color: cs.onSurfaceVariant,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                // Chapter index + chapter time
+                                if (np != null && np.chapters.isNotEmpty) ...[
+                                  const SizedBox(height: 6),
                                   Padding(
                                     padding: const EdgeInsets.symmetric(horizontal: 4),
                                     child: Row(
                                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                       children: [
                                         Text(
-                                          _fmt(pos),
-                                          style: text.labelLarge?.copyWith(
+                                          'Chapter ${chapterIdx + 1} of ${np.chapters.length}',
+                                          style: text.labelMedium?.copyWith(
                                             color: cs.onSurfaceVariant,
-                                            fontWeight: FontWeight.w500,
+                                            fontWeight: FontWeight.w600,
                                           ),
                                         ),
-                                        Text(
-                                          total == Duration.zero ? '' : '-${_fmt(total - pos)}',
-                                          style: text.labelLarge?.copyWith(
-                                            color: cs.onSurfaceVariant,
-                                            fontWeight: FontWeight.w500,
+                                        if (chapterElapsed != null && chapterDuration != null)
+                                          Text(
+                                            '${_fmt(chapterElapsed)} of ${_fmt(chapterDuration)}',
+                                            style: text.labelMedium?.copyWith(
+                                              color: cs.onSurfaceVariant,
+                                              fontWeight: FontWeight.w600,
+                                            ),
                                           ),
-                                        ),
                                       ],
                                     ),
                                   ),
                                 ],
-                              );
-                            },
+                              ],
+                            );
+                          }
+
+                          // Fallback: per-track slider (existing behavior)
+                          final total = playback.player.duration ?? Duration.zero;
+                          final pos = posSnap.data ?? Duration.zero;
+                          final max = total.inMilliseconds.toDouble().clamp(0.0, double.infinity);
+                          final value = pos.inMilliseconds.toDouble().clamp(0.0, max);
+
+                          return Column(
+                            children: [
+                              SliderTheme(
+                                data: SliderTheme.of(context).copyWith(
+                                  trackHeight: 6,
+                                  thumbShape: const RoundSliderThumbShape(
+                                    enabledThumbRadius: 10,
+                                    elevation: 4,
+                                  ),
+                                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
+                                  activeTrackColor: cs.primary,
+                                  inactiveTrackColor: cs.surfaceContainerHighest,
+                                  thumbColor: cs.primary,
+                                  overlayColor: cs.primary.withOpacity(0.2),
+                                ),
+                                child: Slider(
+                                  min: 0.0,
+                                  max: max > 0 ? max : 1.0,
+                                  value: value,
+                                  onChanged: (v) async {
+                                    await playback.seek(
+                                      Duration(milliseconds: v.round()),
+                                      reportNow: false,
+                                    );
+                                  },
+                                  onChangeEnd: (v) async {
+                                    await playback.seek(
+                                      Duration(milliseconds: v.round()),
+                                      reportNow: true,
+                                    );
+                                  },
+                                ),
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 4),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      _fmt(pos),
+                                      style: text.labelLarge?.copyWith(
+                                        color: cs.onSurfaceVariant,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    Text(
+                                      total == Duration.zero ? '' : '-${_fmt(total - pos)}',
+                                      style: text.labelLarge?.copyWith(
+                                        color: cs.onSurfaceVariant,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           );
                         },
                       ),

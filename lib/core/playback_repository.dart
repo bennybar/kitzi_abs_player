@@ -569,6 +569,43 @@ class PlaybackRepository {
     await seek(target, reportNow: true);
   }
 
+  // ---- Public global duration/position helpers ----
+  /// Total duration across all tracks, if all track durations are known.
+  Duration? get totalBookDuration {
+    final sec = _computeTotalDurationSec();
+    if (sec == null) return null;
+    return Duration(milliseconds: (sec * 1000).round());
+  }
+
+  /// Current global position from book start, if computable.
+  Duration? get globalBookPosition {
+    final sec = _computeGlobalPositionSec();
+    if (sec == null) return null;
+    return Duration(milliseconds: (sec * 1000).round());
+  }
+
+  /// Seek using a global position from the start of the book across tracks.
+  /// Falls back to clamped range when the target exceeds known total.
+  Future<void> seekGlobal(Duration globalPosition, {bool reportNow = true}) async {
+    final np = _nowPlaying;
+    if (np == null) return;
+
+    // Clamp to [0, total]
+    double targetSec = globalPosition.inMilliseconds / 1000.0;
+    final totalSec = _computeTotalDurationSec();
+    if (targetSec < 0) targetSec = 0.0;
+    if (totalSec != null && targetSec > totalSec) targetSec = totalSec;
+
+    final map = _mapGlobalSecondsToTrack(targetSec, np.tracks);
+    if (map.index != np.currentIndex) {
+      await _setTrackAt(map.index, preload: true);
+    }
+    await player.seek(Duration(milliseconds: (map.offsetSec * 1000).round()));
+    if (reportNow) {
+      await _sendProgressImmediate(overrideTrackPosSec: map.offsetSec);
+    }
+  }
+
   Future<void> reportProgressNow() => _sendProgressImmediate();
 
   Future<void> setSpeed(double speed) => player.setSpeed(speed.clamp(0.5, 3.0));

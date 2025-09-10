@@ -19,6 +19,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool? _wifiOnly;
   bool? _syncProgressBeforePlay;
   bool? _pauseCancelsSleepTimer;
+  bool? _dualProgressEnabled;
 
   @override
   void initState() {
@@ -33,6 +34,7 @@ class _SettingsPageState extends State<SettingsPage> {
         _wifiOnly = prefs.getBool('downloads_wifi_only') ?? false;
         _syncProgressBeforePlay = prefs.getBool('sync_progress_before_play') ?? true;
         _pauseCancelsSleepTimer = prefs.getBool('pause_cancels_sleep_timer') ?? true;
+        _dualProgressEnabled = prefs.getBool('ui_dual_progress_enabled') ?? true;
       });
     } catch (_) {
       setState(() { 
@@ -177,6 +179,16 @@ class _SettingsPageState extends State<SettingsPage> {
               setState(() { _pauseCancelsSleepTimer = v; });
             },
           ),
+          SwitchListTile(
+            title: const Text('Book + chapter progress in player'),
+            subtitle: const Text('Show global book progress and chapter progress'),
+            value: _dualProgressEnabled ?? true,
+            onChanged: (v) async {
+              await _setDualProgressEnabled(v);
+              if (!mounted) return;
+              setState(() { _dualProgressEnabled = v; });
+            },
+          ),
           ValueListenableBuilder<double>(
             valueListenable: playbackSpeed.speed,
             builder: (_, spd, __) {
@@ -285,5 +297,12 @@ Future<void> _setPauseCancelsSleepTimer(bool value) async {
   try {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('pause_cancels_sleep_timer', value);
+  } catch (_) {}
+}
+
+Future<void> _setDualProgressEnabled(bool value) async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('ui_dual_progress_enabled', value);
   } catch (_) {}
 }
