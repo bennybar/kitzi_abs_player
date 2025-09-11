@@ -1,15 +1,24 @@
 Categories:
   - Local Media Player
   - Podcast
+
 License: GPL-3.0-only
+
 WebSite: https://github.com/bennybar/kitzi_abs_player
+
 SourceCode: https://github.com/bennybar/kitzi_abs_player
+
 IssueTracker: https://github.com/bennybar/kitzi_abs_player/issues
+
 Translation: https://github.com/bennybar/kitzi_abs_player
+
 Changelog: https://github.com/bennybar/kitzi_abs_player/releases
+
 AutoName: Kitzi ABS Player
+
 RepoType: git
 Repo: https://github.com/bennybar/kitzi_abs_player
+
 Builds:
   - versionName: 1.0.2
     versionCode: 18
@@ -21,8 +30,10 @@ Builds:
       - export PUB_CACHE=$(pwd)/.pub-cache
       - $$flutter$$/bin/flutter config --no-analytics
       - $$flutter$$/bin/flutter pub get
-      - sed -i -E "s@^[[:space:]]*maven\\s*\\{\\s*url\\s*['\"]https://storage.googleapis.com/download.flutter.io['\"]\\s*\\}[[:space:]]*$@@g" android/settings.gradle.kts || true
-      - sed -i -E "s@^[[:space:]]*maven\\s*\\{\\s*url\\s*['\"]https://storage.googleapis.com/download.flutter.io['\"]\\s*\\}[[:space:]]*$@@g" android/build.gradle.kts || true
+      - sed -i -E "s@^[[:space:]]*maven\\s*\\{\\s*url\\s*['\"]https://storage.googleapis.com/download.flutter.io['\"]\\s*\\}[[:space:]]*$@@g"
+        android/settings.gradle.kts || true
+      - sed -i -E "s@^[[:space:]]*maven\\s*\\{\\s*url\\s*['\"]https://storage.googleapis.com/download.flutter.io['\"]\\s*\\}[[:space:]]*$@@g"
+        android/build.gradle.kts || true
     scanignore:
       - .pub-cache/**
     build:
