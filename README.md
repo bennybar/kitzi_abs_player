@@ -15,7 +15,17 @@
 
 [<img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png" alt="Get it on F-Droid" width="200" style="filter: grayscale(100%); opacity: 0.6;">](https://f-droid.org/)
 
-**F-Droid: Coming Soon**
+</td>
+</tr>
+<tr>
+<td align="center">
+
+**Available Now**
+
+</td>
+<td align="center">
+
+**Coming Soon**
 
 </td>
 </tr>
