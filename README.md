@@ -29,7 +29,7 @@ Smart Download Management
 • Bookmark and progress tracking
 • Dark mode support
 
-�� Privacy & Security
+🔒 Privacy & Security
 • Direct connection to your server - no data collection
 • Secure authentication
 • Local storage for offline content
@@ -40,5 +40,8 @@ Download now and rediscover your audiobook collection!
 
 ![merged](https://github.com/user-attachments/assets/59f8161b-055c-4bdd-baba-45ca46d19f5d)
 
-![Play Store](https://play.google.com/store/apps/details?id=com.bennybar.kitzi)
+## Download
 
+[![Get it on Google Play](https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png)](https://play.google.com/store/apps/details?id=com.bennybar.kitzi)
+
+[![Coming Soon on F-Droid](https://img.shields.io/badge/F--Droid-Coming%20Soon-blue?style=for-the-badge&logo=f-droid)](https://f-droid.org/)
