@@ -31,6 +31,14 @@ Builds:
       - export PUB_CACHE=$(pwd)/.pub-cache
       - $$flutter$$/bin/flutter config --no-analytics
       - $$flutter$$/bin/flutter pub get
+    scanignore:
+      - .pub-cache/hosted/pub.dev/archive-3.6.1/test/tests/res/zip/*.zip
+      - .pub-cache/hosted/pub.dev/archive-3.6.1/test/tests/res/*.gz
+      - .pub-cache/hosted/pub.dev/archive-3.6.1/test/tests/res/inflate/data.bin
+      - .pub-cache/hosted/pub.dev/archive-3.6.1/web/res/readme.zip
+      - .pub-cache/hosted/pub.dev/shared_preferences-2.5.3/extension/devtools/build/canvaskit/*.wasm
+      - .pub-cache/hosted/pub.dev/shared_preferences-2.5.3/extension/devtools/build/assets/AssetManifest.bin
+      - .pub-cache/hosted/pub.dev/timezone-0.9.4/test/data/US/Eastern
     build:
       - export PUB_CACHE=$(pwd)/.pub-cache
       - $$flutter$$/bin/flutter build apk --release --split-per-abi --target-platform="android-arm64"
