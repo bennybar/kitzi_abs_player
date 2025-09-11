@@ -1,8 +1,10 @@
 Categories:
-  - Audio
-  - Media
+  - Local Media Player
+  - Podcast
 
 License: GPL-3.0-only
+
+RepoType: git
 
 Repo: https://github.com/bennybar/kitzi_abs_player
 
