@@ -4,11 +4,22 @@
 
 <div align="center">
 
+<table>
+<tr>
+<td align="center">
+
 [<img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" width="200">](https://play.google.com/store/apps/details?id=com.bennybar.kitzi)
+
+</td>
+<td align="center">
 
 [<img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png" alt="Get it on F-Droid" width="200" style="filter: grayscale(100%); opacity: 0.6;">](https://f-droid.org/)
 
 **F-Droid: Coming Soon**
+
+</td>
+</tr>
+</table>
 
 </div>
 
