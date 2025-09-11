@@ -2,9 +2,15 @@
 
 ## Download
 
+<div align="center">
+
 [<img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" width="200">](https://play.google.com/store/apps/details?id=com.bennybar.kitzi)
 
-[![Coming Soon on F-Droid](https://img.shields.io/badge/F--Droid-Coming%20Soon-blue?style=for-the-badge&logo=f-droid)](https://f-droid.org/)
+[<img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png" alt="Get it on F-Droid" width="200" style="filter: grayscale(100%); opacity: 0.6;">](https://f-droid.org/)
+
+**F-Droid: Coming Soon**
+
+</div>
 
 Transform your audiobook listening experience with Kitzi ABS Player, the most comprehensive client for Audiobookshelf servers. Whether you're commuting, exercising, or relaxing at home, enjoy seamless access to your entire audiobook library.
 
