@@ -14,8 +14,6 @@ pluginManagement {
         google()
         mavenCentral()
         gradlePluginPortal()
-        // Flutter engine/embedding artifacts
-        maven { url = uri("https://storage.googleapis.com/download.flutter.io") }
     }
 }
 
@@ -25,8 +23,6 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        // Flutter engine/embedding artifacts
-        maven { url = uri("https://storage.googleapis.com/download.flutter.io") }
     }
 }
 
