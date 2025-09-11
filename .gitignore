@@ -1,6 +1,7 @@
 # Miscellaneous
 *.class
 IMPROVEMENTS.md
+merge_request_url.txt
 *.log
 *.pyc
 *.swp
