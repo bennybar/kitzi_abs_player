@@ -46,6 +46,11 @@ Builds:
         android/settings.gradle.kts || true
       - sed -i -E "s@^[[:space:]]*maven\\s*\\{\\s*url\\s*['\"]https://storage.googleapis.com/download.flutter.io['\"]\\s*\\}[[:space:]]*$@@g"
         android/build.gradle.kts || true
+    scanignore:
+      - .pub-cache/**
+    build:
+      - export PUB_CACHE=$(pwd)/.pub-cache
+      - $$flutter$$/bin/flutter build apk --release --split-per-abi --target-platform="android-arm64"
 
   - versionName: 1.0.1
     versionCode: 172
@@ -61,6 +66,11 @@ Builds:
         android/settings.gradle.kts || true
       - sed -i -E "s@^[[:space:]]*maven\\s*\\{\\s*url\\s*['\"]https://storage.googleapis.com/download.flutter.io['\"]\\s*\\}[[:space:]]*$@@g"
         android/build.gradle.kts || true
+    scanignore:
+      - .pub-cache/**
+    build:
+      - export PUB_CACHE=$(pwd)/.pub-cache
+      - $$flutter$$/bin/flutter build apk --release --split-per-abi --target-platform="android-arm64"
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags
