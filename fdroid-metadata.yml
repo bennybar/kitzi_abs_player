@@ -22,10 +22,8 @@ Builds:
       - export PUB_CACHE=$(pwd)/.pub-cache
       - $$flutter$$/bin/flutter config --no-analytics
       - $$flutter$$/bin/flutter pub get
-      - sed -i -E "s@^[[:space:]]*maven\\s*\\{\\s*url\\s*['\"]https://storage.googleapis.com/download.flutter.io['\"]\\s*\\}[[:space:]]*$@@g"
-        android/settings.gradle.kts || true
-      - sed -i -E "s@^[[:space:]]*maven\\s*\\{\\s*url\\s*['\"]https://storage.googleapis.com/download.flutter.io['\"]\\s*\\}[[:space:]]*$@@g"
-        android/build.gradle.kts || true
+      - sed -i '/https:\/\/storage.googleapis.com\/download.flutter.io/d' android/settings.gradle.kts || true
+      - sed -i '/https:\/\/storage.googleapis.com\/download.flutter.io/d' android/build.gradle.kts || true
     scanignore:
       - .pub-cache/**
     build:
@@ -42,10 +40,8 @@ Builds:
       - export PUB_CACHE=$(pwd)/.pub-cache
       - $$flutter$$/bin/flutter config --no-analytics
       - $$flutter$$/bin/flutter pub get
-      - sed -i -E "s@^[[:space:]]*maven\\s*\\{\\s*url\\s*['\"]https://storage.googleapis.com/download.flutter.io['\"]\\s*\\}[[:space:]]*$@@g"
-        android/settings.gradle.kts || true
-      - sed -i -E "s@^[[:space:]]*maven\\s*\\{\\s*url\\s*['\"]https://storage.googleapis.com/download.flutter.io['\"]\\s*\\}[[:space:]]*$@@g"
-        android/build.gradle.kts || true
+      - sed -i '/https:\/\/storage.googleapis.com\/download.flutter.io/d' android/settings.gradle.kts || true
+      - sed -i '/https:\/\/storage.googleapis.com\/download.flutter.io/d' android/build.gradle.kts || true
     scanignore:
       - .pub-cache/**
     build:
@@ -62,10 +58,8 @@ Builds:
       - export PUB_CACHE=$(pwd)/.pub-cache
       - $$flutter$$/bin/flutter config --no-analytics
       - $$flutter$$/bin/flutter pub get
-      - sed -i -E "s@^[[:space:]]*maven\\s*\\{\\s*url\\s*['\"]https://storage.googleapis.com/download.flutter.io['\"]\\s*\\}[[:space:]]*$@@g"
-        android/settings.gradle.kts || true
-      - sed -i -E "s@^[[:space:]]*maven\\s*\\{\\s*url\\s*['\"]https://storage.googleapis.com/download.flutter.io['\"]\\s*\\}[[:space:]]*$@@g"
-        android/build.gradle.kts || true
+      - sed -i '/https:\/\/storage.googleapis.com\/download.flutter.io/d' android/settings.gradle.kts || true
+      - sed -i '/https:\/\/storage.googleapis.com\/download.flutter.io/d' android/build.gradle.kts || true
     scanignore:
       - .pub-cache/**
     build:
