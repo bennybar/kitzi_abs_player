@@ -40,6 +40,21 @@ Builds:
       - export PUB_CACHE=$(pwd)/.pub-cache
       - $$flutter$$/bin/flutter build apk --release --split-per-abi --target-platform="android-arm64"
 
+  - versionName: 1.0.1
+    versionCode: 171
+    commit: 69dd829335463e8a5d157b307216a88ac3fca8cb
+    output: build/app/outputs/flutter-apk/app-release.apk
+    srclibs:
+      - flutter@stable
+    prebuild:
+      - export PUB_CACHE=$(pwd)/.pub-cache
+      - $$flutter$$/bin/flutter config --no-analytics
+      - $$flutter$$/bin/flutter pub get
+      - sed -i -E "s@^[[:space:]]*maven\\s*\\{\\s*url\\s*['\"]https://storage.googleapis.com/download.flutter.io['\"]\\s*\\}[[:space:]]*$@@g"
+        android/settings.gradle.kts || true
+      - sed -i -E "s@^[[:space:]]*maven\\s*\\{\\s*url\\s*['\"]https://storage.googleapis.com/download.flutter.io['\"]\\s*\\}[[:space:]]*$@@g"
+        android/build.gradle.kts || true
+
 AutoUpdateMode: Version
 UpdateCheckMode: Tags
 VercodeOperation:
@@ -47,5 +62,5 @@ VercodeOperation:
   - '%c * 10 + 2'
   - '%c * 10 + 3'
 UpdateCheckData: pubspec.yaml|version:\s.+\+(\d+)|.|version:\s(.+)\+
-CurrentVersion: 1.0.2
-CurrentVersionCode: 18
+CurrentVersion: 1.0.1
+CurrentVersionCode: 173
