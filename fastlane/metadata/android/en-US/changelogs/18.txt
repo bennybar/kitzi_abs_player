@@ -1,0 +1,5 @@
+Version 1.0.2+18:
+• Bug fixes and performance improvements
+• Enhanced audio playback stability
+• Improved download management
+• Better error handling for network issues

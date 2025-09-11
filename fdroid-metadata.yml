@@ -1,0 +1,39 @@
+Categories:
+  - Audio
+  - Media
+
+License: MIT
+
+WebSite: https://github.com/bennybarak/kitzi
+
+SourceCode: https://github.com/bennybarak/kitzi
+
+IssueTracker: https://github.com/bennybarak/kitzi/issues
+
+Translation: https://github.com/bennybarak/kitzi
+
+Changelog: https://github.com/bennybarak/kitzi/releases
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags
+
+Builds:
+  - versionName: 1.0.2
+    versionCode: 18
+    commit: v1.0.2
+    subdir: app
+    gradle:
+      - yes
+    prebuild: |
+      # Set up Flutter environment
+      export PATH="$PATH:/opt/flutter/bin"
+      flutter --version
+      flutter pub get
+    build: |
+      flutter build apk --release
+    output: build/app/outputs/flutter-apk/app-release.apk
+    srclibs:
+      - name: flutter
+        version: 3.7.2
+      - name: dart
+        version: 3.7.2

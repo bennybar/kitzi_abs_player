@@ -1,0 +1,14 @@
+Kitzi is a modern audiobook client for Audiobookshelf servers. Stream and download your audiobooks with a beautiful, intuitive interface.
+
+Features:
+• Stream audiobooks from your Audiobookshelf server
+• Download audiobooks for offline listening
+• Background playback with lock screen controls
+• Sleep timer functionality
+• Playback speed control
+• Chapter navigation
+• Download management
+• Dark theme support
+• Android Auto support
+
+Perfect for audiobook enthusiasts who want a clean, feature-rich listening experience.
