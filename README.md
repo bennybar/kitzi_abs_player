@@ -16,6 +16,11 @@
 [<img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png" alt="Get it on F-Droid" width="200" style="filter: grayscale(100%); opacity: 0.6;">](https://f-droid.org/)
 
 </td>
+<td align="center">
+
+[<img src="https://img.shields.io/badge/GitHub-Release-blue?style=for-the-badge&logo=github" alt="GitHub Release" width="200">](https://github.com/bennybar/kitzi_abs_player/releases/tag/v1.0.2)
+
+</td>
 </tr>
 <tr>
 <td align="center">
@@ -26,6 +31,11 @@
 <td align="center">
 
 **Coming Soon**
+
+</td>
+<td align="center">
+
+**Latest Release**
 
 </td>
 </tr>
