@@ -18,7 +18,7 @@
 </td>
 <td align="center">
 
-[<img src="https://img.shields.io/badge/GitHub-Release-blue?style=for-the-badge&logo=github" alt="GitHub Release" width="200">](https://github.com/bennybar/kitzi_abs_player/releases/tag/v1.0.2)
+[<img src="https://img.shields.io/badge/Download-APK-green?style=for-the-badge&logo=android" alt="Download APK" width="200">](https://github.com/bennybar/kitzi_abs_player/releases/tag/v1.0.2)
 
 </td>
 </tr>
