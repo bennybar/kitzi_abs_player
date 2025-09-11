@@ -2,7 +2,9 @@ Categories:
   - Audio
   - Media
 
-License: GPL-3.0
+License: GPL-3.0-only
+
+Repo: https://github.com/bennybarak/kitzi
 
 WebSite: https://github.com/bennybarak/kitzi
 
@@ -33,7 +35,5 @@ Builds:
       flutter build apk --release
     output: build/app/outputs/flutter-apk/app-release.apk
     srclibs:
-      - name: flutter
-        version: 3.7.2
-      - name: dart
-        version: 3.7.2
+      - flutter:3.7.2
+      - dart:3.7.2
