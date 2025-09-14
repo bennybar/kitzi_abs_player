@@ -13,6 +13,12 @@ class Book {
   final String? publisher;
   final int? publishYear;
   final List<String>? genres;
+  // Series metadata (optional)
+  final String? series;
+  final double? seriesSequence;
+  // Collection metadata (optional)
+  final String? collection;
+  final double? collectionSequence;
   // Media kind and support indicator
   final String? mediaKind; // e.g., 'book', 'podcast', 'ebook'
   final bool isAudioBook;  // true when playable audiobook
@@ -32,6 +38,10 @@ class Book {
     this.publisher,
     this.publishYear,
     this.genres,
+    this.series,
+    this.seriesSequence,
+    this.collection,
+    this.collectionSequence,
     this.mediaKind,
     this.isAudioBook = true,
     this.libraryId,
@@ -108,6 +118,72 @@ class Book {
       if (genresList.isEmpty) genresList = null;
     }
 
+    // Series parsing (robust to common ABS shapes)
+    String? seriesName;
+    double? seriesSeq;
+    try {
+      final sRaw = meta['series'] ?? j['series'];
+      if (sRaw is String && sRaw.trim().isNotEmpty) seriesName = sRaw.trim();
+      if (sRaw is List && sRaw.isNotEmpty) {
+        final first = sRaw.first;
+        if (first is Map) {
+          final m = first.cast<String, dynamic>();
+          final n = (m['name'] ?? m['series'] ?? '').toString();
+          if (n.trim().isNotEmpty) seriesName = n.trim();
+          final seq = m['sequence'] ?? m['index'] ?? m['number'] ?? m['bookNumber'];
+          if (seq is num) seriesSeq = seq.toDouble();
+          if (seq is String) seriesSeq = double.tryParse(seq);
+        }
+      }
+      if (sRaw is Map) {
+        final m = sRaw.cast<String, dynamic>();
+        final n = (m['name'] ?? m['title'] ?? m['series'] ?? '').toString();
+        if (n.trim().isNotEmpty) seriesName = n.trim();
+        final seq = m['sequence'] ?? m['index'] ?? m['position'] ?? m['number'] ?? m['bookNumber'];
+        if (seq is num) seriesSeq = seq.toDouble();
+        if (seq is String) seriesSeq = double.tryParse(seq);
+      }
+      // Alternate keys
+      final s2 = meta['seriesName'] ?? meta['series_title'];
+      if ((seriesName == null || seriesName.isEmpty) && s2 is String && s2.trim().isNotEmpty) {
+        seriesName = s2.trim();
+      }
+      final seq2 = meta['seriesSequence'] ?? meta['sequence'] ?? meta['bookNumber'];
+      if (seriesSeq == null) {
+        if (seq2 is num) seriesSeq = seq2.toDouble();
+        if (seq2 is String) seriesSeq = double.tryParse(seq2);
+      }
+    } catch (_) {}
+
+    // Collections parsing (similar robustness)
+    String? collectionName;
+    double? collectionSeq;
+    try {
+      final cRaw = meta['collection'] ?? meta['collections'] ?? j['collection'] ?? j['collections'];
+      if (cRaw is String && cRaw.trim().isNotEmpty) collectionName = cRaw.trim();
+      if (cRaw is List && cRaw.isNotEmpty) {
+        final first = cRaw.first;
+        if (first is Map) {
+          final m = first.cast<String, dynamic>();
+          final n = (m['name'] ?? m['title'] ?? m['collection'] ?? '').toString();
+          if (n.trim().isNotEmpty) collectionName = n.trim();
+          final seq = m['sequence'] ?? m['index'] ?? m['position'] ?? m['number'];
+          if (seq is num) collectionSeq = seq.toDouble();
+          if (seq is String) collectionSeq = double.tryParse(seq);
+        } else if (first is String && first.trim().isNotEmpty) {
+          collectionName = first.trim();
+        }
+      }
+      if (cRaw is Map) {
+        final m = cRaw.cast<String, dynamic>();
+        final n = (m['name'] ?? m['title'] ?? m['collection'] ?? '').toString();
+        if (n.trim().isNotEmpty) collectionName = n.trim();
+        final seq = m['sequence'] ?? m['index'] ?? m['position'] ?? m['number'];
+        if (seq is num) collectionSeq = seq.toDouble();
+        if (seq is String) collectionSeq = double.tryParse(seq);
+      }
+    } catch (_) {}
+
     // Try to detect media type/kind from common shapes
     String? kind;
     try {
@@ -156,6 +232,10 @@ class Book {
       publisher: publisher,
       publishYear: publishYear,
       genres: genresList,
+      series: seriesName,
+      seriesSequence: seriesSeq,
+      collection: collectionName,
+      collectionSequence: collectionSeq,
       mediaKind: kind,
       isAudioBook: isBook,
       libraryId: (j['libraryId'] ?? '').toString().isNotEmpty ? (j['libraryId'] ?? '').toString() : null,

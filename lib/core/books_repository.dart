@@ -257,6 +257,10 @@ class BooksRepository {
             durationMs INTEGER,
             sizeBytes INTEGER,
             updatedAt INTEGER,
+            series TEXT,
+            seriesSequence REAL,
+            collection TEXT,
+            collectionSequence REAL,
             isAudioBook INTEGER NOT NULL DEFAULT 1,
             mediaKind TEXT,
             libraryId TEXT
@@ -281,6 +285,18 @@ class BooksRepository {
     } catch (_) {}
     try {
       await _db!.execute('ALTER TABLE books ADD COLUMN libraryId TEXT');
+    } catch (_) {}
+    try {
+      await _db!.execute('ALTER TABLE books ADD COLUMN series TEXT');
+    } catch (_) {}
+    try {
+      await _db!.execute('ALTER TABLE books ADD COLUMN seriesSequence REAL');
+    } catch (_) {}
+    try {
+      await _db!.execute('ALTER TABLE books ADD COLUMN collection TEXT');
+    } catch (_) {}
+    try {
+      await _db!.execute('ALTER TABLE books ADD COLUMN collectionSequence REAL');
     } catch (_) {}
   }
 
@@ -312,6 +328,10 @@ class BooksRepository {
           'durationMs': b.durationMs,
           'sizeBytes': b.sizeBytes,
           'updatedAt': b.updatedAt?.millisecondsSinceEpoch,
+          'series': b.series,
+          'seriesSequence': b.seriesSequence,
+          'collection': b.collection,
+          'collectionSequence': b.collectionSequence,
           'isAudioBook': b.isAudioBook ? 1 : 0,
           'mediaKind': b.mediaKind,
           'libraryId': b.libraryId ?? libId,
@@ -358,6 +378,14 @@ class BooksRepository {
         updatedAt: (m['updatedAt'] as int?) != null
             ? DateTime.fromMillisecondsSinceEpoch((m['updatedAt'] as int), isUtc: true)
             : null,
+        series: m['series'] as String?,
+        seriesSequence: (m['seriesSequence'] is num)
+            ? (m['seriesSequence'] as num).toDouble()
+            : (m['seriesSequence'] is String ? double.tryParse((m['seriesSequence'] as String)) : null),
+        collection: m['collection'] as String?,
+        collectionSequence: (m['collectionSequence'] is num)
+            ? (m['collectionSequence'] as num).toDouble()
+            : (m['collectionSequence'] is String ? double.tryParse((m['collectionSequence'] as String)) : null),
         mediaKind: m['mediaKind'] as String?,
         isAudioBook: computedIsAudio,
         libraryId: m['libraryId'] as String?,
@@ -434,6 +462,14 @@ class BooksRepository {
         updatedAt: (m['updatedAt'] as int?) != null
             ? DateTime.fromMillisecondsSinceEpoch((m['updatedAt'] as int), isUtc: true)
             : null,
+        series: m['series'] as String?,
+        seriesSequence: (m['seriesSequence'] is num)
+            ? (m['seriesSequence'] as num).toDouble()
+            : (m['seriesSequence'] is String ? double.tryParse((m['seriesSequence'] as String)) : null),
+        collection: m['collection'] as String?,
+        collectionSequence: (m['collectionSequence'] is num)
+            ? (m['collectionSequence'] as num).toDouble()
+            : (m['collectionSequence'] is String ? double.tryParse((m['collectionSequence'] as String)) : null),
         mediaKind: m['mediaKind'] as String?,
         isAudioBook: computedIsAudio,
         libraryId: m['libraryId'] as String?,
@@ -495,6 +531,14 @@ class BooksRepository {
       updatedAt: (m['updatedAt'] as int?) != null
           ? DateTime.fromMillisecondsSinceEpoch((m['updatedAt'] as int), isUtc: true)
           : null,
+      series: m['series'] as String?,
+      seriesSequence: (m['seriesSequence'] is num)
+          ? (m['seriesSequence'] as num).toDouble()
+          : (m['seriesSequence'] is String ? double.tryParse((m['seriesSequence'] as String)) : null),
+      collection: m['collection'] as String?,
+      collectionSequence: (m['collectionSequence'] is num)
+          ? (m['collectionSequence'] as num).toDouble()
+          : (m['collectionSequence'] is String ? double.tryParse((m['collectionSequence'] as String)) : null),
       mediaKind: m['mediaKind'] as String?,
       isAudioBook: ((m['isAudioBook'] as int?) != null)
           ? (((m['isAudioBook'] as int?) ?? 0) != 0)

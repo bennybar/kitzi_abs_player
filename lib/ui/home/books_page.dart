@@ -161,6 +161,8 @@ class _BooksPageState extends State<BooksPage> {
     await prefs.setString(_searchKey, q);
   }
 
+  
+
   void _setupAutoRefresh() {
     // Disabled: manual pull-to-refresh or toolbar refresh triggers updates.
   }
@@ -300,7 +302,6 @@ class _BooksPageState extends State<BooksPage> {
 
     // Show only audiobooks
     list = list.where((b) => b.isAudioBook && (b.libraryId == null || !_isEbookLibrary)).toList();
-
     switch (_sort) {
       case SortMode.nameAsc:
         list.sort(
@@ -482,7 +483,6 @@ class _BooksPageState extends State<BooksPage> {
                     ),
                   ),
                   const SizedBox(height: 16),
-
                   // View toggle removed – list only
                 ],
               ),
@@ -705,6 +705,8 @@ class _BooksPageState extends State<BooksPage> {
       ),
     );
   }
+
+  
 
   Widget _buildLoadMore() {
     if (!_hasMore) return const SliverToBoxAdapter(child: SizedBox.shrink());
@@ -1088,6 +1090,8 @@ class _BookListTile extends StatelessWidget {
     );
   }
 }
+
+ 
 
 class _CoverThumb extends StatelessWidget {
   const _CoverThumb({required this.url, this.size});

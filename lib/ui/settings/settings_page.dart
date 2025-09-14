@@ -9,6 +9,7 @@ import '../../core/download_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/playback_speed_service.dart';
 import '../../core/play_history_service.dart';
+import '../../core/ui_prefs.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -22,6 +23,8 @@ class _SettingsPageState extends State<SettingsPage> {
   bool? _syncProgressBeforePlay;
   bool? _pauseCancelsSleepTimer;
   bool? _dualProgressEnabled;
+  bool? _showSeriesTab;
+  bool? _showCollectionsTab;
   String? _activeLibraryId;
   List<Map<String, String>> _libraries = const [];
 
@@ -39,6 +42,8 @@ class _SettingsPageState extends State<SettingsPage> {
         _syncProgressBeforePlay = prefs.getBool('sync_progress_before_play') ?? true;
         _pauseCancelsSleepTimer = prefs.getBool('pause_cancels_sleep_timer') ?? true;
         _dualProgressEnabled = prefs.getBool('ui_dual_progress_enabled') ?? true;
+        _showSeriesTab = prefs.getBool('ui_show_series_tab') ?? true;
+        _showCollectionsTab = prefs.getBool('ui_show_collections_tab') ?? false;
         _activeLibraryId = prefs.getString('books_library_id');
       });
       await _loadLibraries();
@@ -145,6 +150,24 @@ class _SettingsPageState extends State<SettingsPage> {
           const Divider(height: 32),
           const ListTile(
             title: Text('Appearance'),
+          ),
+          SwitchListTile(
+            title: const Text('Show Series tab'),
+            subtitle: const Text('Enable the Series view'),
+            value: _showSeriesTab ?? false,
+            onChanged: (v) async {
+              await UiPrefs.setSeriesVisible(v, pinToSettingsOnChange: true);
+              if (mounted) setState(() { _showSeriesTab = v; });
+            },
+          ),
+          SwitchListTile(
+            title: const Text('Show Collections tab'),
+            subtitle: const Text('Enable the Collections view'),
+            value: _showCollectionsTab ?? false,
+            onChanged: (v) async {
+              await UiPrefs.setCollectionsVisible(v, pinToSettingsOnChange: true);
+              if (mounted) setState(() { _showCollectionsTab = v; });
+            },
           ),
           // Live-bind to ThemeService.mode
           ValueListenableBuilder<ThemeMode>(
