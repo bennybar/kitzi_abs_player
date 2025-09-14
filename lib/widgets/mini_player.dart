@@ -7,7 +7,7 @@ import '../main.dart'; // ServicesScope
 import '../ui/player/full_player_page.dart';
 
 class MiniPlayer extends StatelessWidget {
-  const MiniPlayer({super.key, this.height = 72});
+  const MiniPlayer({super.key, this.height = 60});
 
   final double height;
 
@@ -17,7 +17,7 @@ class MiniPlayer extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(8, 0, 8, 6),
+      margin: const EdgeInsets.fromLTRB(8, 0, 8, 0),
       decoration: BoxDecoration(
         color: cs.surface,
         borderRadius: BorderRadius.circular(16),
@@ -35,8 +35,8 @@ class MiniPlayer extends StatelessWidget {
           onTap: () async {
             await FullPlayerPage.openOnce(context);
           },
-          child: SizedBox(
-            height: height,
+          child: ConstrainedBox(
+            constraints: BoxConstraints.tightFor(height: height),
             child: StreamBuilder<NowPlaying?>(
               stream: playback.nowPlayingStream,
               initialData: playback.nowPlaying,
@@ -74,7 +74,7 @@ class MiniPlayer extends StatelessWidget {
                 }
 
                 return Padding(
-                  padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
+                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
                   child: Row(
                     children: [
                       // Enhanced cover with Hero
@@ -82,7 +82,7 @@ class MiniPlayer extends StatelessWidget {
                         tag: 'mini-cover-${np.libraryItemId}',
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(12),
-                          child: _MiniCover(url: np.coverUrl, size: height - 18),
+                          child: _MiniCover(url: np.coverUrl, size: height - 20),
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -102,7 +102,7 @@ class MiniPlayer extends StatelessWidget {
                               ),
                             ),
                             if (np.author != null && np.author!.isNotEmpty) ...[
-                              const SizedBox(height: 1),
+                              const SizedBox(height: 2),
                               Text(
                                 np.author!,
                                 maxLines: 1,
@@ -112,7 +112,7 @@ class MiniPlayer extends StatelessWidget {
                                 ),
                               ),
                             ],
-                            const SizedBox(height: 3),
+                            const SizedBox(height: 2),
                             // Enhanced progress bar
                             StreamBuilder<Duration?>(
                               stream: playback.durationStream,
@@ -131,7 +131,7 @@ class MiniPlayer extends StatelessWidget {
                                       value: value,
                                       backgroundColor: cs.surfaceContainerHighest,
                                       valueColor: AlwaysStoppedAnimation<Color>(cs.primary),
-                                      minHeight: 3,
+                                      minHeight: 2,
                                     );
                                   },
                                 );
@@ -187,8 +187,8 @@ class MiniPlayer extends StatelessWidget {
                                           customBorder: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                                           onTap: () async { await playback.pause(); },
                                           child: SizedBox(
-                                            width: 42,
-                                            height: 42,
+                                            width: 40,
+                                            height: 40,
                                             child: Icon(Icons.pause_rounded, color: cs.onPrimary),
                                           ),
                                         ),
@@ -211,8 +211,8 @@ class MiniPlayer extends StatelessWidget {
                                             }
                                           },
                                           child: SizedBox(
-                                            width: 46,
-                                            height: 46,
+                                            width: 40,
+                                            height: 40,
                                             child: Icon(Icons.play_arrow_rounded, color: cs.onPrimary),
                                           ),
                                         ),

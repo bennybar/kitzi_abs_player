@@ -93,109 +93,65 @@ class _MainScaffoldState extends State<MainScaffold> {
       builder: (_, snap) {
         final hideOnSettingsIndex = pages.length - 1;
         final hasMini = snap.data != null && safeIndex != hideOnSettingsIndex; // hide on Settings
+        // Use a single consistent NavigationBar height across all pages
+        const double navHeight = 60;
+        const double miniHeight = 60;
 
         return Scaffold(
           backgroundColor: cs.surface,
           body: pages[safeIndex],
-          bottomNavigationBar: hasMini
-              ? Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const SafeArea(top: false, child: MiniPlayer(height: 60)),
-                    NavigationBar(
-                      selectedIndex: safeIndex,
-                      onDestinationSelected: (i) {
-                        setState(() {
-                          // If settings pin active, ignore nav changes away from Settings
-                          if (UiPrefs.pinSettings.value) {
-                            _index = pages.length - 1;
-                            UiPrefs.pinSettings.value = false; // clear pin after applying
-                          } else {
-                            _index = i.clamp(0, pages.length - 1);
-                          }
-                        });
-                      },
-                      backgroundColor: cs.surface,
-                      surfaceTintColor: cs.surfaceTint,
-                      elevation: 0,
-                      height: 68,
-                      indicatorColor: cs.primaryContainer,
-                      destinations: [
-                        const NavigationDestination(
-                          icon: Icon(Icons.library_books_outlined),
-                          selectedIcon: Icon(Icons.library_books),
-                          label: 'Books',
-                        ),
-                        if (_showSeries)
-                          const NavigationDestination(
-                            icon: Icon(Icons.collections_bookmark_outlined),
-                            selectedIcon: Icon(Icons.collections_bookmark),
-                            label: 'Series',
-                          ),
-                        if (_showCollections)
-                          const NavigationDestination(
-                            icon: Icon(Icons.folder_outlined),
-                            selectedIcon: Icon(Icons.folder),
-                            label: 'Collections',
-                          ),
-                        const NavigationDestination(
-                          icon: Icon(Icons.download_outlined),
-                          selectedIcon: Icon(Icons.download),
-                          label: 'Downloads',
-                        ),
-                        const NavigationDestination(
-                          icon: Icon(Icons.settings_outlined),
-                          selectedIcon: Icon(Icons.settings),
-                          label: 'Settings',
-                        ),
-                      ],
+          bottomNavigationBar: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (hasMini)
+                const SafeArea(top: false, bottom: false, child: MiniPlayer(height: 60)),
+              if (hasMini) const SizedBox(height: 4),
+              NavigationBar(
+                selectedIndex: safeIndex,
+                onDestinationSelected: (i) {
+                  setState(() {
+                    if (UiPrefs.pinSettings.value) {
+                      _index = pages.length - 1;
+                      UiPrefs.pinSettings.value = false;
+                    } else {
+                      _index = i.clamp(0, pages.length - 1);
+                    }
+                  });
+                },
+                backgroundColor: cs.surface,
+                surfaceTintColor: cs.surfaceTint,
+                elevation: 0,
+                height: navHeight,
+                indicatorColor: cs.primaryContainer,
+                destinations: [
+                  const NavigationDestination(
+                    icon: Icon(Icons.library_books_outlined),
+                    selectedIcon: Icon(Icons.library_books),
+                    label: 'Books',
+                  ),
+                  if (_showSeries)
+                    const NavigationDestination(
+                      icon: Icon(Icons.collections_bookmark_outlined),
+                      selectedIcon: Icon(Icons.collections_bookmark),
+                      label: 'Series',
                     ),
-                  ],
-                )
-              : NavigationBar(
-            selectedIndex: safeIndex,
-            onDestinationSelected: (i) {
-              setState(() {
-                if (UiPrefs.pinSettings.value) {
-                  _index = pages.length - 1;
-                  UiPrefs.pinSettings.value = false;
-                } else {
-                  _index = i.clamp(0, pages.length - 1);
-                }
-              });
-            },
-            backgroundColor: cs.surface,
-            surfaceTintColor: cs.surfaceTint,
-            elevation: 0,
-            height: 68,
-            indicatorColor: cs.primaryContainer,
-            destinations: [
-              const NavigationDestination(
-                icon: Icon(Icons.library_books_outlined),
-                selectedIcon: Icon(Icons.library_books),
-                label: 'Books',
-              ),
-              if (_showSeries)
-                const NavigationDestination(
-                  icon: Icon(Icons.collections_bookmark_outlined),
-                  selectedIcon: Icon(Icons.collections_bookmark),
-                  label: 'Series',
-                ),
-              if (_showCollections)
-                const NavigationDestination(
-                  icon: Icon(Icons.folder_outlined),
-                  selectedIcon: Icon(Icons.folder),
-                  label: 'Collections',
-                ),
-              const NavigationDestination(
-                icon: Icon(Icons.download_outlined),
-                selectedIcon: Icon(Icons.download),
-                label: 'Downloads',
-              ),
-              const NavigationDestination(
-                icon: Icon(Icons.settings_outlined),
-                selectedIcon: Icon(Icons.settings),
-                label: 'Settings',
+                  if (_showCollections)
+                    const NavigationDestination(
+                      icon: Icon(Icons.folder_outlined),
+                      selectedIcon: Icon(Icons.folder),
+                      label: 'Collections',
+                    ),
+                  const NavigationDestination(
+                    icon: Icon(Icons.download_outlined),
+                    selectedIcon: Icon(Icons.download),
+                    label: 'Downloads',
+                  ),
+                  const NavigationDestination(
+                    icon: Icon(Icons.settings_outlined),
+                    selectedIcon: Icon(Icons.settings),
+                    label: 'Settings',
+                  ),
+                ],
               ),
             ],
           ),
