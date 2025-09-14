@@ -28,6 +28,8 @@ class FullPlayerPage extends StatefulWidget {
             ),
           );
         },
+        transitionDuration: const Duration(milliseconds: 220),
+        reverseTransitionDuration: const Duration(milliseconds: 160),
       ));
     } finally {
       _isOpen = false;
@@ -414,7 +416,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
         },
         onVerticalDragEnd: (details) {
           final v = details.velocity.pixelsPerSecond.dy;
-          final shouldDismiss = _dragY > 140 || v > 700;
+          final shouldDismiss = _dragY > 120 || v > 650;
           if (shouldDismiss) {
             Navigator.of(context).maybePop();
           } else {
@@ -424,7 +426,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
           }
         },
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
+          duration: const Duration(milliseconds: 140),
           curve: Curves.easeOutCubic,
           transform: Matrix4.translationValues(0, _dragY, 0),
           child: SafeArea(
@@ -496,10 +498,11 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
 
                     // ARTWORK + TITLE
                     Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                        child: Column(
-                          children: [
+                      child: RepaintBoundary(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                          child: Column(
+                            children: [
                             // Cover with enhanced shadow and border
                             Hero(
                               tag: 'mini-cover-${np.libraryItemId}',
@@ -508,9 +511,9 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
                                   borderRadius: BorderRadius.circular(24),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: cs.shadow.withOpacity(0.25),
-                                      blurRadius: 18,
-                                      offset: const Offset(0, 8),
+                                      color: cs.shadow.withOpacity(0.18),
+                                      blurRadius: 12,
+                                      offset: const Offset(0, 6),
                                     ),
                                   ],
                                 ),
@@ -521,6 +524,8 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
                                     child: Image.network(
                                       np.coverUrl ?? '',
                                       fit: BoxFit.cover,
+                                      gaplessPlayback: true,
+                                      filterQuality: FilterQuality.low,
                                       errorBuilder: (_, __, ___) => Container(
                                         color: cs.surfaceContainerHighest,
                                         child: Icon(
@@ -561,6 +566,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
                               ),
                             ],
                           ],
+                          ),
                         ),
                       ),
                     ),
@@ -609,63 +615,64 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
                                 ? (chapterEnd - chapterStart)
                                 : null;
 
-                            return Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                SliderTheme(
-                                  data: SliderTheme.of(context).copyWith(
-                                    trackHeight: 6,
-                                    thumbShape: const RoundSliderThumbShape(
-                                      enabledThumbRadius: 10,
-                                      elevation: 4,
+                            return RepaintBoundary(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  SliderTheme(
+                                    data: SliderTheme.of(context).copyWith(
+                                      trackHeight: 4,
+                                      thumbShape: const RoundSliderThumbShape(
+                                        enabledThumbRadius: 9,
+                                        elevation: 3,
+                                      ),
+                                      overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                                      activeTrackColor: cs.primary,
+                                      inactiveTrackColor: cs.surfaceContainerHighest,
+                                      thumbColor: cs.primary,
+                                      overlayColor: cs.primary.withOpacity(0.16),
                                     ),
-                                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
-                                    activeTrackColor: cs.primary,
-                                    inactiveTrackColor: cs.surfaceContainerHighest,
-                                    thumbColor: cs.primary,
-                                    overlayColor: cs.primary.withOpacity(0.2),
+                                    child: Slider(
+                                      min: 0.0,
+                                      max: max > 0 ? max : 1.0,
+                                      value: value,
+                                      onChanged: (v) async {
+                                        await playback.seekGlobal(
+                                          Duration(milliseconds: v.round()),
+                                          reportNow: false,
+                                        );
+                                      },
+                                      onChangeEnd: (v) async {
+                                        await playback.seekGlobal(
+                                          Duration(milliseconds: v.round()),
+                                          reportNow: true,
+                                        );
+                                      },
+                                    ),
                                   ),
-                                  child: Slider(
-                                    min: 0.0,
-                                    max: max > 0 ? max : 1.0,
-                                    value: value,
-                                    onChanged: (v) async {
-                                      await playback.seekGlobal(
-                                        Duration(milliseconds: v.round()),
-                                        reportNow: false,
-                                      );
-                                    },
-                                    onChangeEnd: (v) async {
-                                      await playback.seekGlobal(
-                                        Duration(milliseconds: v.round()),
-                                        reportNow: true,
-                                      );
-                                    },
-                                  ),
-                                ),
-                                // Global time indicators
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text(
-                                        _fmt(globalPos),
-                                        style: text.labelLarge?.copyWith(
-                                          color: cs.onSurfaceVariant,
-                                          fontWeight: FontWeight.w500,
+                                  // Global time indicators
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(
+                                          _fmt(globalPos),
+                                          style: text.labelLarge?.copyWith(
+                                            color: cs.onSurfaceVariant,
+                                            fontWeight: FontWeight.w500,
+                                          ),
                                         ),
-                                      ),
-                                      Text(
-                                        '-${_fmt(globalTotal - globalPos)}',
-                                        style: text.labelLarge?.copyWith(
-                                          color: cs.onSurfaceVariant,
-                                          fontWeight: FontWeight.w500,
+                                        Text(
+                                          '-${_fmt(globalTotal - globalPos)}',
+                                          style: text.labelLarge?.copyWith(
+                                            color: cs.onSurfaceVariant,
+                                            fontWeight: FontWeight.w500,
+                                          ),
                                         ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
-                                ),
                                 // Chapter index + chapter time
                                 if (np != null && np.chapters.isNotEmpty) ...[
                                   const SizedBox(height: 6),
@@ -693,7 +700,8 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
                                     ),
                                   ),
                                 ],
-                              ],
+                                ],
+                              ),
                             );
                           }
 
@@ -703,39 +711,40 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
                           final max = total.inMilliseconds.toDouble().clamp(0.0, double.infinity);
                           final value = pos.inMilliseconds.toDouble().clamp(0.0, max);
 
-                          return Column(
-                            children: [
-                              SliderTheme(
-                                data: SliderTheme.of(context).copyWith(
-                                  trackHeight: 6,
-                                  thumbShape: const RoundSliderThumbShape(
-                                    enabledThumbRadius: 10,
-                                    elevation: 4,
+                          return RepaintBoundary(
+                            child: Column(
+                              children: [
+                                SliderTheme(
+                                  data: SliderTheme.of(context).copyWith(
+                                    trackHeight: 4,
+                                    thumbShape: const RoundSliderThumbShape(
+                                      enabledThumbRadius: 9,
+                                      elevation: 3,
+                                    ),
+                                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                                    activeTrackColor: cs.primary,
+                                    inactiveTrackColor: cs.surfaceContainerHighest,
+                                    thumbColor: cs.primary,
+                                    overlayColor: cs.primary.withOpacity(0.16),
                                   ),
-                                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
-                                  activeTrackColor: cs.primary,
-                                  inactiveTrackColor: cs.surfaceContainerHighest,
-                                  thumbColor: cs.primary,
-                                  overlayColor: cs.primary.withOpacity(0.2),
+                                  child: Slider(
+                                    min: 0.0,
+                                    max: max > 0 ? max : 1.0,
+                                    value: value,
+                                    onChanged: (v) async {
+                                      await playback.seek(
+                                        Duration(milliseconds: v.round()),
+                                        reportNow: false,
+                                      );
+                                    },
+                                    onChangeEnd: (v) async {
+                                      await playback.seek(
+                                        Duration(milliseconds: v.round()),
+                                        reportNow: true,
+                                      );
+                                    },
+                                  ),
                                 ),
-                                child: Slider(
-                                  min: 0.0,
-                                  max: max > 0 ? max : 1.0,
-                                  value: value,
-                                  onChanged: (v) async {
-                                    await playback.seek(
-                                      Duration(milliseconds: v.round()),
-                                      reportNow: false,
-                                    );
-                                  },
-                                  onChangeEnd: (v) async {
-                                    await playback.seek(
-                                      Duration(milliseconds: v.round()),
-                                      reportNow: true,
-                                    );
-                                  },
-                                ),
-                              ),
                               Padding(
                                 padding: const EdgeInsets.symmetric(horizontal: 4),
                                 child: Row(
@@ -759,6 +768,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
                                 ),
                               ),
                             ],
+                            ),
                           );
                         },
                       ),
@@ -767,9 +777,10 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
                     const SizedBox(height: 8),
 
                     // CONTROLS + CHAPTERS
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
-                      child: Column(
+                    RepaintBoundary(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+                        child: Column(
                         children: [
                           // Large transport controls (Material 3) - single row, auto-sized
                           LayoutBuilder(
@@ -896,6 +907,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
                           ),
                           // Removed redundant countdown widget (countdown shown on Sleep button only)
                         ],
+                      ),
                       ),
                     ),
                   ],
