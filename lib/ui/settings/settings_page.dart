@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
+import 'dart:async' show unawaited;
 import '../../main.dart'; // ServicesScope
 import '../../core/audio_service_binding.dart';
 import '../../core/books_repository.dart';
@@ -20,6 +22,8 @@ class _SettingsPageState extends State<SettingsPage> {
   bool? _syncProgressBeforePlay;
   bool? _pauseCancelsSleepTimer;
   bool? _dualProgressEnabled;
+  String? _activeLibraryId;
+  List<Map<String, String>> _libraries = const [];
 
   @override
   void initState() {
@@ -35,7 +39,9 @@ class _SettingsPageState extends State<SettingsPage> {
         _syncProgressBeforePlay = prefs.getBool('sync_progress_before_play') ?? true;
         _pauseCancelsSleepTimer = prefs.getBool('pause_cancels_sleep_timer') ?? true;
         _dualProgressEnabled = prefs.getBool('ui_dual_progress_enabled') ?? true;
+        _activeLibraryId = prefs.getString('books_library_id');
       });
+      await _loadLibraries();
     } catch (_) {
       setState(() { 
         _wifiOnly = false;
@@ -43,6 +49,57 @@ class _SettingsPageState extends State<SettingsPage> {
         _pauseCancelsSleepTimer = true;
       });
     }
+  }
+
+  Future<void> _loadLibraries() async {
+    try {
+      final services = ServicesScope.of(context).services;
+      final api = services.auth.api;
+      final token = await api.accessToken();
+      final tokenQS = (token != null && token.isNotEmpty) ? '?token=$token' : '';
+      final resp = await api.request('GET', '/api/libraries$tokenQS', auth: true);
+      if (resp.statusCode != 200) return;
+      final bodyStr = resp.body;
+      final body = bodyStr.isNotEmpty ? jsonDecode(bodyStr) : null;
+      final list = (body is Map && body['libraries'] is List)
+          ? (body['libraries'] as List)
+          : (body is List ? body : const []);
+      final libs = <Map<String, String>>[];
+      for (final it in list) {
+        if (it is Map) {
+          final m = it.cast<String, dynamic>();
+          final id = (m['id'] ?? m['_id'] ?? '').toString();
+          final name = (m['name'] ?? m['title'] ?? 'Library').toString();
+          final mt = (m['mediaType'] ?? m['type'] ?? '').toString().toLowerCase();
+          if (id.isNotEmpty) libs.add({'id': id, 'name': name, 'mediaType': mt});
+        }
+      }
+      if (mounted) setState(() { _libraries = libs; });
+    } catch (_) {}
+  }
+
+  Future<void> _switchLibrary(String newId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('books_library_id', newId);
+      try {
+        final lib = _libraries.firstWhere((e) => e['id'] == newId, orElse: () => {});
+        final mt = (lib['mediaType'] ?? '').toString();
+        await prefs.setString('books_library_media_type', mt);
+      } catch (_) {}
+      if (mounted) setState(() { _activeLibraryId = newId; });
+      // Warm first page for the selected library (non-blocking)
+      try {
+        final repo = await BooksRepository.create();
+        unawaited(repo.fetchBooksPage(page: 1, limit: 50));
+      } catch (_) {}
+      // Notify user
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Library switched')),
+        );
+      }
+    } catch (_) {}
   }
 
   @override
@@ -55,6 +112,37 @@ class _SettingsPageState extends State<SettingsPage> {
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
         children: [
+          const ListTile(
+            title: Text('Library'),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    value: _activeLibraryId,
+                    items: [
+                      for (final m in _libraries)
+                        DropdownMenuItem(
+                          value: m['id'],
+                          child: Text(m['name'] ?? 'Library'),
+                        ),
+                    ],
+                    onChanged: (v) {
+                      if (v == null) return;
+                      _switchLibrary(v);
+                    },
+                    decoration: const InputDecoration(
+                      labelText: 'Active library',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 32),
           const ListTile(
             title: Text('Appearance'),
           ),

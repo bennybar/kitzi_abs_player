@@ -346,6 +346,16 @@ class PlaybackRepository {
   }
 
   Future<bool> playItem(String libraryItemId, {String? episodeId}) async {
+    // Guard: do not attempt playback if item appears to be non-audiobook
+    try {
+      final repo = await BooksRepository.create();
+      final b = await repo.getBookFromDb(libraryItemId) ?? await repo.getBook(libraryItemId);
+      if (b != null && b.isAudioBook == false) {
+        _log('Blocked play for non-audiobook item $libraryItemId');
+        return false;
+      }
+    } catch (_) {}
+
     // Check if sync is required and server is available
     final canProceed = await _checkSyncRequirement();
     if (!canProceed) {

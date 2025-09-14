@@ -23,6 +23,17 @@ class DownloadStorage {
     return name;
   }
 
+  /// Returns the active library id used to namespace storage.
+  /// Falls back to 'default' when not set yet.
+  static Future<String> _currentLibraryId() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final id = prefs.getString('books_library_id');
+      if (id != null && id.trim().isNotEmpty) return id.trim();
+    } catch (_) {}
+    return 'default';
+  }
+
   /// Sets the base subfolder and migrates existing downloads from the old
   /// subfolder to the new one. If migration fails, it will best-effort copy
   /// files and then delete the old ones.
@@ -106,7 +117,8 @@ class DownloadStorage {
     // background_downloader base directories in this version.
     final root = await getApplicationDocumentsDirectory();
     final subfolder = await getBaseSubfolder();
-    final dir = Directory('${root.path}/$subfolder');
+    final libId = await _currentLibraryId();
+    final dir = Directory('${root.path}/$subfolder/lib_$libId');
     if (!await dir.exists()) {
       await dir.create(recursive: true);
     }
@@ -133,7 +145,9 @@ class DownloadStorage {
   /// Directory prefix to be used with background_downloader's directory field.
   /// For our current strategy, just the base subfolder name.
   static Future<String> taskDirectoryPrefix() async {
-    return await getBaseSubfolder();
+    final base = await getBaseSubfolder();
+    final libId = await _currentLibraryId();
+    return '$base/lib_$libId';
   }
 
   /// Request runtime storage permissions when needed (Android pre-33 mostly).

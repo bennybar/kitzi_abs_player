@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -6,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 
 import '../../core/books_repository.dart';
+import '../../core/auth_repository.dart';
 import '../../core/play_history_service.dart';
 import '../../models/book.dart';
 import '../book_detail/book_detail_page.dart';
@@ -37,6 +39,7 @@ class _BooksPageState extends State<BooksPage> {
   LibraryView _view = LibraryView.list;
   SortMode _sort = SortMode.addedDesc;
   String _query = '';
+  bool _isEbookLibrary = false;
 
   static const _viewKey = 'library_view_pref';
   static const _sortKey = 'library_sort_pref';
@@ -70,6 +73,8 @@ class _BooksPageState extends State<BooksPage> {
     final v = prefs.getString(_viewKey);
     final s = prefs.getString(_sortKey);
     final q = prefs.getString(_searchKey);
+    final mt = prefs.getString('books_library_media_type')?.toLowerCase();
+    String? activeLibId = prefs.getString('books_library_id');
 
     if (v == 'list') _view = LibraryView.list;
     if (s == 'nameAsc') _sort = SortMode.nameAsc;
@@ -77,6 +82,37 @@ class _BooksPageState extends State<BooksPage> {
       _query = q;
       _searchCtrl.text = q;
     }
+    bool isEbook = (mt != null && mt.contains('ebook'));
+    if (!isEbook && (mt == null || mt.isEmpty)) {
+      // Fallback: query server for library mediaType
+      try {
+        final auth = await AuthRepository.ensure();
+        final api = auth.api;
+        final token = await api.accessToken();
+        final tokenQS = (token != null && token.isNotEmpty) ? '?token=$token' : '';
+        final resp = await api.request('GET', '/api/libraries$tokenQS');
+        if (resp.statusCode == 200) {
+          final bodyStr = resp.body;
+          final body = bodyStr.isNotEmpty ? jsonDecode(bodyStr) : null;
+          final list = (body is Map && body['libraries'] is List)
+              ? (body['libraries'] as List)
+              : (body is List ? body : const []);
+          for (final it in list) {
+            if (it is Map) {
+              final m = it.cast<String, dynamic>();
+              final id = (m['id'] ?? m['_id'] ?? '').toString();
+              if (activeLibId != null && id == activeLibId) {
+                final mediaType = (m['mediaType'] ?? m['type'] ?? '').toString().toLowerCase();
+                await prefs.setString('books_library_media_type', mediaType);
+                isEbook = mediaType.contains('ebook');
+                break;
+              }
+            }
+          }
+        }
+      } catch (_) {}
+    }
+    if (mounted) setState(() { _isEbookLibrary = isEbook; });
   }
 
   void _scrollToTop() {
@@ -252,6 +288,7 @@ class _BooksPageState extends State<BooksPage> {
   }
 
   List<Book> _visibleBooks() {
+    if (_isEbookLibrary) return const <Book>[];
     final q = _query.trim().toLowerCase();
     List<Book> list = q.isEmpty
         ? List<Book>.from(_books)
@@ -260,6 +297,9 @@ class _BooksPageState extends State<BooksPage> {
       final a = (b.author ?? '').toLowerCase();
       return t.contains(q) || a.contains(q);
     }).toList();
+
+    // Show only audiobooks
+    list = list.where((b) => b.isAudioBook && (b.libraryId == null || !_isEbookLibrary)).toList();
 
     switch (_sort) {
       case SortMode.nameAsc:
@@ -581,7 +621,7 @@ class _BooksPageState extends State<BooksPage> {
             final b = list[i];
             return _BookCard(
               book: b,
-              onTap: () => _openDetails(b),
+              onTap: b.isAudioBook ? () => _openDetails(b) : null,
             );
           },
           childCount: list.length,
@@ -591,6 +631,7 @@ class _BooksPageState extends State<BooksPage> {
   }
 
   Widget _buildResumePlayingSection() {
+    if (_isEbookLibrary) return const SliverToBoxAdapter(child: SizedBox.shrink());
     return SliverToBoxAdapter(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
@@ -624,9 +665,10 @@ class _BooksPageState extends State<BooksPage> {
                   crossAxisSpacing: 2,
                   childAspectRatio: 1.0, // square tiles
                 ),
-                itemCount: _recentBooks.length,
+                itemCount: _recentBooks.where((b) => b.isAudioBook).length,
                 itemBuilder: (context, index) {
-                  final book = _recentBooks[index];
+                  final list = _recentBooks.where((b) => b.isAudioBook).toList(growable: false);
+                  final book = list[index];
                   return _ResumeBookCard(
                     book: book,
                     onTap: () => _openDetails(book),
@@ -657,7 +699,7 @@ class _BooksPageState extends State<BooksPage> {
           }
           return _BookListTile(
             book: b,
-            onTap: () => _openDetails(b),
+            onTap: b.isAudioBook ? () => _openDetails(b) : null,
           );
         },
       ),
@@ -733,18 +775,19 @@ class _BooksPageState extends State<BooksPage> {
 class _BookCard extends StatelessWidget {
   const _BookCard({required this.book, required this.onTap});
   final Book book;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    
+    final disabled = !book.isAudioBook;
+
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(
-          color: cs.outline.withOpacity(0.1),
+          color: cs.outline.withOpacity(disabled ? 0.05 : 0.1),
           width: 1,
         ),
       ),
@@ -762,7 +805,7 @@ class _BookCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(12),
                   boxShadow: [
                     BoxShadow(
-                      color: cs.shadow.withOpacity(0.1),
+                      color: cs.shadow.withOpacity(disabled ? 0.04 : 0.1),
                       blurRadius: 8,
                       offset: const Offset(0, 2),
                     ),
@@ -774,7 +817,12 @@ class _BookCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(12),
                     child: AspectRatio(
                       aspectRatio: 2 / 3,
-                      child: _CoverThumb(url: book.coverUrl),
+                      child: ColorFiltered(
+                        colorFilter: disabled
+                            ? ColorFilter.mode(cs.surface.withOpacity(0.12), BlendMode.saturation)
+                            : const ColorFilter.mode(Colors.transparent, BlendMode.srcOver),
+                        child: _CoverThumb(url: book.coverUrl),
+                      ),
                     ),
                   ),
                 ),
@@ -792,6 +840,7 @@ class _BookCard extends StatelessWidget {
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.w600,
                       height: 1.1,
+                      color: disabled ? cs.onSurface.withOpacity(0.4) : null,
                     ),
                   ),
                 ),
@@ -805,11 +854,30 @@ class _BookCard extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: cs.onSurfaceVariant,
+                          color: disabled ? cs.onSurfaceVariant.withOpacity(0.4) : cs.onSurfaceVariant,
                         ),
                       )
                     : const SizedBox.shrink(),
               ),
+              if (disabled) ...[
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Icon(Icons.block, size: 14, color: cs.onSurfaceVariant.withOpacity(0.6)),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Not an audiobook',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: cs.onSurfaceVariant.withOpacity(0.7),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
@@ -915,18 +983,19 @@ class _ResumeBookCard extends StatelessWidget {
 class _BookListTile extends StatelessWidget {
   const _BookListTile({required this.book, required this.onTap});
   final Book book;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    
+    final disabled = !book.isAudioBook;
+
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(
-          color: cs.outline.withOpacity(0.1),
+          color: cs.outline.withOpacity(disabled ? 0.05 : 0.1),
           width: 1,
         ),
       ),
@@ -970,6 +1039,7 @@ class _BookListTile extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w600,
+                        color: disabled ? cs.onSurface.withOpacity(0.4) : null,
                       ),
                     ),
                     if (book.author != null && book.author!.isNotEmpty) ...[
@@ -979,8 +1049,27 @@ class _BookListTile extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: cs.onSurfaceVariant,
+                          color: disabled ? cs.onSurfaceVariant.withOpacity(0.4) : cs.onSurfaceVariant,
                         ),
+                      ),
+                    ],
+                    if (disabled) ...[
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Icon(Icons.block, size: 16, color: cs.onSurfaceVariant.withOpacity(0.6)),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              'Not an audiobook (e.g., ebook/podcast)',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: cs.onSurfaceVariant.withOpacity(0.7),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ],
@@ -990,7 +1079,7 @@ class _BookListTile extends StatelessWidget {
               // Arrow indicator
               Icon(
                 Icons.chevron_right_rounded,
-                color: cs.onSurfaceVariant,
+                color: disabled ? cs.onSurfaceVariant.withOpacity(0.3) : cs.onSurfaceVariant,
               ),
             ],
           ),

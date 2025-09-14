@@ -358,7 +358,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
                         children: [
                           Expanded(
                             child: FilledButton.icon(
-                              onPressed: () async {
+                              onPressed: b.isAudioBook ? () async {
                                 final success = await playbackRepo.playItem(b.id);
                                 if (!success && context.mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
@@ -371,9 +371,9 @@ class _BookDetailPageState extends State<BookDetailPage> {
                                 }
                                 if (!context.mounted) return;
                                 await FullPlayerPage.openOnce(context);
-                              },
+                              } : null,
                               icon: const Icon(Icons.play_arrow),
-                              label: const Text('Play'),
+                              label: Text(b.isAudioBook ? 'Play' : 'Not an audiobook'),
                             ),
                           ),
                           const SizedBox(width: 12),

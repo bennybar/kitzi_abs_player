@@ -13,6 +13,10 @@ class Book {
   final String? publisher;
   final int? publishYear;
   final List<String>? genres;
+  // Media kind and support indicator
+  final String? mediaKind; // e.g., 'book', 'podcast', 'ebook'
+  final bool isAudioBook;  // true when playable audiobook
+  final String? libraryId; // source library id when available
 
   Book({
     required this.id,
@@ -28,6 +32,9 @@ class Book {
     this.publisher,
     this.publishYear,
     this.genres,
+    this.mediaKind,
+    this.isAudioBook = true,
+    this.libraryId,
   });
 
   /// Build from ABS library item JSON (id + media.metadata.*).
@@ -101,6 +108,40 @@ class Book {
       if (genresList.isEmpty) genresList = null;
     }
 
+    // Try to detect media type/kind from common shapes
+    String? kind;
+    try {
+      final media = j['media'] as Map<String, dynamic>?;
+      final typeA = media?[ 'type']?.toString();
+      final typeB = media?[ 'mediaType']?.toString();
+      final typeC = j['mediaType']?.toString();
+      final typeD = j['type']?.toString();
+      kind = (typeA ?? typeB ?? typeC ?? typeD)?.toLowerCase();
+    } catch (_) {}
+    // Determine audiobook vs ebook/podcast from available hints
+    final mediaMap = j['media'] is Map ? (j['media'] as Map).cast<String, dynamic>() : const <String, dynamic>{};
+    final audioFiles = mediaMap['audioFiles'];
+    final tracks = mediaMap['tracks'];
+    final audioTrackCount = mediaMap['audioTrackCount'];
+    final hasAudio =
+        (durationSecs != null && durationSecs > 0) ||
+        (audioFiles is List && audioFiles.isNotEmpty) ||
+        (tracks is List && tracks.isNotEmpty) ||
+        (audioTrackCount is num && audioTrackCount.toInt() > 0);
+
+    final ebookObj = mediaMap['ebook'] ?? mediaMap['ebookFile'] ?? mediaMap['ebookFormat'];
+    final ext = (j['extension'] ?? mediaMap['extension'] ?? '').toString().toLowerCase();
+    final isEbookExt = ext.endsWith('epub') || ext.endsWith('pdf') || ext.endsWith('mobi') || ext.endsWith('azw') || ext.endsWith('txt');
+    final hasEbook = ebookObj != null || isEbookExt;
+
+    bool isBook;
+    // Strict classification: require actual audio evidence
+    if (hasAudio && !hasEbook) {
+      isBook = true;
+    } else {
+      isBook = false;
+    }
+
     return Book(
       id: id,
       title: title,
@@ -115,6 +156,9 @@ class Book {
       publisher: publisher,
       publishYear: publishYear,
       genres: genresList,
+      mediaKind: kind,
+      isAudioBook: isBook,
+      libraryId: (j['libraryId'] ?? '').toString().isNotEmpty ? (j['libraryId'] ?? '').toString() : null,
     );
   }
 }

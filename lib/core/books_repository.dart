@@ -17,6 +17,7 @@ class BooksRepository {
   final AuthRepository _auth;
   final SharedPreferences _prefs;
   Database? _db;
+  String? _dbLibId; // track which library the DB connection belongs to
 
   static const _etagKey = 'books_list_etag';
   static const _cacheKey = 'books_list_cache_json';
@@ -124,6 +125,29 @@ class BooksRepository {
 
     // Prefer preserving locally cached fields (e.g., sizeBytes/durationMs) when server omits them
     Book b = Book.fromLibraryItemJson(item, baseUrl: baseUrl, token: token);
+    // If server explicitly flags mediaType as 'ebook' or item has no audio tracks, mark non-audiobook
+    try {
+      final mediaType = (item['mediaType'] ?? item['type'] ?? '').toString().toLowerCase();
+      if (mediaType.contains('ebook')) {
+        b = Book(
+          id: b.id,
+          title: b.title,
+          author: b.author,
+          coverUrl: b.coverUrl,
+          description: b.description,
+          durationMs: b.durationMs,
+          sizeBytes: b.sizeBytes,
+          updatedAt: b.updatedAt,
+          authors: b.authors,
+          narrators: b.narrators,
+          publisher: b.publisher,
+          publishYear: b.publishYear,
+          genres: b.genres,
+          mediaKind: mediaType,
+          isAudioBook: false,
+        );
+      }
+    } catch (_) {}
     try {
       final prev = await getBookFromDb(id);
       if (prev != null) {
@@ -171,35 +195,43 @@ class BooksRepository {
       await prefs.remove(_libIdKey);
     } catch (_) {}
 
-    // Clear DB contents even if another connection is open
+    // Clear DB contents even if another connection is open (current library only)
     try {
       final dbPath = await getDatabasesPath();
-      final path = p.join(dbPath, 'kitzi_books.db');
+      final prefs = await SharedPreferences.getInstance();
+      final libId = prefs.getString(_libIdKey) ?? 'default';
+      final path = p.join(dbPath, 'kitzi_books_' + libId + '.db');
       final db = await openDatabase(path);
       await db.execute('DELETE FROM books');
       await db.close();
     } catch (_) {}
 
     try {
-      // Delete DB file (best effort; may fail if another connection is open)
+      // Delete DB file (best effort; may fail if another connection is open) for current library
       final dbPath = await getDatabasesPath();
-      final dbFile = p.join(dbPath, 'kitzi_books.db');
+      final prefs = await SharedPreferences.getInstance();
+      final libId = prefs.getString(_libIdKey) ?? 'default';
+      final dbFile = p.join(dbPath, 'kitzi_books_' + libId + '.db');
       await deleteDatabase(dbFile);
     } catch (_) {}
 
     try {
-      // Delete covers directory
+      // Delete covers directory (current library only)
       final dbPath = await getDatabasesPath();
-      final coversDir = Directory(p.join(dbPath, 'kitzi_covers'));
+      final prefs = await SharedPreferences.getInstance();
+      final libId = prefs.getString(_libIdKey) ?? 'default';
+      final coversDir = Directory(p.join(dbPath, 'kitzi_covers', 'lib_' + libId));
       if (await coversDir.exists()) {
         await coversDir.delete(recursive: true);
       }
     } catch (_) {}
 
     try {
-      // Delete description images directory tree
+      // Delete description images directory tree (current library only)
       final dbPath = await getDatabasesPath();
-      final descDir = Directory(p.join(dbPath, 'kitzi_desc_images'));
+      final prefs = await SharedPreferences.getInstance();
+      final libId = prefs.getString(_libIdKey) ?? 'default';
+      final descDir = Directory(p.join(dbPath, 'kitzi_desc_images', 'lib_' + libId));
       if (await descDir.exists()) {
         await descDir.delete(recursive: true);
       }
@@ -208,7 +240,8 @@ class BooksRepository {
 
   Future<void> _openDb() async {
     final dbPath = await getDatabasesPath();
-    final path = p.join(dbPath, 'kitzi_books.db');
+    final libId = _prefs.getString(_libIdKey) ?? 'default';
+    final path = p.join(dbPath, 'kitzi_books_' + libId + '.db');
     _db = await openDatabase(
       path,
       version: 1,
@@ -223,17 +256,39 @@ class BooksRepository {
             description TEXT,
             durationMs INTEGER,
             sizeBytes INTEGER,
-            updatedAt INTEGER
+            updatedAt INTEGER,
+            isAudioBook INTEGER NOT NULL DEFAULT 1,
+            mediaKind TEXT,
+            libraryId TEXT
           )
         ''');
       },
     );
+
+    _dbLibId = libId;
 
     // Best-effort migration for existing installs
     try {
       await _db!.execute('ALTER TABLE books ADD COLUMN coverPath TEXT');
     } catch (_) {
       // ignore duplicate column errors
+    }
+    try {
+      await _db!.execute('ALTER TABLE books ADD COLUMN isAudioBook INTEGER');
+    } catch (_) {}
+    try {
+      await _db!.execute('ALTER TABLE books ADD COLUMN mediaKind TEXT');
+    } catch (_) {}
+    try {
+      await _db!.execute('ALTER TABLE books ADD COLUMN libraryId TEXT');
+    } catch (_) {}
+  }
+
+  Future<void> _ensureDbForCurrentLib() async {
+    final current = _prefs.getString(_libIdKey) ?? 'default';
+    if (_db == null || _dbLibId != current) {
+      try { await _db?.close(); } catch (_) {}
+      await _openDb();
     }
   }
 
@@ -244,6 +299,7 @@ class BooksRepository {
     for (final b in items) {
       final coverFile = await _coverFileForId(b.id);
       final hasLocal = await coverFile.exists();
+      final libId = _prefs.getString(_libIdKey) ?? 'default';
       batch.insert(
         'books',
         {
@@ -256,6 +312,9 @@ class BooksRepository {
           'durationMs': b.durationMs,
           'sizeBytes': b.sizeBytes,
           'updatedAt': b.updatedAt?.millisecondsSinceEpoch,
+          'isAudioBook': b.isAudioBook ? 1 : 0,
+          'mediaKind': b.mediaKind,
+          'libraryId': b.libraryId ?? libId,
         },
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
@@ -264,9 +323,14 @@ class BooksRepository {
   }
 
   Future<List<Book>> _listBooksFromDb() async {
+    await _ensureDbForCurrentLib();
     final db = _db;
     if (db == null) return <Book>[];
-    final rows = await db.query('books', orderBy: 'updatedAt IS NULL, updatedAt DESC');
+    final rows = await db.query(
+      'books',
+      where: '((isAudioBook = 1) OR (isAudioBook IS NULL AND durationMs IS NOT NULL AND durationMs > 0))',
+      orderBy: 'updatedAt IS NULL, updatedAt DESC',
+    );
     if (rows.isEmpty) return <Book>[];
     final baseUrl = _auth.api.baseUrl ?? '';
     final token = await _auth.api.accessToken();
@@ -278,6 +342,11 @@ class BooksRepository {
       if (localPath != null && File(localPath).existsSync()) {
         coverUrl = 'file://$localPath';
       }
+      final isAudioRaw = m['isAudioBook'] as int?;
+      final durationRaw = m['durationMs'] as int?;
+      final computedIsAudio = (isAudioRaw != null)
+          ? (isAudioRaw != 0)
+          : (durationRaw != null && durationRaw > 0);
       return Book(
         id: id,
         title: (m['title'] as String),
@@ -289,6 +358,9 @@ class BooksRepository {
         updatedAt: (m['updatedAt'] as int?) != null
             ? DateTime.fromMillisecondsSinceEpoch((m['updatedAt'] as int), isUtc: true)
             : null,
+        mediaKind: m['mediaKind'] as String?,
+        isAudioBook: computedIsAudio,
+        libraryId: m['libraryId'] as String?,
       );
     }).toList();
   }
@@ -300,6 +372,7 @@ class BooksRepository {
     String sort = 'updatedAt:desc',
     String? query,
   }) async {
+    await _ensureDbForCurrentLib();
     final db = _db;
     if (db == null) return <Book>[];
     final baseUrl = _auth.api.baseUrl ?? '';
@@ -313,6 +386,8 @@ class BooksRepository {
       whereParts.add('(LOWER(title) LIKE ? OR LOWER(author) LIKE ?)');
       whereArgs..add(q)..add(q);
     }
+    // Only audiobooks
+    whereParts.add('((isAudioBook = 1) OR (isAudioBook IS NULL AND durationMs IS NOT NULL AND durationMs > 0))');
     final where = whereParts.isEmpty ? null : whereParts.join(' AND ');
 
     String orderBy;
@@ -343,6 +418,11 @@ class BooksRepository {
       if (localPath != null && File(localPath).existsSync()) {
         coverUrl = 'file://$localPath';
       }
+      final isAudioRaw = m['isAudioBook'] as int?;
+      final durationRaw = m['durationMs'] as int?;
+      final computedIsAudio = (isAudioRaw != null)
+          ? (isAudioRaw != 0)
+          : (durationRaw != null && durationRaw > 0);
       return Book(
         id: id,
         title: (m['title'] as String),
@@ -354,11 +434,15 @@ class BooksRepository {
         updatedAt: (m['updatedAt'] as int?) != null
             ? DateTime.fromMillisecondsSinceEpoch((m['updatedAt'] as int), isUtc: true)
             : null,
+        mediaKind: m['mediaKind'] as String?,
+        isAudioBook: computedIsAudio,
+        libraryId: m['libraryId'] as String?,
       );
     }).toList();
   }
 
   Future<int> countBooksInDb({String? query}) async {
+    await _ensureDbForCurrentLib();
     final db = _db;
     if (db == null) return 0;
     final whereParts = <String>[];
@@ -386,6 +470,7 @@ class BooksRepository {
 
   /// Get a single book from local database (offline fallback). Returns null if not found.
   Future<Book?> getBookFromDb(String id) async {
+    await _ensureDbForCurrentLib();
     final db = _db;
     if (db == null) return null;
     final rows = await db.query('books', where: 'id = ?', whereArgs: [id], limit: 1);
@@ -410,6 +495,11 @@ class BooksRepository {
       updatedAt: (m['updatedAt'] as int?) != null
           ? DateTime.fromMillisecondsSinceEpoch((m['updatedAt'] as int), isUtc: true)
           : null,
+      mediaKind: m['mediaKind'] as String?,
+      isAudioBook: ((m['isAudioBook'] as int?) != null)
+          ? (((m['isAudioBook'] as int?) ?? 0) != 0)
+          : (((m['durationMs'] as int?) ?? 0) > 0),
+      libraryId: m['libraryId'] as String?,
     );
   }
 
@@ -421,7 +511,8 @@ class BooksRepository {
   // ================== Description images caching ==================
   Future<Directory> _descImagesDirFor(String bookId) async {
     final dbPath = await getDatabasesPath();
-    final dir = Directory(p.join(dbPath, 'kitzi_desc_images', bookId));
+    final libId = _prefs.getString(_libIdKey) ?? 'default';
+    final dir = Directory(p.join(dbPath, 'kitzi_desc_images', 'lib_' + libId, bookId));
     if (!await dir.exists()) {
       await dir.create(recursive: true);
     }
@@ -529,7 +620,9 @@ class BooksRepository {
 
   static Future<Uri> localOrRemoteDescriptionImageUri(String bookId, String url) async {
     final dbPath = await getDatabasesPath();
-    final dir = Directory(p.join(dbPath, 'kitzi_desc_images', bookId));
+    final prefs = await SharedPreferences.getInstance();
+    final libId = prefs.getString(_libIdKey) ?? 'default';
+    final dir = Directory(p.join(dbPath, 'kitzi_desc_images', 'lib_' + libId, bookId));
     final name = _hashUrl(url);
     for (final ext in ['jpg','jpeg','png','webp','gif','img']) {
       final file = File(p.join(dir.path, '$name.$ext'));
@@ -575,7 +668,9 @@ class BooksRepository {
       if (newEtag != null) await _prefs.setString(_etagKey, newEtag);
 
       final items = _extractItems(body);
-      final books = await _toBooks(items);
+      List<Book> books = await _toBooks(items);
+      // Keep only audiobooks
+      books = books.where((b) => b.isAudioBook).toList();
       // Write DB immediately so UI can render without delay
       await _upsertBooks(books);
       // Do not prefetch covers here; allow UI to load covers on-demand
@@ -605,7 +700,9 @@ class BooksRepository {
       final bodyStr = resp.body;
       final body = bodyStr.isNotEmpty ? jsonDecode(bodyStr) : null;
       final items = _extractItems(body);
-      final books = await _toBooks(items);
+      List<Book> books = await _toBooks(items);
+      // Keep only audiobooks
+      books = books.where((b) => b.isAudioBook).toList();
       debugPrint('[BOOKS] fetchBooksPage: page=$page limit=$limit sort=$sort query=${encodedQ != null} -> items=${books.length}');
       return books;
     }
@@ -721,6 +818,7 @@ class BooksRepository {
   }
 
   Future<bool> _isDbEmpty() async {
+    await _ensureDbForCurrentLib();
     final db = _db;
     if (db == null) return true;
     final count = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM books')) ?? 0;
@@ -802,14 +900,17 @@ class BooksRepository {
     final pathPage = (encodedQ != null)
         ? '$basePage&search=$encodedQ$tokenQS'
         : '$basePage$tokenQS';
-    return await requestAndParse(pathPage);
+    List<Book> pageBooks = await requestAndParse(pathPage);
+    // Already filtered to audiobooks inside requestAndParse
+    return pageBooks;
   }
 
   // ---- Offline covers ----
   Future<Directory> _coversDir() async {
     final dbPath = await getDatabasesPath();
+    final libId = _prefs.getString(_libIdKey) ?? 'default';
     // Use the same base root as database to avoid extra permissions
-    final dir = Directory(p.join(dbPath, 'kitzi_covers'));
+    final dir = Directory(p.join(dbPath, 'kitzi_covers', 'lib_' + libId));
     if (!await dir.exists()) {
       await dir.create(recursive: true);
     }
