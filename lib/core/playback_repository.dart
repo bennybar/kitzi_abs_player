@@ -379,7 +379,8 @@ class PlaybackRepository {
     String? openedSessionId;
     final localTracks = await _localTracks(libraryItemId);
     if (localTracks.isNotEmpty) {
-      tracks = localTracks;
+      // Try to ensure local track durations by merging with remote metadata when available
+      tracks = await _ensureDurations(localTracks, libraryItemId, episodeId: episodeId);
       _log('Using ${tracks.length} local tracks (no remote session opened)');
     } else {
       final open = await _openSessionAndGetTracks(libraryItemId, episodeId: episodeId);
@@ -669,9 +670,33 @@ class PlaybackRepository {
     final curPos = player.position;
     final curIndex = np.currentIndex;
 
-    // Replace tracks with local without changing metadata/author
-    final updated = np.copyWith(tracks: local);
-    _setNowPlaying(updated);
+    // Merge known durations from current tracks to local tracks by index
+    try {
+      final merged = <PlaybackTrack>[];
+      for (final lt in local) {
+        double dur = lt.duration;
+        try {
+          final match = np.tracks.firstWhere((t) => t.index == lt.index, orElse: () => lt);
+          if (match.duration > 0) {
+            dur = match.duration;
+          }
+        } catch (_) {}
+        merged.add(PlaybackTrack(
+          index: lt.index,
+          url: lt.url,
+          mimeType: lt.mimeType,
+          duration: dur,
+          isLocal: true,
+        ));
+      }
+      // Replace tracks with local (with merged durations) without changing metadata/author
+      final updated = np.copyWith(tracks: merged);
+      _setNowPlaying(updated);
+    } catch (_) {
+      // Fallback: no merge
+      final updated = np.copyWith(tracks: local);
+      _setNowPlaying(updated);
+    }
 
     // Load corresponding local track and seek to the same position
     await _setTrackAt(curIndex, preload: true);
@@ -857,8 +882,23 @@ class PlaybackRepository {
         preload: preload,
       );
     }
-    
-    final updatedNowPlaying = cur.copyWith(currentIndex: index);
+    // If we obtained the track's duration upon loading, update the nowPlaying track list
+    List<PlaybackTrack>? maybeUpdatedTracks;
+    try {
+      final d = loadedDuration ?? player.duration;
+      if (d != null) {
+        final list = List<PlaybackTrack>.from(cur.tracks);
+        if (index >= 0 && index < list.length) {
+          list[index] = list[index].copyWith(duration: d.inMilliseconds / 1000.0);
+          maybeUpdatedTracks = list;
+        }
+      }
+    } catch (_) {}
+
+    final updatedNowPlaying = cur.copyWith(
+      currentIndex: index,
+      tracks: maybeUpdatedTracks,
+    );
     _setNowPlaying(updatedNowPlaying);
     
     // Notify audio service about track change
