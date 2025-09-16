@@ -53,10 +53,125 @@ class _BooksPageState extends State<BooksPage> {
     _repoFut = BooksRepository.create();
     _startConnectivityWatch();
     _restorePrefs().then((_) {
+      // Load recent first so the section appears immediately
+      _loadRecentBooks();
+      // Then refresh library: DB first, server in background
       _refresh(initial: true);
       _setupAutoRefresh();
-      _loadRecentBooks();
     });
+  }
+
+  List<Widget> _buildLoadingSkeleton(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    // Show skeletons for Resume Playing and a few list items
+    return [
+      // Resume Playing skeleton
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.play_circle_outline_rounded, color: cs.primary, size: 20),
+                  const SizedBox(width: 8),
+                  Container(
+                    width: 140,
+                    height: 20,
+                    decoration: BoxDecoration(
+                      color: cs.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 176,
+                child: GridView.builder(
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 4,
+                    mainAxisSpacing: 2,
+                    crossAxisSpacing: 2,
+                    childAspectRatio: 1.0,
+                  ),
+                  itemCount: 4,
+                  itemBuilder: (context, index) {
+                    return Card(
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        side: BorderSide(color: cs.outline.withOpacity(0.08), width: 1),
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: Container(color: cs.surfaceContainerHighest),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      // List skeletons
+      SliverPadding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+        sliver: SliverList.separated(
+          itemCount: 6,
+          separatorBuilder: (_, __) => const SizedBox(height: 8),
+          itemBuilder: (context, i) {
+            return Card(
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(color: cs.outline.withOpacity(0.08), width: 1),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 72,
+                      height: 72,
+                      decoration: BoxDecoration(
+                        color: cs.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            height: 18,
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              color: cs.surfaceContainerHighest,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Container(
+                            height: 14,
+                            width: 160,
+                            decoration: BoxDecoration(
+                              color: cs.surfaceContainerHighest,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    ];
   }
 
   @override
@@ -491,18 +606,7 @@ class _BooksPageState extends State<BooksPage> {
 
           // Content
           if (_loading)
-            const SliverFillRemaining(
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    CircularProgressIndicator(),
-                    SizedBox(height: 16),
-                    Text('Loading your library...'),
-                  ],
-                ),
-              ),
-            )
+            ..._buildLoadingSkeleton(context)
           else if (_error != null)
             SliverFillRemaining(
               child: Center(
@@ -597,6 +701,31 @@ class _BooksPageState extends State<BooksPage> {
           else ...[
             // Resume Playing Section
             if (_recentBooks.isNotEmpty) _buildResumePlayingSection(),
+            // Audiobooks section title
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.library_music_rounded,
+                      color: Theme.of(context).colorScheme.primary,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Audiobooks',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        height: 0.95,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            // Add small space from the Audiobooks title to the list
+            SliverToBoxAdapter(child: SizedBox(height: 4)),
             _buildList(visible),
             _buildLoadMore(),
           ],
@@ -634,7 +763,7 @@ class _BooksPageState extends State<BooksPage> {
     if (_isEbookLibrary) return const SliverToBoxAdapter(child: SizedBox.shrink());
     return SliverToBoxAdapter(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -650,14 +779,14 @@ class _BooksPageState extends State<BooksPage> {
                   'Resume Playing',
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.w600,
-                    height: 1.0,
+                    height: 0.8, // further tighten spacing under the title
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 0),
+            const SizedBox(height: 24),
             SizedBox(
-              height: 176,
+              height: 172,
               child: GridView.builder(
                 gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: 4,
@@ -665,6 +794,9 @@ class _BooksPageState extends State<BooksPage> {
                   crossAxisSpacing: 2,
                   childAspectRatio: 1.0, // square tiles
                 ),
+                padding: EdgeInsets.zero,
+                physics: const NeverScrollableScrollPhysics(),
+                shrinkWrap: true,
                 itemCount: _recentBooks.where((b) => b.isAudioBook).length,
                 itemBuilder: (context, index) {
                   final list = _recentBooks.where((b) => b.isAudioBook).toList(growable: false);
@@ -676,6 +808,7 @@ class _BooksPageState extends State<BooksPage> {
                 },
               ),
             ),
+            const SizedBox(height: 0),
           ],
         ),
       ),
