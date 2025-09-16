@@ -99,7 +99,7 @@ class _MainScaffoldState extends State<MainScaffold> {
 
         return Scaffold(
           backgroundColor: cs.surface,
-          body: pages[safeIndex],
+          body: IndexedStack(index: safeIndex, children: pages),
           bottomNavigationBar: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -123,32 +123,33 @@ class _MainScaffoldState extends State<MainScaffold> {
                 elevation: 0,
                 height: navHeight,
                 indicatorColor: cs.primaryContainer,
+                labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
                 destinations: [
                   const NavigationDestination(
-                    icon: Icon(Icons.library_books_outlined),
-                    selectedIcon: Icon(Icons.library_books),
+                    icon: Icon(Icons.library_books_outlined, semanticLabel: 'Books'),
+                    selectedIcon: Icon(Icons.library_books, semanticLabel: 'Books'),
                     label: 'Books',
                   ),
                   if (_showSeries)
                     const NavigationDestination(
-                      icon: Icon(Icons.collections_bookmark_outlined),
-                      selectedIcon: Icon(Icons.collections_bookmark),
+                      icon: Icon(Icons.collections_bookmark_outlined, semanticLabel: 'Series'),
+                      selectedIcon: Icon(Icons.collections_bookmark, semanticLabel: 'Series'),
                       label: 'Series',
                     ),
                   if (_showCollections)
                     const NavigationDestination(
-                      icon: Icon(Icons.folder_outlined),
-                      selectedIcon: Icon(Icons.folder),
+                      icon: Icon(Icons.folder_outlined, semanticLabel: 'Collections'),
+                      selectedIcon: Icon(Icons.folder, semanticLabel: 'Collections'),
                       label: 'Collections',
                     ),
                   const NavigationDestination(
-                    icon: Icon(Icons.download_outlined),
-                    selectedIcon: Icon(Icons.download),
+                    icon: Icon(Icons.download_outlined, semanticLabel: 'Downloads'),
+                    selectedIcon: Icon(Icons.download, semanticLabel: 'Downloads'),
                     label: 'Downloads',
                   ),
                   const NavigationDestination(
-                    icon: Icon(Icons.settings_outlined),
-                    selectedIcon: Icon(Icons.settings),
+                    icon: Icon(Icons.settings_outlined, semanticLabel: 'Settings'),
+                    selectedIcon: Icon(Icons.settings, semanticLabel: 'Settings'),
                     label: 'Settings',
                   ),
                 ],

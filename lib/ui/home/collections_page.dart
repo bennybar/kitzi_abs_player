@@ -115,7 +115,7 @@ class _CollectionsPageState extends State<CollectionsPage> {
       child: CustomScrollView(
         physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
         slivers: [
-          SliverAppBar(title: const Text('Collections'), pinned: true, backgroundColor: cs.surface, elevation: 0),
+          SliverAppBar.medium(title: const Text('Collections'), pinned: true, backgroundColor: cs.surface, surfaceTintColor: cs.surfaceTint, elevation: 0),
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
             sliver: SliverList.builder(

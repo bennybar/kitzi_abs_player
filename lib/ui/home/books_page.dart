@@ -46,6 +46,7 @@ class _BooksPageState extends State<BooksPage> {
   static const _searchKey = 'library_search_pref';
 
   final _searchCtrl = TextEditingController();
+  Timer? _searchDebounce;
 
   @override
   void initState() {
@@ -178,6 +179,7 @@ class _BooksPageState extends State<BooksPage> {
   void dispose() {
     _timer?.cancel();
     _connSub?.cancel();
+    _searchDebounce?.cancel();
     _searchCtrl.dispose();
     _scrollCtrl.dispose();
     super.dispose();
@@ -453,24 +455,14 @@ class _BooksPageState extends State<BooksPage> {
           physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
           cacheExtent: 800,
           slivers: [
-          // Enhanced App Bar with modern design
-          SliverAppBar(
-            expandedHeight: 120,
+          // Material 3 large app bar style
+          SliverAppBar.large(
             floating: false,
             pinned: true,
             backgroundColor: cs.surface,
             surfaceTintColor: cs.surfaceTint,
             elevation: 0,
-            flexibleSpace: FlexibleSpaceBar(
-              title: Text(
-                'Library',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: cs.onSurface,
-                ),
-              ),
-              titlePadding: const EdgeInsets.only(left: 20, bottom: 16),
-            ),
+            title: const Text('Library'),
             bottom: PreferredSize(
               preferredSize: const Size.fromHeight(28),
               child: _isOnline
@@ -576,7 +568,11 @@ class _BooksPageState extends State<BooksPage> {
                       onChanged: (val) {
                         setState(() => _query = val);
                         _saveSearchPref(val);
-                        _restartSearchPagination();
+                        _searchDebounce?.cancel();
+                        _searchDebounce = Timer(const Duration(milliseconds: 300), () {
+                          if (!mounted) return;
+                          _restartSearchPagination();
+                        });
                       },
                       trailing: [
                         if (_query.isNotEmpty)
@@ -1262,6 +1258,8 @@ class _CoverThumb extends StatelessWidget {
       child = CachedNetworkImage(
         imageUrl: url,
         fit: BoxFit.cover,
+        memCacheWidth: size != null ? (size! * MediaQuery.of(context).devicePixelRatio).round() : null,
+        memCacheHeight: size != null ? (size! * 1.5 * MediaQuery.of(context).devicePixelRatio).round() : null,
         placeholder: (_, __) => placeholder,
         errorWidget: (_, __, ___) => placeholder,
       );

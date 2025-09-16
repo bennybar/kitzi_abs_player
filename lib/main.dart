@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:dynamic_color/dynamic_color.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import 'core/auth_repository.dart';
@@ -122,76 +123,80 @@ class _AbsAppState extends State<AbsApp> {
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: services.theme.mode,
       builder: (_, themeMode, __) {
-        return MaterialApp(
-          title: 'ABS Client',
-          theme: ThemeData(
+        ThemeData _expressiveTheme(ColorScheme scheme) {
+          return ThemeData(
             useMaterial3: true,
-            colorSchemeSeed: Colors.deepPurple,
-            brightness: Brightness.light,
-            // Enhanced Material 3 theme
-            cardTheme: CardTheme(
+            colorScheme: scheme,
+            appBarTheme: AppBarTheme(
+              centerTitle: false,
               elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
+              scrolledUnderElevation: 0,
+              backgroundColor: scheme.surface,
+              surfaceTintColor: scheme.surfaceTint,
+              foregroundColor: scheme.onSurface,
             ),
-            elevatedButtonTheme: ElevatedButtonThemeData(
-              style: ElevatedButton.styleFrom(
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            ),
-            filledButtonTheme: FilledButtonThemeData(
-              style: FilledButton.styleFrom(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            ),
-          ),
-          darkTheme: ThemeData(
-            useMaterial3: true,
-            colorSchemeSeed: Colors.deepPurple,
-            brightness: Brightness.dark,
-            // Enhanced Material 3 dark theme
-            cardTheme: CardTheme(
+            navigationBarTheme: NavigationBarThemeData(
               elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-            ),
-            elevatedButtonTheme: ElevatedButtonThemeData(
-              style: ElevatedButton.styleFrom(
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            ),
-            filledButtonTheme: FilledButtonThemeData(
-              style: FilledButton.styleFrom(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            ),
-          ),
-          themeMode: themeMode,
-          home: FutureBuilder<bool>(
-            future: _sessionFuture,
-            builder: (context, snap) {
-              if (!snap.hasData) {
-                return const Scaffold(
-                  body: Center(child: CircularProgressIndicator()),
+              backgroundColor: scheme.surface,
+              surfaceTintColor: scheme.surfaceTint,
+              indicatorColor: scheme.primaryContainer,
+              labelTextStyle: WidgetStateProperty.resolveWith((states) {
+                final isSelected = states.contains(WidgetState.selected);
+                return TextStyle(
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                 );
-              }
-              return snap.data!
-                  ? MainScaffold(downloadsRepo: services.downloads)
-                  : LoginScreen(auth: services.auth);
-            },
-          ),
+              }),
+            ),
+            cardTheme: CardTheme(
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+            elevatedButtonTheme: ElevatedButtonThemeData(
+              style: ElevatedButton.styleFrom(
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+            filledButtonTheme: FilledButtonThemeData(
+              style: FilledButton.styleFrom(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          );
+        }
+
+        return DynamicColorBuilder(
+          builder: (lightDynamic, darkDynamic) {
+            final seed = Colors.deepPurple;
+            final lightScheme = (lightDynamic ?? ColorScheme.fromSeed(seedColor: seed)).harmonized();
+            final darkScheme = (darkDynamic ?? ColorScheme.fromSeed(seedColor: seed, brightness: Brightness.dark)).harmonized();
+
+            return MaterialApp(
+              title: 'ABS Client',
+              theme: _expressiveTheme(lightScheme),
+              darkTheme: _expressiveTheme(darkScheme),
+              themeMode: themeMode,
+              home: FutureBuilder<bool>(
+                future: _sessionFuture,
+                builder: (context, snap) {
+                  if (!snap.hasData) {
+                    return const Scaffold(
+                      body: Center(child: CircularProgressIndicator()),
+                    );
+                  }
+                  return snap.data!
+                      ? MainScaffold(downloadsRepo: services.downloads)
+                      : LoginScreen(auth: services.auth);
+                },
+              ),
+            );
+          },
         );
       },
     );

@@ -123,10 +123,11 @@ class _SeriesPageState extends State<SeriesPage> {
       child: CustomScrollView(
         physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
         slivers: [
-          SliverAppBar(
+          SliverAppBar.medium(
             title: const Text('Series'),
             pinned: true,
             backgroundColor: cs.surface,
+            surfaceTintColor: cs.surfaceTint,
             elevation: 0,
           ),
           SliverPadding(
