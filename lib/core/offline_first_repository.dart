@@ -40,6 +40,15 @@ abstract class OfflineFirstRepository<T> {
 
 /// Concrete implementation for books repository
 class OfflineFirstBooksRepository implements OfflineFirstRepository<dynamic> {
+  // Enable/disable verbose logging
+  static const bool _verboseLogging = false;
+  
+  /// Log debug message only if verbose logging is enabled
+  void _log(String message) {
+    if (_verboseLogging) {
+      debugPrint(message);
+    }
+  }
   final Future<List<dynamic>> Function() _networkFetcher;
   final Future<List<dynamic>> Function() _cacheFetcher;
   final Future<void> Function(List<dynamic>) _cacheSaver;
@@ -79,7 +88,7 @@ class OfflineFirstBooksRepository implements OfflineFirstRepository<dynamic> {
         if (cacheValid) {
           final cachedData = await getFromCache();
           if (cachedData.isNotEmpty) {
-            debugPrint('[OFFLINE_FIRST] Returning cached data (${cachedData.length} items)');
+            _log('[OFFLINE_FIRST] Returning cached data (${cachedData.length} items)');
             return cachedData;
           }
         }
@@ -97,7 +106,7 @@ class OfflineFirstBooksRepository implements OfflineFirstRepository<dynamic> {
       
       // Save to cache and return
       await saveToCache(networkData);
-      debugPrint('[OFFLINE_FIRST] Network fetch successful, saved to cache');
+      _log('[OFFLINE_FIRST] Network fetch successful, saved to cache');
       return networkData;
       
     } catch (error) {
@@ -106,7 +115,7 @@ class OfflineFirstBooksRepository implements OfflineFirstRepository<dynamic> {
       // Fallback to cache
       final cachedData = await getFromCache();
       if (cachedData.isNotEmpty) {
-        debugPrint('[OFFLINE_FIRST] Returning stale cached data (${cachedData.length} items)');
+        _log('[OFFLINE_FIRST] Returning stale cached data (${cachedData.length} items)');
         return cachedData;
       }
       

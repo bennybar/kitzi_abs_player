@@ -6,9 +6,8 @@ import 'package:sqflite/sqflite.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'dart:io';
-import 'dart:math';
-import 'package:crypto/crypto.dart';
 import 'dart:convert' show utf8;
+import 'package:crypto/crypto.dart';
 import '../models/book.dart';
 import 'auth_repository.dart';
 import 'network_service.dart';
@@ -18,8 +17,18 @@ class BooksRepository {
   BooksRepository(this._auth, this._prefs);
   final AuthRepository _auth;
   final SharedPreferences _prefs;
+  
+  // Enable/disable verbose logging
+  static const bool _verboseLogging = false;
   Database? _db;
   String? _dbLibId; // track which library the DB connection belongs to
+  
+  /// Log debug message only if verbose logging is enabled
+  void _log(String message) {
+    if (_verboseLogging) {
+      debugPrint(message);
+    }
+  }
 
   static const _etagKey = 'books_list_etag';
   static const _cacheKey = 'books_list_cache_json';
@@ -249,7 +258,7 @@ class BooksRepository {
     final path = p.join(dbPath, 'kitzi_books_' + libId + '.db');
     _db = await openDatabase(
       path,
-      version: 1,
+      version: 2, // Increment version to trigger migration
       onCreate: (db, v) async {
         await db.execute('''
           CREATE TABLE books (
@@ -281,37 +290,59 @@ class BooksRepository {
         await db.execute('CREATE INDEX IF NOT EXISTS idx_books_series ON books(series)');
         await db.execute('CREATE INDEX IF NOT EXISTS idx_books_collection ON books(collection)');
       },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        // Only run migrations if upgrading from version 1
+        if (oldVersion < 2) {
+          await _migrateToVersion2(db);
+        }
+      },
     );
 
     _dbLibId = libId;
-
-    // Best-effort migration for existing installs
+  }
+  
+  /// Migrate database from version 1 to version 2
+  Future<void> _migrateToVersion2(Database db) async {
+    debugPrint('[BOOKS_DB] Migrating from version 1 to 2');
+    
+    // Add new columns only if they don't exist
+    await _addColumnIfNotExists(db, 'books', 'coverPath', 'TEXT');
+    await _addColumnIfNotExists(db, 'books', 'isAudioBook', 'INTEGER');
+    await _addColumnIfNotExists(db, 'books', 'mediaKind', 'TEXT');
+    await _addColumnIfNotExists(db, 'books', 'libraryId', 'TEXT');
+    await _addColumnIfNotExists(db, 'books', 'series', 'TEXT');
+    await _addColumnIfNotExists(db, 'books', 'seriesSequence', 'REAL');
+    await _addColumnIfNotExists(db, 'books', 'collection', 'TEXT');
+    await _addColumnIfNotExists(db, 'books', 'collectionSequence', 'REAL');
+    
+    // Add new indexes
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_books_updatedAt ON books(updatedAt DESC)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_books_title ON books(title COLLATE NOCASE)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_books_author ON books(author COLLATE NOCASE)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_books_isAudioBook ON books(isAudioBook)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_books_libraryId ON books(libraryId)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_books_series ON books(series)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_books_collection ON books(collection)');
+    
+    debugPrint('[BOOKS_DB] Migration to version 2 completed');
+  }
+  
+  /// Add a column to a table only if it doesn't already exist
+  Future<void> _addColumnIfNotExists(Database db, String tableName, String columnName, String columnType) async {
     try {
-      await _db!.execute('ALTER TABLE books ADD COLUMN coverPath TEXT');
-    } catch (_) {
-      // ignore duplicate column errors
+      // Check if column exists by querying table info
+      final result = await db.rawQuery('PRAGMA table_info($tableName)');
+      final columnExists = result.any((column) => column['name'] == columnName);
+      
+      if (!columnExists) {
+        await db.execute('ALTER TABLE $tableName ADD COLUMN $columnName $columnType');
+        _log('[BOOKS_DB] Added column $columnName to $tableName');
+      } else {
+        _log('[BOOKS_DB] Column $columnName already exists in $tableName');
+      }
+    } catch (e) {
+      debugPrint('[BOOKS_DB] Error adding column $columnName to $tableName: $e');
     }
-    try {
-      await _db!.execute('ALTER TABLE books ADD COLUMN isAudioBook INTEGER');
-    } catch (_) {}
-    try {
-      await _db!.execute('ALTER TABLE books ADD COLUMN mediaKind TEXT');
-    } catch (_) {}
-    try {
-      await _db!.execute('ALTER TABLE books ADD COLUMN libraryId TEXT');
-    } catch (_) {}
-    try {
-      await _db!.execute('ALTER TABLE books ADD COLUMN series TEXT');
-    } catch (_) {}
-    try {
-      await _db!.execute('ALTER TABLE books ADD COLUMN seriesSequence REAL');
-    } catch (_) {}
-    try {
-      await _db!.execute('ALTER TABLE books ADD COLUMN collection TEXT');
-    } catch (_) {}
-    try {
-      await _db!.execute('ALTER TABLE books ADD COLUMN collectionSequence REAL');
-    } catch (_) {}
   }
 
   Future<void> _ensureDbForCurrentLib() async {
@@ -399,7 +430,7 @@ class BooksRepository {
     
     final now = DateTime.now();
     final isValid = now.difference(metadata.lastUpdated) < timeout;
-    debugPrint('[BOOKS_CACHE] Cache valid: $isValid (age: ${now.difference(metadata.lastUpdated).inMinutes} minutes)');
+    _log('[BOOKS_CACHE] Cache valid: $isValid (age: ${now.difference(metadata.lastUpdated).inMinutes} minutes)');
     return isValid;
   }
 
@@ -798,7 +829,7 @@ class BooksRepository {
           : null;
 
       Future<List<Book>> requestAndParse(String path) async {
-        debugPrint('[BOOKS] fetchBooksPage: GET $path');
+        _log('[BOOKS] fetchBooksPage: GET $path');
         final resp = await api.request('GET', path, headers: {});
         if (resp.statusCode != 200) {
           throw Exception('Failed to fetch: ${resp.statusCode}');
@@ -809,7 +840,7 @@ class BooksRepository {
         List<Book> books = await _toBooks(items);
         // Keep only audiobooks
         books = books.where((b) => b.isAudioBook).toList();
-        debugPrint('[BOOKS] fetchBooksPage: page=$page limit=$limit sort=$sort query=${encodedQ != null} -> items=${books.length}');
+        _log('[BOOKS] fetchBooksPage: page=$page limit=$limit sort=$sort query=${encodedQ != null} -> items=${books.length}');
         return books;
       }
 
@@ -857,7 +888,7 @@ class BooksRepository {
     }
 
       await _upsertBooks(books);
-      debugPrint('[BOOKS] fetchBooksPage: upserted=${books.length} page=$page');
+      _log('[BOOKS] fetchBooksPage: upserted=${books.length} page=$page');
       return books;
     });
   }

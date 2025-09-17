@@ -27,7 +27,10 @@ class NetworkService {
         final shouldRetryError = shouldRetry?.call(error) ?? _defaultShouldRetry(error);
         
         if (isLastAttempt || !shouldRetryError) {
-          debugPrint('Network operation failed after ${attempt + 1} attempts: $error');
+          // Only log final failures, not intermediate retries
+          if (attempt > 0) {
+            debugPrint('Network operation failed after ${attempt + 1} attempts: $error');
+          }
           rethrow;
         }
         
@@ -35,7 +38,10 @@ class NetworkService {
           milliseconds: delay.inMilliseconds * (attempt + 1) * (attempt + 1), // Exponential backoff
         );
         
-        debugPrint('Network operation failed (attempt ${attempt + 1}), retrying in ${retryDelay.inMilliseconds}ms: $error');
+        // Reduce retry logging verbosity
+        if (attempt == 0) {
+          debugPrint('Network operation failed, retrying in ${retryDelay.inMilliseconds}ms: $error');
+        }
         onRetry?.call(attempt + 1, error);
         
         await Future.delayed(retryDelay);
@@ -195,7 +201,8 @@ class ConnectivityMonitor {
     if (_isConnected != connected) {
       _isConnected = connected;
       _connectivityController.add(connected);
-      debugPrint('Connectivity changed: ${connected ? 'Connected' : 'Disconnected'}');
+      // Only log connectivity changes, not every check
+      debugPrint('[OFFLINE_FIRST] Connectivity changed: ${connected ? 'Connected' : 'Disconnected'}');
     }
   }
   
