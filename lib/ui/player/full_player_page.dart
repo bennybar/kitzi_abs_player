@@ -461,19 +461,6 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
                             ),
                           ),
                           const Spacer(),
-                          IconButton(
-                            tooltip: 'Chapters',
-                            icon: Icon(
-                              Icons.list_alt_rounded,
-                              color: cs.onSurfaceVariant,
-                            ),
-                            onPressed: () async {
-                              final npNow = playback.nowPlaying;
-                              if (npNow != null) {
-                                await _showChaptersSheet(context, playback, npNow);
-                              }
-                            },
-                          ),
                           StreamBuilder<double>(
                             stream: ServicesScope.of(context).services.playback.player.speedStream,
                             initialData: ServicesScope.of(context).services.playback.player.speed,

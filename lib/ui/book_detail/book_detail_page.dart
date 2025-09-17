@@ -566,85 +566,97 @@ class _PlayPrimaryButton extends StatelessWidget {
     }
 
     // If this book is currently active, bind to player state and show Stop/Loading
-    final isThis = playback.nowPlaying?.libraryItemId == book.id;
-    if (isThis) {
-      return StreamBuilder<PlayerState>(
-        stream: playback.playerStateStream,
-        initialData: playback.player.playerState,
-        builder: (context, snap) {
-          final ps = snap.data ?? PlayerState(playback.player.playing, playback.player.processingState);
-          final processing = ps.processingState;
-          final isBuffering = processing == ProcessingState.loading || processing == ProcessingState.buffering;
-          final isPlaying = playback.player.playing;
+    return StreamBuilder<NowPlaying?>(
+      stream: playback.nowPlayingStream,
+      initialData: playback.nowPlaying,
+      builder: (context, nowPlayingSnap) {
+        final isThis = nowPlayingSnap.data?.libraryItemId == book.id;
+        
+        if (isThis) {
+      return StreamBuilder<bool>(
+        stream: playback.playingStream,
+        initialData: playback.player.playing,
+        builder: (context, playingSnap) {
+          return StreamBuilder<ProcessingState>(
+            stream: playback.processingStateStream,
+            initialData: playback.player.processingState,
+            builder: (context, processingSnap) {
+              final isPlaying = playingSnap.data ?? false;
+              final processing = processingSnap.data ?? ProcessingState.idle;
+              final isBuffering = processing == ProcessingState.loading || processing == ProcessingState.buffering;
 
-          if (isBuffering && !isPlaying) {
-            return FilledButton.icon(
-              onPressed: null,
-              icon: const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
-              label: const Text('Loading'),
-            );
-          }
-
-          if (isPlaying) {
-            return FilledButton.icon(
-              style: FilledButton.styleFrom(
-                backgroundColor: Theme.of(context).colorScheme.error,
-                foregroundColor: Theme.of(context).colorScheme.onError,
-              ),
-              onPressed: () async {
-                await playback.stop();
-              },
-              icon: const Icon(Icons.stop_rounded),
-              label: const Text('Stop'),
-            );
-          }
-
-          // Active but paused/ready -> Resume
-          return FilledButton.icon(
-            onPressed: () async {
-              final ok = await playback.resume();
-              if (!ok && context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Cannot resume: server unavailable and sync progress is required'),
-                    duration: Duration(seconds: 4),
-                  ),
+              if (isBuffering && !isPlaying) {
+                return FilledButton.icon(
+                  onPressed: null,
+                  icon: const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                  label: const Text('Loading'),
                 );
               }
-              if (context.mounted) {
-                await FullPlayerPage.openOnce(context);
+
+              if (isPlaying) {
+                return FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Theme.of(context).colorScheme.error,
+                    foregroundColor: Theme.of(context).colorScheme.onError,
+                  ),
+                  onPressed: () async {
+                    await playback.stop();
+                  },
+                  icon: const Icon(Icons.stop_rounded),
+                  label: const Text('Stop'),
+                );
               }
+
+              // Active but paused/ready -> Resume
+              return FilledButton.icon(
+                onPressed: () async {
+                  final ok = await playback.resume();
+                  if (!ok && context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Cannot resume: server unavailable and sync progress is required'),
+                        duration: Duration(seconds: 4),
+                      ),
+                    );
+                  }
+                  if (context.mounted) {
+                    await FullPlayerPage.openOnce(context);
+                  }
+                },
+                icon: const Icon(Icons.play_arrow_rounded),
+                label: const Text('Resume'),
+              );
             },
-            icon: const Icon(Icons.play_arrow_rounded),
-            label: const Text('Resume'),
           );
         },
       );
-    }
+        }
 
-    // Not active on player: decide between Resume vs Play by checking saved progress
-    return FutureBuilder<double?>(
-      future: playback.fetchServerProgress(book.id),
-      builder: (context, snap) {
-        final hasProgress = (snap.data ?? 0) > 0;
-        final label = hasProgress ? 'Resume' : 'Play';
-        return FilledButton.icon(
-          onPressed: () async {
-            final success = await playback.playItem(book.id);
-            if (!success && context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Cannot play: server unavailable and sync progress is required'),
-                  duration: Duration(seconds: 4),
-                ),
-              );
-              return;
-            }
-            if (!context.mounted) return;
-            await FullPlayerPage.openOnce(context);
+        // Not active on player: decide between Resume vs Play by checking saved progress
+        return FutureBuilder<double?>(
+          future: playback.fetchServerProgress(book.id),
+          builder: (context, snap) {
+            final hasProgress = (snap.data ?? 0) > 0;
+            final label = hasProgress ? 'Resume' : 'Play';
+            return FilledButton.icon(
+              onPressed: () async {
+                final success = await playback.playItem(book.id);
+                if (!success && context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Cannot play: server unavailable and sync progress is required'),
+                      duration: Duration(seconds: 4),
+                    ),
+                  );
+                  return;
+                }
+                if (!context.mounted) return;
+                await FullPlayerPage.openOnce(context);
+              },
+              icon: const Icon(Icons.play_arrow_rounded),
+              label: Text(label),
+            );
           },
-          icon: const Icon(Icons.play_arrow_rounded),
-          label: Text(label),
         );
       },
     );
