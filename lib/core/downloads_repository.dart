@@ -44,6 +44,10 @@ class DownloadsRepository {
   static const _wifiOnlyKey = 'downloads_wifi_only';
 
   void _d(String m) => debugPrint('[DL] $m');
+  
+  // Progress notification tracking
+  final Map<String, String> _progressNotificationTitles = {};
+  final Map<String, Timer> _progressNotificationTimers = {};
 
   // Plugin updates -> broadcast for UI
   Stream<TaskUpdate>? _broadcastUpdates;
@@ -391,6 +395,9 @@ class DownloadsRepository {
           ? displayTitle
           : 'Audiobook';
       await NotificationService.instance.showDownloadStarted(title);
+      
+      // Start showing progress updates
+      _startProgressNotifications(libraryItemId, title);
     } catch (_) {}
     
     // Immediately publish a queued snapshot so UI updates without waiting for DB
@@ -501,6 +508,9 @@ class DownloadsRepository {
     _notifyItem(libraryItemId);
     // Hide download notification on cancel
     try { await NotificationService.instance.hideDownloadNotification(); } catch (_) {}
+    
+    // Stop progress notifications
+    _stopProgressNotifications(libraryItemId);
     // Close any open download session for this item
     try {
       final sid = _downloadSessionByItem.remove(libraryItemId);
@@ -559,6 +569,11 @@ class DownloadsRepository {
     _d('Canceled all downloads and cleared global queue');
     // Hide download notification on cancel all
     try { await NotificationService.instance.hideDownloadNotification(); } catch (_) {}
+    
+    // Stop all progress notifications
+    for (final itemId in _progressNotificationTitles.keys.toList()) {
+      _stopProgressNotifications(itemId);
+    }
     // Close all known download sessions
     try {
       final ids = List<String>.from(_downloadSessionByItem.values);
@@ -717,6 +732,49 @@ class DownloadsRepository {
     } catch (_) {}
     final list = ids.toList()..sort();
     return list;
+  }
+  
+  // === Progress notifications ===
+  
+  void _startProgressNotifications(String libraryItemId, String title) {
+    _progressNotificationTitles[libraryItemId] = title;
+    
+    // Cancel any existing timer for this item
+    _progressNotificationTimers[libraryItemId]?.cancel();
+    
+    // Start a timer to update progress notifications every 2 seconds
+    _progressNotificationTimers[libraryItemId] = Timer.periodic(
+      const Duration(seconds: 2),
+      (_) => _updateProgressNotification(libraryItemId),
+    );
+  }
+  
+  void _stopProgressNotifications(String libraryItemId) {
+    _progressNotificationTimers[libraryItemId]?.cancel();
+    _progressNotificationTimers.remove(libraryItemId);
+    _progressNotificationTitles.remove(libraryItemId);
+  }
+  
+  Future<void> _updateProgressNotification(String libraryItemId) async {
+    try {
+      final title = _progressNotificationTitles[libraryItemId];
+      if (title == null) return;
+      
+      // Get current progress for this item
+      final progress = await _computeItemProgress(libraryItemId);
+      final percentage = (progress.progress * 100).round();
+      
+      // Only update if there's meaningful progress
+      if (percentage > 0 && percentage < 100) {
+        await NotificationService.instance.showDownloadProgress(
+          title,
+          percentage,
+          100,
+        );
+      }
+    } catch (e) {
+      debugPrint('[DL] Error updating progress notification: $e');
+    }
   }
 
   // === Local files helpers ===
@@ -1101,6 +1159,9 @@ class DownloadsRepository {
             await NotificationService.instance.hideDownloadNotification();
             // Best-effort: show a short completion notification using the item id as title hint
             await NotificationService.instance.showDownloadComplete('Book ready');
+            
+            // Stop progress notifications for this item
+            _stopProgressNotifications(id);
           } catch (_) {}
           // If the completed item is currently playing from stream, switch to local seamlessly
           try {

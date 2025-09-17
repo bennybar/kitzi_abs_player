@@ -152,6 +152,7 @@ class NotificationService {
         ongoing: true,
         autoCancel: false,
         showWhen: false,
+        icon: '@drawable/ic_download_notification',
       );
       const iosDetails = DarwinNotificationDetails(
         presentAlert: false,
@@ -180,6 +181,42 @@ class NotificationService {
     }
   }
 
+  Future<void> showDownloadProgress(String title, int progress, int maxProgress) async {
+    if (!_isInitialized) return;
+    try {
+      final percentage = maxProgress > 0 ? ((progress / maxProgress) * 100).round() : 0;
+      final androidDetails = AndroidNotificationDetails(
+        'kitzi_download_channel',
+        'Kitzi Downloads',
+        channelDescription: 'Download notifications',
+        importance: Importance.low,
+        priority: Priority.low,
+        ongoing: true,
+        autoCancel: false,
+        showWhen: false,
+        icon: '@drawable/ic_download_notification',
+        showProgress: true,
+        maxProgress: 100,
+        progress: percentage,
+      );
+      const iosDetails = DarwinNotificationDetails(
+        presentAlert: false,
+        presentBadge: false,
+        presentSound: false,
+      );
+      final details = NotificationDetails(android: androidDetails, iOS: iosDetails);
+      await _notifications.show(
+        _downloadNotificationId,
+        'Downloading: $title',
+        '$percentage% complete',
+        details,
+        payload: 'book_download_progress',
+      );
+    } catch (e) {
+      debugPrint('Failed to show download progress notification: $e');
+    }
+  }
+
   Future<void> showDownloadComplete(String title) async {
     if (!_isInitialized) return;
     try {
@@ -192,6 +229,7 @@ class NotificationService {
         autoCancel: true,
         showWhen: true,
         timeoutAfter: 3500,
+        icon: '@drawable/ic_download_notification',
       );
       const iosDetails = DarwinNotificationDetails(
         presentAlert: true,
