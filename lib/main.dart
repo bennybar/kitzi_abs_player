@@ -12,6 +12,8 @@ import 'core/notification_service.dart';
 
 import 'ui/login/login_screen.dart';
 import 'ui/main/main_scaffold.dart';
+import 'core/app_warmup_service.dart';
+import 'core/background_sync_service.dart';
 
 /// Simple app-wide service container
 class AppServices {
@@ -80,6 +82,9 @@ Future<void> main() async {
   // Ensure AudioService is initialized early so Android Auto can discover the
   // MediaBrowserService without requiring the UI to build first.
   await AudioServiceBinding.instance.bindAudioService(services.playback);
+  
+  // Start app warmup in background
+  AppWarmupService.warmup();
 
   runApp(ServicesScope(
     services: services,
@@ -110,6 +115,9 @@ class _AbsAppState extends State<AbsApp> {
         return false;
       }
     });
+    
+    // Start background sync service
+    BackgroundSyncService.start();
     
     // Warm-load last played item into the mini player at the saved position (no auto-play)
     WidgetsBinding.instance.addPostFrameCallback((_) {

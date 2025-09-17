@@ -62,6 +62,7 @@ class _BooksPageState extends State<BooksPage> {
     super.initState();
     _repoFut = BooksRepository.create();
     _addController(_searchCtrl); // Track search controller
+    _scrollCtrl.addListener(_onScrollChanged); // Add scroll listener for image preloading
     _startConnectivityWatch();
     _restorePrefs().then((_) {
       // Load recent first so the section appears immediately
@@ -304,6 +305,32 @@ class _BooksPageState extends State<BooksPage> {
       final urls = items.take(count).map((b) => b.coverUrl).toList();
       await ImageCacheManager.preloadImages(urls, context);
     });
+  }
+  
+  /// Smart image preloading based on scroll position
+  void _onScrollChanged() {
+    if (!_scrollCtrl.hasClients || _books.isEmpty) return;
+    
+    final position = _scrollCtrl.position;
+    final itemHeight = 104.0; // Approximate item height
+    final visibleStart = (position.pixels / itemHeight).floor();
+    final visibleEnd = ((position.pixels + position.viewportDimension) / itemHeight).ceil();
+    
+    final currentIndex = (visibleStart + visibleEnd) ~/ 2;
+    if (currentIndex >= 0 && currentIndex < _books.length) {
+      final urls = _books.map((b) => b.coverUrl).toList();
+      
+      // Determine scroll direction
+      String? direction;
+      if (position.pixels > (position.maxScrollExtent * 0.8)) {
+        direction = 'forward';
+      } else if (position.pixels < (position.maxScrollExtent * 0.2)) {
+        direction = 'reverse';
+      }
+      
+      // Preload images around current position
+      ImageCacheManager.preloadAroundIndex(urls, currentIndex, context, scrollDirection: direction);
+    }
   }
 
   void _openDetails(Book b) {

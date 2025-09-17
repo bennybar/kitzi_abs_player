@@ -23,11 +23,35 @@ class BooksRepository {
   Database? _db;
   String? _dbLibId; // track which library the DB connection belongs to
   
+  // Query caching for better performance
+  final Map<String, List<Book>> _queryCache = {};
+  final Map<String, DateTime> _cacheTimestamps = {};
+  static const Duration _cacheTTL = Duration(minutes: 5);
+  
   /// Log debug message only if verbose logging is enabled
   void _log(String message) {
     if (_verboseLogging) {
       debugPrint(message);
     }
+  }
+  
+  /// Clear expired cache entries
+  void _cleanExpiredCache() {
+    final now = DateTime.now();
+    _cacheTimestamps.removeWhere((key, timestamp) {
+      if (now.difference(timestamp) > _cacheTTL) {
+        _queryCache.remove(key);
+        return true;
+      }
+      return false;
+    });
+  }
+  
+  /// Clear all cache entries (for memory pressure)
+  void _clearAllCache() {
+    _queryCache.clear();
+    _cacheTimestamps.clear();
+    debugPrint('[BOOKS_CACHE] All cache cleared due to memory pressure');
   }
 
   static const _etagKey = 'books_list_etag';
@@ -289,6 +313,12 @@ class BooksRepository {
         await db.execute('CREATE INDEX IF NOT EXISTS idx_books_libraryId ON books(libraryId)');
         await db.execute('CREATE INDEX IF NOT EXISTS idx_books_series ON books(series)');
         await db.execute('CREATE INDEX IF NOT EXISTS idx_books_collection ON books(collection)');
+        
+        // Composite indexes for common query patterns
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_books_search ON books(title COLLATE NOCASE, author COLLATE NOCASE, isAudioBook)');
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_books_recent ON books(updatedAt DESC, isAudioBook)');
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_books_series_collection ON books(series, collection, seriesSequence)');
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_books_audio_updated ON books(isAudioBook, updatedAt DESC)');
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         // Only run migrations if upgrading from version 1
@@ -323,6 +353,12 @@ class BooksRepository {
     await db.execute('CREATE INDEX IF NOT EXISTS idx_books_libraryId ON books(libraryId)');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_books_series ON books(series)');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_books_collection ON books(collection)');
+    
+    // Add composite indexes for better performance
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_books_search ON books(title COLLATE NOCASE, author COLLATE NOCASE, isAudioBook)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_books_recent ON books(updatedAt DESC, isAudioBook)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_books_series_collection ON books(series, collection, seriesSequence)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_books_audio_updated ON books(isAudioBook, updatedAt DESC)');
     
     debugPrint('[BOOKS_DB] Migration to version 2 completed');
   }
@@ -492,6 +528,18 @@ class BooksRepository {
     String sort = 'updatedAt:desc',
     String? query,
   }) async {
+    // Check cache first
+    _cleanExpiredCache();
+    final cacheKey = 'books_paged_${page}_${limit}_${sort}_${query ?? 'all'}';
+    final cached = _queryCache[cacheKey];
+    final timestamp = _cacheTimestamps[cacheKey];
+    
+    if (cached != null && timestamp != null && 
+        DateTime.now().difference(timestamp) < _cacheTTL) {
+      _log('[BOOKS_CACHE] Cache hit for $cacheKey: ${cached.length} items');
+      return cached;
+    }
+    
     await _ensureDbForCurrentLib();
     final db = _db;
     if (db == null) return <Book>[];
@@ -529,8 +577,14 @@ class BooksRepository {
       limit: limit,
       offset: offset,
     );
-    if (rows.isEmpty) return <Book>[];
-    return rows.map((m) {
+    if (rows.isEmpty) {
+      final emptyResult = <Book>[];
+      // Cache empty results too
+      _queryCache[cacheKey] = emptyResult;
+      _cacheTimestamps[cacheKey] = DateTime.now();
+      return emptyResult;
+    }
+    final books = rows.map((m) {
       final id = (m['id'] as String);
       final localPath = (m['coverPath'] as String?);
       var coverUrl = '$baseUrl/api/items/$id/cover';
@@ -567,6 +621,13 @@ class BooksRepository {
         libraryId: m['libraryId'] as String?,
       );
     }).toList();
+    
+    // Cache the results
+    _queryCache[cacheKey] = books;
+    _cacheTimestamps[cacheKey] = DateTime.now();
+    
+    _log('[BOOKS_DB] listBooksFromDbPaged: page=$page limit=$limit sort=$sort query=$query -> ${books.length} items (cached)');
+    return books;
   }
 
   Future<int> countBooksInDb({String? query}) async {

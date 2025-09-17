@@ -12,6 +12,10 @@ class ImageCacheManager {
   static CacheManager? _cacheManager;
   static final Set<String> _preloadingUrls = <String>{};
   
+  // Smart preloading based on scroll position
+  static const int preloadAheadCount = 5;
+  static const int preloadBehindCount = 2;
+  
   static CacheManager get _instance {
     _cacheManager ??= CacheManager(
       Config(
@@ -40,6 +44,60 @@ class ImageCacheManager {
       await Future.wait(futures);
     } finally {
       _preloadingUrls.clear();
+    }
+  }
+  
+  /// Smart preloading based on scroll position and direction
+  static Future<void> preloadAroundIndex(
+    List<String> urls, 
+    int currentIndex, 
+    BuildContext context, {
+    String? scrollDirection,
+  }) async {
+    if (urls.isEmpty || currentIndex < 0 || currentIndex >= urls.length) return;
+    
+    final startIndex = (currentIndex - preloadBehindCount).clamp(0, urls.length - 1);
+    final endIndex = (currentIndex + preloadAheadCount).clamp(0, urls.length - 1);
+    
+    final urlsToPreload = <String>[];
+    for (int i = startIndex; i <= endIndex; i++) {
+      if (i != currentIndex) { // Don't preload current item
+        urlsToPreload.add(urls[i]);
+      }
+    }
+    
+    if (urlsToPreload.isNotEmpty) {
+      await preloadImages(urlsToPreload, context);
+    }
+  }
+  
+  /// Preload images based on scroll direction
+  static Future<void> preloadDirectional(
+    List<String> urls,
+    int currentIndex,
+    String direction,
+    BuildContext context,
+  ) async {
+    if (urls.isEmpty || currentIndex < 0 || currentIndex >= urls.length) return;
+    
+    final urlsToPreload = <String>[];
+    
+    if (direction == 'forward') {
+      // Preload ahead
+      final endIndex = (currentIndex + preloadAheadCount).clamp(0, urls.length - 1);
+      for (int i = currentIndex + 1; i <= endIndex; i++) {
+        urlsToPreload.add(urls[i]);
+      }
+    } else {
+      // Preload behind
+      final startIndex = (currentIndex - preloadBehindCount).clamp(0, urls.length - 1);
+      for (int i = startIndex; i < currentIndex; i++) {
+        urlsToPreload.add(urls[i]);
+      }
+    }
+    
+    if (urlsToPreload.isNotEmpty) {
+      await preloadImages(urlsToPreload, context);
     }
   }
   
