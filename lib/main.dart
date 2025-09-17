@@ -3,6 +3,7 @@ import 'package:dynamic_color/dynamic_color.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import 'core/auth_repository.dart';
+import 'package:flutter/foundation.dart';
 import 'core/playback_repository.dart';
 import 'core/downloads_repository.dart';
 import 'core/theme_service.dart';
@@ -49,6 +50,11 @@ class ServicesScope extends InheritedWidget {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Reduce logging noise in release builds
+  if (kReleaseMode) {
+    debugPrint = (String? message, {int? wrapWidth}) {};
+  }
 
   if (await Permission.notification.isDenied) {
     await Permission.notification.request();

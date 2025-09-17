@@ -679,7 +679,7 @@ class BooksRepository {
 
   /// Clear ETag cache to force fresh data on next request
   Future<void> _clearEtagCache() async {
-    print('BooksRepository: Clearing ETag cache to force fresh data');
+    debugPrint('BooksRepository: Clearing ETag cache to force fresh data');
     await _prefs.remove(_etagKey);
     await _prefs.remove(_cacheKey);
   }

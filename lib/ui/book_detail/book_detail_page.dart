@@ -12,6 +12,7 @@ import '../../main.dart'; // ServicesScope
 import '../../ui/player/full_player_page.dart'; // Added import for FullPlayerPage
 import 'dart:io';
 import '../../core/books_repository.dart' as repo_helpers;
+import 'package:just_audio/just_audio.dart';
 
 class BookDetailPage extends StatefulWidget {
   const BookDetailPage({super.key, required this.bookId});
@@ -357,24 +358,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
                       child: Row(
                         children: [
                           Expanded(
-                            child: FilledButton.icon(
-                              onPressed: b.isAudioBook ? () async {
-                                final success = await playbackRepo.playItem(b.id);
-                                if (!success && context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Cannot play: server unavailable and sync progress is required'),
-                                      duration: Duration(seconds: 4),
-                                    ),
-                                  );
-                                  return;
-                                }
-                                if (!context.mounted) return;
-                                await FullPlayerPage.openOnce(context);
-                              } : null,
-                              icon: const Icon(Icons.play_arrow),
-                              label: Text(b.isAudioBook ? 'Play' : 'Not an audiobook'),
-                            ),
+                            child: _PlayPrimaryButton(book: b, playback: playbackRepo),
                           ),
                           const SizedBox(width: 12),
                           Expanded(
@@ -563,6 +547,107 @@ class _ProgressSummary extends StatelessWidget {
     final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
     final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
     return h > 0 ? '$h:$m:$s' : '$m:$s';
+  }
+}
+
+class _PlayPrimaryButton extends StatelessWidget {
+  const _PlayPrimaryButton({required this.book, required this.playback});
+  final Book book;
+  final PlaybackRepository playback;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!book.isAudioBook) {
+      return FilledButton.icon(
+        onPressed: null,
+        icon: const Icon(Icons.block),
+        label: const Text('Not an audiobook'),
+      );
+    }
+
+    // If this book is currently active, bind to player state and show Stop/Loading
+    final isThis = playback.nowPlaying?.libraryItemId == book.id;
+    if (isThis) {
+      return StreamBuilder<PlayerState>(
+        stream: playback.playerStateStream,
+        initialData: playback.player.playerState,
+        builder: (context, snap) {
+          final ps = snap.data ?? PlayerState(playback.player.playing, playback.player.processingState);
+          final processing = ps.processingState;
+          final isBuffering = processing == ProcessingState.loading || processing == ProcessingState.buffering;
+          final isPlaying = playback.player.playing;
+
+          if (isBuffering && !isPlaying) {
+            return FilledButton.icon(
+              onPressed: null,
+              icon: const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+              label: const Text('Loading'),
+            );
+          }
+
+          if (isPlaying) {
+            return FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error,
+                foregroundColor: Theme.of(context).colorScheme.onError,
+              ),
+              onPressed: () async {
+                await playback.stop();
+              },
+              icon: const Icon(Icons.stop_rounded),
+              label: const Text('Stop'),
+            );
+          }
+
+          // Active but paused/ready -> Resume
+          return FilledButton.icon(
+            onPressed: () async {
+              final ok = await playback.resume();
+              if (!ok && context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Cannot resume: server unavailable and sync progress is required'),
+                    duration: Duration(seconds: 4),
+                  ),
+                );
+              }
+              if (context.mounted) {
+                await FullPlayerPage.openOnce(context);
+              }
+            },
+            icon: const Icon(Icons.play_arrow_rounded),
+            label: const Text('Resume'),
+          );
+        },
+      );
+    }
+
+    // Not active on player: decide between Resume vs Play by checking saved progress
+    return FutureBuilder<double?>(
+      future: playback.fetchServerProgress(book.id),
+      builder: (context, snap) {
+        final hasProgress = (snap.data ?? 0) > 0;
+        final label = hasProgress ? 'Resume' : 'Play';
+        return FilledButton.icon(
+          onPressed: () async {
+            final success = await playback.playItem(book.id);
+            if (!success && context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Cannot play: server unavailable and sync progress is required'),
+                  duration: Duration(seconds: 4),
+                ),
+              );
+              return;
+            }
+            if (!context.mounted) return;
+            await FullPlayerPage.openOnce(context);
+          },
+          icon: const Icon(Icons.play_arrow_rounded),
+          label: Text(label),
+        );
+      },
+    );
   }
 }
 
