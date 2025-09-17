@@ -9,7 +9,9 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import '../../core/books_repository.dart';
 import '../../core/auth_repository.dart';
 import '../../core/play_history_service.dart';
+import '../../core/image_cache_manager.dart';
 import '../../models/book.dart';
+import '../../widgets/skeleton_widgets.dart';
 import '../book_detail/book_detail_page.dart';
 
 enum LibraryView { grid, list }
@@ -35,6 +37,10 @@ class _BooksPageState extends State<BooksPage> {
   StreamSubscription<List<ConnectivityResult>>? _connSub;
   bool _isOnline = true;
   final ScrollController _scrollCtrl = ScrollController();
+  
+  // Memory management
+  final List<StreamSubscription> _subscriptions = [];
+  final List<TextEditingController> _controllers = [];
 
   LibraryView _view = LibraryView.list;
   SortMode _sort = SortMode.addedDesc;
@@ -47,11 +53,17 @@ class _BooksPageState extends State<BooksPage> {
 
   final _searchCtrl = TextEditingController();
   Timer? _searchDebounce;
+  
+  // Add controller to managed list
+  void _addController(TextEditingController controller) {
+    _controllers.add(controller);
+  }
 
   @override
   void initState() {
     super.initState();
     _repoFut = BooksRepository.create();
+    _addController(_searchCtrl); // Track search controller
     _startConnectivityWatch();
     _restorePrefs().then((_) {
       // Load recent first so the section appears immediately
@@ -62,126 +74,33 @@ class _BooksPageState extends State<BooksPage> {
     });
   }
 
-  List<Widget> _buildLoadingSkeleton(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    // Show skeletons for Resume Playing and a few list items
-    return [
-      // Resume Playing skeleton
-      SliverToBoxAdapter(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.play_circle_outline_rounded, color: cs.primary, size: 20),
-                  const SizedBox(width: 8),
-                  Container(
-                    width: 140,
-                    height: 20,
-                    decoration: BoxDecoration(
-                      color: cs.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              SizedBox(
-                height: 176,
-                child: GridView.builder(
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 4,
-                    mainAxisSpacing: 2,
-                    crossAxisSpacing: 2,
-                    childAspectRatio: 1.0,
-                  ),
-                  itemCount: 4,
-                  itemBuilder: (context, index) {
-                    return Card(
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        side: BorderSide(color: cs.outline.withOpacity(0.08), width: 1),
-                      ),
-                      clipBehavior: Clip.antiAlias,
-                      child: Container(color: cs.surfaceContainerHighest),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-      // List skeletons
-      SliverPadding(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-        sliver: SliverList.separated(
-          itemCount: 6,
-          separatorBuilder: (_, __) => const SizedBox(height: 8),
-          itemBuilder: (context, i) {
-            return Card(
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-                side: BorderSide(color: cs.outline.withOpacity(0.08), width: 1),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 72,
-                      height: 72,
-                      decoration: BoxDecoration(
-                        color: cs.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(
-                            height: 18,
-                            width: double.infinity,
-                            decoration: BoxDecoration(
-                              color: cs.surfaceContainerHighest,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Container(
-                            height: 14,
-                            width: 160,
-                            decoration: BoxDecoration(
-                              color: cs.surfaceContainerHighest,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        ),
-      ),
-    ];
+  Widget _buildLoadingSkeleton(BuildContext context) {
+    return const BooksPageSkeleton();
   }
 
   @override
   void dispose() {
+    // Cancel all timers
     _timer?.cancel();
-    _connSub?.cancel();
     _searchDebounce?.cancel();
+    
+    // Cancel all stream subscriptions
+    _connSub?.cancel();
+    for (final subscription in _subscriptions) {
+      subscription.cancel();
+    }
+    _subscriptions.clear();
+    
+    // Dispose all controllers
     _searchCtrl.dispose();
+    for (final controller in _controllers) {
+      controller.dispose();
+    }
+    _controllers.clear();
+    
+    // Dispose scroll controller
     _scrollCtrl.dispose();
+    
     super.dispose();
   }
 
@@ -384,19 +303,8 @@ class _BooksPageState extends State<BooksPage> {
   void _warmCacheCovers(List<Book> items, {int count = 30}) {
     if (!mounted || items.isEmpty) return;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      for (final b in items.take(count)) {
-        try {
-          final uri = Uri.tryParse(b.coverUrl);
-          if (uri != null && uri.scheme == 'file') {
-            final f = File(uri.toFilePath());
-            if (await f.exists()) {
-              await precacheImage(FileImage(f), context);
-            }
-          } else {
-            await precacheImage(CachedNetworkImageProvider(b.coverUrl), context);
-          }
-        } catch (_) {}
-      }
+      final urls = items.take(count).map((b) => b.coverUrl).toList();
+      await ImageCacheManager.preloadImages(urls, context);
     });
   }
 
@@ -602,7 +510,7 @@ class _BooksPageState extends State<BooksPage> {
 
           // Content
           if (_loading)
-            ..._buildLoadingSkeleton(context)
+            SliverFillRemaining(child: _buildLoadingSkeleton(context))
           else if (_error != null)
             SliverFillRemaining(
               child: Center(
@@ -744,10 +652,11 @@ class _BooksPageState extends State<BooksPage> {
         delegate: SliverChildBuilderDelegate(
           (context, i) {
             final b = list[i];
-            return _BookCard(
-              book: b,
-              onTap: b.isAudioBook ? () => _openDetails(b) : null,
-            );
+          return _BookCard(
+            key: ValueKey(b.id),
+            book: b,
+            onTap: b.isAudioBook ? () => _openDetails(b) : null,
+          );
           },
           childCount: list.length,
         ),
@@ -798,6 +707,7 @@ class _BooksPageState extends State<BooksPage> {
                   final list = _recentBooks.where((b) => b.isAudioBook).toList(growable: false);
                   final book = list[index];
                   return _ResumeBookCard(
+                    key: ValueKey(book.id),
                     book: book,
                     onTap: () => _openDetails(book),
                   );
@@ -819,6 +729,8 @@ class _BooksPageState extends State<BooksPage> {
         separatorBuilder: (_, __) => const SizedBox(height: 8),
         itemBuilder: (context, i) {
           final b = list[i];
+          
+          // Trigger load more when approaching end
           if (!_loadingMore && _hasMore && i >= list.length - 8) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted && !_loadingMore && _hasMore) {
@@ -826,7 +738,9 @@ class _BooksPageState extends State<BooksPage> {
               }
             });
           }
+          
           return _BookListTile(
+            key: ValueKey(b.id), // Add key for better widget recycling
             book: b,
             onTap: b.isAudioBook ? () => _openDetails(b) : null,
           );
@@ -904,7 +818,7 @@ class _BooksPageState extends State<BooksPage> {
 }
 
 class _BookCard extends StatelessWidget {
-  const _BookCard({required this.book, required this.onTap});
+  const _BookCard({super.key, required this.book, required this.onTap});
   final Book book;
   final VoidCallback? onTap;
 
@@ -952,7 +866,7 @@ class _BookCard extends StatelessWidget {
                         colorFilter: disabled
                             ? ColorFilter.mode(cs.surface.withOpacity(0.12), BlendMode.saturation)
                             : const ColorFilter.mode(Colors.transparent, BlendMode.srcOver),
-                        child: _CoverThumb(url: book.coverUrl),
+                        child: EnhancedCoverImage(url: book.coverUrl),
                       ),
                     ),
                   ),
@@ -1018,7 +932,7 @@ class _BookCard extends StatelessWidget {
 }
 
 class _ResumeBookCard extends StatelessWidget {
-  const _ResumeBookCard({required this.book, required this.onTap});
+  const _ResumeBookCard({super.key, required this.book, required this.onTap});
   final Book book;
   final VoidCallback onTap;
 
@@ -1044,7 +958,7 @@ class _ResumeBookCard extends StatelessWidget {
             children: [
               // Cropped cover fills tile
               Positioned.fill(
-                child: _CoverThumb(url: book.coverUrl),
+                child: EnhancedCoverImage(url: book.coverUrl),
               ),
               // Dim layer for legibility
               Positioned.fill(
@@ -1112,7 +1026,7 @@ class _ResumeBookCard extends StatelessWidget {
 }
 
 class _BookListTile extends StatelessWidget {
-  const _BookListTile({required this.book, required this.onTap});
+  const _BookListTile({super.key, required this.book, required this.onTap});
   final Book book;
   final VoidCallback? onTap;
 
@@ -1153,7 +1067,7 @@ class _BookListTile extends StatelessWidget {
                   tag: 'home-cover-${book.id}',
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(12),
-                    child: _CoverThumb(url: book.coverUrl, size: 72),
+                    child: EnhancedCoverImage(url: book.coverUrl, width: 72, height: 72),
                   ),
                 ),
               ),
@@ -1222,54 +1136,3 @@ class _BookListTile extends StatelessWidget {
 
  
 
-class _CoverThumb extends StatelessWidget {
-  const _CoverThumb({required this.url, this.size});
-  final String url;
-  final double? size;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final radius = BorderRadius.circular(12);
-    final placeholder = Container(
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest,
-        borderRadius: radius,
-      ),
-      child: Center(
-        child: Icon(
-          Icons.menu_book_outlined,
-          color: cs.onSurfaceVariant,
-          size: size != null ? size! * 0.4 : 32,
-        ),
-      ),
-    );
-
-    // Support offline file:// covers produced by DB
-    final uri = Uri.tryParse(url);
-    Widget child;
-    if (uri != null && uri.scheme == 'file') {
-      final filePath = uri.toFilePath();
-      final file = File(filePath);
-      child = file.existsSync()
-          ? Image.file(file, fit: BoxFit.cover)
-          : placeholder;
-    } else {
-      child = CachedNetworkImage(
-        imageUrl: url,
-        fit: BoxFit.cover,
-        memCacheWidth: size != null ? (size! * MediaQuery.of(context).devicePixelRatio).round() : null,
-        memCacheHeight: size != null ? (size! * 1.5 * MediaQuery.of(context).devicePixelRatio).round() : null,
-        placeholder: (_, __) => placeholder,
-        errorWidget: (_, __, ___) => placeholder,
-      );
-    }
-
-    return ClipRRect(
-      borderRadius: radius,
-      child: size != null
-          ? SizedBox(width: size, height: size, child: child)
-          : child,
-    );
-  }
-}

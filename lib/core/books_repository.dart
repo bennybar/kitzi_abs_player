@@ -11,6 +11,8 @@ import 'package:crypto/crypto.dart';
 import 'dart:convert' show utf8;
 import '../models/book.dart';
 import 'auth_repository.dart';
+import 'network_service.dart';
+import 'offline_first_repository.dart';
 
 class BooksRepository {
   BooksRepository(this._auth, this._prefs);
@@ -22,6 +24,7 @@ class BooksRepository {
   static const _etagKey = 'books_list_etag';
   static const _cacheKey = 'books_list_cache_json';
   static const _libIdKey = 'books_library_id';
+  static const _cacheMetadataKey = 'books_cache_metadata';
 
   Future<String> _ensureLibraryId() async {
     final cached = _prefs.getString(_libIdKey);
@@ -107,74 +110,76 @@ class BooksRepository {
   }
 
   Future<Book> getBook(String id) async {
-    final api = _auth.api;
-    final baseUrl = _auth.api.baseUrl ?? '';
-    final token = await _auth.api.accessToken();
-    final tokenQS = (token != null && token.isNotEmpty) ? '?token=$token' : '';
+    return await NetworkService.withRetry(() async {
+      final api = _auth.api;
+      final baseUrl = _auth.api.baseUrl ?? '';
+      final token = await _auth.api.accessToken();
+      final tokenQS = (token != null && token.isNotEmpty) ? '?token=$token' : '';
 
-    final resp = await api.request('GET', '/api/items/$id$tokenQS');
-    if (resp.statusCode != 200) {
-      throw Exception('Failed to load book $id: ${resp.statusCode}');
-    }
-
-    final bodyStr = resp.body;
-    final body = bodyStr.isNotEmpty ? jsonDecode(bodyStr) : null;
-    final item = (body is Map && body['item'] is Map)
-        ? (body['item'] as Map).cast<String, dynamic>()
-        : (body as Map).cast<String, dynamic>();
-
-    // Prefer preserving locally cached fields (e.g., sizeBytes/durationMs) when server omits them
-    Book b = Book.fromLibraryItemJson(item, baseUrl: baseUrl, token: token);
-    // If server explicitly flags mediaType as 'ebook' or item has no audio tracks, mark non-audiobook
-    try {
-      final mediaType = (item['mediaType'] ?? item['type'] ?? '').toString().toLowerCase();
-      if (mediaType.contains('ebook')) {
-        b = Book(
-          id: b.id,
-          title: b.title,
-          author: b.author,
-          coverUrl: b.coverUrl,
-          description: b.description,
-          durationMs: b.durationMs,
-          sizeBytes: b.sizeBytes,
-          updatedAt: b.updatedAt,
-          authors: b.authors,
-          narrators: b.narrators,
-          publisher: b.publisher,
-          publishYear: b.publishYear,
-          genres: b.genres,
-          mediaKind: mediaType,
-          isAudioBook: false,
-        );
+      final resp = await api.request('GET', '/api/items/$id$tokenQS');
+      if (resp.statusCode != 200) {
+        throw Exception('Failed to load book $id: ${resp.statusCode}');
       }
-    } catch (_) {}
-    try {
-      final prev = await getBookFromDb(id);
-      if (prev != null) {
-        final merged = Book(
-          id: b.id,
-          title: b.title,
-          author: b.author,
-          coverUrl: b.coverUrl,
-          description: b.description,
-          durationMs: b.durationMs ?? prev.durationMs,
-          sizeBytes: b.sizeBytes ?? prev.sizeBytes,
-          updatedAt: b.updatedAt ?? prev.updatedAt,
-          authors: b.authors ?? prev.authors,
-          narrators: b.narrators ?? prev.narrators,
-          publisher: b.publisher ?? prev.publisher,
-          publishYear: b.publishYear ?? prev.publishYear,
-          genres: b.genres ?? prev.genres,
-        );
-        b = merged;
-      }
-    } catch (_) {}
 
-    // Persist to DB for offline access
-    await _upsertBooks([b]);
-    // Best-effort: cache description images in background
-    unawaited(_persistDescriptionImages(b));
-    return b;
+      final bodyStr = resp.body;
+      final body = bodyStr.isNotEmpty ? jsonDecode(bodyStr) : null;
+      final item = (body is Map && body['item'] is Map)
+          ? (body['item'] as Map).cast<String, dynamic>()
+          : (body as Map).cast<String, dynamic>();
+
+      // Prefer preserving locally cached fields (e.g., sizeBytes/durationMs) when server omits them
+      Book b = Book.fromLibraryItemJson(item, baseUrl: baseUrl, token: token);
+      // If server explicitly flags mediaType as 'ebook' or item has no audio tracks, mark non-audiobook
+      try {
+        final mediaType = (item['mediaType'] ?? item['type'] ?? '').toString().toLowerCase();
+        if (mediaType.contains('ebook')) {
+          b = Book(
+            id: b.id,
+            title: b.title,
+            author: b.author,
+            coverUrl: b.coverUrl,
+            description: b.description,
+            durationMs: b.durationMs,
+            sizeBytes: b.sizeBytes,
+            updatedAt: b.updatedAt,
+            authors: b.authors,
+            narrators: b.narrators,
+            publisher: b.publisher,
+            publishYear: b.publishYear,
+            genres: b.genres,
+            mediaKind: mediaType,
+            isAudioBook: false,
+          );
+        }
+      } catch (_) {}
+      try {
+        final prev = await getBookFromDb(id);
+        if (prev != null) {
+          final merged = Book(
+            id: b.id,
+            title: b.title,
+            author: b.author,
+            coverUrl: b.coverUrl,
+            description: b.description,
+            durationMs: b.durationMs ?? prev.durationMs,
+            sizeBytes: b.sizeBytes ?? prev.sizeBytes,
+            updatedAt: b.updatedAt ?? prev.updatedAt,
+            authors: b.authors ?? prev.authors,
+            narrators: b.narrators ?? prev.narrators,
+            publisher: b.publisher ?? prev.publisher,
+            publishYear: b.publishYear ?? prev.publishYear,
+            genres: b.genres ?? prev.genres,
+          );
+          b = merged;
+        }
+      } catch (_) {}
+
+      // Persist to DB for offline access
+      await _upsertBooks([b]);
+      // Best-effort: cache description images in background
+      unawaited(_persistDescriptionImages(b));
+      return b;
+    });
   }
 
   static Future<BooksRepository> create() async {
@@ -266,6 +271,15 @@ class BooksRepository {
             libraryId TEXT
           )
         ''');
+        
+        // Add indexes for better query performance
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_books_updatedAt ON books(updatedAt DESC)');
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_books_title ON books(title COLLATE NOCASE)');
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_books_author ON books(author COLLATE NOCASE)');
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_books_isAudioBook ON books(isAudioBook)');
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_books_libraryId ON books(libraryId)');
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_books_series ON books(series)');
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_books_collection ON books(collection)');
       },
     );
 
@@ -311,35 +325,82 @@ class BooksRepository {
   Future<void> _upsertBooks(List<Book> items) async {
     final db = _db;
     if (db == null) return;
-    final batch = db.batch();
-    for (final b in items) {
-      final coverFile = await _coverFileForId(b.id);
-      final hasLocal = await coverFile.exists();
+    
+    // Use transaction for better performance and atomicity
+    await db.transaction((txn) async {
+      final batch = txn.batch();
       final libId = _prefs.getString(_libIdKey) ?? 'default';
-      batch.insert(
-        'books',
-        {
-          'id': b.id,
-          'title': b.title,
-          'author': b.author,
-          'coverUrl': b.coverUrl,
-          'coverPath': hasLocal ? coverFile.path : null,
-          'description': b.description,
-          'durationMs': b.durationMs,
-          'sizeBytes': b.sizeBytes,
-          'updatedAt': b.updatedAt?.millisecondsSinceEpoch,
-          'series': b.series,
-          'seriesSequence': b.seriesSequence,
-          'collection': b.collection,
-          'collectionSequence': b.collectionSequence,
-          'isAudioBook': b.isAudioBook ? 1 : 0,
-          'mediaKind': b.mediaKind,
-          'libraryId': b.libraryId ?? libId,
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
+      
+      for (final b in items) {
+        final coverFile = await _coverFileForId(b.id);
+        final hasLocal = await coverFile.exists();
+        
+        batch.insert(
+          'books',
+          {
+            'id': b.id,
+            'title': b.title,
+            'author': b.author,
+            'coverUrl': b.coverUrl,
+            'coverPath': hasLocal ? coverFile.path : null,
+            'description': b.description,
+            'durationMs': b.durationMs,
+            'sizeBytes': b.sizeBytes,
+            'updatedAt': b.updatedAt?.millisecondsSinceEpoch,
+            'series': b.series,
+            'seriesSequence': b.seriesSequence,
+            'collection': b.collection,
+            'collectionSequence': b.collectionSequence,
+            'isAudioBook': b.isAudioBook ? 1 : 0,
+            'mediaKind': b.mediaKind,
+            'libraryId': b.libraryId ?? libId,
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+      await batch.commit(noResult: true);
+    });
+    
+    // Update cache metadata
+    await _updateCacheMetadata(items.length);
+  }
+  
+  /// Update cache metadata when books are saved
+  Future<void> _updateCacheMetadata(int itemCount) async {
+    try {
+      final metadata = CacheMetadata(
+        lastUpdated: DateTime.now(),
+        itemCount: itemCount,
+        version: '1.0',
       );
+      await _prefs.setString(_cacheMetadataKey, jsonEncode(metadata.toJson()));
+    } catch (e) {
+      debugPrint('Failed to update cache metadata: $e');
     }
-    await batch.commit(noResult: true);
+  }
+  
+  /// Get cache metadata
+  CacheMetadata? _getCacheMetadata() {
+    try {
+      final jsonStr = _prefs.getString(_cacheMetadataKey);
+      if (jsonStr == null) return null;
+      final json = jsonDecode(jsonStr);
+      return CacheMetadata.fromJson(json);
+    } catch (e) {
+      debugPrint('Failed to get cache metadata: $e');
+      return null;
+    }
+  }
+  
+  /// Check if cache is valid based on metadata
+  Future<bool> isCacheValid(Duration timeout) async {
+    final metadata = _getCacheMetadata();
+    if (metadata == null) return false;
+    
+    final now = DateTime.now();
+    final isValid = now.difference(metadata.lastUpdated) < timeout;
+    debugPrint('[BOOKS_CACHE] Cache valid: $isValid (age: ${now.difference(metadata.lastUpdated).inMinutes} minutes)');
+    return isValid;
   }
 
   Future<List<Book>> _listBooksFromDb() async {
@@ -727,29 +788,30 @@ class BooksRepository {
 
   /// Fetch one page of books from server, persist to DB, and return the page
   Future<List<Book>> fetchBooksPage({required int page, int limit = 50, String sort = 'updatedAt:desc', String? query}) async {
-    final api = _auth.api;
-    final token = await api.accessToken();
-    final libId = await _ensureLibraryId();
-    final tokenQS = (token != null && token.isNotEmpty) ? '&token=$token' : '';
-    final encodedQ = (query != null && query.trim().isNotEmpty)
-        ? Uri.encodeQueryComponent(query.trim())
-        : null;
+    return await NetworkService.withRetry(() async {
+      final api = _auth.api;
+      final token = await api.accessToken();
+      final libId = await _ensureLibraryId();
+      final tokenQS = (token != null && token.isNotEmpty) ? '&token=$token' : '';
+      final encodedQ = (query != null && query.trim().isNotEmpty)
+          ? Uri.encodeQueryComponent(query.trim())
+          : null;
 
-    Future<List<Book>> requestAndParse(String path) async {
-      debugPrint('[BOOKS] fetchBooksPage: GET $path');
-      final resp = await api.request('GET', path, headers: {});
-      if (resp.statusCode != 200) {
-        throw Exception('Failed to fetch: ${resp.statusCode}');
+      Future<List<Book>> requestAndParse(String path) async {
+        debugPrint('[BOOKS] fetchBooksPage: GET $path');
+        final resp = await api.request('GET', path, headers: {});
+        if (resp.statusCode != 200) {
+          throw Exception('Failed to fetch: ${resp.statusCode}');
+        }
+        final bodyStr = resp.body;
+        final body = bodyStr.isNotEmpty ? jsonDecode(bodyStr) : null;
+        final items = _extractItems(body);
+        List<Book> books = await _toBooks(items);
+        // Keep only audiobooks
+        books = books.where((b) => b.isAudioBook).toList();
+        debugPrint('[BOOKS] fetchBooksPage: page=$page limit=$limit sort=$sort query=${encodedQ != null} -> items=${books.length}');
+        return books;
       }
-      final bodyStr = resp.body;
-      final body = bodyStr.isNotEmpty ? jsonDecode(bodyStr) : null;
-      final items = _extractItems(body);
-      List<Book> books = await _toBooks(items);
-      // Keep only audiobooks
-      books = books.where((b) => b.isAudioBook).toList();
-      debugPrint('[BOOKS] fetchBooksPage: page=$page limit=$limit sort=$sort query=${encodedQ != null} -> items=${books.length}');
-      return books;
-    }
 
     // 1) Try page-based
     final basePage = '/api/libraries/$libId/items?limit=$limit&page=$page&sort=$sort';
@@ -794,9 +856,10 @@ class BooksRepository {
       }
     }
 
-    await _upsertBooks(books);
-    debugPrint('[BOOKS] fetchBooksPage: upserted=${books.length} page=$page');
-    return books;
+      await _upsertBooks(books);
+      debugPrint('[BOOKS] fetchBooksPage: upserted=${books.length} page=$page');
+      return books;
+    });
   }
 
   /// Perform a full-library sync into the local database by iterating pages
