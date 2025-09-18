@@ -321,66 +321,114 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
   @override
   Future<String> getRoot([Map<String, dynamic>? extras]) async {
     debugPrint('AA:getRoot called');
-    // Single root for entire library
+    // Support search and browsing
     return 'root';
   }
 
   @override
   Future<List<MediaItem>> getChildren(String parentMediaId, [Map<String, dynamic>? options]) async {
-    if (parentMediaId != 'root') return const <MediaItem>[];
-    debugPrint('AA:getChildren for parent=$parentMediaId');
+    debugPrint('AA:getChildren for parent=$parentMediaId, options=$options');
+    
+    // Handle search queries
+    final String? query = options?['android.media.browse.extra.QUERY'] as String?;
+    final bool isSearch = query != null && query.trim().isNotEmpty;
+    
+    if (parentMediaId == 'root') {
+      return await _getBrowsableBooks(query: isSearch ? query.trim() : null);
+    }
+    
+    // Handle other parent IDs if needed in the future
+    return const <MediaItem>[];
+  }
 
-    // 1) Load up to 3 recent books from local play history (fast, no network)
-    List<Book> recent = const <Book>[];
-    try {
-      recent = await PlayHistoryService.getLastPlayedBooks(3);
-    } catch (_) {}
-
-    // 2) Attempt to load additional books with a short timeout to avoid long spinners
-    List<Book> extra = const <Book>[];
+  /// Get browsable books from local cache only, sorted by date added desc, with optional search
+  Future<List<MediaItem>> _getBrowsableBooks({String? query}) async {
     try {
       final repo = await BooksRepository.create();
-      extra = await repo.listBooks().timeout(const Duration(milliseconds: 1200));
-    } catch (_) {}
-
-    // 3) Compose unique list: recent first, then others not already included
-    final seen = <String>{for (final b in recent) b.id};
-    final ordered = <Book>[...recent];
-    for (final b in extra) {
-      if (!seen.contains(b.id)) {
-        ordered.add(b);
-        seen.add(b.id);
+      
+      // Get books from local database only (no network calls)
+      // Sort by updatedAt desc (date added desc), limit to 50 for Android Auto UI
+      final books = await repo.listBooksFromDbPaged(
+        page: 1,
+        limit: 50,
+        sort: 'updatedAt:desc',
+        query: query,
+      );
+      
+      debugPrint('AA:_getBrowsableBooks found ${books.length} cached books${query != null ? ' for query "$query"' : ''}');
+      
+      if (books.isEmpty) {
+        return <MediaItem>[
+          MediaItem(
+            id: 'kitzi_placeholder_open_phone',
+            album: 'Kitzi',
+            title: query != null 
+                ? 'No books found for "$query". Sync library on phone.'
+                : 'Open Kitzi on phone to sync your library',
+            artist: ' ',
+            playable: false,
+          ),
+        ];
       }
-      if (ordered.length >= 20) break; // keep list concise for AA UI
-    }
 
-    if (ordered.isEmpty) {
-      return const <MediaItem>[
+      // Convert books to MediaItems
+      final List<MediaItem> items = books.map<MediaItem>((book) {
+        return MediaItem(
+          id: book.id,
+          album: 'Audiobooks',
+          title: book.title,
+          artist: book.author ?? 'Unknown author',
+          artUri: Uri.tryParse(book.coverUrl),
+          playable: true,
+          displayTitle: book.title,
+          displaySubtitle: book.author,
+          // Add additional metadata for better Android Auto experience
+          extras: {
+            'duration': book.durationMs,
+            'updatedAt': book.updatedAt?.millisecondsSinceEpoch,
+            'series': book.series,
+            'genres': book.genres?.join(', '),
+          },
+        );
+      }).toList(growable: false);
+
+      debugPrint('AA:_getBrowsableBooks returning ${items.length} items');
+      return items;
+    } catch (e) {
+      debugPrint('AA:_getBrowsableBooks error: $e');
+      return <MediaItem>[
         MediaItem(
-          id: 'kitzi_placeholder_open_phone',
+          id: 'kitzi_placeholder_error',
           album: 'Kitzi',
-          title: 'Open Kitzi on phone to browse your library',
+          title: 'Error loading library. Please try again.',
           artist: ' ',
           playable: false,
         ),
       ];
     }
+  }
 
-    final List<MediaItem> items = ordered.map<MediaItem>((b) {
-      final isRecent = recent.any((r) => r.id == b.id);
-      final title = isRecent ? 'Continue: ${b.title}' : b.title;
-      return MediaItem(
-        id: b.id,
-        album: 'Audiobooks',
-        title: title,
-        artist: b.author ?? 'Unknown author',
-        artUri: Uri.tryParse(b.coverUrl),
-        playable: true,
-      );
-    }).toList(growable: false);
-
-    debugPrint('AA:getChildren returning ${items.length} items (recent=${recent.length})');
-    return items;
+  @override
+  Future<List<MediaItem>> search(String query, [Map<String, dynamic>? extras]) async {
+    debugPrint('AA:search called with query="$query"');
+    
+    // Android Auto search - return search results as browsable media items
+    try {
+      final results = await _getBrowsableBooks(query: query.trim());
+      debugPrint('AA:search returning ${results.length} results for "$query"');
+      return results;
+    } catch (e) {
+      debugPrint('AA:search error: $e');
+      return <MediaItem>[
+        MediaItem(
+          id: 'kitzi_placeholder_search_error',
+          album: 'Kitzi',
+          title: 'Search error. Please try again.',
+          artist: ' ',
+          playable: false,
+        ),
+      ];
+    }
   }
 
   @override
@@ -405,9 +453,9 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
       if (np != null) {
         await updateQueueFromNowPlaying(np);
       }
-      // No extra play() here; playItem already handles starting playback
+      // No extra play() here; playItem already handles starting playbook
     } catch (e) {
-      debugPrint('playFromMediaId failed: $e'); // Fixed context parameter
+      debugPrint('playFromMediaId failed: $e');
     }
   }
 }
