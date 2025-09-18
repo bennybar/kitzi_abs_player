@@ -493,7 +493,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
                             // Cover with enhanced shadow and border - made smaller
                             Center(
                               child: SizedBox(
-                                width: MediaQuery.of(context).size.width * 0.90, // 90% of screen width
+                                width: MediaQuery.of(context).size.width * 0.85, // 85% of screen width
                                 child: Hero(
                                   tag: 'mini-cover-${np.libraryItemId}',
                                   child: Container(
