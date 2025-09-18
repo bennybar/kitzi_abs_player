@@ -57,6 +57,7 @@ class NowPlaying {
   final String libraryItemId;
   final String title;
   final String? author;
+  final String? narrator;
   final String? coverUrl;
   final List<PlaybackTrack> tracks;
   final int currentIndex;
@@ -70,6 +71,7 @@ class NowPlaying {
     required this.currentIndex,
     required this.chapters,
     this.author,
+    this.narrator,
     this.coverUrl,
     this.episodeId,
   });
@@ -79,6 +81,7 @@ class NowPlaying {
         libraryItemId: libraryItemId,
         title: title,
         author: author,
+        narrator: narrator,
         coverUrl: coverUrl,
         tracks: tracks ?? this.tracks,
         currentIndex: currentIndex ?? this.currentIndex,
@@ -183,6 +186,7 @@ class PlaybackRepository {
           libraryItemId: last,
           title: title,
           author: author,
+          narrator: null, // Narrator not available from local cache
           coverUrl: coverUrl,
           tracks: localTracks,
           currentIndex: 0,
@@ -237,6 +241,7 @@ class PlaybackRepository {
         libraryItemId: last,
         title: _titleFromMeta(meta) ?? 'Audiobook',
         author: _authorFromMeta(meta), // Writer only; no narrator fallback for artist
+        narrator: _narratorFromMeta(meta),
         coverUrl: await _coverUrl(last),
         tracks: tracksWithDur,
         currentIndex: 0,
@@ -397,6 +402,7 @@ class PlaybackRepository {
       libraryItemId: libraryItemId,
       title: _titleFromMeta(meta) ?? 'Audiobook',
       author: _authorFromMeta(meta), // Writer only; no narrator fallback for artist
+      narrator: _narratorFromMeta(meta),
       coverUrl: await _coverUrl(libraryItemId),
       tracks: tracks,
       currentIndex: 0,

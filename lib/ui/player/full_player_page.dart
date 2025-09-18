@@ -490,35 +490,40 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
                           padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
                           child: Column(
                             children: [
-                            // Cover with enhanced shadow and border
-                            Hero(
-                              tag: 'mini-cover-${np.libraryItemId}',
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(24),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: cs.shadow.withOpacity(0.18),
-                                      blurRadius: 12,
-                                      offset: const Offset(0, 6),
+                            // Cover with enhanced shadow and border - made smaller
+                            Center(
+                              child: SizedBox(
+                                width: MediaQuery.of(context).size.width * 0.90, // 90% of screen width
+                                child: Hero(
+                                  tag: 'mini-cover-${np.libraryItemId}',
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(24),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: cs.shadow.withOpacity(0.18),
+                                          blurRadius: 12,
+                                          offset: const Offset(0, 6),
+                                        ),
+                                      ],
                                     ),
-                                  ],
-                                ),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(24),
-                                  child: AspectRatio(
-                                    aspectRatio: 1,
-                                    child: Image.network(
-                                      np.coverUrl ?? '',
-                                      fit: BoxFit.cover,
-                                      gaplessPlayback: true,
-                                      filterQuality: FilterQuality.low,
-                                      errorBuilder: (_, __, ___) => Container(
-                                        color: cs.surfaceContainerHighest,
-                                        child: Icon(
-                                          Icons.menu_book_outlined,
-                                          size: 88,
-                                          color: cs.onSurfaceVariant,
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(24),
+                                      child: AspectRatio(
+                                        aspectRatio: 1,
+                                        child: Image.network(
+                                          np.coverUrl ?? '',
+                                          fit: BoxFit.cover,
+                                          gaplessPlayback: true,
+                                          filterQuality: FilterQuality.low,
+                                          errorBuilder: (_, __, ___) => Container(
+                                            color: cs.surfaceContainerHighest,
+                                            child: Icon(
+                                              Icons.menu_book_outlined,
+                                              size: 88,
+                                              color: cs.onSurfaceVariant,
+                                            ),
+                                          ),
                                         ),
                                       ),
                                     ),
@@ -528,7 +533,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
                             ),
                             const SizedBox(height: 20),
 
-                            // Title / author with enhanced typography
+                            // Title / author / narrator with enhanced typography
                             Text(
                               np.title,
                               textAlign: TextAlign.center,
@@ -547,6 +552,20 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
                                 style: text.titleMedium?.copyWith(
                                   color: cs.onSurfaceVariant,
                                   fontWeight: FontWeight.w500,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                            if (np.narrator != null && np.narrator!.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                'Narrated by ${np.narrator!}',
+                                textAlign: TextAlign.center,
+                                style: text.titleSmall?.copyWith(
+                                  color: cs.onSurfaceVariant.withOpacity(0.8),
+                                  fontWeight: FontWeight.w400,
+                                  fontStyle: FontStyle.italic,
                                 ),
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
