@@ -107,6 +107,107 @@ class _SettingsPageState extends State<SettingsPage> {
     } catch (_) {}
   }
 
+  Future<void> _showCleanupDialog() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Clear deleted and broken items'),
+        content: const Text(
+          'This will check each cached book against the server and remove any that have been deleted or are no longer accessible.\n\n'
+          'This process may take a while depending on your library size.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Clean Up'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      await _performCleanup();
+    }
+  }
+
+  Future<void> _performCleanup() async {
+    // Show progress dialog
+    if (!mounted) return;
+    
+    final dialogKey = GlobalKey<_CleanupProgressDialogState>();
+    bool cancelled = false;
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => _CleanupProgressDialog(
+        key: dialogKey,
+        onCancel: () {
+          cancelled = true;
+          Navigator.of(context).pop();
+        },
+      ),
+    );
+
+    try {
+      final repo = await BooksRepository.create();
+      int cleanedUp = 0;
+      
+      cleanedUp = await repo.cleanupDeletedAndBrokenBooks(
+        onProgress: (checked, total, currentTitle) {
+          // Check if cancelled
+          if (cancelled) return;
+          
+          // Update progress dialog if it's still showing
+          dialogKey.currentState?.updateProgress(checked, total, currentTitle);
+        },
+        shouldContinue: () => !cancelled,
+      );
+
+      // Close progress dialog if not already closed by cancel
+      if (mounted && !cancelled) {
+        Navigator.of(context).pop();
+        
+        // Show result
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              cleanedUp > 0 
+                ? 'Cleaned up $cleanedUp deleted/broken items'
+                : 'No deleted or broken items found'
+            ),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      } else if (mounted && cancelled) {
+        // Show cancellation message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Cleanup cancelled. $cleanedUp items were cleaned up before cancellation.'),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      // Close progress dialog if not already closed
+      if (mounted && !cancelled) {
+        Navigator.of(context).pop();
+        
+        // Show error
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Cleanup failed: $e'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final services = ServicesScope.of(context).services;
@@ -146,6 +247,14 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
               ],
             ),
+          ),
+          const SizedBox(height: 16),
+          ListTile(
+            leading: const Icon(Icons.cleaning_services_rounded),
+            title: const Text('Clear deleted and broken items'),
+            subtitle: const Text('Check each cached book against server and remove deleted ones'),
+            trailing: const Icon(Icons.arrow_forward_ios_rounded),
+            onTap: () => _showCleanupDialog(),
           ),
           const Divider(height: 32),
           const ListTile(
@@ -416,4 +525,70 @@ Future<void> _setDualProgressEnabled(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('ui_dual_progress_enabled', value);
   } catch (_) {}
+}
+
+class _CleanupProgressDialog extends StatefulWidget {
+  const _CleanupProgressDialog({
+    Key? key,
+    required this.onCancel,
+  }) : super(key: key);
+  
+  final VoidCallback onCancel;
+  
+  @override
+  State<_CleanupProgressDialog> createState() => _CleanupProgressDialogState();
+}
+
+class _CleanupProgressDialogState extends State<_CleanupProgressDialog> {
+  int _checked = 0;
+  int _total = 0;
+  String? _currentTitle;
+
+  void updateProgress(int checked, int total, String? currentTitle) {
+    if (mounted) {
+      setState(() {
+        _checked = checked;
+        _total = total;
+        _currentTitle = currentTitle;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = _total > 0 ? _checked / _total : 0.0;
+    
+    return AlertDialog(
+      title: const Text('Cleaning up library'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Checking books for deletion or corruption...'),
+          const SizedBox(height: 16),
+          LinearProgressIndicator(value: progress),
+          const SizedBox(height: 8),
+          Text(
+            _total > 0 ? '$_checked of $_total books checked' : 'Preparing...',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          if (_currentTitle != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Checking: $_currentTitle',
+              style: Theme.of(context).textTheme.bodySmall,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: widget.onCancel,
+          child: const Text('Cancel'),
+        ),
+      ],
+    );
+  }
 }

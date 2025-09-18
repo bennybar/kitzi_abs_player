@@ -791,8 +791,8 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
                                     icon: Icons.skip_previous_rounded,
                                     size: side,
                                     onTap: () async {
-                                      if (playback.hasPrev) {
-                                        await playback.prevTrack();
+                                      if (playback.hasSmartPrev) {
+                                        await playback.smartPrev();
                                       }
                                     },
                                   ),
@@ -838,8 +838,8 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
                                     icon: Icons.skip_next_rounded,
                                     size: side,
                                     onTap: () async {
-                                      if (playback.hasNext) {
-                                        await playback.nextTrack();
+                                      if (playback.hasSmartNext) {
+                                        await playback.smartNext();
                                       }
                                     },
                                   ),

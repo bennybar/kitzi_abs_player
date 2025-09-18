@@ -957,17 +957,21 @@ class BooksRepository {
   /// Perform a full-library sync into the local database by iterating pages
   /// until exhaustion. Returns the total number of items synced. Optionally
   /// reports progress via [onProgress] with (currentPage, totalSynced).
+  /// If [removeDeleted] is true, removes books that exist locally but not on server.
   Future<int> syncAllBooksToDb({
     int pageSize = 100,
     String sort = 'updatedAt:desc',
     String? query,
     void Function(int page, int totalSynced)? onProgress,
+    bool removeDeleted = false,
   }) async {
     int total = 0;
     int offset = 0;
     int page = 1;
     final Set<String> seenIds = <String>{};
+    final List<Book> allServerBooks = <Book>[];
     int noProgressStreak = 0;
+    
     while (true) {
       List<Book> chunk = const <Book>[];
       try {
@@ -982,6 +986,12 @@ class BooksRepository {
         break;
       }
       if (chunk.isEmpty) break;
+      
+      // Collect all server books for deletion check
+      if (removeDeleted) {
+        allServerBooks.addAll(chunk);
+      }
+      
       final ids = chunk.map((b) => b.id).where((id) => id.isNotEmpty).toSet();
       final before = seenIds.length;
       seenIds.addAll(ids);
@@ -992,6 +1002,9 @@ class BooksRepository {
         // Try page-based as fallback when offset/skip made no progress
         try {
           final pageChunk = await fetchBooksPage(page: page, limit: pageSize, sort: sort, query: query);
+          if (removeDeleted) {
+            allServerBooks.addAll(pageChunk);
+          }
           final before2 = seenIds.length;
           seenIds.addAll(pageChunk.map((b) => b.id));
           final added2 = seenIds.length - before2;
@@ -1013,7 +1026,126 @@ class BooksRepository {
       offset += pageSize;
       page += 1;
     }
+    
+    // Handle deletions if requested and we have a complete server list
+    if (removeDeleted && query == null) { // Only remove deleted books for full library sync (not search)
+      await _removeDeletedBooks(allServerBooks);
+    }
+    
     return total;
+  }
+
+  /// Remove books that exist locally but not on the server
+  Future<void> _removeDeletedBooks(List<Book> serverBooks) async {
+    final db = _db;
+    if (db == null) return;
+
+    // Get current local book IDs
+    final localRows = await db.query('books', columns: ['id']);
+    final localIds = localRows.map((row) => row['id'] as String).toSet();
+    
+    // Get server book IDs
+    final serverIds = serverBooks.map((book) => book.id).toSet();
+    
+    // Find books to delete (exist locally but not on server)
+    final toDelete = localIds.difference(serverIds);
+    
+    if (toDelete.isNotEmpty) {
+      debugPrint('[BOOKS] Removing ${toDelete.length} deleted books from local DB');
+      await db.transaction((txn) async {
+        final batch = txn.batch();
+        for (final id in toDelete) {
+          batch.delete('books', where: 'id = ?', whereArgs: [id]);
+          debugPrint('[BOOKS] Removing deleted book: $id');
+        }
+        await batch.commit(noResult: true);
+      });
+    }
+  }
+
+  /// Manual cleanup: Check each cached book against server and remove deleted/broken ones
+  /// Returns the number of books cleaned up
+  Future<int> cleanupDeletedAndBrokenBooks({
+    void Function(int checked, int total, String? currentTitle)? onProgress,
+    bool Function()? shouldContinue,
+  }) async {
+    final db = _db;
+    if (db == null) return 0;
+
+    // Get all local books
+    final localRows = await db.query('books', columns: ['id', 'title']);
+    final totalBooks = localRows.length;
+    
+    if (totalBooks == 0) return 0;
+    
+    debugPrint('[BOOKS] Starting cleanup of ${totalBooks} cached books');
+    
+    final api = _auth.api;
+    final toDelete = <String>[];
+    int checked = 0;
+    
+    for (final row in localRows) {
+      // Check if cancelled
+      if (shouldContinue != null && !shouldContinue()) {
+        debugPrint('[BOOKS] Cleanup cancelled by user');
+        break;
+      }
+      
+      final bookId = row['id'] as String;
+      final bookTitle = row['title'] as String;
+      checked++;
+      
+      // Report progress
+      onProgress?.call(checked, totalBooks, bookTitle);
+      
+      try {
+        // Check if book still exists on server
+        final resp = await api.request('GET', '/api/items/$bookId');
+        
+        if (resp.statusCode == 404) {
+          // Book deleted from server
+          toDelete.add(bookId);
+          debugPrint('[BOOKS] Book deleted on server: $bookTitle ($bookId)');
+        } else if (resp.statusCode != 200) {
+          // Other error - could be network issue, don't delete
+          debugPrint('[BOOKS] Server error ${resp.statusCode} for book: $bookTitle ($bookId) - keeping');
+        }
+        // If 200, book exists and is fine
+        
+      } catch (e) {
+        // Network error or other issue - don't delete, could be temporary
+        debugPrint('[BOOKS] Network error checking book: $bookTitle ($bookId) - keeping. Error: $e');
+      }
+      
+      // Small delay to avoid overwhelming the server
+      if (checked % 10 == 0) {
+        await Future.delayed(const Duration(milliseconds: 100));
+        
+        // Check cancellation after delay too
+        if (shouldContinue != null && !shouldContinue()) {
+          debugPrint('[BOOKS] Cleanup cancelled by user');
+          break;
+        }
+      }
+    }
+    
+    // Remove deleted books
+    if (toDelete.isNotEmpty) {
+      debugPrint('[BOOKS] Cleaning up ${toDelete.length} deleted/broken books');
+      await db.transaction((txn) async {
+        final batch = txn.batch();
+        for (final id in toDelete) {
+          batch.delete('books', where: 'id = ?', whereArgs: [id]);
+        }
+        await batch.commit(noResult: true);
+      });
+      
+      // Update cache metadata
+      await _updateCacheMetadata(totalBooks - toDelete.length);
+    }
+    
+    debugPrint('[BOOKS] Cleanup completed: ${toDelete.length} books removed');
+    return toDelete.length;
   }
 
   Future<bool> _isDbEmpty() async {

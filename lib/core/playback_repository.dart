@@ -625,6 +625,46 @@ class PlaybackRepository {
       _nowPlaying != null &&
           _nowPlaying!.currentIndex + 1 < _nowPlaying!.tracks.length;
 
+  /// Smart availability check for previous: considers both tracks and chapters
+  bool get hasSmartPrev {
+    final np = _nowPlaying;
+    if (np == null) return false;
+    
+    // Multi-track books: use track-based logic
+    if (np.tracks.length > 1) {
+      return hasPrev;
+    }
+    
+    // Single-track books with chapters: check if there's a previous chapter
+    if (np.tracks.length == 1 && np.chapters.isNotEmpty) {
+      final chapterNav = ChapterNavigationService.instance;
+      return chapterNav.getPreviousChapter() != null;
+    }
+    
+    // Fallback to track-based logic
+    return hasPrev;
+  }
+
+  /// Smart availability check for next: considers both tracks and chapters
+  bool get hasSmartNext {
+    final np = _nowPlaying;
+    if (np == null) return false;
+    
+    // Multi-track books: use track-based logic
+    if (np.tracks.length > 1) {
+      return hasNext;
+    }
+    
+    // Single-track books with chapters: check if there's a next chapter
+    if (np.tracks.length == 1 && np.chapters.isNotEmpty) {
+      final chapterNav = ChapterNavigationService.instance;
+      return chapterNav.getNextChapter() != null;
+    }
+    
+    // Fallback to track-based logic
+    return hasNext;
+  }
+
   Future<void> prevTrack() async {
     if (!hasPrev) return;
     final idx = _nowPlaying!.currentIndex - 1;
@@ -633,12 +673,68 @@ class PlaybackRepository {
     await _sendProgressImmediate();
   }
 
+  /// Smart previous navigation: uses chapter navigation for single-track books, track navigation for multi-track books
+  Future<void> smartPrev() async {
+    final np = _nowPlaying;
+    if (np == null) return;
+    
+    // If we have multiple tracks, use track-based navigation
+    if (np.tracks.length > 1 && hasPrev) {
+      await prevTrack();
+      return;
+    }
+    
+    // If we have a single track with chapters, use chapter navigation
+    if (np.tracks.length == 1 && np.chapters.isNotEmpty) {
+      final chapterNav = ChapterNavigationService.instance;
+      final prevChapter = chapterNav.getPreviousChapter();
+      if (prevChapter != null) {
+        await chapterNav.jumpToChapter(prevChapter);
+        await _sendProgressImmediate();
+      }
+      return;
+    }
+    
+    // Fallback to regular track navigation
+    if (hasPrev) {
+      await prevTrack();
+    }
+  }
+
   Future<void> nextTrack() async {
     if (!hasNext) return;
     final idx = _nowPlaying!.currentIndex + 1;
     await _setTrackAt(idx, preload: true);
     await player.play();
     await _sendProgressImmediate();
+  }
+
+  /// Smart next navigation: uses chapter navigation for single-track books, track navigation for multi-track books
+  Future<void> smartNext() async {
+    final np = _nowPlaying;
+    if (np == null) return;
+    
+    // If we have multiple tracks, use track-based navigation
+    if (np.tracks.length > 1 && hasNext) {
+      await nextTrack();
+      return;
+    }
+    
+    // If we have a single track with chapters, use chapter navigation
+    if (np.tracks.length == 1 && np.chapters.isNotEmpty) {
+      final chapterNav = ChapterNavigationService.instance;
+      final nextChapter = chapterNav.getNextChapter();
+      if (nextChapter != null) {
+        await chapterNav.jumpToChapter(nextChapter);
+        await _sendProgressImmediate();
+      }
+      return;
+    }
+    
+    // Fallback to regular track navigation
+    if (hasNext) {
+      await nextTrack();
+    }
   }
 
   Future<void> stop() async {

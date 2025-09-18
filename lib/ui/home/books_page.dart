@@ -221,7 +221,11 @@ class _BooksPageState extends State<BooksPage> {
         // Kick off background full sync for current mode (all or search)
         Future.microtask(() async {
           try {
-            await repo.syncAllBooksToDb(pageSize: 100, query: q.isEmpty ? null : q);
+            await repo.syncAllBooksToDb(
+              pageSize: 100, 
+              query: q.isEmpty ? null : q,
+              removeDeleted: true, // Enable deletion of books removed from server
+            );
             if (!mounted) return;
             // Reload first page from DB after sync to update counts
             final fresh = await repo.listBooksFromDbPaged(page: 1, limit: 50, query: q.isEmpty ? null : q);
