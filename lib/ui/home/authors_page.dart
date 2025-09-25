@@ -14,14 +14,41 @@ class AuthorsPage extends StatefulWidget {
 class _AuthorsPageState extends State<AuthorsPage> {
   late final Future<BooksRepository> _repoFut;
   List<AuthorInfo> _authors = [];
+  List<AuthorInfo> _filteredAuthors = [];
   bool _loading = true;
   String? _error;
+  String _searchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _repoFut = BooksRepository.create();
     _loadAuthors();
+    _searchController.addListener(_onSearchChanged);
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged() {
+    setState(() {
+      _searchQuery = _searchController.text.toLowerCase();
+      _filterAuthors();
+    });
+  }
+
+  void _filterAuthors() {
+    if (_searchQuery.isEmpty) {
+      _filteredAuthors = List.from(_authors);
+    } else {
+      _filteredAuthors = _authors.where((author) {
+        return author.name.toLowerCase().contains(_searchQuery);
+      }).toList();
+    }
   }
 
   Future<void> _loadAuthors() async {
@@ -31,6 +58,7 @@ class _AuthorsPageState extends State<AuthorsPage> {
       if (mounted) {
         setState(() {
           _authors = authors;
+          _filteredAuthors = List.from(authors);
           _loading = false;
         });
       }
@@ -67,6 +95,34 @@ class _AuthorsPageState extends State<AuthorsPage> {
             icon: const Icon(Icons.refresh_rounded),
           ),
         ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(60),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Search authors...',
+                prefixIcon: const Icon(Icons.search_rounded),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        onPressed: () {
+                          _searchController.clear();
+                        },
+                        icon: const Icon(Icons.clear_rounded),
+                      )
+                    : null,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -107,7 +163,7 @@ class _AuthorsPageState extends State<AuthorsPage> {
                     ),
                   ),
                 )
-              : _authors.isEmpty
+              : _filteredAuthors.isEmpty
                   ? Center(
                       child: Padding(
                         padding: const EdgeInsets.all(20),
@@ -121,14 +177,18 @@ class _AuthorsPageState extends State<AuthorsPage> {
                             ),
                             const SizedBox(height: 16),
                             Text(
-                              'No authors found',
+                              _searchQuery.isNotEmpty
+                                  ? 'No authors found matching "$_searchQuery"'
+                                  : 'No authors found',
                               style: theme.textTheme.titleLarge?.copyWith(
                                 color: cs.onSurface,
                               ),
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              'Authors will appear here once you have books in your library',
+                              _searchQuery.isNotEmpty
+                                  ? 'Try adjusting your search terms'
+                                  : 'Authors will appear here once you have books in your library',
                               textAlign: TextAlign.center,
                               style: theme.textTheme.bodyMedium?.copyWith(
                                 color: cs.onSurfaceVariant,
@@ -142,9 +202,9 @@ class _AuthorsPageState extends State<AuthorsPage> {
                       onRefresh: _refresh,
                       child: ListView.builder(
                         padding: const EdgeInsets.all(16),
-                        itemCount: _authors.length,
+                        itemCount: _filteredAuthors.length,
                         itemBuilder: (context, index) {
-                          final author = _authors[index];
+                          final author = _filteredAuthors[index];
                           return _AuthorTile(
                             author: author,
                             onTap: () => _showAuthorBooks(context, author),
