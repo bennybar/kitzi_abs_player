@@ -23,7 +23,7 @@
     <uses-permission android:name="android.permission.MEDIA_CONTENT_CONTROL" />
 
     <application
-        android:label="Kitzi ABS Player"
+        android:label="Kitzi ABS"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:networkSecurityConfig="@xml/network_security_config"
