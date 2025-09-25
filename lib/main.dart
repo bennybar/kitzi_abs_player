@@ -137,7 +137,7 @@ class _AbsAppState extends State<AbsApp> {
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: services.theme.mode,
       builder: (_, themeMode, __) {
-        ThemeData _expressiveTheme(ColorScheme scheme) {
+        ThemeData expressiveTheme(ColorScheme scheme) {
           return ThemeData(
             useMaterial3: true,
             colorScheme: scheme,
@@ -193,8 +193,8 @@ class _AbsAppState extends State<AbsApp> {
 
             return MaterialApp(
               title: 'ABS Client',
-              theme: _expressiveTheme(lightScheme),
-              darkTheme: _expressiveTheme(darkScheme),
+              theme: expressiveTheme(lightScheme),
+              darkTheme: expressiveTheme(darkScheme),
               themeMode: themeMode,
               home: FutureBuilder<bool>(
                 future: _sessionFuture,

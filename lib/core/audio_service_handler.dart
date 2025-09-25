@@ -1,11 +1,10 @@
 import 'package:audio_service/audio_service.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'playback_repository.dart';
 import 'books_repository.dart';
-import 'play_history_service.dart';
-import '../models/book.dart';
 
 class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   final PlaybackRepository _playback;
@@ -184,6 +183,17 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
 
   @override
   Future<void> play() async {
+    // Respect user preference: block generic/external play when Bluetooth auto-play is disabled
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final allowAutoPlay = prefs.getBool('bluetooth_auto_play') ?? true;
+      if (!allowAutoPlay) {
+        // Ignore external play requests unless explicitly initiated via playFromMediaId
+        debugPrint('Play command ignored due to bluetooth_auto_play=false');
+        return;
+      }
+    } catch (_) {}
+
     // If we already have an active item, just resume
     if (_playback.nowPlaying != null) {
       await _playback.resume();

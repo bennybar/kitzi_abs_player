@@ -25,6 +25,8 @@ class _SettingsPageState extends State<SettingsPage> {
   bool? _dualProgressEnabled;
   bool? _showSeriesTab;
   bool? _showCollectionsTab;
+  bool? _authorViewEnabled;
+  bool? _bluetoothAutoPlay;
   String? _activeLibraryId;
   List<Map<String, String>> _libraries = const [];
 
@@ -42,8 +44,10 @@ class _SettingsPageState extends State<SettingsPage> {
         _syncProgressBeforePlay = prefs.getBool('sync_progress_before_play') ?? true;
         _pauseCancelsSleepTimer = prefs.getBool('pause_cancels_sleep_timer') ?? true;
         _dualProgressEnabled = prefs.getBool('ui_dual_progress_enabled') ?? true;
-        _showSeriesTab = prefs.getBool('ui_show_series_tab') ?? true;
+        _showSeriesTab = prefs.getBool('ui_show_series_tab') ?? false;
         _showCollectionsTab = prefs.getBool('ui_show_collections_tab') ?? false;
+        _authorViewEnabled = prefs.getBool('ui_author_view_enabled') ?? true;
+        _bluetoothAutoPlay = prefs.getBool('bluetooth_auto_play') ?? true;
         _activeLibraryId = prefs.getString('books_library_id');
       });
       await _loadLibraries();
@@ -52,6 +56,7 @@ class _SettingsPageState extends State<SettingsPage> {
         _wifiOnly = false;
         _syncProgressBeforePlay = true;
         _pauseCancelsSleepTimer = true;
+        _bluetoothAutoPlay = true;
       });
     }
   }
@@ -278,6 +283,15 @@ class _SettingsPageState extends State<SettingsPage> {
               if (mounted) setState(() { _showCollectionsTab = v; });
             },
           ),
+          SwitchListTile(
+            title: const Text('Authors tab'),
+            subtitle: const Text('Show a dedicated Authors tab in the main navigation'),
+            value: _authorViewEnabled ?? true,
+            onChanged: (v) async {
+              await UiPrefs.setAuthorViewEnabled(v, pinToSettingsOnChange: true);
+              if (mounted) setState(() { _authorViewEnabled = v; });
+            },
+          ),
           // Live-bind to ThemeService.mode
           ValueListenableBuilder<ThemeMode>(
             valueListenable: theme.mode,
@@ -409,6 +423,20 @@ class _SettingsPageState extends State<SettingsPage> {
               setState(() { _dualProgressEnabled = v; });
             },
           ),
+          SwitchListTile(
+            title: const Text('Auto-play on Bluetooth connection'),
+            subtitle: const Text('Start playing when connected to car Bluetooth'),
+            value: _bluetoothAutoPlay ?? true,
+            onChanged: (v) async {
+              await _setBluetoothAutoPlay(v);
+              if (!mounted) return;
+              setState(() { _bluetoothAutoPlay = v; });
+              // Reconfigure audio session to apply the new setting
+              try {
+                await services.playback.reconfigureAudioSession();
+              } catch (_) {}
+            },
+          ),
           ValueListenableBuilder<double>(
             valueListenable: playbackSpeed.speed,
             builder: (_, spd, __) {
@@ -527,11 +555,18 @@ Future<void> _setDualProgressEnabled(bool value) async {
   } catch (_) {}
 }
 
+Future<void> _setBluetoothAutoPlay(bool value) async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('bluetooth_auto_play', value);
+  } catch (_) {}
+}
+
 class _CleanupProgressDialog extends StatefulWidget {
   const _CleanupProgressDialog({
-    Key? key,
+    super.key,
     required this.onCancel,
-  }) : super(key: key);
+  });
   
   final VoidCallback onCancel;
   

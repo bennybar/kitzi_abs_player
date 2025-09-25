@@ -601,15 +601,17 @@ class DownloadsRepository {
         if (r.statusCode == 200) {
           final data = jsonDecode(r.body);
           List list;
-          if (data is Map && data['files'] is List) list = data['files'] as List;
-          else if (data is List) list = data;
+          if (data is Map && data['files'] is List) {
+            list = data['files'] as List;
+          } else if (data is List) list = data;
           else list = const [];
           for (final it in list) {
             if (it is Map) {
               final m = it.cast<String, dynamic>();
               final v = m['size'] ?? m['bytes'] ?? m['fileSize'] ?? (m['stat'] is Map ? (m['stat']['size']) : null) ?? m['sizeBytes'];
-              if (v is num) sum += v.toInt();
-              else if (v is String) {
+              if (v is num) {
+                sum += v.toInt();
+              } else if (v is String) {
                 final n = int.tryParse(v);
                 if (n != null) sum += n;
               }
@@ -627,7 +629,7 @@ class DownloadsRepository {
       final client = HttpClient();
       client.autoUncompress = false;
 
-      Future<int> _probe(String url) async {
+      Future<int> probe(String url) async {
         // Prefer HEAD; fall back to ranged GET
         try {
           final req = await client.openUrl('HEAD', Uri.parse(url));
@@ -664,9 +666,11 @@ class DownloadsRepository {
       int idx = 0;
       while (idx < plan.length) {
         final batch = plan.skip(idx).take(maxParallel).toList();
-        final futures = batch.map((t) => _probe(_downloadUrlFor(libraryItemId, t.fileId, episodeId: episodeId)));
+        final futures = batch.map((t) => probe(_downloadUrlFor(libraryItemId, t.fileId, episodeId: episodeId)));
         final results = await Future.wait(futures);
-        for (final n in results) sum += n;
+        for (final n in results) {
+          sum += n;
+        }
         idx += batch.length;
       }
       try { client.close(force: true); } catch (_) {}
@@ -1036,7 +1040,7 @@ class DownloadsRepository {
       try {
         final access = await _auth.api.accessToken();
         if (access != null && access.isNotEmpty) {
-          headers['Authorization'] = 'Bearer ' + access;
+          headers['Authorization'] = 'Bearer $access';
         }
       } catch (_) {}
       // Build /download endpoint URL (no playback session)

@@ -239,8 +239,9 @@ class PlayHistoryService {
         resp = await doGet(libraryInProgressUrl);
         if (resp.statusCode == 200) {
           final fb = jsonDecode(resp.body);
-          if (fb is Map && fb['results'] is List) items = fb['results'] as List;
-          else if (fb is List) items = fb;
+          if (fb is Map && fb['results'] is List) {
+            items = fb['results'] as List;
+          } else if (fb is List) items = fb;
         }
       }
 
@@ -261,8 +262,11 @@ class PlayHistoryService {
       // Flatten nested section entries and normalize
       final flat = <dynamic>[];
       for (final e in items) {
-        if (e is Map && e['items'] is List) flat.addAll((e['items'] as List));
-        else flat.add(e);
+        if (e is Map && e['items'] is List) {
+          flat.addAll((e['items'] as List));
+        } else {
+          flat.add(e);
+        }
       }
 
       final normalized = <Map<String, dynamic>>[];

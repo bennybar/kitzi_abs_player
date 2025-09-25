@@ -1,6 +1,7 @@
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import 'package:audio_session/audio_session.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'playback_repository.dart';
 import 'audio_service_handler.dart';
@@ -13,6 +14,42 @@ class AudioServiceManager {
 
   KitziAudioHandler? _audioHandler;
   bool _isInitialized = false;
+
+  /// Check if Bluetooth auto-play is enabled
+  Future<bool> _isBluetoothAutoPlayEnabled() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getBool('bluetooth_auto_play') ?? true;
+    } catch (_) {
+      return true; // Default to true if error
+    }
+  }
+
+  /// Configure audio session based on user preferences
+  Future<void> _configureAudioSession(AudioSession session) async {
+    final bluetoothAutoPlay = await _isBluetoothAutoPlayEnabled();
+    
+    if (bluetoothAutoPlay) {
+      // Enable Bluetooth auto-play (default behavior)
+      await session.configure(const AudioSessionConfiguration.music());
+    } else {
+      // Disable Bluetooth auto-play by using a custom configuration
+      await session.configure(AudioSessionConfiguration(
+        avAudioSessionCategory: AVAudioSessionCategory.playback,
+        avAudioSessionCategoryOptions: AVAudioSessionCategoryOptions.defaultToSpeaker,
+        avAudioSessionMode: AVAudioSessionMode.defaultMode,
+        avAudioSessionRouteSharingPolicy: AVAudioSessionRouteSharingPolicy.defaultPolicy,
+        avAudioSessionSetActiveOptions: AVAudioSessionSetActiveOptions.none,
+        androidAudioAttributes: const AndroidAudioAttributes(
+          contentType: AndroidAudioContentType.music,
+          flags: AndroidAudioFlags.none,
+          usage: AndroidAudioUsage.media,
+        ),
+        androidAudioFocusGainType: AndroidAudioFocusGainType.gain,
+        androidWillPauseWhenDucked: true,
+      ));
+    }
+  }
 
   Future<void> initialize(PlaybackRepository playbackRepository) async {
     if (_isInitialized) {
@@ -27,7 +64,7 @@ class AudioServiceManager {
       // Configure audio session
       debugPrint('Configuring audio session...');
       final session = await AudioSession.instance;
-      await session.configure(AudioSessionConfiguration.music());
+      await _configureAudioSession(session);
       debugPrint('✓ Audio session configured successfully');
 
       // Create audio handler

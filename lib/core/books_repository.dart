@@ -6,7 +6,6 @@ import 'package:sqflite/sqflite.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'dart:io';
-import 'dart:convert' show utf8;
 import 'package:crypto/crypto.dart';
 import '../models/book.dart';
 import 'auth_repository.dart';
@@ -238,7 +237,7 @@ class BooksRepository {
       final dbPath = await getDatabasesPath();
       final prefs = await SharedPreferences.getInstance();
       final libId = prefs.getString(_libIdKey) ?? 'default';
-      final path = p.join(dbPath, 'kitzi_books_' + libId + '.db');
+      final path = p.join(dbPath, 'kitzi_books_$libId.db');
       final db = await openDatabase(path);
       await db.execute('DELETE FROM books');
       await db.close();
@@ -249,7 +248,7 @@ class BooksRepository {
       final dbPath = await getDatabasesPath();
       final prefs = await SharedPreferences.getInstance();
       final libId = prefs.getString(_libIdKey) ?? 'default';
-      final dbFile = p.join(dbPath, 'kitzi_books_' + libId + '.db');
+      final dbFile = p.join(dbPath, 'kitzi_books_$libId.db');
       await deleteDatabase(dbFile);
     } catch (_) {}
 
@@ -258,7 +257,7 @@ class BooksRepository {
       final dbPath = await getDatabasesPath();
       final prefs = await SharedPreferences.getInstance();
       final libId = prefs.getString(_libIdKey) ?? 'default';
-      final coversDir = Directory(p.join(dbPath, 'kitzi_covers', 'lib_' + libId));
+      final coversDir = Directory(p.join(dbPath, 'kitzi_covers', 'lib_$libId'));
       if (await coversDir.exists()) {
         await coversDir.delete(recursive: true);
       }
@@ -269,7 +268,7 @@ class BooksRepository {
       final dbPath = await getDatabasesPath();
       final prefs = await SharedPreferences.getInstance();
       final libId = prefs.getString(_libIdKey) ?? 'default';
-      final descDir = Directory(p.join(dbPath, 'kitzi_desc_images', 'lib_' + libId));
+      final descDir = Directory(p.join(dbPath, 'kitzi_desc_images', 'lib_$libId'));
       if (await descDir.exists()) {
         await descDir.delete(recursive: true);
       }
@@ -279,7 +278,7 @@ class BooksRepository {
   Future<void> _openDb() async {
     final dbPath = await getDatabasesPath();
     final libId = _prefs.getString(_libIdKey) ?? 'default';
-    final path = p.join(dbPath, 'kitzi_books_' + libId + '.db');
+    final path = p.join(dbPath, 'kitzi_books_$libId.db');
     _db = await openDatabase(
       path,
       version: 2, // Increment version to trigger migration
@@ -709,7 +708,7 @@ class BooksRepository {
   Future<Directory> _descImagesDirFor(String bookId) async {
     final dbPath = await getDatabasesPath();
     final libId = _prefs.getString(_libIdKey) ?? 'default';
-    final dir = Directory(p.join(dbPath, 'kitzi_desc_images', 'lib_' + libId, bookId));
+    final dir = Directory(p.join(dbPath, 'kitzi_desc_images', 'lib_$libId', bookId));
     if (!await dir.exists()) {
       await dir.create(recursive: true);
     }
@@ -819,7 +818,7 @@ class BooksRepository {
     final dbPath = await getDatabasesPath();
     final prefs = await SharedPreferences.getInstance();
     final libId = prefs.getString(_libIdKey) ?? 'default';
-    final dir = Directory(p.join(dbPath, 'kitzi_desc_images', 'lib_' + libId, bookId));
+    final dir = Directory(p.join(dbPath, 'kitzi_desc_images', 'lib_$libId', bookId));
     final name = _hashUrl(url);
     for (final ext in ['jpg','jpeg','png','webp','gif','img']) {
       final file = File(p.join(dir.path, '$name.$ext'));
@@ -1078,7 +1077,7 @@ class BooksRepository {
     
     if (totalBooks == 0) return 0;
     
-    debugPrint('[BOOKS] Starting cleanup of ${totalBooks} cached books');
+    debugPrint('[BOOKS] Starting cleanup of $totalBooks cached books');
     
     final api = _auth.api;
     final toDelete = <String>[];
@@ -1241,7 +1240,7 @@ class BooksRepository {
     final dbPath = await getDatabasesPath();
     final libId = _prefs.getString(_libIdKey) ?? 'default';
     // Use the same base root as database to avoid extra permissions
-    final dir = Directory(p.join(dbPath, 'kitzi_covers', 'lib_' + libId));
+    final dir = Directory(p.join(dbPath, 'kitzi_covers', 'lib_$libId'));
     if (!await dir.exists()) {
       await dir.create(recursive: true);
     }
@@ -1283,4 +1282,149 @@ class BooksRepository {
       client.close();
     }
   }
+
+  /// Search for all books by a specific author
+  Future<List<Book>> searchBooksByAuthor(String authorName) async {
+    await _ensureDbForCurrentLib();
+    final db = _db;
+    if (db == null) return <Book>[];
+    
+    final baseUrl = _auth.api.baseUrl ?? '';
+    final token = await _auth.api.accessToken();
+
+    // Search for books where the author field matches (case insensitive)
+    final rows = await db.query(
+      'books',
+      where: 'LOWER(author) LIKE ?',
+      whereArgs: ['%${authorName.toLowerCase()}%'],
+      orderBy: 'title COLLATE NOCASE ASC',
+    );
+
+    if (rows.isEmpty) return <Book>[];
+
+    return rows.map((m) {
+      final id = (m['id'] as String);
+      final localPath = (m['coverPath'] as String?);
+      var coverUrl = '$baseUrl/api/items/$id/cover';
+      if (token != null && token.isNotEmpty) coverUrl = '$coverUrl?token=$token';
+      if (localPath != null && File(localPath).existsSync()) {
+        coverUrl = 'file://$localPath';
+      }
+      final isAudioRaw = m['isAudioBook'] as int?;
+      final durationRaw = m['durationMs'] as int?;
+      final computedIsAudio = (isAudioRaw != null)
+          ? (isAudioRaw != 0)
+          : (durationRaw != null && durationRaw > 0);
+      return Book(
+        id: id,
+        title: (m['title'] as String),
+        author: m['author'] as String?,
+        coverUrl: coverUrl,
+        description: m['description'] as String?,
+        durationMs: m['durationMs'] as int?,
+        sizeBytes: m['sizeBytes'] as int?,
+        updatedAt: (m['updatedAt'] as int?) != null
+            ? DateTime.fromMillisecondsSinceEpoch((m['updatedAt'] as int), isUtc: true)
+            : null,
+        series: m['series'] as String?,
+        seriesSequence: (m['seriesSequence'] is num)
+            ? (m['seriesSequence'] as num).toDouble()
+            : (m['seriesSequence'] is String ? double.tryParse((m['seriesSequence'] as String)) : null),
+        collection: m['collection'] as String?,
+        collectionSequence: (m['collectionSequence'] is num)
+            ? (m['collectionSequence'] as num).toDouble()
+            : (m['collectionSequence'] is String ? double.tryParse((m['collectionSequence'] as String)) : null),
+        mediaKind: m['mediaKind'] as String?,
+        isAudioBook: computedIsAudio,
+        libraryId: m['libraryId'] as String?,
+      );
+    }).toList();
+  }
+
+  /// Get all unique authors with their books
+  Future<List<AuthorInfo>> getAllAuthors() async {
+    await _ensureDbForCurrentLib();
+    final db = _db;
+    if (db == null) return <AuthorInfo>[];
+    
+    final baseUrl = _auth.api.baseUrl ?? '';
+    final token = await _auth.api.accessToken();
+
+    // Get all unique authors with their book counts
+    final rows = await db.rawQuery('''
+      SELECT author, COUNT(*) as book_count
+      FROM books 
+      WHERE author IS NOT NULL AND author != ''
+      GROUP BY author
+      ORDER BY author COLLATE NOCASE ASC
+    ''');
+
+    if (rows.isEmpty) return <AuthorInfo>[];
+
+    final authors = <AuthorInfo>[];
+    for (final row in rows) {
+      final authorName = row['author'] as String;
+      
+      // Get all books for this author
+      final bookRows = await db.query(
+        'books',
+        where: 'author = ?',
+        whereArgs: [authorName],
+        orderBy: 'title COLLATE NOCASE ASC',
+      );
+
+      final books = bookRows.map((m) {
+        final id = (m['id'] as String);
+        final localPath = (m['coverPath'] as String?);
+        var coverUrl = '$baseUrl/api/items/$id/cover';
+        if (token != null && token.isNotEmpty) coverUrl = '$coverUrl?token=$token';
+        if (localPath != null && File(localPath).existsSync()) {
+          coverUrl = 'file://$localPath';
+        }
+        final isAudioRaw = m['isAudioBook'] as int?;
+        final durationRaw = m['durationMs'] as int?;
+        final computedIsAudio = (isAudioRaw != null)
+            ? (isAudioRaw != 0)
+            : (durationRaw != null && durationRaw > 0);
+        return Book(
+          id: id,
+          title: (m['title'] as String),
+          author: m['author'] as String?,
+          coverUrl: coverUrl,
+          description: m['description'] as String?,
+          durationMs: m['durationMs'] as int?,
+          sizeBytes: m['sizeBytes'] as int?,
+          updatedAt: (m['updatedAt'] as int?) != null
+              ? DateTime.fromMillisecondsSinceEpoch((m['updatedAt'] as int), isUtc: true)
+              : null,
+          series: m['series'] as String?,
+          seriesSequence: (m['seriesSequence'] is num)
+              ? (m['seriesSequence'] as num).toDouble()
+              : (m['seriesSequence'] is String ? double.tryParse((m['seriesSequence'] as String)) : null),
+          collection: m['collection'] as String?,
+          collectionSequence: (m['collectionSequence'] is num)
+              ? (m['collectionSequence'] as num).toDouble()
+              : (m['collectionSequence'] is String ? double.tryParse((m['collectionSequence'] as String)) : null),
+          mediaKind: m['mediaKind'] as String?,
+          isAudioBook: computedIsAudio,
+          libraryId: m['libraryId'] as String?,
+        );
+      }).toList();
+
+      authors.add(AuthorInfo(name: authorName, books: books));
+    }
+
+    return authors;
+  }
+}
+
+class AuthorInfo {
+  final String name;
+  final List<Book> books;
+  final int bookCount;
+
+  AuthorInfo({
+    required this.name,
+    required this.books,
+  }) : bookCount = books.length;
 }

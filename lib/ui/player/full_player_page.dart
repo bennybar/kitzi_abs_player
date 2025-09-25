@@ -590,7 +590,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
 
                           if (useGlobal) {
                             final globalPos = playback.globalBookPosition ?? Duration.zero;
-                            final max = globalTotal!.inMilliseconds.toDouble();
+                            final max = globalTotal.inMilliseconds.toDouble();
                             final value = globalPos.inMilliseconds.toDouble().clamp(0.0, max > 0 ? max : 1.0);
 
                             // Determine chapter info for display
@@ -609,9 +609,10 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
                               chapterStart = np.chapters[chapterIdx].start;
                               if (chapterIdx + 1 < np.chapters.length) {
                                 chapterEnd = np.chapters[chapterIdx + 1].start;
-                              } else if (globalTotal != null) {
+                              } else {
                                 chapterEnd = globalTotal;
                               }
+                            
                             }
 
                             final chapterElapsed = (chapterStart != null)

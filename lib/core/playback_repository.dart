@@ -355,7 +355,7 @@ class PlaybackRepository {
     try {
       final repo = await BooksRepository.create();
       final b = await repo.getBookFromDb(libraryItemId) ?? await repo.getBook(libraryItemId);
-      if (b != null && b.isAudioBook == false) {
+      if (b.isAudioBook == false) {
         _log('Blocked play for non-audiobook item $libraryItemId');
         return false;
       }
@@ -939,9 +939,56 @@ class PlaybackRepository {
 
   // ---- Internals ----
 
+  /// Check if Bluetooth auto-play is enabled
+  Future<bool> _isBluetoothAutoPlayEnabled() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getBool('bluetooth_auto_play') ?? true;
+    } catch (_) {
+      return true; // Default to true if error
+    }
+  }
+
+  /// Configure audio session based on user preferences
+  Future<void> _configureAudioSession(AudioSession session) async {
+    final bluetoothAutoPlay = await _isBluetoothAutoPlayEnabled();
+    
+    if (bluetoothAutoPlay) {
+      // Enable Bluetooth auto-play (default behavior)
+      await session.configure(const AudioSessionConfiguration.music());
+    } else {
+      // Disable Bluetooth auto-play by using a custom configuration
+      await session.configure(AudioSessionConfiguration(
+        avAudioSessionCategory: AVAudioSessionCategory.playback,
+        avAudioSessionCategoryOptions: AVAudioSessionCategoryOptions.defaultToSpeaker,
+        avAudioSessionMode: AVAudioSessionMode.defaultMode,
+        avAudioSessionRouteSharingPolicy: AVAudioSessionRouteSharingPolicy.defaultPolicy,
+        avAudioSessionSetActiveOptions: AVAudioSessionSetActiveOptions.none,
+        androidAudioAttributes: const AndroidAudioAttributes(
+          contentType: AndroidAudioContentType.music,
+          flags: AndroidAudioFlags.none,
+          usage: AndroidAudioUsage.media,
+        ),
+        androidAudioFocusGainType: AndroidAudioFocusGainType.gain,
+        androidWillPauseWhenDucked: true,
+      ));
+    }
+  }
+
+  /// Reconfigure audio session when settings change
+  Future<void> reconfigureAudioSession() async {
+    try {
+      final session = await AudioSession.instance;
+      await _configureAudioSession(session);
+      _log('Audio session reconfigured for Bluetooth auto-play setting');
+    } catch (e) {
+      _log('Failed to reconfigure audio session: $e');
+    }
+  }
+
   Future<void> _init() async {
     final session = await AudioSession.instance;
-    await session.configure(const AudioSessionConfiguration.music());
+    await _configureAudioSession(session);
     WidgetsBinding.instance.addObserver(_lifecycleHook);
 
     // Pause when headphones unplug or audio becomes noisy
@@ -1392,15 +1439,15 @@ class PlaybackRepository {
   }
 
   String? _authorFromMeta(Map<String, dynamic> meta) {
-    String? _pick(String? s) => (s != null && s.trim().isNotEmpty) ? s : null;
+    String? pick(String? s) => (s != null && s.trim().isNotEmpty) ? s : null;
 
     // Prefer simple string fields across common locations
-    final simple = _pick(meta['author'] as String?) ??
-        _pick(meta['authorName'] as String?) ??
-        _pick(meta['media']?['metadata']?['author'] as String?) ??
-        _pick(meta['media']?['metadata']?['authorName'] as String?) ??
-        _pick(meta['book']?['author'] as String?) ??
-        _pick(meta['book']?['authorName'] as String?);
+    final simple = pick(meta['author'] as String?) ??
+        pick(meta['authorName'] as String?) ??
+        pick(meta['media']?['metadata']?['author'] as String?) ??
+        pick(meta['media']?['metadata']?['authorName'] as String?) ??
+        pick(meta['book']?['author'] as String?) ??
+        pick(meta['book']?['authorName'] as String?);
     if (simple != null) return simple;
 
     // Fallback to authors list across possible locations
@@ -1447,7 +1494,7 @@ class PlaybackRepository {
         meta['media']?['chapters'] ??
         meta['book']?['chapters'];
 
-    void _parseList(List list, {String? sourceName}) {
+    void parseList(List list, {String? sourceName}) {
       for (final c in list) {
         if (c is Map) {
           final map = c.cast<String, dynamic>();
@@ -1470,7 +1517,7 @@ class PlaybackRepository {
     }
 
     if (toc is List) {
-      _parseList(toc, sourceName: 'root');
+      parseList(toc, sourceName: 'root');
     }
 
     // Sort by start just in case

@@ -21,7 +21,7 @@ class NetworkService {
     
     for (int attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        return await operation().timeout(timeout!);
+        return await operation().timeout(timeout);
       } catch (error) {
         final isLastAttempt = attempt == maxRetries;
         final shouldRetryError = shouldRetry?.call(error) ?? _defaultShouldRetry(error);

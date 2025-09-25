@@ -312,8 +312,9 @@ class _BookDetailPageState extends State<BookDetailPage> {
                                             if (resp.statusCode == 200) {
                                               final data = jsonDecode(resp.body);
                                               List list;
-                                              if (data is Map && data['files'] is List) list = data['files'] as List;
-                                              else if (data is List) list = data;
+                                              if (data is Map && data['files'] is List) {
+                                                list = data['files'] as List;
+                                              } else if (data is List) list = data;
                                               else list = const [];
                                               int sum = 0;
                                               for (final it in list) {

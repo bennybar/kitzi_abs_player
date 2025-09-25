@@ -7,6 +7,7 @@ import '../downloads/downloads_page.dart';
 import '../../widgets/mini_player.dart';
 import '../home/series_page.dart';
 import '../home/collections_page.dart';
+import '../home/authors_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/ui_prefs.dart';
 
@@ -26,6 +27,7 @@ class _MainScaffoldState extends State<MainScaffold> {
   int _index = 0;
   bool _showSeries = false;
   bool _showCollections = false;
+  bool _showAuthors = false;
 
   @override
   void initState() {
@@ -33,11 +35,13 @@ class _MainScaffoldState extends State<MainScaffold> {
     // Start from current UiPrefs immediately to avoid flash
     _showSeries = UiPrefs.seriesTabVisible.value;
     _showCollections = UiPrefs.collectionsTabVisible.value;
+    _showAuthors = UiPrefs.authorViewEnabled.value;
     // Load persisted prefs and listen for changes
     _loadTabPrefs();
     UiPrefs.loadFromPrefs();
     UiPrefs.seriesTabVisible.addListener(_onTabPrefsChanged);
     UiPrefs.collectionsTabVisible.addListener(_onTabPrefsChanged);
+    UiPrefs.authorViewEnabled.addListener(_onTabPrefsChanged);
   }
 
   void _onTabPrefsChanged() {
@@ -45,6 +49,7 @@ class _MainScaffoldState extends State<MainScaffold> {
     setState(() {
       _showSeries = UiPrefs.seriesTabVisible.value;
       _showCollections = UiPrefs.collectionsTabVisible.value;
+      _showAuthors = UiPrefs.authorViewEnabled.value;
     });
   }
 
@@ -52,6 +57,7 @@ class _MainScaffoldState extends State<MainScaffold> {
   void dispose() {
     UiPrefs.seriesTabVisible.removeListener(_onTabPrefsChanged);
     UiPrefs.collectionsTabVisible.removeListener(_onTabPrefsChanged);
+    UiPrefs.authorViewEnabled.removeListener(_onTabPrefsChanged);
     super.dispose();
   }
 
@@ -61,6 +67,7 @@ class _MainScaffoldState extends State<MainScaffold> {
       setState(() {
         _showSeries = prefs.getBool('ui_show_series_tab') ?? _showSeries;
         _showCollections = prefs.getBool('ui_show_collections_tab') ?? _showCollections;
+        _showAuthors = prefs.getBool('ui_author_view_enabled') ?? true;
       });
     } catch (_) {}
   }
@@ -73,6 +80,7 @@ class _MainScaffoldState extends State<MainScaffold> {
 
     final pages = <Widget>[
       const BooksPage(),
+      if (_showAuthors) const AuthorsPage(),
       if (_showSeries) const SeriesPage(),
       if (_showCollections) const CollectionsPage(),
       DownloadsPage(repo: widget.downloadsRepo),
@@ -130,6 +138,12 @@ class _MainScaffoldState extends State<MainScaffold> {
                     selectedIcon: Icon(Icons.library_books, semanticLabel: 'Books'),
                     label: 'Books',
                   ),
+                  if (_showAuthors)
+                    const NavigationDestination(
+                      icon: Icon(Icons.person_outlined, semanticLabel: 'Authors'),
+                      selectedIcon: Icon(Icons.person, semanticLabel: 'Authors'),
+                      label: 'Authors',
+                    ),
                   if (_showSeries)
                     const NavigationDestination(
                       icon: Icon(Icons.collections_bookmark_outlined, semanticLabel: 'Series'),
