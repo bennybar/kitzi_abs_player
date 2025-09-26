@@ -18,18 +18,56 @@ class FullPlayerPage extends StatefulWidget {
     try {
       await Navigator.of(context).push(PageRouteBuilder(
         pageBuilder: (_, __, ___) => const FullPlayerPage(),
-        transitionsBuilder: (_, anim, __, child) {
-          final curved = CurvedAnimation(parent: anim, curve: Curves.easeOutCubic);
-          return FadeTransition(
-            opacity: curved,
-            child: SlideTransition(
-              position: Tween<Offset>(begin: const Offset(0, 0.04), end: Offset.zero).animate(curved),
-              child: child,
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          // Create multiple curved animations for different elements
+          final slideCurve = CurvedAnimation(
+            parent: animation,
+            curve: const Interval(0.0, 0.8, curve: Curves.easeOutQuart),
+          );
+          final fadeCurve = CurvedAnimation(
+            parent: animation,
+            curve: const Interval(0.0, 1.0, curve: Curves.easeOut),
+          );
+          final scaleCurve = CurvedAnimation(
+            parent: animation,
+            curve: const Interval(0.0, 0.9, curve: Curves.elasticOut),
+          );
+          final contentCurve = CurvedAnimation(
+            parent: animation,
+            curve: const Interval(0.2, 1.0, curve: Curves.easeOutCubic),
+          );
+
+          return SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0, 0.15),
+              end: Offset.zero,
+            ).animate(slideCurve),
+            child: FadeTransition(
+              opacity: fadeCurve,
+              child: ScaleTransition(
+                scale: Tween<double>(
+                  begin: 0.95,
+                  end: 1.0,
+                ).animate(scaleCurve),
+                child: AnimatedBuilder(
+                  animation: contentCurve,
+                  builder: (context, child) {
+                    return Transform.translate(
+                      offset: Offset(0, 20 * (1 - contentCurve.value)),
+                      child: Opacity(
+                        opacity: contentCurve.value,
+                        child: child,
+                      ),
+                    );
+                  },
+                  child: child,
+                ),
+              ),
             ),
           );
         },
-        transitionDuration: const Duration(milliseconds: 220),
-        reverseTransitionDuration: const Duration(milliseconds: 160),
+        transitionDuration: const Duration(milliseconds: 350),
+        reverseTransitionDuration: const Duration(milliseconds: 250),
       ));
     } finally {
       _isOpen = false;
@@ -40,14 +78,63 @@ class FullPlayerPage extends StatefulWidget {
   State<FullPlayerPage> createState() => _FullPlayerPageState();
 }
 
-class _FullPlayerPageState extends State<FullPlayerPage> {
+class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStateMixin {
   double _dragY = 0.0;
   bool _dualProgressEnabled = true;
+  late AnimationController _contentAnimationController;
+  late Animation<double> _coverAnimation;
+  late Animation<double> _titleAnimation;
+  late Animation<double> _controlsAnimation;
 
   @override
   void initState() {
     super.initState();
     _loadDualProgressPref();
+    _setupContentAnimations();
+  }
+
+  void _setupContentAnimations() {
+    _contentAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 600),
+      vsync: this,
+    );
+
+    _coverAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _contentAnimationController,
+      curve: const Interval(0.0, 0.6, curve: Curves.easeOutBack),
+    ));
+
+    _titleAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _contentAnimationController,
+      curve: const Interval(0.2, 0.8, curve: Curves.easeOutCubic),
+    ));
+
+    _controlsAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _contentAnimationController,
+      curve: const Interval(0.4, 1.0, curve: Curves.easeOutCubic),
+    ));
+
+    // Start the content animation after a short delay
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (mounted) {
+        _contentAnimationController.forward();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _contentAnimationController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadDualProgressPref() async {
@@ -426,9 +513,10 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
           }
         },
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 140),
-          curve: Curves.easeOutCubic,
-          transform: Matrix4.translationValues(0, _dragY, 0),
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOutQuart,
+          transform: Matrix4.translationValues(0, _dragY, 0)
+            ..scale(1.0 - (_dragY * 0.0003).clamp(0.0, 0.1)),
           child: SafeArea(
             child: StreamBuilder<NowPlaying?>(
               stream: playback.nowPlayingStream,
@@ -491,72 +579,101 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
                           child: Column(
                             children: [
                             // Cover with enhanced shadow and border - made smaller
-                            Center(
-                              child: SizedBox(
-                                width: MediaQuery.of(context).size.width * 0.85, // 85% of screen width
-                                child: Hero(
-                                  tag: 'mini-cover-${np.libraryItemId}',
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(24),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: cs.shadow.withOpacity(0.18),
-                                          blurRadius: 12,
-                                          offset: const Offset(0, 6),
-                                        ),
-                                      ],
-                                    ),
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(24),
-                                      child: AspectRatio(
-                                        aspectRatio: 1,
-                                        child: Image.network(
-                                          np.coverUrl ?? '',
-                                          fit: BoxFit.cover,
-                                          gaplessPlayback: true,
-                                          filterQuality: FilterQuality.low,
-                                          errorBuilder: (_, __, ___) => Container(
-                                            color: cs.surfaceContainerHighest,
-                                            child: Icon(
-                                              Icons.menu_book_outlined,
-                                              size: 88,
-                                              color: cs.onSurfaceVariant,
+                            AnimatedBuilder(
+                              animation: _coverAnimation,
+                              builder: (context, child) {
+                                return Transform.scale(
+                                  scale: 0.8 + (0.2 * _coverAnimation.value),
+                                  child: Transform.translate(
+                                    offset: Offset(0, 30 * (1 - _coverAnimation.value)),
+                                    child: Opacity(
+                                      opacity: _coverAnimation.value,
+                                      child: Center(
+                                        child: SizedBox(
+                                          width: MediaQuery.of(context).size.width * 0.85, // 85% of screen width
+                                          child: Hero(
+                                            tag: 'mini-cover-${np.libraryItemId}',
+                                            child: Container(
+                                              decoration: BoxDecoration(
+                                                borderRadius: BorderRadius.circular(24),
+                                                boxShadow: [
+                                                  BoxShadow(
+                                                    color: cs.shadow.withOpacity(0.18),
+                                                    blurRadius: 12,
+                                                    offset: const Offset(0, 6),
+                                                  ),
+                                                ],
+                                              ),
+                                              child: ClipRRect(
+                                                borderRadius: BorderRadius.circular(24),
+                                                child: AspectRatio(
+                                                  aspectRatio: 1,
+                                                  child: Image.network(
+                                                    np.coverUrl ?? '',
+                                                    fit: BoxFit.cover,
+                                                    gaplessPlayback: true,
+                                                    filterQuality: FilterQuality.low,
+                                                    errorBuilder: (_, __, ___) => Container(
+                                                      color: cs.surfaceContainerHighest,
+                                                      child: Icon(
+                                                        Icons.menu_book_outlined,
+                                                        size: 88,
+                                                        color: cs.onSurfaceVariant,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
                                             ),
                                           ),
                                         ),
                                       ),
                                     ),
                                   ),
-                                ),
-                              ),
+                                );
+                              },
                             ),
                             const SizedBox(height: 20),
 
                             // Title / author / narrator with enhanced typography
-                            Text(
-                              np.title,
-                              textAlign: TextAlign.center,
-                              style: text.headlineSmall?.copyWith(
-                                fontWeight: FontWeight.w700,
-                                height: 1.2,
-                              ),
-                              maxLines: 3,
-                              overflow: TextOverflow.ellipsis,
+                            AnimatedBuilder(
+                              animation: _titleAnimation,
+                              builder: (context, child) {
+                                return Transform.translate(
+                                  offset: Offset(0, 20 * (1 - _titleAnimation.value)),
+                                  child: Opacity(
+                                    opacity: _titleAnimation.value,
+                                    child: Column(
+                                      children: [
+                                        Text(
+                                          np.title,
+                                          textAlign: TextAlign.center,
+                                          style: text.headlineSmall?.copyWith(
+                                            fontWeight: FontWeight.w700,
+                                            height: 1.2,
+                                          ),
+                                          maxLines: 3,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        if (np.author != null && np.author!.isNotEmpty) ...[
+                                          const SizedBox(height: 8),
+                                          Text(
+                                            np.author!,
+                                            textAlign: TextAlign.center,
+                                            style: text.titleMedium?.copyWith(
+                                              color: cs.onSurfaceVariant,
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
                             ),
-                            if (np.author != null && np.author!.isNotEmpty) ...[
-                              const SizedBox(height: 8),
-                              Text(
-                                np.author!,
-                                textAlign: TextAlign.center,
-                                style: text.titleMedium?.copyWith(
-                                  color: cs.onSurfaceVariant,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
                             if (np.narrator != null && np.narrator!.isNotEmpty) ...[
                               const SizedBox(height: 4),
                               Text(
@@ -784,139 +901,150 @@ class _FullPlayerPageState extends State<FullPlayerPage> {
                     const SizedBox(height: 8),
 
                     // CONTROLS + CHAPTERS
-                    RepaintBoundary(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
-                        child: Column(
-                        children: [
-                          // Large transport controls (Material 3) - single row, auto-sized
-                          LayoutBuilder(
-                            builder: (context, constraints) {
-                              final maxW = constraints.maxWidth;
-                              double spacing = 12;
-                              double side = 56;   // base side buttons
-                              double center = 72; // base center button
-                              final needed = 4 * side + center + 4 * spacing;
-                              if (needed > maxW) {
-                                final scale = (maxW - 4 * spacing) / (4 * side + center);
-                                final clamped = scale.clamp(0.6, 1.0);
-                                side = side * clamped;
-                                center = center * clamped;
-                              }
-                              return Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  _ControlButton(
-                                    tooltip: 'Previous track',
-                                    icon: Icons.skip_previous_rounded,
-                                    size: side,
-                                    onTap: () async {
-                                      if (playback.hasSmartPrev) {
-                                        await playback.smartPrev();
-                                      }
-                                    },
-                                  ),
-                                  SizedBox(width: spacing),
-                                  _ControlButton(
-                                    tooltip: 'Back 30s',
-                                    icon: Icons.replay_30_rounded,
-                                    size: side,
-                                    onTap: () => playback.nudgeSeconds(-30),
-                                  ),
-                                  SizedBox(width: spacing),
-                                  StreamBuilder<bool>(
-                                    stream: playback.playingStream,
-                                    initialData: playback.player.playing,
-                                    builder: (_, playSnap) {
-                                      final playing = playSnap.data ?? false;
-                                      return _ControlButton(
-                                        tooltip: playing ? 'Pause' : 'Play',
-                                        icon: playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                                        isPrimary: true,
-                                        isCircular: !playing, // keep round when showing Play triangle
-                                        size: center,
-                                        onTap: () async {
-                                          if (playing) {
-                                            await playback.pause();
-                                          } else {
-                                            await playback.resume();
-                                          }
-                                        },
-                                      );
-                                    },
-                                  ),
-                                  SizedBox(width: spacing),
-                                  _ControlButton(
-                                    tooltip: 'Forward 30s',
-                                    icon: Icons.forward_30_rounded,
-                                    size: side,
-                                    onTap: () => playback.nudgeSeconds(30),
-                                  ),
-                                  SizedBox(width: spacing),
-                                  _ControlButton(
-                                    tooltip: 'Next track',
-                                    icon: Icons.skip_next_rounded,
-                                    size: side,
-                                    onTap: () async {
-                                      if (playback.hasSmartNext) {
-                                        await playback.smartNext();
-                                      }
-                                    },
-                                  ),
-                                ],
-                              );
-                            },
-                          ),
+                    AnimatedBuilder(
+                      animation: _controlsAnimation,
+                      builder: (context, child) {
+                        return Transform.translate(
+                          offset: Offset(0, 30 * (1 - _controlsAnimation.value)),
+                          child: Opacity(
+                            opacity: _controlsAnimation.value,
+                            child: RepaintBoundary(
+                              child: Padding(
+                                padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+                                child: Column(
+                                  children: [
+                                    // Large transport controls (Material 3) - single row, auto-sized
+                                    LayoutBuilder(
+                                      builder: (context, constraints) {
+                                        final maxW = constraints.maxWidth;
+                                        double spacing = 12;
+                                        double side = 56;   // base side buttons
+                                        double center = 72; // base center button
+                                        final needed = 4 * side + center + 4 * spacing;
+                                        if (needed > maxW) {
+                                          final scale = (maxW - 4 * spacing) / (4 * side + center);
+                                          final clamped = scale.clamp(0.6, 1.0);
+                                          side = side * clamped;
+                                          center = center * clamped;
+                                        }
+                                        return Row(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            _ControlButton(
+                                              tooltip: 'Previous track',
+                                              icon: Icons.skip_previous_rounded,
+                                              size: side,
+                                              onTap: () async {
+                                                if (playback.hasSmartPrev) {
+                                                  await playback.smartPrev();
+                                                }
+                                              },
+                                            ),
+                                            SizedBox(width: spacing),
+                                            _ControlButton(
+                                              tooltip: 'Back 30s',
+                                              icon: Icons.replay_30_rounded,
+                                              size: side,
+                                              onTap: () => playback.nudgeSeconds(-30),
+                                            ),
+                                            SizedBox(width: spacing),
+                                            StreamBuilder<bool>(
+                                              stream: playback.playingStream,
+                                              initialData: playback.player.playing,
+                                              builder: (_, playSnap) {
+                                                final playing = playSnap.data ?? false;
+                                                return _ControlButton(
+                                                  tooltip: playing ? 'Pause' : 'Play',
+                                                  icon: playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                                                  isPrimary: true,
+                                                  isCircular: !playing, // keep round when showing Play triangle
+                                                  size: center,
+                                                  onTap: () async {
+                                                    if (playing) {
+                                                      await playback.pause();
+                                                    } else {
+                                                      await playback.resume();
+                                                    }
+                                                  },
+                                                );
+                                              },
+                                            ),
+                                            SizedBox(width: spacing),
+                                            _ControlButton(
+                                              tooltip: 'Forward 30s',
+                                              icon: Icons.forward_30_rounded,
+                                              size: side,
+                                              onTap: () => playback.nudgeSeconds(30),
+                                            ),
+                                            SizedBox(width: spacing),
+                                            _ControlButton(
+                                              tooltip: 'Next track',
+                                              icon: Icons.skip_next_rounded,
+                                              size: side,
+                                              onTap: () async {
+                                                if (playback.hasSmartNext) {
+                                                  await playback.smartNext();
+                                                }
+                                              },
+                                            ),
+                                          ],
+                                        );
+                                      },
+                                    ),
 
-                          const SizedBox(height: 24),
+                                    const SizedBox(height: 24),
 
-                          // Chapters + Sleep controls with enhanced design
-                          Row(
-                            children: [
-                              Expanded(
-                                child: FilledButton.tonalIcon(
-                                  icon: const Icon(Icons.list_alt_rounded),
-                                  label: const Text('Chapters'),
-                                  onPressed: () => _showChaptersSheet(context, playback, np),
-                                  style: FilledButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(vertical: 16),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(16),
+                                    // Chapters + Sleep controls with enhanced design
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: FilledButton.tonalIcon(
+                                            icon: const Icon(Icons.list_alt_rounded),
+                                            label: const Text('Chapters'),
+                                            onPressed: () => _showChaptersSheet(context, playback, np),
+                                            style: FilledButton.styleFrom(
+                                              padding: const EdgeInsets.symmetric(vertical: 16),
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius: BorderRadius.circular(16),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 16),
+                                        Expanded(
+                                          child: StreamBuilder<Duration?>(
+                                            stream: SleepTimerService.instance.remainingTimeStream,
+                                            initialData: SleepTimerService.instance.remainingTime,
+                                            builder: (ctx, snap) {
+                                              final active = SleepTimerService.instance.isActive;
+                                              final label = active && snap.data != null
+                                                  ? 'Sleep · ${SleepTimerService.instance.formattedRemainingTime}'
+                                                  : 'Sleep';
+                                              return FilledButton.tonalIcon(
+                                                icon: const Icon(Icons.nightlight_round),
+                                                label: Text(label),
+                                                onPressed: () => _showSleepTimerSheet(context, np),
+                                                style: FilledButton.styleFrom(
+                                                  padding: const EdgeInsets.symmetric(vertical: 16),
+                                                  shape: RoundedRectangleBorder(
+                                                    borderRadius: BorderRadius.circular(16),
+                                                  ),
+                                                ),
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                        // Removed redundant countdown widget (countdown shown on Sleep button only)
+                                      ],
                                     ),
                                   ),
                                 ),
                               ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: StreamBuilder<Duration?>(
-                                  stream: SleepTimerService.instance.remainingTimeStream,
-                                  initialData: SleepTimerService.instance.remainingTime,
-                                  builder: (ctx, snap) {
-                                    final active = SleepTimerService.instance.isActive;
-                                    final label = active && snap.data != null
-                                        ? 'Sleep · ${SleepTimerService.instance.formattedRemainingTime}'
-                                        : 'Sleep';
-                                    return FilledButton.tonalIcon(
-                                      icon: const Icon(Icons.nightlight_round),
-                                      label: Text(label),
-                                      onPressed: () => _showSleepTimerSheet(context, np),
-                                      style: FilledButton.styleFrom(
-                                        padding: const EdgeInsets.symmetric(vertical: 16),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(16),
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ),
-                            ],
-                          ),
-                          // Removed redundant countdown widget (countdown shown on Sleep button only)
-                        ],
-                      ),
-                      ),
-                    ),
+                            );
+                          },
+                        ),
                   ],
                 );
               },
