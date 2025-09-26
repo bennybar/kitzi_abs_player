@@ -183,17 +183,9 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
 
   @override
   Future<void> play() async {
-    // Respect user preference: block generic/external play when Bluetooth auto-play is disabled
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final allowAutoPlay = prefs.getBool('bluetooth_auto_play') ?? true;
-      if (!allowAutoPlay) {
-        // Ignore external play requests unless explicitly initiated via playFromMediaId
-        debugPrint('Play command ignored due to bluetooth_auto_play=false');
-        return;
-      }
-    } catch (_) {}
-
+    // Always allow manual play commands - this method is called for user-initiated play
+    // The bluetooth_auto_play setting only affects automatic play from external sources
+    
     // If we already have an active item, just resume
     if (_playback.nowPlaying != null) {
       await _playback.resume();
@@ -203,6 +195,25 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
     try {
       await _playback.warmLoadLastItem(playAfterLoad: true);
     } catch (_) {}
+  }
+
+  /// Handle automatic play requests (e.g., from Bluetooth connection)
+  /// This respects the bluetooth_auto_play user setting
+  Future<void> playAutomatically() async {
+    // Check if automatic play is enabled
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final allowAutoPlay = prefs.getBool('bluetooth_auto_play') ?? true;
+      if (!allowAutoPlay) {
+        debugPrint('Automatic play blocked due to bluetooth_auto_play=false');
+        return;
+      }
+    } catch (_) {
+      // Default to allowing auto-play if there's an error reading preferences
+    }
+
+    // If automatic play is allowed, proceed with normal play logic
+    await play();
   }
 
   @override

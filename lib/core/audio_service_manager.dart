@@ -27,28 +27,10 @@ class AudioServiceManager {
 
   /// Configure audio session based on user preferences
   Future<void> _configureAudioSession(AudioSession session) async {
-    final bluetoothAutoPlay = await _isBluetoothAutoPlayEnabled();
-    
-    if (bluetoothAutoPlay) {
-      // Enable Bluetooth auto-play (default behavior)
-      await session.configure(const AudioSessionConfiguration.music());
-    } else {
-      // Disable Bluetooth auto-play by using a custom configuration
-      await session.configure(AudioSessionConfiguration(
-        avAudioSessionCategory: AVAudioSessionCategory.playback,
-        avAudioSessionCategoryOptions: AVAudioSessionCategoryOptions.defaultToSpeaker,
-        avAudioSessionMode: AVAudioSessionMode.defaultMode,
-        avAudioSessionRouteSharingPolicy: AVAudioSessionRouteSharingPolicy.defaultPolicy,
-        avAudioSessionSetActiveOptions: AVAudioSessionSetActiveOptions.none,
-        androidAudioAttributes: const AndroidAudioAttributes(
-          contentType: AndroidAudioContentType.music,
-          flags: AndroidAudioFlags.none,
-          usage: AndroidAudioUsage.media,
-        ),
-        androidAudioFocusGainType: AndroidAudioFocusGainType.gain,
-        androidWillPauseWhenDucked: true,
-      ));
-    }
+    // Always use the standard music configuration
+    // The bluetooth_auto_play setting is handled at the application level,
+    // not at the audio session level, to allow manual play while blocking automatic play
+    await session.configure(const AudioSessionConfiguration.music());
   }
 
   Future<void> initialize(PlaybackRepository playbackRepository) async {
