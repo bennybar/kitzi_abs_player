@@ -95,7 +95,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
 
   void _setupContentAnimations() {
     _contentAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 600),
+      duration: const Duration(milliseconds: 400),
       vsync: this,
     );
 
@@ -104,7 +104,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
       end: 1.0,
     ).animate(CurvedAnimation(
       parent: _contentAnimationController,
-      curve: const Interval(0.0, 0.6, curve: Curves.easeOutBack),
+      curve: const Interval(0.0, 0.5, curve: Curves.easeOutCubic),
     ));
 
     _titleAnimation = Tween<double>(
@@ -112,7 +112,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
       end: 1.0,
     ).animate(CurvedAnimation(
       parent: _contentAnimationController,
-      curve: const Interval(0.2, 0.8, curve: Curves.easeOutCubic),
+      curve: const Interval(0.3, 0.7, curve: Curves.easeOutCubic),
     ));
 
     _controlsAnimation = Tween<double>(
@@ -120,7 +120,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
       end: 1.0,
     ).animate(CurvedAnimation(
       parent: _contentAnimationController,
-      curve: const Interval(0.4, 1.0, curve: Curves.easeOutCubic),
+      curve: const Interval(0.5, 1.0, curve: Curves.easeOutCubic),
     ));
 
     // Start the content animation after a short delay
@@ -583,43 +583,40 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                               animation: _coverAnimation,
                               builder: (context, child) {
                                 return Transform.scale(
-                                  scale: 0.8 + (0.2 * _coverAnimation.value),
-                                  child: Transform.translate(
-                                    offset: Offset(0, 30 * (1 - _coverAnimation.value)),
-                                    child: Opacity(
-                                      opacity: _coverAnimation.value,
-                                      child: Center(
-                                        child: SizedBox(
-                                          width: MediaQuery.of(context).size.width * 0.85, // 85% of screen width
-                                          child: Hero(
-                                            tag: 'mini-cover-${np.libraryItemId}',
-                                            child: Container(
-                                              decoration: BoxDecoration(
-                                                borderRadius: BorderRadius.circular(24),
-                                                boxShadow: [
-                                                  BoxShadow(
-                                                    color: cs.shadow.withOpacity(0.18),
-                                                    blurRadius: 12,
-                                                    offset: const Offset(0, 6),
-                                                  ),
-                                                ],
-                                              ),
-                                              child: ClipRRect(
-                                                borderRadius: BorderRadius.circular(24),
-                                                child: AspectRatio(
-                                                  aspectRatio: 1,
-                                                  child: Image.network(
-                                                    np.coverUrl ?? '',
-                                                    fit: BoxFit.cover,
-                                                    gaplessPlayback: true,
-                                                    filterQuality: FilterQuality.low,
-                                                    errorBuilder: (_, __, ___) => Container(
-                                                      color: cs.surfaceContainerHighest,
-                                                      child: Icon(
-                                                        Icons.menu_book_outlined,
-                                                        size: 88,
-                                                        color: cs.onSurfaceVariant,
-                                                      ),
+                                  scale: 0.9 + (0.1 * _coverAnimation.value),
+                                  child: Opacity(
+                                    opacity: _coverAnimation.value,
+                                    child: Center(
+                                      child: SizedBox(
+                                        width: MediaQuery.of(context).size.width * 0.85, // 85% of screen width
+                                        child: Hero(
+                                          tag: 'mini-cover-${np.libraryItemId}',
+                                          child: Container(
+                                            decoration: BoxDecoration(
+                                              borderRadius: BorderRadius.circular(24),
+                                              boxShadow: [
+                                                BoxShadow(
+                                                  color: cs.shadow.withOpacity(0.18),
+                                                  blurRadius: 12,
+                                                  offset: const Offset(0, 6),
+                                                ),
+                                              ],
+                                            ),
+                                            child: ClipRRect(
+                                              borderRadius: BorderRadius.circular(24),
+                                              child: AspectRatio(
+                                                aspectRatio: 1,
+                                                child: Image.network(
+                                                  np.coverUrl ?? '',
+                                                  fit: BoxFit.cover,
+                                                  gaplessPlayback: true,
+                                                  filterQuality: FilterQuality.low,
+                                                  errorBuilder: (_, __, ___) => Container(
+                                                    color: cs.surfaceContainerHighest,
+                                                    child: Icon(
+                                                      Icons.menu_book_outlined,
+                                                      size: 88,
+                                                      color: cs.onSurfaceVariant,
                                                     ),
                                                   ),
                                                 ),
