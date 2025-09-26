@@ -6,7 +6,6 @@ import '../downloads/downloads_page.dart';
 // UPDATED import path: MiniPlayer now lives under widgets/
 import '../../widgets/mini_player.dart';
 import '../home/series_page.dart';
-import '../home/collections_page.dart';
 import '../home/authors_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/ui_prefs.dart';
@@ -26,7 +25,6 @@ class MainScaffold extends StatefulWidget {
 class _MainScaffoldState extends State<MainScaffold> {
   int _index = 0;
   bool _showSeries = false;
-  bool _showCollections = false;
   bool _showAuthors = false;
 
   @override
@@ -34,13 +32,11 @@ class _MainScaffoldState extends State<MainScaffold> {
     super.initState();
     // Start from current UiPrefs immediately to avoid flash
     _showSeries = UiPrefs.seriesTabVisible.value;
-    _showCollections = UiPrefs.collectionsTabVisible.value;
     _showAuthors = UiPrefs.authorViewEnabled.value;
     // Load persisted prefs and listen for changes
     _loadTabPrefs();
     UiPrefs.loadFromPrefs();
     UiPrefs.seriesTabVisible.addListener(_onTabPrefsChanged);
-    UiPrefs.collectionsTabVisible.addListener(_onTabPrefsChanged);
     UiPrefs.authorViewEnabled.addListener(_onTabPrefsChanged);
   }
 
@@ -48,7 +44,6 @@ class _MainScaffoldState extends State<MainScaffold> {
     if (!mounted) return;
     setState(() {
       _showSeries = UiPrefs.seriesTabVisible.value;
-      _showCollections = UiPrefs.collectionsTabVisible.value;
       _showAuthors = UiPrefs.authorViewEnabled.value;
     });
   }
@@ -56,7 +51,6 @@ class _MainScaffoldState extends State<MainScaffold> {
   @override
   void dispose() {
     UiPrefs.seriesTabVisible.removeListener(_onTabPrefsChanged);
-    UiPrefs.collectionsTabVisible.removeListener(_onTabPrefsChanged);
     UiPrefs.authorViewEnabled.removeListener(_onTabPrefsChanged);
     super.dispose();
   }
@@ -66,7 +60,6 @@ class _MainScaffoldState extends State<MainScaffold> {
       final prefs = await SharedPreferences.getInstance();
       setState(() {
         _showSeries = prefs.getBool('ui_show_series_tab') ?? _showSeries;
-        _showCollections = prefs.getBool('ui_show_collections_tab') ?? _showCollections;
         _showAuthors = prefs.getBool('ui_author_view_enabled') ?? true;
       });
     } catch (_) {}
@@ -82,7 +75,6 @@ class _MainScaffoldState extends State<MainScaffold> {
       const BooksPage(),
       if (_showAuthors) const AuthorsPage(),
       if (_showSeries) const SeriesPage(),
-      if (_showCollections) const CollectionsPage(),
       DownloadsPage(repo: widget.downloadsRepo),
       const SettingsPage(),
     ];
@@ -149,12 +141,6 @@ class _MainScaffoldState extends State<MainScaffold> {
                       icon: Icon(Icons.collections_bookmark_outlined, semanticLabel: 'Series'),
                       selectedIcon: Icon(Icons.collections_bookmark, semanticLabel: 'Series'),
                       label: 'Series',
-                    ),
-                  if (_showCollections)
-                    const NavigationDestination(
-                      icon: Icon(Icons.folder_outlined, semanticLabel: 'Collections'),
-                      selectedIcon: Icon(Icons.folder, semanticLabel: 'Collections'),
-                      label: 'Collections',
                     ),
                   const NavigationDestination(
                     icon: Icon(Icons.download_outlined, semanticLabel: 'Downloads'),

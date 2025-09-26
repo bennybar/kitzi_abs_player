@@ -24,7 +24,6 @@ class _SettingsPageState extends State<SettingsPage> {
   bool? _pauseCancelsSleepTimer;
   bool? _dualProgressEnabled;
   bool? _showSeriesTab;
-  bool? _showCollectionsTab;
   bool? _authorViewEnabled;
   bool? _bluetoothAutoPlay;
   String? _activeLibraryId;
@@ -45,7 +44,6 @@ class _SettingsPageState extends State<SettingsPage> {
         _pauseCancelsSleepTimer = prefs.getBool('pause_cancels_sleep_timer') ?? true;
         _dualProgressEnabled = prefs.getBool('ui_dual_progress_enabled') ?? true;
         _showSeriesTab = prefs.getBool('ui_show_series_tab') ?? false;
-        _showCollectionsTab = prefs.getBool('ui_show_collections_tab') ?? false;
         _authorViewEnabled = prefs.getBool('ui_author_view_enabled') ?? true;
         _bluetoothAutoPlay = prefs.getBool('bluetooth_auto_play') ?? true;
         _activeLibraryId = prefs.getString('books_library_id');
@@ -272,15 +270,6 @@ class _SettingsPageState extends State<SettingsPage> {
             onChanged: (v) async {
               await UiPrefs.setSeriesVisible(v, pinToSettingsOnChange: true);
               if (mounted) setState(() { _showSeriesTab = v; });
-            },
-          ),
-          SwitchListTile(
-            title: const Text('Show Collections tab'),
-            subtitle: const Text('Enable the Collections view'),
-            value: _showCollectionsTab ?? false,
-            onChanged: (v) async {
-              await UiPrefs.setCollectionsVisible(v, pinToSettingsOnChange: true);
-              if (mounted) setState(() { _showCollectionsTab = v; });
             },
           ),
           SwitchListTile(
