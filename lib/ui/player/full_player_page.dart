@@ -209,9 +209,15 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     final np = playback.nowPlaying;
     if (np == null) return;
 
+    final newCompletionStatus = !isCurrentlyCompleted;
+    
+    // Show confirmation dialog for marking as finished
+    if (newCompletionStatus) {
+      final confirmed = await _showMarkAsFinishedDialog(context);
+      if (!confirmed) return;
+    }
+
     try {
-      final newCompletionStatus = !isCurrentlyCompleted;
-      
       // Log the request for troubleshooting
       debugPrint('[MARK_FINISHED] Toggling book completion: ${np.libraryItemId} -> $newCompletionStatus');
       
@@ -268,6 +274,40 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
         );
       }
     }
+  }
+
+  Future<bool> _showMarkAsFinishedDialog(BuildContext context) async {
+    final cs = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          'Mark as Finished',
+          style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+        ),
+        content: Text(
+          'Are you sure you want to mark this book as finished? This will stop playback and return you to the book details.',
+          style: text.bodyMedium,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: cs.onSurfaceVariant),
+            ),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Mark as Finished'),
+          ),
+        ],
+      ),
+    );
+    
+    return confirmed ?? false;
   }
 
   Future<void> _markBookAsFinished(String libraryItemId, bool finished) async {
@@ -656,19 +696,25 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                             ),
                           ),
                           const Spacer(),
-                          // Mark as finished button
+                          // Mark as finished button - only show if not completed
                           StreamBuilder<bool>(
                             stream: _getBookCompletionStream(),
                             initialData: false,
                             builder: (_, completionSnap) {
                               final isCompleted = completionSnap.data ?? false;
+                              
+                              // Only show the button if the book is not finished
+                              if (isCompleted) {
+                                return const SizedBox.shrink();
+                              }
+                              
                               return IconButton.filledTonal(
                                 onPressed: () => _toggleBookCompletion(context, isCompleted),
-                                icon: Icon(isCompleted ? Icons.check_circle_rounded : Icons.check_circle_outline_rounded),
-                                tooltip: isCompleted ? 'Mark as unread' : 'Mark as finished',
+                                icon: const Icon(Icons.check_circle_outline_rounded),
+                                tooltip: 'Mark as finished',
                                 style: IconButton.styleFrom(
-                                  backgroundColor: isCompleted ? cs.primaryContainer : cs.surfaceContainerHighest,
-                                  foregroundColor: isCompleted ? cs.onPrimaryContainer : cs.onSurface,
+                                  backgroundColor: cs.surfaceContainerHighest,
+                                  foregroundColor: cs.onSurface,
                                 ),
                               );
                             },

@@ -133,6 +133,117 @@ class _BookDetailPageState extends State<BookDetailPage> {
     _serverProgressFut ??= pb.fetchServerProgress(widget.bookId);
   }
 
+  Stream<bool> _getBookCompletionStream(PlaybackRepository playback, String bookId) {
+    return playback.getBookCompletionStream(bookId);
+  }
+
+  Future<void> _toggleBookCompletion(BuildContext context, Book book, bool isCurrentlyCompleted) async {
+    final playback = ServicesScope.of(context).services.playback;
+    final newCompletionStatus = !isCurrentlyCompleted;
+    
+    // Show confirmation dialog for marking as finished
+    if (newCompletionStatus) {
+      final confirmed = await _showMarkAsFinishedDialog(context);
+      if (!confirmed) return;
+    }
+
+    try {
+      // Log the request for troubleshooting
+      debugPrint('[MARK_FINISHED] Toggling book completion: ${book.id} -> $newCompletionStatus');
+      
+      // Send the request to server
+      await _markBookAsFinished(context, book.id, newCompletionStatus);
+      
+      // Update the global completion status cache and notify all listeners
+      await playback.updateBookCompletionStatus(book.id, newCompletionStatus);
+      
+      // Show feedback to user
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(newCompletionStatus ? 'Book marked as finished' : 'Book marked as unread'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+      
+    } catch (e) {
+      debugPrint('[MARK_FINISHED] Error toggling completion: $e');
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to update book status: $e'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<bool> _showMarkAsFinishedDialog(BuildContext context) async {
+    final cs = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          'Mark as Finished',
+          style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+        ),
+        content: Text(
+          'Are you sure you want to mark this book as finished?',
+          style: text.bodyMedium,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: cs.onSurfaceVariant),
+            ),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Mark as Finished'),
+          ),
+        ],
+      ),
+    );
+    
+    return confirmed ?? false;
+  }
+
+  Future<void> _markBookAsFinished(BuildContext context, String libraryItemId, bool finished) async {
+    final playback = ServicesScope.of(context).services.playback;
+    final api = ServicesScope.of(context).services.auth.api;
+    
+    // Log the API request for troubleshooting
+    debugPrint('[MARK_FINISHED] API Request: PATCH /api/me/progress/$libraryItemId');
+    debugPrint('[MARK_FINISHED] Request body: {"isFinished": $finished}');
+    
+    try {
+      final response = await api.request(
+        'PATCH',
+        '/api/me/progress/$libraryItemId',
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'isFinished': finished}),
+      );
+      
+      debugPrint('[MARK_FINISHED] API Response: ${response.statusCode} ${response.body}');
+      
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        debugPrint('[MARK_FINISHED] Successfully updated book completion status');
+      } else {
+        throw Exception('Server returned ${response.statusCode}: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('[MARK_FINISHED] API Error: $e');
+      rethrow;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final services = ServicesScope.of(context).services;
@@ -143,7 +254,48 @@ class _BookDetailPageState extends State<BookDetailPage> {
     final text = Theme.of(context).textTheme;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Book details')),
+      appBar: AppBar(
+        title: const Text('Book details'),
+        actions: [
+          // Mark as finished button - only show for audio books
+          FutureBuilder<Book>(
+            future: _bookFut,
+            builder: (context, bookSnap) {
+              if (bookSnap.connectionState != ConnectionState.done || !bookSnap.hasData) {
+                return const SizedBox.shrink();
+              }
+              
+              final book = bookSnap.data!;
+              if (!book.isAudioBook) {
+                return const SizedBox.shrink();
+              }
+              
+              return StreamBuilder<bool>(
+                stream: _getBookCompletionStream(playbackRepo, book.id),
+                initialData: false,
+                builder: (_, completionSnap) {
+                  final isCompleted = completionSnap.data ?? false;
+                  
+                  // Only show the button if the book is not finished
+                  if (isCompleted) {
+                    return const SizedBox.shrink();
+                  }
+                  
+                  return IconButton.filledTonal(
+                    onPressed: () => _toggleBookCompletion(context, book, isCompleted),
+                    icon: const Icon(Icons.check_circle_outline_rounded),
+                    tooltip: 'Mark as finished',
+                    style: IconButton.styleFrom(
+                      backgroundColor: cs.surfaceContainerHighest,
+                      foregroundColor: cs.onSurface,
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ],
+      ),
       body: Stack(
         children: [
           FutureBuilder<Book>(
@@ -640,6 +792,7 @@ class _ProgressSummary extends StatelessWidget {
       }
     }
   }
+
 
   @override
   Widget build(BuildContext context) {
