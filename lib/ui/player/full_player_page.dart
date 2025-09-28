@@ -221,14 +221,39 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
       // Update the global completion status cache and notify all listeners
       await playback.updateBookCompletionStatus(np.libraryItemId, newCompletionStatus);
       
-      // Show feedback to user
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(newCompletionStatus ? 'Book marked as finished' : 'Book marked as unread'),
-            duration: const Duration(seconds: 2),
-          ),
-        );
+      // If marking as finished, stop playback and navigate to book details
+      if (newCompletionStatus) {
+        debugPrint('[MARK_FINISHED] Book marked as finished, stopping playback and navigating to book details');
+        
+        // Stop the current playback
+        await playback.stop();
+        
+        // Show feedback to user
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Book marked as finished'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+        
+        // Navigate back to book details page
+        if (mounted) {
+          Navigator.of(context).pop(); // Close the full player
+          // The book details page should already be showing the updated "Completed" status
+          // due to the global completion status stream we set up
+        }
+      } else {
+        // Just show feedback for unmarking as finished
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Book marked as unread'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
       }
       
     } catch (e) {

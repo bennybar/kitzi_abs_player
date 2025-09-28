@@ -624,6 +624,23 @@ class _ProgressSummary extends StatelessWidget {
     }
   }
 
+  Stream<Map<String, dynamic>> _getServerProgressStream(PlaybackRepository playback, String bookId) async* {
+    // First emit the initial server progress data
+    final initialData = await _getServerProgressInfo(playback, bookId);
+    yield initialData;
+    
+    // Then listen to completion status changes and emit updated data
+    await for (final completionMap in playback.completionStatusStream) {
+      if (completionMap.containsKey(bookId)) {
+        final isCompleted = completionMap[bookId]!;
+        yield {
+          'progress': initialData['progress'],
+          'isCompleted': isCompleted,
+        };
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isThis = playback.nowPlaying?.libraryItemId == book.id;
@@ -654,8 +671,8 @@ class _ProgressSummary extends StatelessWidget {
         },
       );
     }
-    return FutureBuilder<Map<String, dynamic>>(
-      future: _getServerProgressInfo(playback, book.id),
+    return StreamBuilder<Map<String, dynamic>>(
+      stream: _getServerProgressStream(playback, book.id),
       builder: (_, sSnap) {
         if (sSnap.connectionState == ConnectionState.waiting) {
           final cs = Theme.of(context).colorScheme;
