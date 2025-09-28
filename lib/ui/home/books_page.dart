@@ -11,6 +11,7 @@ import '../../core/image_cache_manager.dart';
 import '../../models/book.dart';
 import '../../widgets/skeleton_widgets.dart';
 import '../book_detail/book_detail_page.dart';
+import '../../main.dart';
 
 enum LibraryView { grid, list }
 enum SortMode { nameAsc, addedDesc }
@@ -1008,7 +1009,7 @@ class _ResumeBookCard extends StatelessWidget {
                         top: 8,
                         right: 8,
                         child: FutureBuilder<Map<String, dynamic>>(
-                          future: _getBookProgress(book.id),
+                          future: _getBookProgress(context, book.id),
                           builder: (context, snapshot) {
                             if (!snapshot.hasData) return const SizedBox.shrink();
                             final progressInfo = snapshot.data!;
@@ -1040,7 +1041,7 @@ class _ResumeBookCard extends StatelessWidget {
                         right: 0,
                         bottom: 0,
                         child: FutureBuilder<Map<String, dynamic>>(
-                          future: _getBookProgress(book.id),
+                          future: _getBookProgress(context, book.id),
                           builder: (context, snapshot) {
                             final progress = snapshot.hasData
                                 ? (snapshot.data!['progress'] as double?)
@@ -1108,37 +1109,47 @@ class _ResumeBookCard extends StatelessWidget {
     );
   }
 
-  /// Get book progress information including percentage
-  Future<Map<String, dynamic>> _getBookProgress(String bookId) async {
+  /// Get book progress using the same logic as book details (PlaybackRepository)
+  Future<Map<String, dynamic>> _getBookProgress(BuildContext context, String bookId) async {
     try {
-      final auth = await AuthRepository.ensure();
-      final api = auth.api;
-      final resp = await api.request('GET', '/api/me/progress/$bookId');
-      if (resp.statusCode != 200) return {'progress': null, 'isCompleted': false};
-      
-      final data = jsonDecode(resp.body);
-      if (data is Map<String, dynamic>) {
-        final isCompleted = data['isFinished'] == true;
-        double? progress;
-        
-        // Get progress percentage
-        if (data['progress'] is num) {
-          progress = (data['progress'] as num).toDouble();
-        } else if (data['currentTime'] is num && data['duration'] is num) {
-          final currentTime = (data['currentTime'] as num).toDouble();
-          final duration = (data['duration'] as num).toDouble();
-          if (duration > 0) {
-            progress = currentTime / duration;
+      final playback = ServicesScope.of(context).services.playback;
+      final seconds = await playback.fetchServerProgress(bookId); // nullable seconds
+      final isCompleted = await playback.isBookCompleted(bookId);
+      double? progress;
+      double? totalSeconds;
+      try {
+        final repo = await BooksRepository.create();
+        final b = await repo.getBookFromDb(bookId);
+        final ms = b?.durationMs;
+        if (ms != null && ms > 0) totalSeconds = ms / 1000.0;
+      } catch (_) {}
+      if (seconds != null && totalSeconds != null && totalSeconds > 0) {
+        progress = (seconds / totalSeconds).clamp(0.0, 1.0);
+      } else {
+        // Fallback: if server also returns absolute progress via legacy, reuse Auth API quickly
+        try {
+          final auth = await AuthRepository.ensure();
+          final api = auth.api;
+          final resp = await api.request('GET', '/api/me/progress/$bookId');
+          if (resp.statusCode == 200) {
+            final data = jsonDecode(resp.body);
+            if (data is Map<String, dynamic>) {
+              if (data['progress'] is num) {
+                progress = (data['progress'] as num).toDouble();
+              } else if (data['currentTime'] is num && data['duration'] is num) {
+                final currentTime = (data['currentTime'] as num).toDouble();
+                final duration = (data['duration'] as num).toDouble();
+                if (duration > 0) progress = currentTime / duration;
+              }
+            }
           }
-        }
-        
-        return {
-          'progress': progress,
-          'isCompleted': isCompleted || (progress != null && progress >= 0.99),
-        };
+        } catch (_) {}
       }
-      return {'progress': null, 'isCompleted': false};
-    } catch (e) {
+      return {
+        'progress': progress,
+        'isCompleted': isCompleted || (progress != null && progress >= 0.99),
+      };
+    } catch (_) {
       return {'progress': null, 'isCompleted': false};
     }
   }

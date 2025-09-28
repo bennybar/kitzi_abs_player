@@ -162,6 +162,13 @@ class PlaybackRepository {
       final last = prefs.getString(_kLastItemKey);
       if (last == null || last.isEmpty) return;
 
+      // If we're already playing the same item and playAfterLoad is true, 
+      // don't restart playback - just ensure we're ready to continue
+      if (playAfterLoad && _nowPlaying?.libraryItemId == last && player.playing) {
+        _log('Warm load: already playing $last, skipping restart');
+        return;
+      }
+
       // Try fast local path first for offline support
       final localTracks = await _localTracks(last);
       if (localTracks.isNotEmpty) {
