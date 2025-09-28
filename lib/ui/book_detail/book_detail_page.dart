@@ -1119,148 +1119,43 @@ class _ProgressSummary extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
     
-    // Get current progress to show in the dialog
-    final currentProgress = await playback.fetchServerProgress(book.id);
-    final currentTimeStr = currentProgress != null && currentProgress > 0 
-        ? _formatDuration(Duration(milliseconds: (currentProgress * 1000).round()))
-        : '0:00';
-    
-    final choice = await showDialog<ProgressResetChoice>(
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: Text(
           'Mark as Unfinished',
           style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600),
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'This book is currently marked as finished. What would you like to do?',
-              style: text.bodyMedium,
-            ),
-            if (currentProgress != null && currentProgress > 0) ...[
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: cs.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.play_circle_outline,
-                      color: cs.primary,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Current progress: $currentTimeStr',
-                      style: text.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-            const SizedBox(height: 16),
-            Text(
-              'Choose an option:',
-              style: text.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
-            ),
-          ],
+        content: Text(
+          'This book is currently marked as finished. Do you want to reset it to the beginning?',
+          style: text.bodyMedium,
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(ProgressResetChoice.cancel),
+            onPressed: () => Navigator.of(context).pop(false),
             child: Text(
               'Cancel',
               style: TextStyle(color: cs.onSurfaceVariant),
             ),
           ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(ProgressResetChoice.useServer),
-            child: Text(
-              'Reset to beginning',
-              style: TextStyle(color: cs.error),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: cs.primary,
+              foregroundColor: cs.onPrimary,
             ),
+            child: const Text('Reset to Beginning'),
           ),
-          if (currentProgress != null && currentProgress > 0)
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(ProgressResetChoice.useLocal),
-              style: FilledButton.styleFrom(
-                backgroundColor: cs.primary,
-                foregroundColor: cs.onPrimary,
-              ),
-              child: Text('Resume from $currentTimeStr'),
-            ),
         ],
       ),
     );
     
-    if (choice == ProgressResetChoice.useServer) {
+    if (confirmed == true) {
       await _resetBookProgress(context, resetToBeginning: true);
-    } else if (choice == ProgressResetChoice.useLocal) {
-      // For resume: preserve position, just mark as unfinished
-      await _markAsUnfinishedWithPosition(context, currentProgress);
     }
   }
 
 
-  /// Mark as unfinished while preserving the current position
-  Future<void> _markAsUnfinishedWithPosition(BuildContext context, double? positionSeconds) async {
-    final cs = Theme.of(context).colorScheme;
-    final playback = ServicesScope.of(context).services.playback;
-    
-    try {
-      debugPrint('[MARK_UNFINISHED] Marking as unfinished while preserving position: ${positionSeconds}s');
-      
-      final api = ServicesScope.of(context).services.auth.api;
-      
-      // Just mark as unfinished, preserve the current position
-      final requestBody = {
-        'isFinished': false,
-        // Don't set currentTime to 0, keep the existing position
-      };
-      
-      final response = await api.request(
-        'PATCH',
-        '/api/me/progress/${book.id}',
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(requestBody),
-      );
-      
-      if (response.statusCode == 200 || response.statusCode == 204) {
-        debugPrint('[MARK_UNFINISHED] Successfully marked as unfinished with preserved position');
-        
-        // Update the global completion status cache and notify all listeners
-        await playback.updateBookCompletionStatus(book.id, false);
-        
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Resumed from ${_formatDuration(Duration(milliseconds: ((positionSeconds ?? 0) * 1000).round()))}'),
-              backgroundColor: cs.primary,
-            ),
-          );
-        }
-      } else {
-        throw Exception('Server returned ${response.statusCode}: ${response.body}');
-      }
-    } catch (e) {
-      debugPrint('[MARK_UNFINISHED] Error marking as unfinished: $e');
-      
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to mark as unfinished: $e'),
-            backgroundColor: cs.error,
-          ),
-        );
-      }
-    }
-  }
 
   Future<void> _resetBookProgress(BuildContext context, {required bool resetToBeginning}) async {
     final cs = Theme.of(context).colorScheme;
@@ -1335,6 +1230,111 @@ class _PlayPrimaryButton extends StatelessWidget {
   const _PlayPrimaryButton({required this.book, required this.playback});
   final Book book;
   final PlaybackRepository playback;
+
+  /// Show reset dialog for completed book
+  Future<void> _showResetDialogForCompletedBook(BuildContext context, String bookId) async {
+    final cs = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          'Mark as Unfinished',
+          style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+        ),
+        content: Text(
+          'This book is currently marked as finished. Do you want to reset it to the beginning?',
+          style: text.bodyMedium,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: cs.onSurfaceVariant),
+            ),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: cs.primary,
+              foregroundColor: cs.onPrimary,
+            ),
+            child: const Text('Reset to Beginning'),
+          ),
+        ],
+      ),
+    );
+    
+    if (confirmed == true) {
+      await _resetBookProgressForCompletedBook(context, bookId);
+    }
+  }
+
+  /// Reset book progress for completed book
+  Future<void> _resetBookProgressForCompletedBook(BuildContext context, String bookId) async {
+    final cs = Theme.of(context).colorScheme;
+    
+    try {
+      debugPrint('[RESET_PROGRESS] Resetting book progress: $bookId');
+      
+      final api = ServicesScope.of(context).services.auth.api;
+      
+      final requestBody = {
+        'isFinished': false,
+        'currentTime': 0,
+      };
+      
+      debugPrint('[RESET_PROGRESS] API Request: PATCH /api/me/progress/$bookId');
+      debugPrint('[RESET_PROGRESS] Request body: ${jsonEncode(requestBody)}');
+      
+      final response = await api.request(
+        'PATCH',
+        '/api/me/progress/$bookId',
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(requestBody),
+      );
+      
+      debugPrint('[RESET_PROGRESS] API Response: ${response.statusCode} ${response.body}');
+      
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        debugPrint('[RESET_PROGRESS] Successfully reset book progress');
+        
+        // Clear local progress cache to ensure fresh start
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.remove('abs_progress:$bookId');
+        } catch (e) {
+          debugPrint('[RESET_PROGRESS] Error clearing local progress cache: $e');
+        }
+        
+        await playback.updateBookCompletionStatus(bookId, false);
+        
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Book progress has been reset to the beginning'),
+              backgroundColor: cs.primary,
+            ),
+          );
+        }
+      } else {
+        throw Exception('Server returned ${response.statusCode}: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('[RESET_PROGRESS] Error resetting progress: $e');
+      
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to reset progress: $e'),
+            backgroundColor: cs.error,
+          ),
+        );
+      }
+    }
+  }
 
   /// Get book progress information including completion status
   Future<Map<String, dynamic>> _getBookProgressInfo(PlaybackRepository playback, String bookId) async {
@@ -1458,6 +1458,12 @@ class _PlayPrimaryButton extends StatelessWidget {
             
             return FilledButton.icon(
               onPressed: () async {
+                // If book is completed, show reset dialog instead of playing
+                if (isCompleted) {
+                  await _showResetDialogForCompletedBook(context, book.id);
+                  return;
+                }
+                
                 final success = await playback.playItem(book.id, context: context);
                 if (!success && context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
