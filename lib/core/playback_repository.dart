@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:audio_session/audio_session.dart';
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:just_audio/just_audio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -19,6 +20,12 @@ import 'download_storage.dart';
 import 'play_history_service.dart';
 import '../models/book.dart';
 import 'books_repository.dart';
+
+enum ProgressResetChoice {
+  useServer,
+  useLocal,
+  cancel,
+}
 
 const _kProgressPing = Duration(seconds: 10);
 const _kLocalProgPrefix = 'abs_progress:';      // local fallback per item
@@ -391,7 +398,7 @@ class PlaybackRepository {
     }
   }
 
-  Future<bool> playItem(String libraryItemId, {String? episodeId}) async {
+  Future<bool> playItem(String libraryItemId, {String? episodeId, BuildContext? context}) async {
     // Guard: do not attempt playback if item appears to be non-audiobook
     try {
       final repo = await BooksRepository.create();
@@ -474,14 +481,8 @@ class PlaybackRepository {
       _log('❌ Failed to update audio service: $e');
     }
 
-    // SERVER WINS: try server position first; fallback to local cache
-    double? resumeSec;
-    try {
-      resumeSec = await fetchServerProgress(libraryItemId);
-    } catch (_) {
-      // offline: ignore
-    }
-    resumeSec ??= prefs.getDouble('$_kLocalProgPrefix$libraryItemId');
+    // Check for progress reset scenario and get user confirmation if needed
+    final resumeSec = await _handleProgressResetConfirmation(libraryItemId, prefs, context);
 
     if (resumeSec != null && resumeSec > 0) {
       final map = _mapGlobalSecondsToTrack(resumeSec, tracks);
@@ -606,6 +607,151 @@ class PlaybackRepository {
       }
     } catch (e) {
       _log('Error syncing position from server: $e');
+    }
+  }
+
+  /// Handle progress reset confirmation when server progress is reset but local progress exists
+  Future<double?> _handleProgressResetConfirmation(String libraryItemId, SharedPreferences prefs, BuildContext? context) async {
+    try {
+      // Get server progress
+      double? serverSec;
+      try {
+        serverSec = await fetchServerProgress(libraryItemId);
+      } catch (_) {
+        // offline: ignore
+      }
+      
+      // Get local progress
+      final localSec = prefs.getDouble('$_kLocalProgPrefix$libraryItemId');
+      
+      // Check if we have a progress reset scenario:
+      // - Server progress is 0 or null (reset)
+      // - Local progress exists and is > 0
+      // - Sync before play is enabled (we'll always warn when server is reset)
+      final serverReset = serverSec == null || serverSec <= 0;
+      final hasLocalProgress = localSec != null && localSec > 0;
+      final shouldSync = await _shouldSyncProgressBeforePlay();
+      
+      if (serverReset && hasLocalProgress) {
+        _log('Progress reset detected: server=${serverSec ?? 0}, local=$localSec');
+        
+        // Show confirmation dialog
+        final choice = await _showProgressResetDialog(libraryItemId, localSec, context, shouldSync);
+        
+        switch (choice) {
+          case ProgressResetChoice.useServer:
+            _log('User chose to use server position (reset)');
+            return serverSec; // Will be 0 or null, so starts from beginning
+          case ProgressResetChoice.useLocal:
+            _log('User chose to use local position');
+            return localSec;
+          case ProgressResetChoice.cancel:
+            _log('User cancelled playback');
+            return null; // This will cause playItem to return false
+        }
+      }
+      
+      // Default behavior: SERVER WINS
+      return serverSec ?? localSec;
+    } catch (e) {
+      _log('Error in progress reset confirmation: $e');
+      // Fallback to original behavior
+      try {
+        final serverSec = await fetchServerProgress(libraryItemId);
+        return serverSec ?? prefs.getDouble('$_kLocalProgPrefix$libraryItemId');
+      } catch (_) {
+        return prefs.getDouble('$_kLocalProgPrefix$libraryItemId');
+      }
+    }
+  }
+
+  /// Show confirmation dialog for progress reset scenario
+  Future<ProgressResetChoice> _showProgressResetDialog(String libraryItemId, double localSec, BuildContext? context, bool syncEnabled) async {
+    if (context == null) {
+      _log('No context available for progress reset dialog, defaulting to server position');
+      return ProgressResetChoice.useServer;
+    }
+
+    // Format the local progress time
+    final localDuration = Duration(milliseconds: (localSec * 1000).round());
+    final localTimeStr = _formatDuration(localDuration);
+
+    return await showDialog<ProgressResetChoice>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Progress Reset Detected'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                syncEnabled 
+                  ? 'The server progress for this book has been reset, but you have local progress saved.'
+                  : 'The server progress for this book has been reset. You have local progress that will be lost if you start from the beginning.',
+                style: const TextStyle(fontSize: 16),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.play_circle_outline,
+                      color: Theme.of(context).colorScheme.primary,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Your local progress: $localTimeStr',
+                      style: const TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'What would you like to do?',
+                style: TextStyle(fontWeight: FontWeight.w500),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(ProgressResetChoice.cancel),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(ProgressResetChoice.useServer),
+              child: const Text('Start from beginning'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(ProgressResetChoice.useLocal),
+              child: Text('Resume from $localTimeStr'),
+            ),
+          ],
+        );
+      },
+    ) ?? ProgressResetChoice.useServer; // Default to server if dialog is dismissed
+  }
+
+  /// Format duration for display
+  String _formatDuration(Duration duration) {
+    final hours = duration.inHours;
+    final minutes = duration.inMinutes.remainder(60);
+    final seconds = duration.inSeconds.remainder(60);
+    
+    if (hours > 0) {
+      return '${hours}h ${minutes}m ${seconds}s';
+    } else if (minutes > 0) {
+      return '${minutes}m ${seconds}s';
+    } else {
+      return '${seconds}s';
     }
   }
 

@@ -18,7 +18,7 @@ class PlayerController {
   /// Start playback of a library item (or specific episode) using the shared
   /// player managed by PlaybackRepository.
   Future<bool> playItem(String libraryItemId, {String? episodeId, BuildContext? context}) {
-    return playbackRepo.playItem(libraryItemId, episodeId: episodeId);
+    return playbackRepo.playItem(libraryItemId, episodeId: episodeId, context: context);
   }
 
   /// Pause/resume helpers, if needed by callers.

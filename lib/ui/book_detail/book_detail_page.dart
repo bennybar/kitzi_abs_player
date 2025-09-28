@@ -211,33 +211,55 @@ class _BookDetailPageState extends State<BookDetailPage> {
                             builder: (_) {
                               final uri = Uri.tryParse(b.coverUrl);
                               final radius = BorderRadius.circular(12);
+                              final coverHeight = b.isAudioBook ? 160.0 : 240.0;
+                              
+                              Widget coverImage;
                               if (uri != null && uri.scheme == 'file') {
-                              return ClipRRect(
-                                borderRadius: radius,
-                                child: Image.file(
-                                  File(uri.toFilePath()),
-                                  width: 160,
-                                  height: b.isAudioBook ? 160 : 240, // Square for audiobooks, rectangle for ebooks
-                                  fit: BoxFit.cover,
+                                coverImage = ClipRRect(
+                                  borderRadius: radius,
+                                  child: Image.file(
+                                    File(uri.toFilePath()),
+                                    width: 160,
+                                    height: coverHeight,
+                                    fit: BoxFit.cover,
+                                  ),
+                                );
+                              } else {
+                                coverImage = ClipRRect(
+                                  borderRadius: radius,
+                                  child: CachedNetworkImage(
+                                    imageUrl: b.coverUrl,
+                                    width: 160,
+                                    height: coverHeight,
+                                    fit: BoxFit.cover,
+                                    errorWidget: (_, __, ___) => Container(
+                                      width: 160,
+                                      height: coverHeight,
+                                      alignment: Alignment.center,
+                                      color: cs.surfaceContainerHighest,
+                                      child: const Icon(Icons.menu_book_outlined, size: 48),
+                                    ),
+                                  ),
+                                );
+                              }
+                              
+                              return Container(
+                                decoration: BoxDecoration(
+                                  borderRadius: radius,
+                                  border: Border.all(
+                                    color: cs.outline.withOpacity(0.2),
+                                    width: 1,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: cs.shadow.withOpacity(0.1),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
                                 ),
+                                child: coverImage,
                               );
-                            }
-                            return ClipRRect(
-                              borderRadius: radius,
-                              child: CachedNetworkImage(
-                                imageUrl: b.coverUrl,
-                                width: 160,
-                                height: b.isAudioBook ? 160 : 240, // Square for audiobooks, rectangle for ebooks
-                                fit: BoxFit.cover,
-                                errorWidget: (_, __, ___) => Container(
-                                  width: 160,
-                                  height: b.isAudioBook ? 160 : 240,
-                                  alignment: Alignment.center,
-                                  color: cs.surfaceContainerHighest,
-                                  child: const Icon(Icons.menu_book_outlined, size: 48),
-                                ),
-                              ),
-                            );
                             },
                           ),
                           const SizedBox(width: 20),
@@ -494,10 +516,12 @@ class _MetaChip extends StatelessWidget {
           width: 1,
         ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
+      child: SizedBox(
+        height: 80, // Fixed height to ensure consistent sizing
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
           Row(
             children: [
               Icon(icon, size: 16, color: cs.primary),
@@ -522,6 +546,7 @@ class _MetaChip extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
           ),
         ],
+        ),
       ),
     );
   }
@@ -614,7 +639,8 @@ class _ProgressSummary extends StatelessWidget {
             totalSec = (book.durationMs ?? 0) / 1000.0;
           }
           final posSec = prefixSec + curPos.inSeconds;
-          return _renderText(context, posSec, totalSec > 0 ? totalSec : null);
+          final isCompleted = totalSec > 0 && (posSec / totalSec) >= 0.999;
+          return _renderTextWithCompletion(context, posSec, totalSec > 0 ? totalSec : null, isCompleted);
         },
       );
     }
@@ -644,43 +670,6 @@ class _ProgressSummary extends StatelessWidget {
     );
   }
 
-  Widget _renderText(BuildContext context, double? seconds, double? totalSeconds) {
-    final cs = Theme.of(context).colorScheme;
-    String label;
-    bool isCompleted = false;
-    
-    if (seconds == null || seconds <= 0) {
-      label = 'Not started';
-    } else if (totalSeconds == null || totalSeconds <= 0) {
-      label = 'In progress';
-    } else if ((seconds / totalSeconds) >= 0.999) {
-      label = 'Finished';
-      isCompleted = true;
-    } else {
-      label = 'Progress: ${_fmtHMS(seconds)} of ${_fmtHMS(totalSeconds)}';
-    }
-    
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        children: [
-          if (isCompleted) ...[
-            Icon(Icons.check_circle, size: 20, color: Colors.green),
-            const SizedBox(width: 8),
-          ],
-          Expanded(
-            child: Text(
-              label, 
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                color: isCompleted ? Colors.green : cs.onSurfaceVariant,
-                fontWeight: isCompleted ? FontWeight.w600 : null,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget _renderTextWithCompletion(BuildContext context, double? seconds, double? totalSeconds, bool isCompleted) {
     final cs = Theme.of(context).colorScheme;
@@ -960,7 +949,7 @@ class _PlayPrimaryButton extends StatelessWidget {
             
             return FilledButton.icon(
               onPressed: () async {
-                final success = await playback.playItem(book.id);
+                final success = await playback.playItem(book.id, context: context);
                 if (!success && context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(

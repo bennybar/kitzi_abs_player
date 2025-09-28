@@ -751,7 +751,7 @@ class _BooksPageState extends State<BooksPage> {
                 );
               },
             ),
-            const SizedBox(height: 0),
+            const SizedBox(height: 16),
           ],
         ),
       ),

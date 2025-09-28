@@ -468,7 +468,7 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
         }
         return;
       }
-      await _playback.playItem(mediaId);
+      await _playback.playItem(mediaId, context: null);
       // Ensure queue reflects current now playing model
       final np = _playback.nowPlaying;
       if (np != null) {
