@@ -119,6 +119,12 @@ class PlaybackRepository {
   Stream<NowPlaying?> get nowPlayingStream => _nowPlayingCtr.stream;
   NowPlaying? get nowPlaying => _nowPlaying;
 
+  // Book completion status stream
+  final StreamController<Map<String, bool>> _completionStatusCtr =
+  StreamController.broadcast();
+  Stream<Map<String, bool>> get completionStatusStream => _completionStatusCtr.stream;
+  final Map<String, bool> completionCache = {};
+
   Stream<bool> get playingStream => player.playingStream;
   Stream<Duration> get positionStream => player.createPositionStream();
   Stream<Duration?> get durationStream => player.durationStream;
@@ -339,6 +345,23 @@ class PlaybackRepository {
       // Offline - return false to be conservative
       return false;
     }
+  }
+
+  /// Update book completion status and notify all listeners
+  Future<void> updateBookCompletionStatus(String libraryItemId, bool isCompleted) async {
+    completionCache[libraryItemId] = isCompleted;
+    _completionStatusCtr.add(Map<String, bool>.from(completionCache));
+    _log('Updated completion status for $libraryItemId: $isCompleted');
+  }
+
+  /// Get current completion status for a book (from cache)
+  bool getBookCompletionStatus(String libraryItemId) {
+    return completionCache[libraryItemId] ?? false;
+  }
+
+  /// Stream of completion status for a specific book
+  Stream<bool> getBookCompletionStream(String libraryItemId) {
+    return completionStatusStream.map((statusMap) => statusMap[libraryItemId] ?? false);
   }
 
   /// Check if sync progress before play is enabled

@@ -40,6 +40,7 @@ class _BooksPageState extends State<BooksPage> {
   // Memory management
   final List<StreamSubscription> _subscriptions = [];
   final List<TextEditingController> _controllers = [];
+  bool _completionListenerSetup = false;
 
   LibraryView _view = LibraryView.list;
   SortMode _sort = SortMode.addedDesc;
@@ -72,6 +73,16 @@ class _BooksPageState extends State<BooksPage> {
       _refresh(initial: true);
       _setupAutoRefresh();
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Setup completion status listener after dependencies are available (only once)
+    if (!_completionListenerSetup) {
+      _setupCompletionStatusListener();
+      _completionListenerSetup = true;
+    }
   }
 
   Widget _buildLoadingSkeleton(BuildContext context) {
@@ -167,6 +178,70 @@ class _BooksPageState extends State<BooksPage> {
       if (!mounted) return;
       setState(() => _isOnline = _isConnectedList(conn));
     });
+  }
+
+  void _setupCompletionStatusListener() {
+    // Listen to completion status changes and refresh the UI
+    final playback = ServicesScope.of(context).services.playback;
+    final subscription = playback.completionStatusStream.listen((_) {
+      if (mounted) {
+        setState(() {
+          // Trigger a rebuild to update completion status in the UI
+        });
+      }
+    });
+    _subscriptions.add(subscription);
+  }
+
+  /// Check if a book is completed by fetching from server
+  Future<bool> _checkIfCompleted(String bookId) async {
+    try {
+      final playback = ServicesScope.of(context).services.playback;
+      
+      // Use cached completion status if available
+      if (playback.completionCache.containsKey(bookId)) {
+        return playback.completionCache[bookId]!;
+      }
+      
+      // Otherwise fetch from server
+      final auth = await AuthRepository.ensure();
+      final api = auth.api;
+      final resp = await api.request('GET', '/api/me/progress/$bookId');
+      if (resp.statusCode != 200) return false;
+      
+      final data = jsonDecode(resp.body);
+      if (data is Map<String, dynamic>) {
+        // Check for isFinished field
+        if (data['isFinished'] == true) {
+          playback.completionCache[bookId] = true;
+          return true;
+        }
+        // Check for progress being 100% or very close
+        if (data['progress'] is num) {
+          final progress = (data['progress'] as num).toDouble();
+          final isCompleted = progress >= 0.99; // Consider 99%+ as completed
+          playback.completionCache[bookId] = isCompleted;
+          return isCompleted;
+        }
+        // Check if currentTime is very close to duration
+        if (data['currentTime'] is num && data['duration'] is num) {
+          final currentTime = (data['currentTime'] as num).toDouble();
+          final duration = (data['duration'] as num).toDouble();
+          if (duration > 0) {
+            final progress = currentTime / duration;
+            final isCompleted = progress >= 0.99; // Consider 99%+ as completed
+            playback.completionCache[bookId] = isCompleted;
+            return isCompleted;
+          }
+        }
+      }
+      playback.completionCache[bookId] = false;
+      return false;
+    } catch (e) {
+      // Offline or error - return cached value if available, otherwise false
+      final playback = ServicesScope.of(context).services.playback;
+      return playback.completionCache[bookId] ?? false;
+    }
   }
 
   bool _isConnectedList(List<ConnectivityResult> results) {
@@ -780,6 +855,7 @@ class _BooksPageState extends State<BooksPage> {
             key: ValueKey(b.id), // Add key for better widget recycling
             book: b,
             onTap: b.isAudioBook ? () => _openDetails(b) : null,
+            checkIfCompleted: _checkIfCompleted,
           );
         },
       ),
@@ -1156,9 +1232,10 @@ class _ResumeBookCard extends StatelessWidget {
 }
 
 class _BookListTile extends StatelessWidget {
-  const _BookListTile({super.key, required this.book, required this.onTap});
+  const _BookListTile({super.key, required this.book, required this.onTap, required this.checkIfCompleted});
   final Book book;
   final VoidCallback? onTap;
+  final Future<bool> Function(String) checkIfCompleted;
 
   @override
   Widget build(BuildContext context) {
@@ -1206,7 +1283,7 @@ class _BookListTile extends StatelessWidget {
                   // Completion checkmark overlay
                   if (book.isAudioBook)
                     FutureBuilder<bool>(
-                      future: _checkIfCompleted(book.id),
+                      future: checkIfCompleted(book.id),
                       builder: (context, snapshot) {
                         if (snapshot.data == true) {
                           return Positioned(
@@ -1300,39 +1377,6 @@ class _BookListTile extends StatelessWidget {
     );
   }
 
-  /// Check if a book is completed by fetching from server
-  Future<bool> _checkIfCompleted(String bookId) async {
-    try {
-      final auth = await AuthRepository.ensure();
-      final api = auth.api;
-      final resp = await api.request('GET', '/api/me/progress/$bookId');
-      if (resp.statusCode != 200) return false;
-      
-      final data = jsonDecode(resp.body);
-      if (data is Map<String, dynamic>) {
-        // Check for isFinished field
-        if (data['isFinished'] == true) return true;
-        // Check for progress being 100% or very close
-        if (data['progress'] is num) {
-          final progress = (data['progress'] as num).toDouble();
-          return progress >= 0.99; // Consider 99%+ as completed
-        }
-        // Check if currentTime is very close to duration
-        if (data['currentTime'] is num && data['duration'] is num) {
-          final currentTime = (data['currentTime'] as num).toDouble();
-          final duration = (data['duration'] as num).toDouble();
-          if (duration > 0) {
-            final progress = currentTime / duration;
-            return progress >= 0.99; // Consider 99%+ as completed
-          }
-        }
-      }
-      return false;
-    } catch (e) {
-      // Offline or error - return false to be conservative
-      return false;
-    }
-  }
 }
 
  

@@ -608,7 +608,13 @@ class _ProgressSummary extends StatelessWidget {
   Future<Map<String, dynamic>> _getServerProgressInfo(PlaybackRepository playback, String bookId) async {
     try {
       final progress = await playback.fetchServerProgress(bookId);
-      final isCompleted = await playback.isBookCompleted(bookId);
+      // Use cached completion status if available, otherwise fetch from server
+      bool isCompleted = playback.getBookCompletionStatus(bookId);
+      if (!playback.completionCache.containsKey(bookId)) {
+        isCompleted = await playback.isBookCompleted(bookId);
+        // Cache the result
+        playback.completionCache[bookId] = isCompleted;
+      }
       return {
         'progress': progress,
         'isCompleted': isCompleted,
@@ -680,29 +686,33 @@ class _ProgressSummary extends StatelessWidget {
     final text = Theme.of(context).textTheme;
     
     if (isCompleted) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: cs.primaryContainer,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: cs.primary.withOpacity(0.2),
-            width: 1,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.check_circle_rounded, size: 20, color: cs.primary),
-            const SizedBox(width: 8),
-            Text(
-              'Completed',
-              style: text.titleMedium?.copyWith(
-                color: cs.onPrimaryContainer,
-                fontWeight: FontWeight.w600,
-              ),
+      return InkWell(
+        onTap: () => _showResetProgressDialog(context),
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: cs.primaryContainer,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: cs.primary.withOpacity(0.2),
+              width: 1,
             ),
-          ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.check_circle_rounded, size: 20, color: cs.primary),
+              const SizedBox(width: 8),
+              Text(
+                'Completed',
+                style: text.titleMedium?.copyWith(
+                  color: cs.onPrimaryContainer,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
         ),
       );
     } else if (seconds == null || seconds <= 0) {
@@ -823,6 +833,121 @@ class _ProgressSummary extends StatelessWidget {
     final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
     final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
     return h > 0 ? '$h:$m:$s' : '$m:$s';
+  }
+
+  Future<void> _showResetProgressDialog(BuildContext context) async {
+    final cs = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          'Reset Progress',
+          style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+        ),
+        content: Text(
+          'Are you sure you want to reset this book as not started? This will clear your progress and mark the book as unread.',
+          style: text.bodyMedium,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: cs.onSurfaceVariant),
+            ),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: cs.error,
+              foregroundColor: cs.onError,
+            ),
+            child: const Text('Reset'),
+          ),
+        ],
+      ),
+    );
+    
+    if (confirmed == true) {
+      await _resetBookProgress(context);
+    }
+  }
+
+  Future<void> _resetBookProgress(BuildContext context) async {
+    final cs = Theme.of(context).colorScheme;
+    
+    try {
+      // Log the reset request for troubleshooting
+      debugPrint('[RESET_PROGRESS] Resetting book progress: ${book.id}');
+      
+      final api = ServicesScope.of(context).services.auth.api;
+      
+      // Log the API request for troubleshooting
+      debugPrint('[RESET_PROGRESS] API Request: PATCH /api/me/progress/${book.id}');
+      debugPrint('[RESET_PROGRESS] Request body: {"isFinished": false, "currentTime": 0}');
+      
+      final response = await api.request(
+        'PATCH',
+        '/api/me/progress/${book.id}',
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'isFinished': false,
+          'currentTime': 0,
+        }),
+      );
+      
+      debugPrint('[RESET_PROGRESS] API Response: ${response.statusCode} ${response.body}');
+      
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        debugPrint('[RESET_PROGRESS] Successfully reset book progress');
+        
+        // Update the global completion status cache and notify all listeners
+        await playback.updateBookCompletionStatus(book.id, false);
+        
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Book progress has been reset'),
+              backgroundColor: cs.primary,
+            ),
+          );
+        }
+        
+        // Trigger a rebuild to update the UI
+        if (context.mounted) {
+          // Force a rebuild by calling setState on the parent widget
+          // We need to access the parent state somehow
+          _triggerParentRebuild(context);
+        }
+      } else {
+        throw Exception('Server returned ${response.statusCode}: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('[RESET_PROGRESS] Error resetting progress: $e');
+      
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to reset progress: $e'),
+            backgroundColor: cs.error,
+          ),
+        );
+      }
+    }
+  }
+
+  void _triggerParentRebuild(BuildContext context) {
+    // Find the parent state and trigger a rebuild
+    // This is a bit of a hack, but it works for this use case
+    final parentState = context.findAncestorStateOfType<_BookDetailPageState>();
+    if (parentState != null && parentState.mounted) {
+      parentState.setState(() {
+        // Reset the server progress future to force a reload
+        parentState._serverProgressFut = playback.fetchServerProgress(book.id);
+      });
+    }
   }
 }
 

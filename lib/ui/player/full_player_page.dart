@@ -1,4 +1,6 @@
 // lib/ui/player/full_player_page.dart
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -190,6 +192,86 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
     final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
     return h > 0 ? '$h:$m:$s' : '$m:$s';
+  }
+
+  Stream<bool> _getBookCompletionStream() {
+    final playback = ServicesScope.of(context).services.playback;
+    return playback.nowPlayingStream.asyncExpand((np) {
+      if (np == null) return Stream.value(false);
+      
+      // Use the new completion status stream from PlaybackRepository
+      return playback.getBookCompletionStream(np.libraryItemId);
+    });
+  }
+
+  Future<void> _toggleBookCompletion(BuildContext context, bool isCurrentlyCompleted) async {
+    final playback = ServicesScope.of(context).services.playback;
+    final np = playback.nowPlaying;
+    if (np == null) return;
+
+    try {
+      final newCompletionStatus = !isCurrentlyCompleted;
+      
+      // Log the request for troubleshooting
+      debugPrint('[MARK_FINISHED] Toggling book completion: ${np.libraryItemId} -> $newCompletionStatus');
+      
+      // Send the request to server
+      await _markBookAsFinished(np.libraryItemId, newCompletionStatus);
+      
+      // Update the global completion status cache and notify all listeners
+      await playback.updateBookCompletionStatus(np.libraryItemId, newCompletionStatus);
+      
+      // Show feedback to user
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(newCompletionStatus ? 'Book marked as finished' : 'Book marked as unread'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+      
+    } catch (e) {
+      debugPrint('[MARK_FINISHED] Error toggling completion: $e');
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to update book status: $e'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _markBookAsFinished(String libraryItemId, bool finished) async {
+    final playback = ServicesScope.of(context).services.playback;
+    final api = ServicesScope.of(context).services.auth.api;
+    
+    // Log the API request for troubleshooting
+    debugPrint('[MARK_FINISHED] API Request: PATCH /api/me/progress/$libraryItemId');
+    debugPrint('[MARK_FINISHED] Request body: {"isFinished": $finished}');
+    
+    try {
+      final response = await api.request(
+        'PATCH',
+        '/api/me/progress/$libraryItemId',
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'isFinished': finished}),
+      );
+      
+      debugPrint('[MARK_FINISHED] API Response: ${response.statusCode} ${response.body}');
+      
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        debugPrint('[MARK_FINISHED] Successfully updated book completion status');
+      } else {
+        throw Exception('Server returned ${response.statusCode}: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('[MARK_FINISHED] API Error: $e');
+      rethrow;
+    }
   }
 
   Future<void> _showChaptersSheet(
@@ -549,6 +631,24 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                             ),
                           ),
                           const Spacer(),
+                          // Mark as finished button
+                          StreamBuilder<bool>(
+                            stream: _getBookCompletionStream(),
+                            initialData: false,
+                            builder: (_, completionSnap) {
+                              final isCompleted = completionSnap.data ?? false;
+                              return IconButton.filledTonal(
+                                onPressed: () => _toggleBookCompletion(context, isCompleted),
+                                icon: Icon(isCompleted ? Icons.check_circle_rounded : Icons.check_circle_outline_rounded),
+                                tooltip: isCompleted ? 'Mark as unread' : 'Mark as finished',
+                                style: IconButton.styleFrom(
+                                  backgroundColor: isCompleted ? cs.primaryContainer : cs.surfaceContainerHighest,
+                                  foregroundColor: isCompleted ? cs.onPrimaryContainer : cs.onSurface,
+                                ),
+                              );
+                            },
+                          ),
+                          const SizedBox(width: 8),
                           StreamBuilder<double>(
                             stream: ServicesScope.of(context).services.playback.player.speedStream,
                             initialData: ServicesScope.of(context).services.playback.player.speed,
