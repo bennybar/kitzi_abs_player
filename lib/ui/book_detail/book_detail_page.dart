@@ -520,7 +520,6 @@ class _MetaChip extends StatelessWidget {
         height: 80, // Fixed height to ensure consistent sizing
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
           children: [
           Row(
             children: [
@@ -536,14 +535,19 @@ class _MetaChip extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 4),
-          Text(
-            value,
-            style: text.bodyMedium?.copyWith(
-              color: cs.onSurface,
-              fontWeight: FontWeight.w500,
+          Expanded(
+            child: Center(
+              child: Text(
+                value,
+                style: text.bodyMedium?.copyWith(
+                  color: cs.onSurface,
+                  fontWeight: FontWeight.w500,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+              ),
             ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
           ),
         ],
         ),
