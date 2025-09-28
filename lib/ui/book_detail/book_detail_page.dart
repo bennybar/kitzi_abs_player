@@ -520,7 +520,7 @@ class _MetaChip extends StatelessWidget {
         height: 80, // Fixed height to ensure consistent sizing
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
           Row(
             children: [
