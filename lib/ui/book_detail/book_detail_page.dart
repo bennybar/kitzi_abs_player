@@ -29,74 +29,26 @@ class _BookDetailPageState extends State<BookDetailPage> {
   int? _resolvedDurationMs;
   int? _resolvedSizeBytes;
   bool _kickedResolve = false;
+  bool _isResolvingDuration = false; // Prevent concurrent duration resolution
+  bool _isResolvingSize = false; // Prevent concurrent size resolution
 
   Future<void> _resolveDurationIfNeeded(Book b, PlaybackRepository playbackRepo) async {
     final current = _resolvedDurationMs ?? b.durationMs ?? 0;
     if (current > 0) return;
-    try {
-      final open = await playbackRepo.openSessionAndGetTracks(b.id);
-      final totalSec = open.tracks.fold<double>(0.0, (a, t) => a + (t.duration > 0 ? t.duration : 0.0));
-      if (mounted && totalSec > 0) {
-        final ms = (totalSec * 1000).round();
-        setState(() { _resolvedDurationMs = ms; });
-        // Persist duration so next open is instant
-        try {
-          final repo = await _repoFut;
-          await repo.upsertBook(Book(
-            id: b.id,
-            title: b.title,
-            author: b.author,
-            coverUrl: b.coverUrl,
-            description: b.description,
-            durationMs: ms,
-            sizeBytes: b.sizeBytes,
-            updatedAt: b.updatedAt,
-            authors: b.authors,
-            narrators: b.narrators,
-            publisher: b.publisher,
-            publishYear: b.publishYear,
-            genres: b.genres,
-          ));
-        } catch (_) {}
-      }
-      if (open.sessionId != null && open.sessionId!.isNotEmpty) {
-        unawaited(playbackRepo.closeSessionById(open.sessionId!));
-      }
-    } catch (_) {}
+    
+    // Don't automatically resolve duration on page load to prevent unnecessary transcoding sessions
+    // Duration will be resolved when user explicitly requests it (e.g., taps duration chip)
+    // or when they actually start playing the book
+    return;
   }
 
   Future<void> _resolveSizeIfNeeded(BuildContext context, Book b) async {
     final current = _resolvedSizeBytes ?? b.sizeBytes ?? 0;
     if (current > 0) return;
-    try {
-      final downloads = ServicesScope.of(context).services.downloads;
-      final est = await downloads.estimateTotalBytes(b.id);
-      if (mounted && est != null && est > 0) {
-        setState(() { _resolvedSizeBytes = est; });
-        // Persist estimated size so next open is instant
-        try {
-          final repo = await _repoFut;
-          await repo.upsertBook(Book(
-            id: b.id,
-            title: b.title,
-            author: b.author,
-            coverUrl: b.coverUrl,
-            description: b.description,
-            durationMs: b.durationMs,
-            sizeBytes: est,
-            updatedAt: b.updatedAt,
-            authors: b.authors,
-            narrators: b.narrators,
-            publisher: b.publisher,
-            publishYear: b.publishYear,
-            genres: b.genres,
-          ));
-        } catch (_) {}
-        return;
-      }
-
-      // Fallback to 0 quietly; UI will keep showing '—'
-    } catch (_) {}
+    
+    // Don't automatically resolve size on page load to prevent unnecessary API calls
+    // Size will be resolved when user explicitly requests it (e.g., taps size chip)
+    return;
   }
 
   @override
@@ -493,19 +445,93 @@ class _BookDetailPageState extends State<BookDetailPage> {
                                   onTap: () async {
                                     // If unknown, try resolving via streaming tracks (then close session)
                                     if ((_resolvedDurationMs ?? b.durationMs ?? 0) == 0) {
+                                      // Prevent concurrent duration resolution
+                                      if (_isResolvingDuration) {
+                                        if (mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(
+                                              content: Text('Duration is already being loaded...'),
+                                              duration: Duration(seconds: 2),
+                                            ),
+                                          );
+                                        }
+                                        return;
+                                      }
+                                      
+                                      _isResolvingDuration = true;
                                       try {
+                                        // Show loading indicator
+                                        if (mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(
+                                              content: Row(
+                                                children: [
+                                                  SizedBox(
+                                                    width: 16,
+                                                    height: 16,
+                                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                                  ),
+                                                  SizedBox(width: 8),
+                                                  Text('Loading duration...'),
+                                                ],
+                                              ),
+                                              duration: Duration(seconds: 2),
+                                            ),
+                                          );
+                                        }
+                                        
                                         final open = await playbackRepo.openSessionAndGetTracks(b.id);
                                         final totalSec = open.tracks.fold<double>(0.0, (a, t) => a + (t.duration > 0 ? t.duration : 0.0));
-                                        if (mounted) setState(() { _resolvedDurationMs = (totalSec * 1000).round(); });
+                                        if (mounted && totalSec > 0) {
+                                          final ms = (totalSec * 1000).round();
+                                          setState(() { _resolvedDurationMs = ms; });
+                                          
+                                          // Persist duration to local cache for future use
+                                          try {
+                                            final repo = await _repoFut;
+                                            await repo.upsertBook(Book(
+                                              id: b.id,
+                                              title: b.title,
+                                              author: b.author,
+                                              coverUrl: b.coverUrl,
+                                              description: b.description,
+                                              durationMs: ms,
+                                              sizeBytes: b.sizeBytes,
+                                              updatedAt: b.updatedAt,
+                                              authors: b.authors,
+                                              narrators: b.narrators,
+                                              publisher: b.publisher,
+                                              publishYear: b.publishYear,
+                                              genres: b.genres,
+                                            ));
+                                          } catch (_) {}
+                                        }
+                                        
+                                        // Always close the session to prevent transcoding from continuing
                                         if (open.sessionId != null && open.sessionId!.isNotEmpty) {
                                           unawaited(playbackRepo.closeSessionById(open.sessionId!));
                                         }
-                                      } catch (_) {}
+                                      } catch (e) {
+                                        if (mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(
+                                              content: Text('Failed to load duration: $e'),
+                                              backgroundColor: Theme.of(context).colorScheme.error,
+                                            ),
+                                          );
+                                        }
+                                        return;
+                                      } finally {
+                                        _isResolvingDuration = false;
+                                      }
                                     }
+                                    
                                     final txt = fmtDuration();
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(content: Text('Total length: $txt')),
-                                    );
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(content: Text('Total length: $txt')),
+                                      );
+                                    }
                                   },
                                 ),
                                 _InfoChip(
@@ -515,7 +541,41 @@ class _BookDetailPageState extends State<BookDetailPage> {
                                   onTap: () async {
                                     // If unknown, try resolving via /api/items/{id}/files sum of sizes
                                     if ((_resolvedSizeBytes ?? b.sizeBytes ?? 0) == 0) {
+                                      // Prevent concurrent size resolution
+                                      if (_isResolvingSize) {
+                                        if (mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(
+                                              content: Text('Size is already being loaded...'),
+                                              duration: Duration(seconds: 2),
+                                            ),
+                                          );
+                                        }
+                                        return;
+                                      }
+                                      
+                                      _isResolvingSize = true;
                                       try {
+                                        // Show loading indicator
+                                        if (mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(
+                                              content: Row(
+                                                children: [
+                                                  SizedBox(
+                                                    width: 16,
+                                                    height: 16,
+                                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                                  ),
+                                                  SizedBox(width: 8),
+                                                  Text('Loading size...'),
+                                                ],
+                                              ),
+                                              duration: Duration(seconds: 2),
+                                            ),
+                                          );
+                                        }
+                                        
                                         final api = ServicesScope.of(context).services.auth.api;
                                         final resp = await api.request('GET', '/api/items/${b.id}/files');
                                         if (resp.statusCode == 200) {
@@ -537,14 +597,51 @@ class _BookDetailPageState extends State<BookDetailPage> {
                                               }
                                             }
                                           }
-                                          if (mounted && sum > 0) setState(() { _resolvedSizeBytes = sum; });
+                                          if (mounted && sum > 0) {
+                                            setState(() { _resolvedSizeBytes = sum; });
+                                            
+                                            // Persist size to local cache for future use
+                                            try {
+                                              final repo = await _repoFut;
+                                              await repo.upsertBook(Book(
+                                                id: b.id,
+                                                title: b.title,
+                                                author: b.author,
+                                                coverUrl: b.coverUrl,
+                                                description: b.description,
+                                                durationMs: b.durationMs,
+                                                sizeBytes: sum,
+                                                updatedAt: b.updatedAt,
+                                                authors: b.authors,
+                                                narrators: b.narrators,
+                                                publisher: b.publisher,
+                                                publishYear: b.publishYear,
+                                                genres: b.genres,
+                                              ));
+                                            } catch (_) {}
+                                          }
                                         }
-                                      } catch (_) {}
+                                      } catch (e) {
+                                        if (mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(
+                                              content: Text('Failed to load size: $e'),
+                                              backgroundColor: Theme.of(context).colorScheme.error,
+                                            ),
+                                          );
+                                        }
+                                        return;
+                                      } finally {
+                                        _isResolvingSize = false;
+                                      }
                                     }
+                                    
                                     final txt = fmtSize();
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(content: Text('Estimated download size: $txt')),
-                                    );
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(content: Text('Estimated download size: $txt')),
+                                      );
+                                    }
                                   },
                                 ),
                               ],
