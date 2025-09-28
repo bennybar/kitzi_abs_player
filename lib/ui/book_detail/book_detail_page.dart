@@ -486,6 +486,20 @@ class _ProgressSummary extends StatelessWidget {
   final Book book;
   final Future<double?> serverProgressFuture;
 
+  /// Get server progress information including completion status
+  Future<Map<String, dynamic>> _getServerProgressInfo(PlaybackRepository playback, String bookId) async {
+    try {
+      final progress = await playback.fetchServerProgress(bookId);
+      final isCompleted = await playback.isBookCompleted(bookId);
+      return {
+        'progress': progress,
+        'isCompleted': isCompleted,
+      };
+    } catch (e) {
+      return {'progress': null, 'isCompleted': false};
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isThis = playback.nowPlaying?.libraryItemId == book.id;
@@ -515,11 +529,28 @@ class _ProgressSummary extends StatelessWidget {
         },
       );
     }
-    return FutureBuilder<double?>(
-      future: serverProgressFuture,
+    return FutureBuilder<Map<String, dynamic>>(
+      future: _getServerProgressInfo(playback, book.id),
       builder: (_, sSnap) {
-        final sec = sSnap.data;
-        return _renderText(context, sec, (book.durationMs ?? 0) / 1000.0);
+        if (sSnap.connectionState == ConnectionState.waiting) {
+          final cs = Theme.of(context).colorScheme;
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              children: [
+                const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                const SizedBox(width: 8),
+                Text('Loading progress...', style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: cs.onSurfaceVariant)),
+              ],
+            ),
+          );
+        }
+        
+        final progressInfo = sSnap.data ?? {'progress': null, 'isCompleted': false};
+        final sec = progressInfo['progress'] as double?;
+        final isCompleted = progressInfo['isCompleted'] as bool;
+        
+        return _renderTextWithCompletion(context, sec, (book.durationMs ?? 0) / 1000.0, isCompleted);
       },
     );
   }
@@ -527,7 +558,48 @@ class _ProgressSummary extends StatelessWidget {
   Widget _renderText(BuildContext context, double? seconds, double? totalSeconds) {
     final cs = Theme.of(context).colorScheme;
     String label;
+    bool isCompleted = false;
+    
     if (seconds == null || seconds <= 0) {
+      label = 'Not started';
+    } else if (totalSeconds == null || totalSeconds <= 0) {
+      label = 'In progress';
+    } else if ((seconds / totalSeconds) >= 0.999) {
+      label = 'Finished';
+      isCompleted = true;
+    } else {
+      label = 'Progress: ${_fmtHMS(seconds)} of ${_fmtHMS(totalSeconds)}';
+    }
+    
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          if (isCompleted) ...[
+            Icon(Icons.check_circle, size: 20, color: Colors.green),
+            const SizedBox(width: 8),
+          ],
+          Expanded(
+            child: Text(
+              label, 
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                color: isCompleted ? Colors.green : cs.onSurfaceVariant,
+                fontWeight: isCompleted ? FontWeight.w600 : null,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _renderTextWithCompletion(BuildContext context, double? seconds, double? totalSeconds, bool isCompleted) {
+    final cs = Theme.of(context).colorScheme;
+    String label;
+    
+    if (isCompleted) {
+      label = 'Finished';
+    } else if (seconds == null || seconds <= 0) {
       label = 'Not started';
     } else if (totalSeconds == null || totalSeconds <= 0) {
       label = 'In progress';
@@ -536,9 +608,26 @@ class _ProgressSummary extends StatelessWidget {
     } else {
       label = 'Progress: ${_fmtHMS(seconds)} of ${_fmtHMS(totalSeconds)}';
     }
+    
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Text(label, style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: cs.onSurfaceVariant)),
+      child: Row(
+        children: [
+          if (isCompleted) ...[
+            Icon(Icons.check_circle, size: 20, color: Colors.green),
+            const SizedBox(width: 8),
+          ],
+          Expanded(
+            child: Text(
+              label, 
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                color: isCompleted ? Colors.green : cs.onSurfaceVariant,
+                fontWeight: isCompleted ? FontWeight.w600 : null,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -555,6 +644,20 @@ class _PlayPrimaryButton extends StatelessWidget {
   const _PlayPrimaryButton({required this.book, required this.playback});
   final Book book;
   final PlaybackRepository playback;
+
+  /// Get book progress information including completion status
+  Future<Map<String, dynamic>> _getBookProgressInfo(PlaybackRepository playback, String bookId) async {
+    try {
+      final progress = await playback.fetchServerProgress(bookId);
+      final isCompleted = await playback.isBookCompleted(bookId);
+      return {
+        'hasProgress': (progress ?? 0) > 0,
+        'isCompleted': isCompleted,
+      };
+    } catch (e) {
+      return {'hasProgress': false, 'isCompleted': false};
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -634,11 +737,34 @@ class _PlayPrimaryButton extends StatelessWidget {
         }
 
         // Not active on player: decide between Resume vs Play by checking saved progress
-        return FutureBuilder<double?>(
-          future: playback.fetchServerProgress(book.id),
+        return FutureBuilder<Map<String, dynamic>>(
+          future: _getBookProgressInfo(playback, book.id),
           builder: (context, snap) {
-            final hasProgress = (snap.data ?? 0) > 0;
-            final label = hasProgress ? 'Resume' : 'Play';
+            if (snap.connectionState == ConnectionState.waiting) {
+              return FilledButton.icon(
+                onPressed: null,
+                icon: const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                label: const Text('Loading...'),
+              );
+            }
+            
+            final progressInfo = snap.data ?? {'hasProgress': false, 'isCompleted': false};
+            final hasProgress = progressInfo['hasProgress'] as bool;
+            final isCompleted = progressInfo['isCompleted'] as bool;
+            
+            String label;
+            IconData icon;
+            if (isCompleted) {
+              label = 'Start';
+              icon = Icons.play_arrow_rounded;
+            } else if (hasProgress) {
+              label = 'Resume';
+              icon = Icons.play_arrow_rounded;
+            } else {
+              label = 'Play';
+              icon = Icons.play_arrow_rounded;
+            }
+            
             return FilledButton.icon(
               onPressed: () async {
                 final success = await playback.playItem(book.id);
@@ -654,7 +780,16 @@ class _PlayPrimaryButton extends StatelessWidget {
                 if (!context.mounted) return;
                 await FullPlayerPage.openOnce(context);
               },
-              icon: const Icon(Icons.play_arrow_rounded),
+              icon: icon == Icons.play_arrow_rounded && isCompleted 
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.check_circle, size: 16, color: Colors.green),
+                      const SizedBox(width: 4),
+                      Icon(icon, size: 20),
+                    ],
+                  )
+                : Icon(icon),
               label: Text(label),
             );
           },

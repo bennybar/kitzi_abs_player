@@ -293,6 +293,40 @@ class PlaybackRepository {
     }
   }
 
+  /// Check if a book is marked as finished/completed on the server
+  Future<bool> isBookCompleted(String libraryItemId) async {
+    try {
+      final api = _auth.api;
+      final resp = await api.request('GET', '/api/me/progress/$libraryItemId');
+      if (resp.statusCode != 200) return false;
+      try {
+        final data = jsonDecode(resp.body);
+        if (data is Map<String, dynamic>) {
+          // Check for isFinished field
+          if (data['isFinished'] == true) return true;
+          // Check for progress being 100% or very close
+          if (data['progress'] is num) {
+            final progress = (data['progress'] as num).toDouble();
+            return progress >= 0.99; // Consider 99%+ as completed
+          }
+          // Check if currentTime is very close to duration
+          if (data['currentTime'] is num && data['duration'] is num) {
+            final currentTime = (data['currentTime'] as num).toDouble();
+            final duration = (data['duration'] as num).toDouble();
+            if (duration > 0) {
+              final progress = currentTime / duration;
+              return progress >= 0.99; // Consider 99%+ as completed
+            }
+          }
+        }
+      } catch (_) {}
+      return false;
+    } on SocketException catch (_) {
+      // Offline - return false to be conservative
+      return false;
+    }
+  }
+
   /// Check if sync progress before play is enabled
   Future<bool> _shouldSyncProgressBeforePlay() async {
     try {

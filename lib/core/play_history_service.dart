@@ -63,6 +63,7 @@ class PlayHistoryService {
       'title': book.title,
       'author': book.author,
       'coverUrl': book.coverUrl,
+      'libraryId': book.libraryId, // Include library ID for filtering
       'timestamp': DateTime.now().millisecondsSinceEpoch,
     };
     
@@ -159,8 +160,15 @@ class PlayHistoryService {
               final m = e.cast<String, dynamic>();
               final episodeId = m['episodeId'];
               final li = m['libraryItemId'];
-              if (episodeId == null && li is String && li.isNotEmpty) {
-                entries.add(m);
+              final isFinished = m['isFinished'] == true;
+              final progress = m['progress'] is num ? (m['progress'] as num).toDouble() : null;
+              
+              // Only include books (not episodes) that are not completed
+              if (episodeId == null && li is String && li.isNotEmpty && !isFinished) {
+                // Also exclude books that are 99%+ complete
+                if (progress == null || progress < 0.99) {
+                  entries.add(m);
+                }
               }
             }
           }
@@ -190,8 +198,12 @@ class PlayHistoryService {
                   li = bd.cast<String, dynamic>();
                 }
                 if (li != null) {
-                  final book = Book.fromLibraryItemJson(li, baseUrl: baseUrl, token: token);
-                  books.add(book);
+                  // Only include books from the current library
+                  final bookLibraryId = (li['libraryId'] ?? '').toString();
+                  if (bookLibraryId == libId) {
+                    final book = Book.fromLibraryItemJson(li, baseUrl: baseUrl, token: token);
+                    books.add(book);
+                  }
                 }
               }
             } catch (_) {}
@@ -316,6 +328,15 @@ class PlayHistoryService {
       final books = <Book>[];
       for (final item in trimmed) {
         try {
+          // Check if book is from the current library
+          final bookLibraryId = (item['libraryId'] ?? '').toString();
+          if (bookLibraryId != libId) continue;
+          
+          // Check if book is completed
+          final isFinished = item['isFinished'] == true;
+          final progress = item['progress'] is num ? (item['progress'] as num).toDouble() : null;
+          if (isFinished || (progress != null && progress >= 0.99)) continue;
+          
           final book = Book.fromLibraryItemJson(
             item,
             baseUrl: baseUrl,
@@ -344,7 +365,8 @@ class PlayHistoryService {
     
     print('PlayHistory: Local history contains ${historyJson.length} entries');
     
-
+    // Get current library ID for filtering
+    final libId = await _ensureLibraryId();
     
     final books = <Book>[];
     for (int i = 0; i < historyJson.length && i < count; i++) {
@@ -358,9 +380,16 @@ class PlayHistoryService {
           description: null,
           durationMs: null,
           sizeBytes: null,
+          libraryId: data['libraryId'], // Include library ID if available
         );
-        books.add(book);
-        print('PlayHistory: Local book $i: ${book.title}');
+        
+        // Only include books from the current library if library ID is available
+        if (book.libraryId == null || book.libraryId == libId) {
+          books.add(book);
+          print('PlayHistory: Local book $i: ${book.title}');
+        } else {
+          print('PlayHistory: Skipping local book $i (${book.title}) - different library');
+        }
       } catch (e) {
         print('PlayHistory: Failed to parse local book $i: $e');
         // Skip corrupted entries

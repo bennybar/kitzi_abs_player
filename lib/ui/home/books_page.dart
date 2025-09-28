@@ -1080,25 +1080,62 @@ class _BookListTile extends StatelessWidget {
           padding: const EdgeInsets.all(12),
           child: Row(
             children: [
-              // Enhanced cover
-              Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: cs.shadow.withOpacity(0.1),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
+              // Enhanced cover with completion indicator
+              Stack(
+                children: [
+                  Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: cs.shadow.withOpacity(0.1),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-                child: Hero(
-                  tag: 'home-cover-${book.id}',
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: EnhancedCoverImage(url: book.coverUrl, width: 72, height: 72),
+                    child: Hero(
+                      tag: 'home-cover-${book.id}',
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: EnhancedCoverImage(url: book.coverUrl, width: 72, height: 72),
+                      ),
+                    ),
                   ),
-                ),
+                  // Completion checkmark overlay
+                  if (book.isAudioBook)
+                    FutureBuilder<bool>(
+                      future: _checkIfCompleted(book.id),
+                      builder: (context, snapshot) {
+                        if (snapshot.data == true) {
+                          return Positioned(
+                            top: 4,
+                            right: 4,
+                            child: Container(
+                              padding: const EdgeInsets.all(2),
+                              decoration: BoxDecoration(
+                                color: Colors.green,
+                                borderRadius: BorderRadius.circular(12),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.3),
+                                    blurRadius: 4,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: const Icon(
+                                Icons.check,
+                                color: Colors.white,
+                                size: 16,
+                              ),
+                            ),
+                          );
+                        }
+                        return const SizedBox.shrink();
+                      },
+                    ),
+                ],
               ),
               const SizedBox(width: 12),
               
@@ -1160,6 +1197,40 @@ class _BookListTile extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// Check if a book is completed by fetching from server
+  Future<bool> _checkIfCompleted(String bookId) async {
+    try {
+      final auth = await AuthRepository.ensure();
+      final api = auth.api;
+      final resp = await api.request('GET', '/api/me/progress/$bookId');
+      if (resp.statusCode != 200) return false;
+      
+      final data = jsonDecode(resp.body);
+      if (data is Map<String, dynamic>) {
+        // Check for isFinished field
+        if (data['isFinished'] == true) return true;
+        // Check for progress being 100% or very close
+        if (data['progress'] is num) {
+          final progress = (data['progress'] as num).toDouble();
+          return progress >= 0.99; // Consider 99%+ as completed
+        }
+        // Check if currentTime is very close to duration
+        if (data['currentTime'] is num && data['duration'] is num) {
+          final currentTime = (data['currentTime'] as num).toDouble();
+          final duration = (data['duration'] as num).toDouble();
+          if (duration > 0) {
+            final progress = currentTime / duration;
+            return progress >= 0.99; // Consider 99%+ as completed
+          }
+        }
+      }
+      return false;
+    } catch (e) {
+      // Offline or error - return false to be conservative
+      return false;
+    }
   }
 }
 
