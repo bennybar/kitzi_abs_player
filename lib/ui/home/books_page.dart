@@ -1013,6 +1013,40 @@ class _ResumeBookCard extends StatelessWidget {
                   size: 28,
                 ),
               ),
+              // Progress percentage indicator
+              FutureBuilder<Map<String, dynamic>>(
+                future: _getBookProgress(book.id),
+                builder: (context, snapshot) {
+                  if (snapshot.hasData) {
+                    final progressInfo = snapshot.data!;
+                    final progress = progressInfo['progress'] as double?;
+                    final isCompleted = progressInfo['isCompleted'] as bool;
+                    
+                    if (progress != null && progress > 0 && !isCompleted) {
+                      return Positioned(
+                        top: 8,
+                        right: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.7),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            '${(progress * 100).round()}%',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 10,
+                            ),
+                          ),
+                        ),
+                      );
+                    }
+                  }
+                  return const SizedBox.shrink();
+                },
+              ),
               // Text over image at bottom
               Positioned(
                 left: 8,
@@ -1051,6 +1085,41 @@ class _ResumeBookCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// Get book progress information including percentage
+  Future<Map<String, dynamic>> _getBookProgress(String bookId) async {
+    try {
+      final auth = await AuthRepository.ensure();
+      final api = auth.api;
+      final resp = await api.request('GET', '/api/me/progress/$bookId');
+      if (resp.statusCode != 200) return {'progress': null, 'isCompleted': false};
+      
+      final data = jsonDecode(resp.body);
+      if (data is Map<String, dynamic>) {
+        final isCompleted = data['isFinished'] == true;
+        double? progress;
+        
+        // Get progress percentage
+        if (data['progress'] is num) {
+          progress = (data['progress'] as num).toDouble();
+        } else if (data['currentTime'] is num && data['duration'] is num) {
+          final currentTime = (data['currentTime'] as num).toDouble();
+          final duration = (data['duration'] as num).toDouble();
+          if (duration > 0) {
+            progress = currentTime / duration;
+          }
+        }
+        
+        return {
+          'progress': progress,
+          'isCompleted': isCompleted || (progress != null && progress >= 0.99),
+        };
+      }
+      return {'progress': null, 'isCompleted': false};
+    } catch (e) {
+      return {'progress': null, 'isCompleted': false};
+    }
   }
 }
 

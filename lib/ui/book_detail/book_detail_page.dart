@@ -201,144 +201,177 @@ class _BookDetailPageState extends State<BookDetailPage> {
                         builder: (_, __) => const SizedBox.shrink(),
                       ),
                     ],
+                    // Cover, title, and author/narrator in one row
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                       child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           Builder(
                             builder: (_) {
                               final uri = Uri.tryParse(b.coverUrl);
                               final radius = BorderRadius.circular(12);
                               if (uri != null && uri.scheme == 'file') {
-                                return ClipRRect(
-                                  borderRadius: radius,
-                                  child: Image.file(
-                                    File(uri.toFilePath()),
-                                    width: 140,
-                                    height: 210,
-                                    fit: BoxFit.cover,
-                                  ),
-                                );
-                              }
                               return ClipRRect(
                                 borderRadius: radius,
-                                child: CachedNetworkImage(
-                                  imageUrl: b.coverUrl,
-                                  width: 140,
-                                  height: 210,
+                                child: Image.file(
+                                  File(uri.toFilePath()),
+                                  width: 160,
+                                  height: b.isAudioBook ? 160 : 240, // Square for audiobooks, rectangle for ebooks
                                   fit: BoxFit.cover,
-                                  errorWidget: (_, __, ___) => Container(
-                                    width: 140,
-                                    height: 210,
-                                    alignment: Alignment.center,
-                                    color: cs.surfaceContainerHighest,
-                                    child: const Icon(Icons.menu_book_outlined, size: 48),
-                                  ),
                                 ),
                               );
+                            }
+                            return ClipRRect(
+                              borderRadius: radius,
+                              child: CachedNetworkImage(
+                                imageUrl: b.coverUrl,
+                                width: 160,
+                                height: b.isAudioBook ? 160 : 240, // Square for audiobooks, rectangle for ebooks
+                                fit: BoxFit.cover,
+                                errorWidget: (_, __, ___) => Container(
+                                  width: 160,
+                                  height: b.isAudioBook ? 160 : 240,
+                                  alignment: Alignment.center,
+                                  color: cs.surfaceContainerHighest,
+                                  child: const Icon(Icons.menu_book_outlined, size: 48),
+                                ),
+                              ),
+                            );
                             },
                           ),
-                          const SizedBox(width: 16),
+                          const SizedBox(width: 20),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Text(b.title, style: text.titleLarge, maxLines: 2, overflow: TextOverflow.ellipsis),
-                                const SizedBox(height: 6),
-                                Text(b.author ?? 'Unknown author', style: text.titleMedium),
-                                const SizedBox(height: 12),
-                                if ((b.narrators ?? const []).isNotEmpty)
-                                  _MetaLine(
-                                    icon: Icons.record_voice_over_rounded,
-                                    label: 'Narrators',
-                                    value: b.narrators!.join(', '),
+                                Text(b.title, style: text.titleLarge, maxLines: 3, overflow: TextOverflow.ellipsis),
+                                const SizedBox(height: 8),
+                                Text(b.author ?? 'Unknown author', style: text.titleMedium?.copyWith(color: cs.onSurfaceVariant)),
+                                if ((b.narrators ?? const []).isNotEmpty) ...[
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Narrated by ${b.narrators!.join(', ')}',
+                                    style: text.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
-                                if (b.publishYear != null)
-                                  _MetaLine(
-                                    icon: Icons.calendar_today_rounded,
-                                    label: 'Publish Year',
-                                    value: b.publishYear.toString(),
-                                  ),
-                                if ((b.publisher ?? '').isNotEmpty)
-                                  _MetaLine(
-                                    icon: Icons.business_rounded,
-                                    label: 'Publisher',
-                                    value: b.publisher!,
-                                  ),
-                                if ((b.genres ?? const []).isNotEmpty)
-                                  _MetaLine(
-                                    icon: Icons.category_rounded,
-                                    label: 'Genres',
-                                    value: b.genres!.join(' / '),
-                                  ),
-                                const SizedBox(height: 12),
-                                Wrap(
-                                  spacing: 8,
-                                  runSpacing: 8,
-                                  children: [
-                                    _InfoChip(
-                                      icon: Icons.schedule,
-                                      label: fmtDuration(),
-                                      tooltip: 'Total length',
-                                      onTap: () async {
-                                        // If unknown, try resolving via streaming tracks (then close session)
-                                        if ((_resolvedDurationMs ?? b.durationMs ?? 0) == 0) {
-                                          try {
-                                            final open = await playbackRepo.openSessionAndGetTracks(b.id);
-                                            final totalSec = open.tracks.fold<double>(0.0, (a, t) => a + (t.duration > 0 ? t.duration : 0.0));
-                                            if (mounted) setState(() { _resolvedDurationMs = (totalSec * 1000).round(); });
-                                            if (open.sessionId != null && open.sessionId!.isNotEmpty) {
-                                              unawaited(playbackRepo.closeSessionById(open.sessionId!));
-                                            }
-                                          } catch (_) {}
-                                        }
-                                        final txt = fmtDuration();
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(content: Text('Total length: $txt')),
-                                        );
-                                      },
+                                ],
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Metadata below in a separate section
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                      child: Column(
+                        children: [
+                          // Publish Year (full width)
+                          if (b.publishYear != null)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: _MetaChip(
+                                icon: Icons.calendar_today_rounded,
+                                label: 'Publish Year',
+                                value: b.publishYear.toString(),
+                              ),
+                            ),
+                          // Publisher and Genres in one row
+                          if ((b.publisher ?? '').isNotEmpty || (b.genres ?? const []).isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 16),
+                              child: Row(
+                                children: [
+                                  if ((b.publisher ?? '').isNotEmpty)
+                                    Expanded(
+                                      child: _MetaChip(
+                                        icon: Icons.business_rounded,
+                                        label: 'Publisher',
+                                        value: b.publisher!,
+                                      ),
                                     ),
-                                    _InfoChip(
-                                      icon: Icons.save_alt,
-                                      label: fmtSize(),
-                                      tooltip: 'Estimated download size',
-                                      onTap: () async {
-                                        // If unknown, try resolving via /api/items/{id}/files sum of sizes
-                                        if ((_resolvedSizeBytes ?? b.sizeBytes ?? 0) == 0) {
-                                          try {
-                                            final api = ServicesScope.of(context).services.auth.api;
-                                            final resp = await api.request('GET', '/api/items/${b.id}/files');
-                                            if (resp.statusCode == 200) {
-                                              final data = jsonDecode(resp.body);
-                                              List list;
-                                              if (data is Map && data['files'] is List) {
-                                                list = data['files'] as List;
-                                              } else if (data is List) list = data;
-                                              else list = const [];
-                                              int sum = 0;
-                                              for (final it in list) {
-                                                if (it is Map) {
-                                                  final m = it.cast<String, dynamic>();
-                                                  final v = m['size'] ?? m['bytes'] ?? m['fileSize'];
-                                                  if (v is num) sum += v.toInt();
-                                                  if (v is String) {
-                                                    final n = int.tryParse(v);
-                                                    if (n != null) sum += n;
-                                                  }
-                                                }
+                                  if ((b.publisher ?? '').isNotEmpty && (b.genres ?? const []).isNotEmpty)
+                                    const SizedBox(width: 8),
+                                  if ((b.genres ?? const []).isNotEmpty)
+                                    Expanded(
+                                      child: _MetaChip(
+                                        icon: Icons.category_rounded,
+                                        label: 'Genres',
+                                        value: b.genres!.join(' / '),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          // Time/Size chips centered
+                          Center(
+                            child: Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                _InfoChip(
+                                  icon: Icons.schedule,
+                                  label: fmtDuration(),
+                                  tooltip: 'Total length',
+                                  onTap: () async {
+                                    // If unknown, try resolving via streaming tracks (then close session)
+                                    if ((_resolvedDurationMs ?? b.durationMs ?? 0) == 0) {
+                                      try {
+                                        final open = await playbackRepo.openSessionAndGetTracks(b.id);
+                                        final totalSec = open.tracks.fold<double>(0.0, (a, t) => a + (t.duration > 0 ? t.duration : 0.0));
+                                        if (mounted) setState(() { _resolvedDurationMs = (totalSec * 1000).round(); });
+                                        if (open.sessionId != null && open.sessionId!.isNotEmpty) {
+                                          unawaited(playbackRepo.closeSessionById(open.sessionId!));
+                                        }
+                                      } catch (_) {}
+                                    }
+                                    final txt = fmtDuration();
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text('Total length: $txt')),
+                                    );
+                                  },
+                                ),
+                                _InfoChip(
+                                  icon: Icons.save_alt,
+                                  label: fmtSize(),
+                                  tooltip: 'Estimated download size',
+                                  onTap: () async {
+                                    // If unknown, try resolving via /api/items/{id}/files sum of sizes
+                                    if ((_resolvedSizeBytes ?? b.sizeBytes ?? 0) == 0) {
+                                      try {
+                                        final api = ServicesScope.of(context).services.auth.api;
+                                        final resp = await api.request('GET', '/api/items/${b.id}/files');
+                                        if (resp.statusCode == 200) {
+                                          final data = jsonDecode(resp.body);
+                                          List list;
+                                          if (data is Map && data['files'] is List) {
+                                            list = data['files'] as List;
+                                          } else if (data is List) list = data;
+                                          else list = const [];
+                                          int sum = 0;
+                                          for (final it in list) {
+                                            if (it is Map) {
+                                              final m = it.cast<String, dynamic>();
+                                              final v = m['size'] ?? m['bytes'] ?? m['fileSize'];
+                                              if (v is num) sum += v.toInt();
+                                              if (v is String) {
+                                                final n = int.tryParse(v);
+                                                if (n != null) sum += n;
                                               }
-                                              if (mounted && sum > 0) setState(() { _resolvedSizeBytes = sum; });
                                             }
-                                          } catch (_) {}
+                                          }
+                                          if (mounted && sum > 0) setState(() { _resolvedSizeBytes = sum; });
                                         }
-                                        final txt = fmtSize();
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(content: Text('Estimated download size: $txt')),
-                                        );
-                                      },
-                                    ),
-                                  ],
+                                      } catch (_) {}
+                                    }
+                                    final txt = fmtSize();
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text('Estimated download size: $txt')),
+                                    );
+                                  },
                                 ),
                               ],
                             ),
@@ -346,12 +379,14 @@ class _BookDetailPageState extends State<BookDetailPage> {
                         ],
                       ),
                     ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: _ProgressSummary(
-                        playback: playbackRepo,
-                        book: b,
-                        serverProgressFuture: _serverProgressFut!,
+                    Center(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: _ProgressSummary(
+                          playback: playbackRepo,
+                          book: b,
+                          serverProgressFuture: _serverProgressFut!,
+                        ),
                       ),
                     ),
                     Padding(
@@ -434,6 +469,60 @@ class _InfoChip extends StatelessWidget {
       borderRadius: BorderRadius.circular(999),
       onTap: onTap,
       child: withTooltip,
+    );
+  }
+}
+
+class _MetaChip extends StatelessWidget {
+  const _MetaChip({required this.icon, required this.label, required this.value});
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: cs.outline.withOpacity(0.1),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 16, color: cs.primary),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: text.labelMedium?.copyWith(
+                  color: cs.onSurfaceVariant,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: text.bodyMedium?.copyWith(
+              color: cs.onSurface,
+              fontWeight: FontWeight.w500,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
     );
   }
 }
@@ -595,40 +684,144 @@ class _ProgressSummary extends StatelessWidget {
 
   Widget _renderTextWithCompletion(BuildContext context, double? seconds, double? totalSeconds, bool isCompleted) {
     final cs = Theme.of(context).colorScheme;
-    String label;
+    final text = Theme.of(context).textTheme;
     
     if (isCompleted) {
-      label = 'Finished';
-    } else if (seconds == null || seconds <= 0) {
-      label = 'Not started';
-    } else if (totalSeconds == null || totalSeconds <= 0) {
-      label = 'In progress';
-    } else if ((seconds / totalSeconds) >= 0.999) {
-      label = 'Finished';
-    } else {
-      label = 'Progress: ${_fmtHMS(seconds)} of ${_fmtHMS(totalSeconds)}';
-    }
-    
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        children: [
-          if (isCompleted) ...[
-            Icon(Icons.check_circle, size: 20, color: Colors.green),
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: cs.primaryContainer,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: cs.primary.withOpacity(0.2),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.check_circle_rounded, size: 20, color: cs.primary),
             const SizedBox(width: 8),
-          ],
-          Expanded(
-            child: Text(
-              label, 
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                color: isCompleted ? Colors.green : cs.onSurfaceVariant,
-                fontWeight: isCompleted ? FontWeight.w600 : null,
+            Text(
+              'Completed',
+              style: text.titleMedium?.copyWith(
+                color: cs.onPrimaryContainer,
+                fontWeight: FontWeight.w600,
               ),
             ),
+          ],
+        ),
+      );
+    } else if (seconds == null || seconds <= 0) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: cs.outline.withOpacity(0.1),
+            width: 1,
           ),
-        ],
-      ),
-    );
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.play_circle_outline_rounded, size: 20, color: cs.onSurfaceVariant),
+            const SizedBox(width: 8),
+            Text(
+              'Not started',
+              style: text.titleMedium?.copyWith(
+                color: cs.onSurfaceVariant,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      );
+    } else if (totalSeconds == null || totalSeconds <= 0) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: cs.secondaryContainer,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: cs.secondary.withOpacity(0.2),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.play_circle_rounded, size: 20, color: cs.onSecondaryContainer),
+            const SizedBox(width: 8),
+            Text(
+              'In progress',
+              style: text.titleMedium?.copyWith(
+                color: cs.onSecondaryContainer,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      );
+    } else {
+      final progress = seconds / totalSeconds;
+      final progressPercent = (progress * 100).round();
+      
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: cs.outline.withOpacity(0.1),
+            width: 1,
+          ),
+        ),
+        child: Column(
+          children: [
+            // Progress bar
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: progress.clamp(0.0, 1.0),
+                backgroundColor: cs.surfaceContainerHighest,
+                valueColor: AlwaysStoppedAnimation<Color>(cs.primary),
+                minHeight: 8,
+              ),
+            ),
+            const SizedBox(height: 12),
+            // Progress text
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '${_fmtHMS(seconds)}',
+                  style: text.titleMedium?.copyWith(
+                    color: cs.onSurface,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  '${progressPercent}%',
+                  style: text.titleMedium?.copyWith(
+                    color: cs.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  '${_fmtHMS(totalSeconds)}',
+                  style: text.titleMedium?.copyWith(
+                    color: cs.onSurfaceVariant,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   String _fmtHMS(double sec) {
