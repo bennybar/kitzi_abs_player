@@ -718,30 +718,37 @@ class _BooksPageState extends State<BooksPage> {
                 ),
               ],
             ),
-            const SizedBox(height: 24),
-            SizedBox(
-              height: 172,
-              child: GridView.builder(
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 4,
-                  mainAxisSpacing: 2,
-                  crossAxisSpacing: 2,
-                  childAspectRatio: 1.0, // square tiles
-                ),
-                padding: EdgeInsets.zero,
-                physics: const NeverScrollableScrollPhysics(),
-                shrinkWrap: true,
-                itemCount: _recentBooks.where((b) => b.isAudioBook).length,
-                itemBuilder: (context, index) {
-                  final list = _recentBooks.where((b) => b.isAudioBook).toList(growable: false);
-                  final book = list[index];
-                  return _ResumeBookCard(
-                    key: ValueKey(book.id),
-                    book: book,
-                    onTap: () => _openDetails(book),
-                  );
-                },
-              ),
+            const SizedBox(height: 16),
+            // One-row, horizontally scrollable list (up to 6 books)
+            Builder(
+              builder: (context) {
+                final visible = _recentBooks
+                    .where((b) => b.isAudioBook)
+                    .take(6)
+                    .toList(growable: false);
+                if (visible.isEmpty) return const SizedBox.shrink();
+                return SizedBox(
+                  height: 260,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    physics: const BouncingScrollPhysics(),
+                    padding: const EdgeInsets.only(right: 4),
+                    itemCount: visible.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 12),
+                    itemBuilder: (context, index) {
+                      final book = visible[index];
+                      return SizedBox(
+                        width: 168,
+                        child: _ResumeBookCard(
+                          key: ValueKey(book.id),
+                          book: book,
+                          onTap: () => _openDetails(book),
+                        ),
+                      );
+                    },
+                  ),
+                );
+              },
             ),
             const SizedBox(height: 0),
           ],
@@ -981,105 +988,119 @@ class _ResumeBookCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
-        child: AspectRatio(
-          aspectRatio: 1.0,
-          child: Stack(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Cropped cover fills tile
-              Positioned.fill(
-                child: EnhancedCoverImage(url: book.coverUrl),
-              ),
-              // Dim layer for legibility
-              Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.black.withOpacity(0.0),
-                        Colors.black.withOpacity(0.35),
-                        Colors.black.withOpacity(0.55),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              // Play icon centered
-              Center(
-                child: Icon(
-                  Icons.play_arrow_rounded,
-                  color: Colors.white.withOpacity(0.9),
-                  size: 28,
-                ),
-              ),
-              // Progress percentage indicator
-              FutureBuilder<Map<String, dynamic>>(
-                future: _getBookProgress(book.id),
-                builder: (context, snapshot) {
-                  if (snapshot.hasData) {
-                    final progressInfo = snapshot.data!;
-                    final progress = progressInfo['progress'] as double?;
-                    final isCompleted = progressInfo['isCompleted'] as bool;
-                    
-                    if (progress != null && progress > 0 && !isCompleted) {
-                      return Positioned(
+              // Square cover on top
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: AspectRatio(
+                  aspectRatio: 1.0,
+                  child: Stack(
+                    children: [
+                      Positioned.fill(
+                        child: EnhancedCoverImage(url: book.coverUrl),
+                      ),
+                      // Top-right percentage indicator
+                      Positioned(
                         top: 8,
                         right: 8,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.7),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            '${(progress * 100).round()}%',
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 10,
-                            ),
-                          ),
+                        child: FutureBuilder<Map<String, dynamic>>(
+                          future: _getBookProgress(book.id),
+                          builder: (context, snapshot) {
+                            if (!snapshot.hasData) return const SizedBox.shrink();
+                            final progressInfo = snapshot.data!;
+                            final raw = progressInfo['progress'] as double?;
+                            final isCompleted = progressInfo['isCompleted'] as bool? ?? false;
+                            if (raw == null && !isCompleted) return const SizedBox.shrink();
+                            final pct = (isCompleted ? 1.0 : (raw ?? 0.0)).clamp(0.0, 1.0);
+                            return Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.7),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                '${(pct * 100).round()}%',
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 10,
+                                ),
+                              ),
+                            );
+                          },
                         ),
-                      );
-                    }
-                  }
-                  return const SizedBox.shrink();
-                },
-              ),
-              // Text over image at bottom
-              Positioned(
-                left: 8,
-                right: 8,
-                bottom: 8,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      book.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                        height: 1.05,
                       ),
-                    ),
-                    if (book.author != null && book.author!.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        book.author!,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.white.withOpacity(0.92),
+                      // Bottom progress bar overlay
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        child: FutureBuilder<Map<String, dynamic>>(
+                          future: _getBookProgress(book.id),
+                          builder: (context, snapshot) {
+                            final progress = snapshot.hasData
+                                ? (snapshot.data!['progress'] as double?)
+                                : null;
+                            final isCompleted = snapshot.hasData
+                                ? (snapshot.data!['isCompleted'] as bool)
+                                : false;
+                            if (!isCompleted && (progress == null || progress <= 0)) {
+                              return const SizedBox.shrink();
+                            }
+                            return Container(
+                              height: 6,
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.25),
+                              ),
+                              child: LayoutBuilder(
+                                builder: (context, constraints) {
+                                  final effective = isCompleted ? 1.0 : (progress ?? 0.0);
+                                  final width = constraints.maxWidth * effective.clamp(0.0, 1.0);
+                                  return Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: Container(
+                                      width: width,
+                                      height: 6,
+                                      decoration: BoxDecoration(
+                                        color: Theme.of(context).colorScheme.primary,
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            );
+                          },
                         ),
                       ),
                     ],
-                  ],
+                  ),
                 ),
               ),
+              const SizedBox(height: 10),
+              // Title and author below the cover
+              Text(
+                book.title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              if (book.author != null && book.author!.isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Text(
+                  book.author!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
             ],
           ),
         ),
