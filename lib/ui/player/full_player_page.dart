@@ -955,12 +955,41 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                             fontWeight: FontWeight.w500,
                                           ),
                                         ),
-                                        Text(
-                                          '-${_fmt(globalTotal - globalPos)}',
-                                          style: text.labelLarge?.copyWith(
-                                            color: cs.onSurfaceVariant,
-                                            fontWeight: FontWeight.w500,
-                                          ),
+                                        StreamBuilder<double>(
+                                          stream: playback.player.speedStream,
+                                          initialData: playback.player.speed,
+                                          builder: (_, speedSnap) {
+                                            final speed = speedSnap.data ?? 1.0;
+                                            final remaining = globalTotal - globalPos;
+                                            
+                                            // Calculate speed-adjusted time remaining
+                                            final adjustedRemaining = speed != 1.0 
+                                                ? Duration(milliseconds: (remaining.inMilliseconds / speed).round())
+                                                : remaining;
+                                            
+                                            return Column(
+                                              crossAxisAlignment: CrossAxisAlignment.end,
+                                              children: [
+                                                Text(
+                                                  '-${_fmt(adjustedRemaining)}',
+                                                  style: text.labelLarge?.copyWith(
+                                                    color: cs.onSurfaceVariant,
+                                                    fontWeight: FontWeight.w500,
+                                                  ),
+                                                ),
+                                                if (speed != 1.0) ...[
+                                                  const SizedBox(height: 2),
+                                                  Text(
+                                                    'at ${speed.toStringAsFixed(2)}× speed',
+                                                    style: text.labelSmall?.copyWith(
+                                                      color: cs.onSurfaceVariant.withOpacity(0.7),
+                                                      fontWeight: FontWeight.w400,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ],
+                                            );
+                                          },
                                         ),
                                       ],
                                     ),
@@ -1049,12 +1078,45 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                         fontWeight: FontWeight.w500,
                                       ),
                                     ),
-                                    Text(
-                                      total == Duration.zero ? '' : '-${_fmt(total - pos)}',
-                                      style: text.labelLarge?.copyWith(
-                                        color: cs.onSurfaceVariant,
-                                        fontWeight: FontWeight.w500,
-                                      ),
+                                    StreamBuilder<double>(
+                                      stream: playback.player.speedStream,
+                                      initialData: playback.player.speed,
+                                      builder: (_, speedSnap) {
+                                        final speed = speedSnap.data ?? 1.0;
+                                        final remaining = total - pos;
+                                        
+                                        if (total == Duration.zero) {
+                                          return const SizedBox.shrink();
+                                        }
+                                        
+                                        // Calculate speed-adjusted time remaining
+                                        final adjustedRemaining = speed != 1.0 
+                                            ? Duration(milliseconds: (remaining.inMilliseconds / speed).round())
+                                            : remaining;
+                                        
+                                        return Column(
+                                          crossAxisAlignment: CrossAxisAlignment.end,
+                                          children: [
+                                            Text(
+                                              '-${_fmt(adjustedRemaining)}',
+                                              style: text.labelLarge?.copyWith(
+                                                color: cs.onSurfaceVariant,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                            if (speed != 1.0) ...[
+                                              const SizedBox(height: 2),
+                                              Text(
+                                                'at ${speed.toStringAsFixed(2)}× speed',
+                                                style: text.labelSmall?.copyWith(
+                                                  color: cs.onSurfaceVariant.withOpacity(0.7),
+                                                  fontWeight: FontWeight.w400,
+                                                ),
+                                              ),
+                                            ],
+                                          ],
+                                        );
+                                      },
                                     ),
                                   ],
                                 ),
