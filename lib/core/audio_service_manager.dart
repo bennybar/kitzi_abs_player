@@ -143,7 +143,7 @@ class AudioServiceManager {
 
   Future<void> dispose() async {
     if (_audioHandler != null) {
-      await _audioHandler!.stop();
+      await _audioHandler!.pause();
       _audioHandler = null;
     }
     _isInitialized = false;

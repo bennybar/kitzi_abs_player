@@ -148,7 +148,7 @@ class AudioServiceBinding {
   Future<void> unbind() async {
     if (_audioHandler != null) {
       try {
-        await _audioHandler!.stop();
+        await _audioHandler!.pause();
         await AudioService.stop();
       } catch (e) {
         debugPrint('Error stopping audio service: $e');

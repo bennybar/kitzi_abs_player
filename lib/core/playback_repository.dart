@@ -407,8 +407,8 @@ class PlaybackRepository {
   /// Clear all playback state (called on logout)
   Future<void> clearState() async {
     try {
-      // Stop any active playback
-      await player.stop();
+      // Pause any active playback
+      await player.pause();
       
       // Clear now playing state
       _setNowPlaying(null);
