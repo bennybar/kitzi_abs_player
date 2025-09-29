@@ -1200,12 +1200,26 @@ class _ProgressSummary extends StatelessWidget {
         await playback.updateBookCompletionStatus(book.id, false);
         
         if (context.mounted && resetToBeginning) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text('Book progress has been reset to the beginning'),
-              backgroundColor: cs.primary,
-            ),
-          );
+          // Start playing the book after reset
+          final success = await playback.playItem(book.id, context: context);
+          if (success) {
+            // Open the full player page
+            await FullPlayerPage.openOnce(context);
+            
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text('Book reset and started playing'),
+                backgroundColor: cs.primary,
+              ),
+            );
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text('Book reset but failed to start playing'),
+                backgroundColor: cs.error,
+              ),
+            );
+          }
         }
       } else {
         throw Exception('Server returned ${response.statusCode}: ${response.body}');
@@ -1311,13 +1325,27 @@ class _PlayPrimaryButton extends StatelessWidget {
         
         await playback.updateBookCompletionStatus(bookId, false);
         
+        // Start playing the book after reset
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text('Book progress has been reset to the beginning'),
-              backgroundColor: cs.primary,
-            ),
-          );
+          final success = await playback.playItem(bookId, context: context);
+          if (success) {
+            // Open the full player page
+            await FullPlayerPage.openOnce(context);
+            
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text('Book reset and started playing'),
+                backgroundColor: cs.primary,
+              ),
+            );
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text('Book reset but failed to start playing'),
+                backgroundColor: cs.error,
+              ),
+            );
+          }
         }
       } else {
         throw Exception('Server returned ${response.statusCode}: ${response.body}');
