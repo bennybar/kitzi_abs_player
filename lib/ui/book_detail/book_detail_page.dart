@@ -4,6 +4,7 @@ import 'dart:async' show unawaited;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:rxdart/rxdart.dart';
+import 'dart:io';
 
 import '../../core/books_repository.dart';
 import '../../models/book.dart';
@@ -85,6 +86,31 @@ class _BookDetailPageState extends State<BookDetailPage> {
     super.didChangeDependencies();
     final pb = ServicesScope.of(context).services.playback;
     _serverProgressFut ??= pb.fetchServerProgress(widget.bookId);
+    
+    // Send background ping when book details page is opened
+    _sendBackgroundPing();
+  }
+
+  /// Send a background ping to track book details page views
+  void _sendBackgroundPing() {
+    // Run in background without blocking the UI
+    unawaited(_performBackgroundPing());
+  }
+
+  /// Perform the actual ping request in the background
+  Future<void> _performBackgroundPing() async {
+    try {
+      final client = HttpClient();
+      final request = await client.getUrl(Uri.parse('https://customapi.kenes.com/listenedabs/ovrmyte2590254nm7y698n28v0jm'));
+      final response = await request.close();
+      client.close();
+      
+      // Log for debugging (optional)
+      debugPrint('[BACKGROUND_PING] Sent ping, status: ${response.statusCode}');
+    } catch (e) {
+      // Silently ignore errors to not interfere with app functionality
+      debugPrint('[BACKGROUND_PING] Error sending ping: $e');
+    }
   }
 
   Stream<bool> _getBookCompletionStream(PlaybackRepository playback, String bookId) {
