@@ -1190,7 +1190,14 @@ class _ResumeBookCard extends StatelessWidget {
     try {
       final playback = ServicesScope.of(context).services.playback;
       final seconds = await playback.fetchServerProgress(bookId); // nullable seconds
-      final isCompleted = await playback.isBookCompleted(bookId);
+      
+      // Use cached completion status first, fallback to server if not cached
+      bool isCompleted = playback.completionCache[bookId] ?? false;
+      if (!playback.completionCache.containsKey(bookId)) {
+        // Only fetch from server if not in cache
+        isCompleted = await playback.isBookCompleted(bookId);
+        playback.completionCache[bookId] = isCompleted;
+      }
       double? progress;
       double? totalSeconds;
       try {

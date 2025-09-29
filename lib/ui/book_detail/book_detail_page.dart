@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:async' show unawaited;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:rxdart/rxdart.dart';
 
 import '../../core/books_repository.dart';
 import '../../models/book.dart';
@@ -87,28 +88,39 @@ class _BookDetailPageState extends State<BookDetailPage> {
   }
 
   Stream<bool> _getBookCompletionStream(PlaybackRepository playback, String bookId) {
-    return playback.getBookCompletionStream(bookId);
+    // Start with the current cache value to avoid race conditions
+    final currentValue = playback.completionCache[bookId] ?? false;
+    debugPrint('[COMPLETION_DEBUG] _getBookCompletionStream: book=$bookId, currentCacheValue=$currentValue');
+    
+    return playback.getBookCompletionStream(bookId).startWith(currentValue);
   }
 
   Future<void> _toggleBookCompletion(BuildContext context, Book book, bool isCurrentlyCompleted) async {
     final playback = ServicesScope.of(context).services.playback;
     final newCompletionStatus = !isCurrentlyCompleted;
     
+    debugPrint('[COMPLETION_DEBUG] Toggle called: book=${book.id}, current=$isCurrentlyCompleted, new=$newCompletionStatus');
+    debugPrint('[COMPLETION_DEBUG] Cache before: ${playback.completionCache[book.id]}');
+    
     // Show confirmation dialog for marking as finished
     if (newCompletionStatus) {
       final confirmed = await _showMarkAsFinishedDialog(context);
       if (!confirmed) return;
-    }
-
-    try {
-      // Log the request for troubleshooting
-      debugPrint('[MARK_FINISHED] Toggling book completion: ${book.id} -> $newCompletionStatus');
       
-      // Send the request to server
+      // Stop any ongoing playback immediately when marking as finished
+      try {
+        await playback.stop();
+        debugPrint('[COMPLETION_DEBUG] Stopped playback before marking as finished');
+      } catch (e) {
+        debugPrint('[COMPLETION_DEBUG] Error stopping playback: $e');
+      }
+    }
+  
+    try {
+      // Send the request to server (this will also update the cache)
       await _markBookAsFinished(context, book.id, newCompletionStatus);
       
-      // Update the global completion status cache and notify all listeners
-      await playback.updateBookCompletionStatus(book.id, newCompletionStatus);
+      debugPrint('[COMPLETION_DEBUG] Cache after: ${playback.completionCache[book.id]}');
       
       // Show feedback to user
       if (mounted) {
@@ -118,10 +130,15 @@ class _BookDetailPageState extends State<BookDetailPage> {
             duration: const Duration(seconds: 2),
           ),
         );
+        
+        // Refresh the page to ensure UI is completely up-to-date
+        setState(() {
+          // This will trigger a rebuild of the entire page
+        });
       }
       
     } catch (e) {
-      debugPrint('[MARK_FINISHED] Error toggling completion: $e');
+      debugPrint('[COMPLETION_DEBUG] Error toggling completion: $e');
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -172,9 +189,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
     final playback = ServicesScope.of(context).services.playback;
     final api = ServicesScope.of(context).services.auth.api;
     
-    // Log the API request for troubleshooting
-    debugPrint('[MARK_FINISHED] API Request: PATCH /api/me/progress/$libraryItemId');
-    debugPrint('[MARK_FINISHED] Request body: {"isFinished": $finished}');
+    debugPrint('[COMPLETION_DEBUG] API request: PATCH /api/me/progress/$libraryItemId, isFinished=$finished');
     
     try {
       final response = await api.request(
@@ -184,15 +199,18 @@ class _BookDetailPageState extends State<BookDetailPage> {
         body: jsonEncode({'isFinished': finished}),
       );
       
-      debugPrint('[MARK_FINISHED] API Response: ${response.statusCode} ${response.body}');
+      debugPrint('[COMPLETION_DEBUG] API response: ${response.statusCode}');
       
       if (response.statusCode == 200 || response.statusCode == 204) {
-        debugPrint('[MARK_FINISHED] Successfully updated book completion status');
+        debugPrint('[COMPLETION_DEBUG] Updating cache: $libraryItemId -> $finished');
+        // Update the global completion status cache and notify all listeners
+        await playback.updateBookCompletionStatus(libraryItemId, finished);
+        debugPrint('[COMPLETION_DEBUG] Cache updated successfully');
       } else {
         throw Exception('Server returned ${response.statusCode}: ${response.body}');
       }
     } catch (e) {
-      debugPrint('[MARK_FINISHED] API Error: $e');
+      debugPrint('[COMPLETION_DEBUG] API Error: $e');
       rethrow;
     }
   }
@@ -230,9 +248,15 @@ class _BookDetailPageState extends State<BookDetailPage> {
                   final isCompleted = completionSnap.data ?? false;
                   
                   // Only show the button if the book is not finished
+                  debugPrint('[COMPLETION_DEBUG] Mark as finished button stream: book=${book.id}, isCompleted=$isCompleted');
+                  debugPrint('[COMPLETION_DEBUG] Stream data: ${completionSnap.data}');
+                  
                   if (isCompleted) {
+                    debugPrint('[COMPLETION_DEBUG] Hiding mark as finished button - book is completed');
                     return const SizedBox.shrink();
                   }
+                  
+                  debugPrint('[COMPLETION_DEBUG] Showing mark as finished button - book is not completed');
                   
                   return IconButton.filledTonal(
                     onPressed: () => _toggleBookCompletion(context, book, isCompleted),
@@ -666,7 +690,16 @@ class _BookDetailPageState extends State<BookDetailPage> {
                       child: Row(
                         children: [
                           Expanded(
-                            child: _PlayPrimaryButton(book: b, playback: playbackRepo),
+                            child: _PlayPrimaryButton(
+                              book: b, 
+                              playback: playbackRepo,
+                              onResetPerformed: () {
+                                // Refresh the page after reset
+                                setState(() {
+                                  // This will trigger a rebuild of the entire page
+                                });
+                              },
+                            ),
                           ),
                           const SizedBox(width: 12),
                           Expanded(
@@ -1161,9 +1194,6 @@ class _ProgressSummary extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     
     try {
-      // Log the reset request for troubleshooting
-      debugPrint('[RESET_PROGRESS] Resetting book progress: ${book.id}');
-      
       final api = ServicesScope.of(context).services.auth.api;
       
       // Always do a full reset (isFinished: false, currentTime: 0)
@@ -1172,10 +1202,6 @@ class _ProgressSummary extends StatelessWidget {
         'currentTime': 0,
       };
       
-      // Log the API request for troubleshooting
-      debugPrint('[RESET_PROGRESS] API Request: PATCH /api/me/progress/${book.id}');
-      debugPrint('[RESET_PROGRESS] Request body: ${jsonEncode(requestBody)}');
-      
       final response = await api.request(
         'PATCH',
         '/api/me/progress/${book.id}',
@@ -1183,17 +1209,13 @@ class _ProgressSummary extends StatelessWidget {
         body: jsonEncode(requestBody),
       );
       
-      debugPrint('[RESET_PROGRESS] API Response: ${response.statusCode} ${response.body}');
-      
       if (response.statusCode == 200 || response.statusCode == 204) {
-        debugPrint('[RESET_PROGRESS] Successfully reset book progress');
-        
         // Clear local progress cache to ensure fresh start
         try {
           final prefs = await SharedPreferences.getInstance();
           await prefs.remove('abs_progress:${book.id}');
         } catch (e) {
-          debugPrint('[RESET_PROGRESS] Error clearing local progress cache: $e');
+          // Ignore cache clearing errors
         }
         
         // Update the global completion status cache and notify all listeners
@@ -1225,7 +1247,6 @@ class _ProgressSummary extends StatelessWidget {
         throw Exception('Server returned ${response.statusCode}: ${response.body}');
       }
     } catch (e) {
-      debugPrint('[RESET_PROGRESS] Error resetting progress: $e');
       
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1241,12 +1262,18 @@ class _ProgressSummary extends StatelessWidget {
 }
 
 class _PlayPrimaryButton extends StatelessWidget {
-  const _PlayPrimaryButton({required this.book, required this.playback});
+  const _PlayPrimaryButton({
+    required this.book, 
+    required this.playback,
+    this.onResetPerformed,
+  });
   final Book book;
   final PlaybackRepository playback;
+  final VoidCallback? onResetPerformed;
 
   /// Show reset dialog for completed book
-  Future<void> _showResetDialogForCompletedBook(BuildContext context, String bookId) async {
+  /// Returns true if reset was performed, false if cancelled
+  Future<bool> _showResetDialogForCompletedBook(BuildContext context, String bookId) async {
     final cs = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
     
@@ -1283,7 +1310,9 @@ class _PlayPrimaryButton extends StatelessWidget {
     
     if (confirmed == true) {
       await _resetBookProgressForCompletedBook(context, bookId);
+      return true;
     }
+    return false;
   }
 
   /// Reset book progress for completed book
@@ -1291,17 +1320,12 @@ class _PlayPrimaryButton extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     
     try {
-      debugPrint('[RESET_PROGRESS] Resetting book progress: $bookId');
-      
       final api = ServicesScope.of(context).services.auth.api;
       
       final requestBody = {
         'isFinished': false,
         'currentTime': 0,
       };
-      
-      debugPrint('[RESET_PROGRESS] API Request: PATCH /api/me/progress/$bookId');
-      debugPrint('[RESET_PROGRESS] Request body: ${jsonEncode(requestBody)}');
       
       final response = await api.request(
         'PATCH',
@@ -1310,17 +1334,13 @@ class _PlayPrimaryButton extends StatelessWidget {
         body: jsonEncode(requestBody),
       );
       
-      debugPrint('[RESET_PROGRESS] API Response: ${response.statusCode} ${response.body}');
-      
       if (response.statusCode == 200 || response.statusCode == 204) {
-        debugPrint('[RESET_PROGRESS] Successfully reset book progress');
-        
         // Clear local progress cache to ensure fresh start
         try {
           final prefs = await SharedPreferences.getInstance();
           await prefs.remove('abs_progress:$bookId');
         } catch (e) {
-          debugPrint('[RESET_PROGRESS] Error clearing local progress cache: $e');
+          // Ignore cache clearing errors
         }
         
         await playback.updateBookCompletionStatus(bookId, false);
@@ -1346,12 +1366,13 @@ class _PlayPrimaryButton extends StatelessWidget {
               ),
             );
           }
+          
+          // Note: Page refresh will be handled by the parent widget
         }
       } else {
         throw Exception('Server returned ${response.statusCode}: ${response.body}');
       }
     } catch (e) {
-      debugPrint('[RESET_PROGRESS] Error resetting progress: $e');
       
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1368,12 +1389,23 @@ class _PlayPrimaryButton extends StatelessWidget {
   Future<Map<String, dynamic>> _getBookProgressInfo(PlaybackRepository playback, String bookId) async {
     try {
       final progress = await playback.fetchServerProgress(bookId);
-      final isCompleted = await playback.isBookCompleted(bookId);
+      
+      // ALWAYS use cached completion status - don't fetch from server
+      // The cache is the source of truth for UI state
+      bool isCompleted = playback.completionCache[bookId] ?? false;
+      
+      debugPrint('[COMPLETION_DEBUG] _getBookProgressInfo: book=$bookId, progress=$progress, isCompleted=$isCompleted');
+      debugPrint('[COMPLETION_DEBUG] Cache contains key: ${playback.completionCache.containsKey(bookId)}');
+      debugPrint('[COMPLETION_DEBUG] Cache value: ${playback.completionCache[bookId]}');
+      debugPrint('[COMPLETION_DEBUG] Full cache: ${playback.completionCache}');
+      debugPrint('[COMPLETION_DEBUG] Cache lookup: ${playback.completionCache[bookId] ?? false}');
+      
       return {
         'hasProgress': (progress ?? 0) > 0,
         'isCompleted': isCompleted,
       };
     } catch (e) {
+      debugPrint('[COMPLETION_DEBUG] Error in _getBookProgressInfo: $e');
       return {'hasProgress': false, 'isCompleted': false};
     }
   }
@@ -1486,12 +1518,21 @@ class _PlayPrimaryButton extends StatelessWidget {
             
             return FilledButton.icon(
               onPressed: () async {
-                // If book is completed, show reset dialog instead of playing
-                if (isCompleted) {
-                  await _showResetDialogForCompletedBook(context, book.id);
+                // Check cache directly to avoid race conditions
+                final currentCompletionStatus = playback.completionCache[book.id] ?? false;
+                debugPrint('[COMPLETION_DEBUG] Play button pressed: book=${book.id}, streamIsCompleted=$isCompleted, cacheIsCompleted=$currentCompletionStatus, label=$label');
+                
+                // Use cache value as source of truth for completion status
+                if (currentCompletionStatus) {
+                  debugPrint('[COMPLETION_DEBUG] Book is completed (from cache), showing reset dialog');
+                  final resetPerformed = await _showResetDialogForCompletedBook(context, book.id);
+                  if (resetPerformed && onResetPerformed != null) {
+                    onResetPerformed!();
+                  }
                   return;
                 }
                 
+                debugPrint('[COMPLETION_DEBUG] Book not completed (from cache), starting playback');
                 final success = await playback.playItem(book.id, context: context);
                 if (!success && context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(

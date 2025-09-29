@@ -349,8 +349,15 @@ class PlaybackRepository {
 
   /// Update book completion status and notify all listeners
   Future<void> updateBookCompletionStatus(String libraryItemId, bool isCompleted) async {
+    debugPrint('[COMPLETION_DEBUG] updateBookCompletionStatus: $libraryItemId -> $isCompleted');
+    debugPrint('[COMPLETION_DEBUG] Cache before update: ${completionCache[libraryItemId]}');
+    
     completionCache[libraryItemId] = isCompleted;
-    _completionStatusCtr.add(Map<String, bool>.from(completionCache));
+    final newCache = Map<String, bool>.from(completionCache);
+    
+    debugPrint('[COMPLETION_DEBUG] Sending to stream: $newCache');
+    _completionStatusCtr.add(newCache);
+    
     _log('Updated completion status for $libraryItemId: $isCompleted');
   }
 
@@ -361,7 +368,12 @@ class PlaybackRepository {
 
   /// Stream of completion status for a specific book
   Stream<bool> getBookCompletionStream(String libraryItemId) {
-    return completionStatusStream.map((statusMap) => statusMap[libraryItemId] ?? false);
+    debugPrint('[COMPLETION_DEBUG] getBookCompletionStream called for: $libraryItemId');
+    return completionStatusStream.map((statusMap) {
+      final result = statusMap[libraryItemId] ?? false;
+      debugPrint('[COMPLETION_DEBUG] Stream map result for $libraryItemId: $result');
+      return result;
+    });
   }
 
   /// Check if sync progress before play is enabled
