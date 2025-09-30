@@ -58,6 +58,8 @@ class _BooksPageState extends State<BooksPage> {
 
   final _searchCtrl = TextEditingController();
   Timer? _searchDebounce;
+  final _searchFocusNode = FocusNode();
+  bool _searchVisible = false;
   
   // Add controller to managed list
   void _addController(TextEditingController controller) {
@@ -109,6 +111,7 @@ class _BooksPageState extends State<BooksPage> {
     
     // Dispose all controllers
     _searchCtrl.dispose();
+    _searchFocusNode.dispose();
     for (final controller in _controllers) {
       controller.dispose();
     }
@@ -174,6 +177,21 @@ class _BooksPageState extends State<BooksPage> {
       duration: const Duration(milliseconds: 350),
       curve: Curves.easeOutCubic,
     );
+  }
+
+  void _toggleSearch() {
+    setState(() {
+      _searchVisible = !_searchVisible;
+      if (_searchVisible) {
+        // Focus on the search bar when showing it
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _searchFocusNode.requestFocus();
+        });
+      } else {
+        // Clear search when hiding
+        _searchFocusNode.unfocus();
+      }
+    });
   }
 
   Future<void> _startConnectivityWatch() async {
@@ -553,6 +571,15 @@ class _BooksPageState extends State<BooksPage> {
             ),
             actions: [
               IconButton.filledTonal(
+                tooltip: 'Search',
+                onPressed: _toggleSearch,
+                icon: Icon(_searchVisible ? Icons.search_off_rounded : Icons.search_rounded),
+                style: IconButton.styleFrom(
+                  backgroundColor: cs.surfaceContainerHighest,
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton.filledTonal(
                 tooltip: 'Scroll to top',
                 onPressed: _loading ? null : _scrollToTop,
                 icon: const Icon(Icons.vertical_align_top_rounded),
@@ -602,66 +629,73 @@ class _BooksPageState extends State<BooksPage> {
 
           // Enhanced Search Bar
           SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-              child: Column(
-                children: [
-                  // Modern search bar
-                  Container(
-                    decoration: BoxDecoration(
-                      color: cs.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: cs.outline.withOpacity(0.1),
-                        width: 1,
-                      ),
-                    ),
-                    child: SearchBar(
-                      controller: _searchCtrl,
-                      leading: Icon(
-                        Icons.search_rounded,
-                        color: cs.onSurfaceVariant,
-                      ),
-                      hintText: 'Search books or authors...',
-                      hintStyle: WidgetStateProperty.all(
-                        TextStyle(color: cs.onSurfaceVariant),
-                      ),
-                      backgroundColor: WidgetStateProperty.all(Colors.transparent),
-                      elevation: WidgetStateProperty.all(0),
-                      onChanged: (val) {
-                        setState(() => _query = val);
-                        _saveSearchPref(val);
-                        _searchDebounce?.cancel();
-                        _searchDebounce = Timer(const Duration(milliseconds: 300), () {
-                          if (!mounted) return;
-                          _restartSearchPagination();
-                        });
-                      },
-                      trailing: [
-                        if (_query.isNotEmpty)
-                          IconButton(
-                            tooltip: 'Clear',
-                            onPressed: () {
-                              // Hide keyboard
-                              FocusScope.of(context).unfocus();
-                              _searchCtrl.clear();
-                              setState(() => _query = '');
-                              _saveSearchPref('');
-                              // Force re-fetch first page from server and restart pagination
-                              _restartSearchPagination();
-                            },
-                            icon: Icon(
-                              Icons.clear_rounded,
-                              color: cs.onSurfaceVariant,
+            child: AnimatedSize(
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+              child: _searchVisible
+                  ? Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                      child: Column(
+                        children: [
+                          // Modern search bar
+                          Container(
+                            decoration: BoxDecoration(
+                              color: cs.surfaceContainerHighest,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: cs.outline.withOpacity(0.1),
+                                width: 1,
+                              ),
+                            ),
+                            child: SearchBar(
+                              controller: _searchCtrl,
+                              focusNode: _searchFocusNode,
+                              leading: Icon(
+                                Icons.search_rounded,
+                                color: cs.onSurfaceVariant,
+                              ),
+                              hintText: 'Search books or authors...',
+                              hintStyle: WidgetStateProperty.all(
+                                TextStyle(color: cs.onSurfaceVariant),
+                              ),
+                              backgroundColor: WidgetStateProperty.all(Colors.transparent),
+                              elevation: WidgetStateProperty.all(0),
+                              onChanged: (val) {
+                                setState(() => _query = val);
+                                _saveSearchPref(val);
+                                _searchDebounce?.cancel();
+                                _searchDebounce = Timer(const Duration(milliseconds: 300), () {
+                                  if (!mounted) return;
+                                  _restartSearchPagination();
+                                });
+                              },
+                              trailing: [
+                                if (_query.isNotEmpty)
+                                  IconButton(
+                                    tooltip: 'Clear',
+                                    onPressed: () {
+                                      // Hide keyboard
+                                      FocusScope.of(context).unfocus();
+                                      _searchCtrl.clear();
+                                      setState(() => _query = '');
+                                      _saveSearchPref('');
+                                      // Force re-fetch first page from server and restart pagination
+                                      _restartSearchPagination();
+                                    },
+                                    icon: Icon(
+                                      Icons.clear_rounded,
+                                      color: cs.onSurfaceVariant,
+                                    ),
+                                  ),
+                              ],
                             ),
                           ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  // View toggle removed – list only
-                ],
-              ),
+                          const SizedBox(height: 16),
+                          // View toggle removed – list only
+                        ],
+                      ),
+                    )
+                  : const SizedBox.shrink(),
             ),
           ),
 
