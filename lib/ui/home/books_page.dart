@@ -1428,7 +1428,7 @@ class _BookListTileState extends State<_BookListTile> {
           padding: const EdgeInsets.all(12),
           child: Row(
             children: [
-              // Enhanced cover with progress indicator, download badge, and completion
+              // Enhanced cover with only progress indicator (no badges)
               Stack(
                 children: [
                   Container(
@@ -1468,61 +1468,6 @@ class _BookListTileState extends State<_BookListTile> {
                           return const SizedBox.shrink();
                         },
                       ),
-                    ),
-                  // Download badge (bottom right)
-                  if (widget.book.isAudioBook)
-                    StreamBuilder<bool>(
-                      stream: services.downloads.watchItemProgress(widget.book.id).map((p) => p.status == 'complete'),
-                      initialData: false,
-                      builder: (context, snapshot) {
-                        if (snapshot.data == true) {
-                          return Positioned(
-                            bottom: 2,
-                            right: 2,
-                            child: Container(
-                              padding: const EdgeInsets.all(3),
-                              decoration: BoxDecoration(
-                                color: cs.primaryContainer,
-                                shape: BoxShape.circle,
-                                border: Border.all(color: cs.surface, width: 1.5),
-                              ),
-                              child: Icon(
-                                Icons.offline_pin,
-                                color: cs.onPrimaryContainer,
-                                size: 14,
-                              ),
-                            ),
-                          );
-                        }
-                        return const SizedBox.shrink();
-                      },
-                    ),
-                  // Completion checkmark overlay (top right)
-                  if (widget.book.isAudioBook)
-                    FutureBuilder<bool>(
-                      future: widget.checkIfCompleted(widget.book.id),
-                      builder: (context, snapshot) {
-                        if (snapshot.data == true) {
-                          return Positioned(
-                            top: 2,
-                            right: 2,
-                            child: Container(
-                              padding: const EdgeInsets.all(3),
-                              decoration: BoxDecoration(
-                                color: Colors.green,
-                                shape: BoxShape.circle,
-                                border: Border.all(color: cs.surface, width: 1.5),
-                              ),
-                              child: const Icon(
-                                Icons.check,
-                                color: Colors.white,
-                                size: 12,
-                              ),
-                            ),
-                          );
-                        }
-                        return const SizedBox.shrink();
-                      },
                     ),
                 ],
               ),
@@ -1603,10 +1548,53 @@ class _BookListTileState extends State<_BookListTile> {
                 ),
               ),
               
-              // Arrow indicator
-              Icon(
-                Icons.chevron_right_rounded,
-                color: disabled ? cs.onSurfaceVariant.withOpacity(0.3) : cs.onSurfaceVariant,
+              // Status indicators and arrow
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Download badge
+                  if (widget.book.isAudioBook)
+                    StreamBuilder<bool>(
+                      stream: services.downloads.watchItemProgress(widget.book.id).map((p) => p.status == 'complete'),
+                      initialData: false,
+                      builder: (context, snapshot) {
+                        if (snapshot.data == true) {
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 4),
+                            child: Icon(
+                              Icons.offline_pin,
+                              color: cs.primary,
+                              size: 20,
+                            ),
+                          );
+                        }
+                        return const SizedBox.shrink();
+                      },
+                    ),
+                  // Completion checkmark
+                  if (widget.book.isAudioBook)
+                    FutureBuilder<bool>(
+                      future: widget.checkIfCompleted(widget.book.id),
+                      builder: (context, snapshot) {
+                        if (snapshot.data == true) {
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 4),
+                            child: Icon(
+                              Icons.check_circle,
+                              color: Colors.green,
+                              size: 20,
+                            ),
+                          );
+                        }
+                        return const SizedBox.shrink();
+                      },
+                    ),
+                  // Arrow indicator
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: disabled ? cs.onSurfaceVariant.withOpacity(0.3) : cs.onSurfaceVariant,
+                  ),
+                ],
               ),
             ],
           ),
