@@ -21,7 +21,7 @@ class FullPlayerPage extends StatefulWidget {
       await Navigator.of(context).push(PageRouteBuilder(
         pageBuilder: (_, __, ___) => const FullPlayerPage(),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          // YouTube Music style: smooth slide up from bottom with fade
+          // YouTube Music style: smooth slide up from bottom (no backdrop fade)
           final curve = CurvedAnimation(
             parent: animation,
             curve: Curves.easeInOutCubic,
@@ -33,22 +33,13 @@ class FullPlayerPage extends StatefulWidget {
               begin: const Offset(0, 1.0), // Start from bottom
               end: Offset.zero,
             ).animate(curve),
-            child: FadeTransition(
-              opacity: Tween<double>(
-                begin: 0.0,
-                end: 1.0,
-              ).animate(CurvedAnimation(
-                parent: animation,
-                curve: const Interval(0.0, 0.3, curve: Curves.easeOut),
-              )),
-              child: child,
-            ),
+            child: child,
           );
         },
         transitionDuration: const Duration(milliseconds: 300),
         reverseTransitionDuration: const Duration(milliseconds: 300),
-        opaque: false, // Allow background to show through during transition
-        barrierColor: Colors.black54,
+        opaque: true, // No transparent backdrop
+        fullscreenDialog: false,
       ));
     } finally {
       _isOpen = false;
