@@ -930,31 +930,62 @@ class _BooksPageState extends State<BooksPage> {
                   }));
                 }
               } else if (direction == DismissDirection.startToEnd) {
-                // Swipe right → Download/Delete (background)
+                // Swipe right → Download/Delete (with confirmation)
                 if (b.isAudioBook) {
                   final downloads = ServicesScope.of(context).services.downloads;
                   final ctx = context;
-                  // Fire and forget - bounce back immediately
+                  
+                  // Check status and show confirmation
                   unawaited(downloads.hasLocalDownloads(b.id).then((hasLocal) async {
-                    if (hasLocal) {
-                      await downloads.deleteLocal(b.id);
-                      if (ctx.mounted) {
-                        ScaffoldMessenger.of(ctx).showSnackBar(
-                          SnackBar(
-                            content: Text('Deleted: ${b.title}'),
-                            duration: const Duration(seconds: 2),
+                    if (!ctx.mounted) return;
+                    
+                    final action = hasLocal ? 'delete' : 'download';
+                    final confirmed = await showDialog<bool>(
+                      context: ctx,
+                      builder: (context) => AlertDialog(
+                        title: Text(hasLocal ? 'Delete Download?' : 'Download Book?'),
+                        content: Text(
+                          hasLocal 
+                            ? 'Delete downloaded files for "${b.title}"? You can re-download it later.'
+                            : 'Download "${b.title}" for offline listening?',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(false),
+                            child: const Text('Cancel'),
                           ),
-                        );
-                      }
-                    } else {
-                      await downloads.enqueueItemDownloads(b.id, displayTitle: b.title);
-                      if (ctx.mounted) {
-                        ScaffoldMessenger.of(ctx).showSnackBar(
-                          SnackBar(
-                            content: Text('Downloading: ${b.title}'),
-                            duration: const Duration(seconds: 2),
+                          FilledButton(
+                            onPressed: () => Navigator.of(context).pop(true),
+                            child: Text(hasLocal ? 'Delete' : 'Download'),
+                            style: hasLocal ? FilledButton.styleFrom(
+                              backgroundColor: Theme.of(context).colorScheme.error,
+                            ) : null,
                           ),
-                        );
+                        ],
+                      ),
+                    );
+                    
+                    if (confirmed == true) {
+                      if (hasLocal) {
+                        await downloads.deleteLocal(b.id);
+                        if (ctx.mounted) {
+                          ScaffoldMessenger.of(ctx).showSnackBar(
+                            SnackBar(
+                              content: Text('Deleted: ${b.title}'),
+                              duration: const Duration(seconds: 2),
+                            ),
+                          );
+                        }
+                      } else {
+                        await downloads.enqueueItemDownloads(b.id, displayTitle: b.title);
+                        if (ctx.mounted) {
+                          ScaffoldMessenger.of(ctx).showSnackBar(
+                            SnackBar(
+                              content: Text('Downloading: ${b.title}'),
+                              duration: const Duration(seconds: 2),
+                            ),
+                          );
+                        }
                       }
                     }
                   }));
