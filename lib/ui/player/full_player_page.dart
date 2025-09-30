@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/playback_repository.dart';
 import '../../core/playback_speed_service.dart';
 import '../../core/sleep_timer_service.dart';
+import '../../core/books_repository.dart';
 import '../../main.dart'; // ServicesScope
 
 class FullPlayerPage extends StatefulWidget {
@@ -60,6 +61,8 @@ class FullPlayerPage extends StatefulWidget {
 class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStateMixin {
   double _dragY = 0.0;
   bool _dualProgressEnabled = true;
+  bool _showDescription = false;
+  String? _bookDescription;
   late AnimationController _contentAnimationController;
   late Animation<double> _coverAnimation;
   late Animation<double> _titleAnimation;
@@ -125,6 +128,24 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     } catch (_) {}
   }
 
+  Future<void> _fetchBookDescription(String libraryItemId) async {
+    try {
+      final repo = await BooksRepository.create();
+      final book = await repo.getBook(libraryItemId);
+      if (mounted) {
+        setState(() {
+          _bookDescription = book.description ?? 'No description available.';
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _bookDescription = 'Failed to load description.';
+        });
+      }
+    }
+  }
+
   PopupMenuItem<double> _speedItem(BuildContext context, double current, double value) {
     final sel = (current - value).abs() < 0.001;
     return PopupMenuItem<double>(
@@ -148,18 +169,26 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
       return Icon(
         Icons.speed_rounded,
         color: cs.onSurfaceVariant,
+        size: 24,
       );
     }
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest,
+        color: cs.primaryContainer,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: cs.outline.withOpacity(0.2)),
+        border: Border.all(
+          color: cs.primary.withOpacity(0.3),
+          width: 1.5,
+        ),
       ),
       child: Text(
         '${current.toStringAsFixed(2)}×',
-        style: text.labelLarge?.copyWith(color: cs.onSurfaceVariant, fontWeight: FontWeight.w600),
+        style: text.labelLarge?.copyWith(
+          color: cs.onPrimaryContainer,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.3,
+        ),
       ),
     );
   }
@@ -722,7 +751,8 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                     // ARTWORK + TITLE
                     Expanded(
                       child: RepaintBoundary(
-                        child: Padding(
+                        child: SingleChildScrollView(
+                          physics: const BouncingScrollPhysics(),
                           padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
                           child: Column(
                             children: [
@@ -736,7 +766,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                     opacity: _coverAnimation.value,
                                     child: Center(
                                       child: SizedBox(
-                                        width: MediaQuery.of(context).size.width * 0.85, // 85% of screen width
+                                        width: MediaQuery.of(context).size.width * 0.70, // 70% of screen width - more compact
                                         child: Hero(
                                           tag: 'mini-cover-${np.libraryItemId}',
                                           child: Container(
@@ -744,9 +774,16 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                               borderRadius: BorderRadius.circular(24),
                                               boxShadow: [
                                                 BoxShadow(
-                                                  color: cs.shadow.withOpacity(0.18),
-                                                  blurRadius: 12,
-                                                  offset: const Offset(0, 6),
+                                                  color: cs.shadow.withOpacity(0.25),
+                                                  blurRadius: 24,
+                                                  spreadRadius: 2,
+                                                  offset: const Offset(0, 8),
+                                                ),
+                                                BoxShadow(
+                                                  color: cs.primary.withOpacity(0.1),
+                                                  blurRadius: 40,
+                                                  spreadRadius: -4,
+                                                  offset: const Offset(0, 12),
                                                 ),
                                               ],
                                             ),
@@ -778,7 +815,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                 );
                               },
                             ),
-                            const SizedBox(height: 20),
+                            const SizedBox(height: 24),
 
                             // Title / author / narrator with enhanced typography
                             AnimatedBuilder(
@@ -793,21 +830,23 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                         Text(
                                           np.title,
                                           textAlign: TextAlign.center,
-                                          style: text.headlineSmall?.copyWith(
-                                            fontWeight: FontWeight.w700,
-                                            height: 1.2,
+                                          style: text.headlineMedium?.copyWith(
+                                            fontWeight: FontWeight.w800,
+                                            height: 1.15,
+                                            letterSpacing: -0.5,
                                           ),
                                           maxLines: 3,
                                           overflow: TextOverflow.ellipsis,
                                         ),
                                         if (np.author != null && np.author!.isNotEmpty) ...[
-                                          const SizedBox(height: 8),
+                                          const SizedBox(height: 12),
                                           Text(
                                             np.author!,
                                             textAlign: TextAlign.center,
-                                            style: text.titleMedium?.copyWith(
+                                            style: text.titleLarge?.copyWith(
                                               color: cs.onSurfaceVariant,
-                                              fontWeight: FontWeight.w500,
+                                              fontWeight: FontWeight.w600,
+                                              letterSpacing: 0.15,
                                             ),
                                             maxLines: 2,
                                             overflow: TextOverflow.ellipsis,
@@ -820,19 +859,147 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                               },
                             ),
                             if (np.narrator != null && np.narrator!.isNotEmpty) ...[
-                              const SizedBox(height: 4),
+                              const SizedBox(height: 8),
                               Text(
                                 'Narrated by ${np.narrator!}',
                                 textAlign: TextAlign.center,
-                                style: text.titleSmall?.copyWith(
-                                  color: cs.onSurfaceVariant.withOpacity(0.8),
-                                  fontWeight: FontWeight.w400,
+                                style: text.bodyLarge?.copyWith(
+                                  color: cs.onSurfaceVariant.withOpacity(0.85),
+                                  fontWeight: FontWeight.w500,
                                   fontStyle: FontStyle.italic,
+                                  letterSpacing: 0.25,
                                 ),
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ],
+                            
+                            // Description toggle button - modern chip design
+                            const SizedBox(height: 16),
+                            Material(
+                              color: cs.surfaceContainerHigh,
+                              borderRadius: BorderRadius.circular(16),
+                              child: InkWell(
+                                onTap: () async {
+                                  if (_bookDescription == null) {
+                                    await _fetchBookDescription(np.libraryItemId);
+                                  }
+                                  setState(() {
+                                    _showDescription = !_showDescription;
+                                  });
+                                },
+                                borderRadius: BorderRadius.circular(16),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.description_outlined,
+                                        size: 20,
+                                        color: cs.primary,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        'About this book',
+                                        style: text.labelLarge?.copyWith(
+                                          fontWeight: FontWeight.w600,
+                                          color: cs.onSurface,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Icon(
+                                        _showDescription ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+                                        size: 18,
+                                        color: cs.onSurfaceVariant,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                            
+                            // Description text (animated) - improved design
+                            AnimatedSize(
+                              duration: const Duration(milliseconds: 350),
+                              curve: Curves.easeInOutCubicEmphasized,
+                              child: _showDescription
+                                  ? Container(
+                                      margin: const EdgeInsets.only(top: 16),
+                                      padding: const EdgeInsets.all(20),
+                                      decoration: BoxDecoration(
+                                        gradient: LinearGradient(
+                                          begin: Alignment.topLeft,
+                                          end: Alignment.bottomRight,
+                                          colors: [
+                                            cs.surfaceContainerHighest,
+                                            cs.surfaceContainerHigh,
+                                          ],
+                                        ),
+                                        borderRadius: BorderRadius.circular(20),
+                                        border: Border.all(
+                                          color: cs.outline.withOpacity(0.08),
+                                          width: 1.5,
+                                        ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: cs.shadow.withOpacity(0.08),
+                                            blurRadius: 12,
+                                            offset: const Offset(0, 4),
+                                          ),
+                                        ],
+                                      ),
+                                      constraints: const BoxConstraints(maxHeight: 200),
+                                      child: _bookDescription == null
+                                          ? Center(
+                                              child: Padding(
+                                                padding: const EdgeInsets.all(20),
+                                                child: CircularProgressIndicator(
+                                                  strokeWidth: 2.5,
+                                                  color: cs.primary,
+                                                ),
+                                              ),
+                                            )
+                                          : SingleChildScrollView(
+                                              physics: const BouncingScrollPhysics(),
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Row(
+                                                    children: [
+                                                      Icon(
+                                                        Icons.auto_stories_rounded,
+                                                        size: 18,
+                                                        color: cs.primary,
+                                                      ),
+                                                      const SizedBox(width: 8),
+                                                      Text(
+                                                        'Synopsis',
+                                                        style: text.titleSmall?.copyWith(
+                                                          fontWeight: FontWeight.w700,
+                                                          color: cs.onSurface,
+                                                          letterSpacing: 0.5,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  const SizedBox(height: 12),
+                                                  Text(
+                                                    _bookDescription!,
+                                                    style: text.bodyMedium?.copyWith(
+                                                      color: cs.onSurfaceVariant,
+                                                      height: 1.6,
+                                                      letterSpacing: 0.15,
+                                                    ),
+                                                    textAlign: TextAlign.justify,
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                    )
+                                  : const SizedBox.shrink(),
+                            ),
+                            const SizedBox(height: 8), // Extra padding at bottom
                           ],
                           ),
                         ),
@@ -890,16 +1057,18 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                 children: [
                                   SliderTheme(
                                     data: SliderTheme.of(context).copyWith(
-                                      trackHeight: 4,
+                                      trackHeight: 5,
                                       thumbShape: const RoundSliderThumbShape(
-                                        enabledThumbRadius: 9,
-                                        elevation: 3,
+                                        enabledThumbRadius: 10,
+                                        elevation: 4,
+                                        pressedElevation: 6,
                                       ),
-                                      overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                                      overlayShape: const RoundSliderOverlayShape(overlayRadius: 18),
                                       activeTrackColor: cs.primary,
                                       inactiveTrackColor: cs.surfaceContainerHighest,
                                       thumbColor: cs.primary,
-                                      overlayColor: cs.primary.withOpacity(0.16),
+                                      overlayColor: cs.primary.withOpacity(0.20),
+                                      trackShape: const RoundedRectSliderTrackShape(),
                                     ),
                                     child: Slider(
                                       min: 0.0,
@@ -1014,16 +1183,18 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                               children: [
                                 SliderTheme(
                                   data: SliderTheme.of(context).copyWith(
-                                    trackHeight: 4,
+                                    trackHeight: 5,
                                     thumbShape: const RoundSliderThumbShape(
-                                      enabledThumbRadius: 9,
-                                      elevation: 3,
+                                      enabledThumbRadius: 10,
+                                      elevation: 4,
+                                      pressedElevation: 6,
                                     ),
-                                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 18),
                                     activeTrackColor: cs.primary,
                                     inactiveTrackColor: cs.surfaceContainerHighest,
                                     thumbColor: cs.primary,
-                                    overlayColor: cs.primary.withOpacity(0.16),
+                                    overlayColor: cs.primary.withOpacity(0.20),
+                                    trackShape: const RoundedRectSliderTrackShape(),
                                   ),
                                   child: Slider(
                                     min: 0.0,
@@ -1206,13 +1377,18 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                       children: [
                                         Expanded(
                                           child: FilledButton.tonalIcon(
-                                            icon: const Icon(Icons.list_alt_rounded),
+                                            icon: const Icon(Icons.list_alt_rounded, size: 22),
                                             label: const Text('Chapters'),
                                             onPressed: () => _showChaptersSheet(context, playback, np),
                                             style: FilledButton.styleFrom(
-                                              padding: const EdgeInsets.symmetric(vertical: 16),
+                                              padding: const EdgeInsets.symmetric(vertical: 18),
+                                              elevation: 1,
                                               shape: RoundedRectangleBorder(
-                                                borderRadius: BorderRadius.circular(16),
+                                                borderRadius: BorderRadius.circular(18),
+                                              ),
+                                              textStyle: text.labelLarge?.copyWith(
+                                                fontWeight: FontWeight.w600,
+                                                letterSpacing: 0.5,
                                               ),
                                             ),
                                           ),
@@ -1228,13 +1404,21 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                                   ? 'Sleep · ${SleepTimerService.instance.formattedRemainingTime}'
                                                   : 'Sleep';
                                               return FilledButton.tonalIcon(
-                                                icon: const Icon(Icons.nightlight_round),
+                                                icon: Icon(
+                                                  active ? Icons.nightlight : Icons.nightlight_round,
+                                                  size: 22,
+                                                ),
                                                 label: Text(label),
                                                 onPressed: () => _showSleepTimerSheet(context, np),
                                                 style: FilledButton.styleFrom(
-                                                  padding: const EdgeInsets.symmetric(vertical: 16),
+                                                  padding: const EdgeInsets.symmetric(vertical: 18),
+                                                  elevation: 1,
                                                   shape: RoundedRectangleBorder(
-                                                    borderRadius: BorderRadius.circular(16),
+                                                    borderRadius: BorderRadius.circular(18),
+                                                  ),
+                                                  textStyle: text.labelLarge?.copyWith(
+                                                    fontWeight: FontWeight.w600,
+                                                    letterSpacing: 0.5,
                                                   ),
                                                 ),
                                               );
