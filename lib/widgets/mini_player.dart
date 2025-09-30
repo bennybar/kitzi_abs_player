@@ -16,202 +16,113 @@ class MiniPlayer extends StatelessWidget {
     final playback = ServicesScope.of(context).services.playback;
     final cs = Theme.of(context).colorScheme;
 
-    return Container(
-      margin: const EdgeInsets.fromLTRB(8, 0, 8, 0),
-      decoration: BoxDecoration(
-        color: cs.surface,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: cs.shadow.withOpacity(0.10),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
+    // YouTube Music style: full-width, flat, no rounded corners
+    return Material(
+      color: cs.surfaceContainer,
+      child: InkWell(
+        onTap: () async {
+          await FullPlayerPage.openOnce(context);
+        },
+        child: Container(
+          height: height,
+          decoration: BoxDecoration(
+            border: Border(
+              top: BorderSide(
+                color: cs.outlineVariant.withOpacity(0.5),
+                width: 1,
+              ),
+            ),
           ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () async {
-            await FullPlayerPage.openOnce(context);
-          },
-          child: ConstrainedBox(
-            constraints: BoxConstraints.tightFor(height: height),
-            child: StreamBuilder<NowPlaying?>(
-              stream: playback.nowPlayingStream,
-              initialData: playback.nowPlaying,
-               builder: (context, snap) {
-                 final np = snap.data;
-                 // Return empty when no content - parent AnimatedSize will collapse this
-                 if (np == null) {
-                   return const SizedBox.shrink();
-                 }
+          child: StreamBuilder<NowPlaying?>(
+            stream: playback.nowPlayingStream,
+            initialData: playback.nowPlaying,
+            builder: (context, snap) {
+              final np = snap.data;
+              // Return empty when no content - parent AnimatedSize will collapse this
+              if (np == null) {
+                return const SizedBox.shrink();
+              }
 
-                 return Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
-                  child: Row(
-                    children: [
-                      // Enhanced cover with Hero
-                      Hero(
-                        tag: 'mini-cover-${np.libraryItemId}',
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: _MiniCover(url: np.coverUrl, size: height - 20),
-                        ),
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                child: Row(
+                  children: [
+                    // Album art with Hero (YouTube Music style - square, slightly rounded)
+                    Hero(
+                      tag: 'mini-cover-${np.libraryItemId}',
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: _MiniCover(url: np.coverUrl, size: height - 16),
                       ),
-                      const SizedBox(width: 8),
+                    ),
+                    const SizedBox(width: 12),
 
-                      // Title/author + progress bar with enhanced layout
-                      Expanded(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
+                    // Title/author (YouTube Music style - no progress bar in mini)
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            np.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          if (np.author != null && np.author!.isNotEmpty)
                             Text(
-                              np.title,
+                              np.author!,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.w600,
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: cs.onSurfaceVariant,
                               ),
                             ),
-                            if (np.author != null && np.author!.isNotEmpty) ...[
-                              const SizedBox(height: 2),
-                              Text(
-                                np.author!,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                  color: cs.onSurfaceVariant,
-                                ),
-                              ),
-                            ],
-                            const SizedBox(height: 2),
-                            // Enhanced progress bar
-                            StreamBuilder<Duration?>(
-                              stream: playback.durationStream,
-                              initialData: playback.player.duration,
-                              builder: (_, durSnap) {
-                                final total = durSnap.data ?? Duration.zero;
-                                return StreamBuilder<Duration>(
-                                  stream: playback.positionStream,
-                                  initialData: playback.player.position,
-                                  builder: (_, posSnap) {
-                                    final pos = posSnap.data ?? Duration.zero;
-                                    final value = (total.inMilliseconds > 0)
-                                        ? (pos.inMilliseconds / total.inMilliseconds)
-                                        : 0.0;
-                                    return LinearProgressIndicator(
-                                      value: value,
-                                      backgroundColor: cs.surfaceContainerHighest,
-                                      valueColor: AlwaysStoppedAnimation<Color>(cs.primary),
-                                      minHeight: 2,
-                                    );
-                                  },
-                                );
-                              },
-                            ),
-                          ],
-                        ),
+                        ],
                       ),
-                      const SizedBox(width: 8),
+                    ),
+                    const SizedBox(width: 12),
 
-                      // Controls: back 15s, play/pause, forward 30s
-                      StreamBuilder<bool>(
-                        stream: playback.playingStream,
-                        initialData: playback.player.playing,
-                        builder: (_, playSnap) {
-                          final playing = playSnap.data ?? false;
-                          ColorScheme cs2 = cs;
-                          Widget squareBtn(IconData icon, VoidCallback onTap) {
-                            return Material(
-                              color: cs2.surfaceContainerHighest,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                              child: InkWell(
-                                customBorder: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                onTap: onTap,
-                                child: const SizedBox(width: 40, height: 40, child: Icon(Icons.abc, size: 22)),
-                              ),
-                            );
-                          }
-                          return Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              // Back 15s (squarish)
-                              Material(
-                                color: cs.surfaceContainerHighest,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                child: InkWell(
-                                  customBorder: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                  onTap: () => ServicesScope.of(context).services.playback.nudgeSeconds(-15),
-                                  child: const SizedBox(width: 40, height: 40, child: Icon(Icons.replay_10_rounded, size: 22)),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              // Play/Pause (round when play)
-                              AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 180),
-                                transitionBuilder: (child, anim) => FadeTransition(opacity: anim, child: child),
-                                child: playing
-                                    ? Material(
-                                        key: const ValueKey('pause'),
-                                        color: cs.primary,
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                                        child: InkWell(
-                                          customBorder: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                                          onTap: () async { await playback.pause(); },
-                                          child: SizedBox(
-                                            width: 40,
-                                            height: 40,
-                                            child: Icon(Icons.pause_rounded, color: cs.onPrimary),
-                                          ),
-                                        ),
-                                      )
-                                    : Material(
-                                        key: const ValueKey('play'),
-                                        color: cs.primary,
-                                        shape: const CircleBorder(),
-                                        child: InkWell(
-                                          customBorder: const CircleBorder(),
-                                          onTap: () async { 
-                                            final success = await playback.resume();
-                                            if (!success && context.mounted) {
-                                              ScaffoldMessenger.of(context).showSnackBar(
-                                                const SnackBar(
-                                                  content: Text('Cannot play: server unavailable and sync progress is required'),
-                                                  duration: Duration(seconds: 4),
-                                                ),
-                                              );
-                                            }
-                                          },
-                                          child: SizedBox(
-                                            width: 40,
-                                            height: 40,
-                                            child: Icon(Icons.play_arrow_rounded, color: cs.onPrimary),
-                                          ),
-                                        ),
-                                      ),
-                              ),
-                              const SizedBox(width: 8),
-                              // Forward 30s (squarish)
-                              Material(
-                                color: cs.surfaceContainerHighest,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                child: InkWell(
-                                  customBorder: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                  onTap: () => ServicesScope.of(context).services.playback.nudgeSeconds(30),
-                                  child: const SizedBox(width: 40, height: 40, child: Icon(Icons.forward_30_rounded, size: 22)),
-                                ),
-                              ),
-                            ],
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
+                    // Play/Pause button only (YouTube Music style)
+                    StreamBuilder<bool>(
+                      stream: playback.playingStream,
+                      initialData: playback.player.playing,
+                      builder: (_, playSnap) {
+                        final playing = playSnap.data ?? false;
+                        return IconButton(
+                          onPressed: () async {
+                            if (playing) {
+                              await playback.pause();
+                            } else {
+                              final success = await playback.resume();
+                              if (!success && context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Cannot play: server unavailable and sync progress is required'),
+                                    duration: Duration(seconds: 4),
+                                  ),
+                                );
+                              }
+                            }
+                          },
+                          icon: Icon(
+                            playing ? Icons.pause : Icons.play_arrow,
+                            size: 28,
+                          ),
+                          style: IconButton.styleFrom(
+                            backgroundColor: Colors.transparent,
+                            foregroundColor: cs.onSurface,
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
         ),
       ),
@@ -227,12 +138,13 @@ class _MiniCover extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    // YouTube Music style: subtle rounded corners (4px)
     final placeholder = Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(4),
       ),
       child: Icon(
         Icons.menu_book_outlined,
