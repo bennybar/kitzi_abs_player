@@ -719,8 +719,8 @@ class _BooksPageState extends State<BooksPage> {
               ),
             )
           else ...[
-            // Resume Playing Section
-            if (_recentBooks.isNotEmpty) _buildResumePlayingSection(),
+            // Resume Playing Section - hide when searching
+            if (_recentBooks.isNotEmpty && _query.trim().isEmpty) _buildResumePlayingSection(),
             // Audiobooks section title
             SliverToBoxAdapter(
               child: Padding(
