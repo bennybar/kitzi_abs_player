@@ -31,11 +31,39 @@ class NotificationService {
       );
 
       await _notifications.initialize(initSettings);
+      
+      // Create notification channels for Android
+      await _createNotificationChannels();
+      
       _isInitialized = true;
       
       debugPrint('Notification service initialized successfully');
     } catch (e) {
       debugPrint('Failed to initialize notification service: $e');
+    }
+  }
+  
+  Future<void> _createNotificationChannels() async {
+    try {
+      // Create download notification channel with proper settings
+      const downloadChannel = AndroidNotificationChannel(
+        'kitzi_download_channel',
+        'Kitzi Downloads',
+        description: 'Download notifications',
+        importance: Importance.low,
+        playSound: false,
+        enableVibration: false,
+        showBadge: false,
+      );
+      
+      await _notifications
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel(downloadChannel);
+      
+      debugPrint('Download notification channel created');
+    } catch (e) {
+      debugPrint('Failed to create notification channels: $e');
     }
   }
 
@@ -149,10 +177,18 @@ class NotificationService {
         channelDescription: 'Download notifications',
         importance: Importance.low,
         priority: Priority.low,
-        ongoing: true,
+        ongoing: true, // Prevents swipe-to-dismiss during download
         autoCancel: false,
         showWhen: false,
         icon: '@drawable/ic_download_notification',
+        // Use foreground service category to keep download alive in background
+        category: AndroidNotificationCategory.service,
+        visibility: NotificationVisibility.public,
+        onlyAlertOnce: true,
+        // Show initial progress at 0%
+        showProgress: true,
+        maxProgress: 100,
+        progress: 0,
       );
       const iosDetails = DarwinNotificationDetails(
         presentAlert: false,
@@ -162,8 +198,8 @@ class NotificationService {
       const details = NotificationDetails(android: androidDetails, iOS: iosDetails);
       await _notifications.show(
         _downloadNotificationId,
-        'Downloading book: $title',
-        null,
+        'Downloading: $title',
+        'Starting download...',
         details,
         payload: 'book_download',
       );
@@ -191,13 +227,17 @@ class NotificationService {
         channelDescription: 'Download notifications',
         importance: Importance.low,
         priority: Priority.low,
-        ongoing: true,
+        ongoing: true, // Prevents swipe-to-dismiss during download
         autoCancel: false,
         showWhen: false,
         icon: '@drawable/ic_download_notification',
         showProgress: true,
         maxProgress: 100,
         progress: percentage,
+        // Use service category to maintain foreground service behavior
+        category: AndroidNotificationCategory.service,
+        visibility: NotificationVisibility.public,
+        onlyAlertOnce: true, // Prevents notification sound/vibration on each update
       );
       const iosDetails = DarwinNotificationDetails(
         presentAlert: false,

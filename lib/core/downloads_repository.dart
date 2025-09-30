@@ -100,14 +100,29 @@ class DownloadsRepository {
   final Map<String, List<_DlTrack>> _downloadPlanByItem = <String, List<_DlTrack>>{};
 
   Future<void> init() async {
-    // Configure ONE global notification. Do NOT set per-task displayName.
+    // Configure persistent foreground notification for background downloads
+    // This ensures downloads continue even when the app is backgrounded/closed
+    // We disable per-task notifications (running: null) to avoid notification spam
+    // and rely on our custom book-level notification service instead
     try {
       FileDownloader().configureNotification(
+        running: null, // Disable per-task notifications to avoid spam
+        complete: null, // We handle completion in our custom notification
+        error: null, // We handle errors in our custom notification
+        progressBar: false,
+      );
+      
+      // Configure for each book group to ensure proper foreground service
+      // but with notifications disabled at the task level
+      FileDownloader().configureNotificationForGroup(
+        FileDownloader.defaultGroup,
         running: null,
         complete: null,
         error: null,
       );
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[DL] Error configuring notifications: $e');
+    }
 
     // Load persistent blocked items (ensures hard-stop even across restarts)
     await _loadBlockedItemsFromPrefs();
@@ -382,6 +397,23 @@ class DownloadsRepository {
     _blockedItems.remove(libraryItemId);
     await _persistBlockedItems();
 
+    // Configure per-book notification group - disable plugin's built-in notifications
+    // We use our custom NotificationService for book-level progress instead
+    final bookGroup = 'book-$libraryItemId';
+    final title = (displayTitle != null && displayTitle.isNotEmpty)
+        ? displayTitle
+        : 'Audiobook';
+    try {
+      FileDownloader().configureNotificationForGroup(
+        bookGroup,
+        running: null, // Disable to avoid per-file notifications
+        complete: null,
+        error: null,
+      );
+    } catch (e) {
+      _d('Error configuring book group notification: $e');
+    }
+
     // Add to background queue
     if (!_itemsInGlobalQueue.contains(libraryItemId)) {
       _globalDownloadQueue.add(MapEntry(libraryItemId, episodeId));
@@ -389,11 +421,8 @@ class DownloadsRepository {
       _d('Added $libraryItemId to global queue. Queue length: ${_globalDownloadQueue.length}');
     }
     
-    // Show a single download notification for this book
+    // Show a single download notification for this book via our custom notification service
     try {
-      final title = (displayTitle != null && displayTitle.isNotEmpty)
-          ? displayTitle
-          : 'Audiobook';
       await NotificationService.instance.showDownloadStarted(title);
       
       // Start showing progress updates
