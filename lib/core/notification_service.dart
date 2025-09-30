@@ -217,10 +217,20 @@ class NotificationService {
     }
   }
 
-  Future<void> showDownloadProgress(String title, int progress, int maxProgress) async {
+  Future<void> showDownloadProgress(String title, int progress, int maxProgress, {double? speed}) async {
     if (!_isInitialized) return;
     try {
       final percentage = maxProgress > 0 ? ((progress / maxProgress) * 100).round() : 0;
+      
+      // Format download speed nicely
+      String progressText;
+      if (speed != null && speed > 0) {
+        final speedStr = _formatSpeed(speed);
+        progressText = '$speedStr • $percentage%';
+      } else {
+        progressText = '$percentage% complete';
+      }
+      
       final androidDetails = AndroidNotificationDetails(
         'kitzi_download_channel',
         'Kitzi Downloads',
@@ -248,12 +258,24 @@ class NotificationService {
       await _notifications.show(
         _downloadNotificationId,
         'Downloading: $title',
-        '$percentage% complete',
+        progressText,
         details,
         payload: 'book_download_progress',
       );
     } catch (e) {
       debugPrint('Failed to show download progress notification: $e');
+    }
+  }
+  
+  String _formatSpeed(double bytesPerSecond) {
+    if (bytesPerSecond < 1024) {
+      return '${bytesPerSecond.toStringAsFixed(0)} B/s';
+    } else if (bytesPerSecond < 1024 * 1024) {
+      final kbps = bytesPerSecond / 1024;
+      return '${kbps.toStringAsFixed(1)} KB/s';
+    } else {
+      final mbps = bytesPerSecond / (1024 * 1024);
+      return '${mbps.toStringAsFixed(2)} MB/s';
     }
   }
 

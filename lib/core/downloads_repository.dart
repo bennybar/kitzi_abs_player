@@ -48,6 +48,11 @@ class DownloadsRepository {
   // Progress notification tracking
   final Map<String, String> _progressNotificationTitles = {};
   final Map<String, Timer> _progressNotificationTimers = {};
+  // Speed tracking for download notifications
+  final Map<String, int> _totalBytesDownloaded = {}; // Total bytes downloaded so far for this item
+  final Map<String, DateTime> _lastSpeedUpdateTime = {};
+  final Map<String, double> _currentSpeed = {}; // bytes per second
+  final Map<String, int> _lastTotalBytes = {}; // For delta calculation
 
   // Plugin updates -> broadcast for UI
   Stream<TaskUpdate>? _broadcastUpdates;
@@ -353,6 +358,50 @@ class DownloadsRepository {
           _uiActive[id] = true;
           _inFlightItems.add(id);
           _lastRunningProgress[id] = (u.progress ?? 0.0).clamp(0.0, 1.0);
+          
+          // Track download speed based on cumulative bytes across all files
+          try {
+            // Calculate bytes downloaded for this specific file
+            final expectedBytes = u.expectedFileSize;
+            final progress = u.progress ?? 0.0;
+            final currentFileBytes = (expectedBytes * progress).toInt();
+            
+            // Get total completed files size
+            final completedBytes = await _countCompletedBytes(id);
+            final totalCurrentBytes = completedBytes + currentFileBytes;
+            
+            // Calculate speed from total bytes delta
+            final now = DateTime.now();
+            final lastTotal = _lastTotalBytes[id];
+            final lastTime = _lastSpeedUpdateTime[id];
+            
+            if (lastTotal != null && lastTime != null && totalCurrentBytes > lastTotal) {
+              final bytesDelta = totalCurrentBytes - lastTotal;
+              final timeDelta = now.difference(lastTime).inMilliseconds / 1000.0;
+              
+              if (timeDelta > 0.1) { // At least 100ms elapsed
+                final instantSpeed = bytesDelta / timeDelta;
+                // Smooth with exponential moving average (more responsive)
+                final currentSpeed = _currentSpeed[id];
+                if (currentSpeed != null && currentSpeed > 0) {
+                  _currentSpeed[id] = currentSpeed * 0.6 + instantSpeed * 0.4;
+                } else {
+                  _currentSpeed[id] = instantSpeed;
+                }
+                
+                _lastTotalBytes[id] = totalCurrentBytes;
+                _lastSpeedUpdateTime[id] = now;
+              }
+            } else {
+              // First measurement
+              _lastTotalBytes[id] = totalCurrentBytes;
+              _lastSpeedUpdateTime[id] = now;
+            }
+            
+            _totalBytesDownloaded[id] = totalCurrentBytes;
+          } catch (e) {
+            _d('Error calculating speed: $e');
+          }
         } else if (u is TaskStatusUpdate) {
           switch (u.status) {
             case TaskStatus.running:
@@ -366,6 +415,11 @@ class DownloadsRepository {
               _uiActive[id] = false;
               _inFlightItems.remove(id);
               _lastRunningProgress.remove(id);
+              // Clear speed tracking on completion
+              _currentSpeed.remove(id);
+              _totalBytesDownloaded.remove(id);
+              _lastSpeedUpdateTime.remove(id);
+              _lastTotalBytes.remove(id);
               break;
             default:
               break;
@@ -786,6 +840,10 @@ class DownloadsRepository {
     _progressNotificationTimers[libraryItemId]?.cancel();
     _progressNotificationTimers.remove(libraryItemId);
     _progressNotificationTitles.remove(libraryItemId);
+    _currentSpeed.remove(libraryItemId);
+    _totalBytesDownloaded.remove(libraryItemId);
+    _lastSpeedUpdateTime.remove(libraryItemId);
+    _lastTotalBytes.remove(libraryItemId);
   }
   
   Future<void> _updateProgressNotification(String libraryItemId) async {
@@ -797,12 +855,16 @@ class DownloadsRepository {
       final progress = await _computeItemProgress(libraryItemId);
       final percentage = (progress.progress * 100).round();
       
+      // Get current download speed
+      final speed = _currentSpeed[libraryItemId];
+      
       // Only update if there's meaningful progress
       if (percentage > 0 && percentage < 100) {
         await NotificationService.instance.showDownloadProgress(
           title,
           percentage,
           100,
+          speed: speed,
         );
       }
     } catch (e) {
@@ -934,6 +996,30 @@ class DownloadsRepository {
           .cast<File>()
           .toList();
       return files.length;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  /// Count total bytes of completed files for speed calculation
+  Future<int> _countCompletedBytes(String libraryItemId) async {
+    try {
+      final dir = await _itemDir(libraryItemId);
+      if (!await dir.exists()) return 0;
+      
+      int totalBytes = 0;
+      final files = await dir.list().where((e) => e is File).cast<File>().toList();
+      
+      for (final file in files) {
+        try {
+          final stat = await file.stat();
+          totalBytes += stat.size;
+        } catch (_) {
+          // Skip files we can't stat
+        }
+      }
+      
+      return totalBytes;
     } catch (_) {
       return 0;
     }
