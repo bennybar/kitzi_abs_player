@@ -101,10 +101,10 @@ class _MainScaffoldState extends State<MainScaffold> {
           bottomNavigationBar: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Mini player with animated size - only takes space when visible
+              // Mini player with animated size - only takes space when visible (120Hz optimized)
               AnimatedSize(
-                duration: const Duration(milliseconds: 250),
-                curve: Curves.easeInOut,
+                duration: const Duration(milliseconds: 350), // Max smoothness at 120Hz (42 frames)
+                curve: const Cubic(0.05, 0.7, 0.1, 1.0), // Material Design 3 emphasized decelerate
                 child: hasMini
                     ? const MiniPlayer(height: 68)
                     : const SizedBox.shrink(),

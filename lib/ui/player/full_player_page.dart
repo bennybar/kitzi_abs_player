@@ -21,24 +21,28 @@ class FullPlayerPage extends StatefulWidget {
       await Navigator.of(context).push(PageRouteBuilder(
         pageBuilder: (_, __, ___) => const FullPlayerPage(),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          // YouTube Music style: smooth slide up from bottom (no backdrop fade)
+          // Material Design 3 emphasized easing - optimized for 120Hz displays
+          // This curve is specifically designed for high refresh rate screens
+          const emphasizedDecelerate = Cubic(0.05, 0.7, 0.1, 1.0);
+          const emphasizedAccelerate = Cubic(0.3, 0.0, 0.8, 0.15);
+          
           final curve = CurvedAnimation(
             parent: animation,
-            curve: Curves.easeInOutCubic,
-            reverseCurve: Curves.easeInOutCubic,
+            curve: emphasizedDecelerate, // Material Design 3's smoothest curve
+            reverseCurve: emphasizedAccelerate,
           );
 
           return SlideTransition(
             position: Tween<Offset>(
-              begin: const Offset(0, 1.0), // Start from bottom
+              begin: const Offset(0, 1.0),
               end: Offset.zero,
             ).animate(curve),
             child: child,
           );
         },
-        transitionDuration: const Duration(milliseconds: 300),
+        transitionDuration: const Duration(milliseconds: 400), // Longer = more frames at 120Hz
         reverseTransitionDuration: const Duration(milliseconds: 300),
-        opaque: true, // No transparent backdrop
+        opaque: true,
         fullscreenDialog: false,
       ));
     } finally {
@@ -630,10 +634,10 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
           }
         },
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOutQuart,
+          duration: const Duration(milliseconds: 300), // Buttery snap-back
+          curve: const Cubic(0.05, 0.7, 0.1, 1.0), // Material Design 3 emphasized - ultra smooth
           transform: Matrix4.translationValues(0, _dragY, 0)
-            ..scale(1.0 - (_dragY * 0.0003).clamp(0.0, 0.1)),
+            ..scale(1.0 - (_dragY * 0.00015).clamp(0.0, 0.06)), // Very subtle scale - premium feel
           child: SafeArea(
             child: StreamBuilder<NowPlaying?>(
               stream: playback.nowPlayingStream,
