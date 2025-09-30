@@ -61,8 +61,6 @@ class FullPlayerPage extends StatefulWidget {
 class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStateMixin {
   double _dragY = 0.0;
   bool _dualProgressEnabled = true;
-  bool _showDescription = false;
-  String? _bookDescription;
   late AnimationController _contentAnimationController;
   late Animation<double> _coverAnimation;
   late Animation<double> _titleAnimation;
@@ -126,24 +124,6 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
         _dualProgressEnabled = prefs.getBool('ui_dual_progress_enabled') ?? true;
       });
     } catch (_) {}
-  }
-
-  Future<void> _fetchBookDescription(String libraryItemId) async {
-    try {
-      final repo = await BooksRepository.create();
-      final book = await repo.getBook(libraryItemId);
-      if (mounted) {
-        setState(() {
-          _bookDescription = book.description ?? 'No description available.';
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _bookDescription = 'Failed to load description.';
-        });
-      }
-    }
   }
 
   PopupMenuItem<double> _speedItem(BuildContext context, double current, double value) {
@@ -756,7 +736,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                           padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
                           child: Column(
                             children: [
-                            // Cover with enhanced shadow and border - made smaller
+                            // Cover with enhanced shadow and border - compact size
                             AnimatedBuilder(
                               animation: _coverAnimation,
                               builder: (context, child) {
@@ -766,7 +746,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                     opacity: _coverAnimation.value,
                                     child: Center(
                                       child: SizedBox(
-                                        width: MediaQuery.of(context).size.width * 0.70, // 70% of screen width - more compact
+                                        width: MediaQuery.of(context).size.width * 0.62, // 62% of screen width - balanced size
                                         child: Hero(
                                           tag: 'mini-cover-${np.libraryItemId}',
                                           child: Container(
@@ -873,132 +853,6 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ],
-                            
-                            // Description toggle button - modern chip design
-                            const SizedBox(height: 16),
-                            Material(
-                              color: cs.surfaceContainerHigh,
-                              borderRadius: BorderRadius.circular(16),
-                              child: InkWell(
-                                onTap: () async {
-                                  if (_bookDescription == null) {
-                                    await _fetchBookDescription(np.libraryItemId);
-                                  }
-                                  setState(() {
-                                    _showDescription = !_showDescription;
-                                  });
-                                },
-                                borderRadius: BorderRadius.circular(16),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.description_outlined,
-                                        size: 20,
-                                        color: cs.primary,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        'About this book',
-                                        style: text.labelLarge?.copyWith(
-                                          fontWeight: FontWeight.w600,
-                                          color: cs.onSurface,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Icon(
-                                        _showDescription ? Icons.expand_less_rounded : Icons.expand_more_rounded,
-                                        size: 18,
-                                        color: cs.onSurfaceVariant,
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                            
-                            // Description text (animated) - improved design
-                            AnimatedSize(
-                              duration: const Duration(milliseconds: 350),
-                              curve: Curves.easeInOutCubicEmphasized,
-                              child: _showDescription
-                                  ? Container(
-                                      margin: const EdgeInsets.only(top: 16),
-                                      padding: const EdgeInsets.all(20),
-                                      decoration: BoxDecoration(
-                                        gradient: LinearGradient(
-                                          begin: Alignment.topLeft,
-                                          end: Alignment.bottomRight,
-                                          colors: [
-                                            cs.surfaceContainerHighest,
-                                            cs.surfaceContainerHigh,
-                                          ],
-                                        ),
-                                        borderRadius: BorderRadius.circular(20),
-                                        border: Border.all(
-                                          color: cs.outline.withOpacity(0.08),
-                                          width: 1.5,
-                                        ),
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: cs.shadow.withOpacity(0.08),
-                                            blurRadius: 12,
-                                            offset: const Offset(0, 4),
-                                          ),
-                                        ],
-                                      ),
-                                      constraints: const BoxConstraints(maxHeight: 200),
-                                      child: _bookDescription == null
-                                          ? Center(
-                                              child: Padding(
-                                                padding: const EdgeInsets.all(20),
-                                                child: CircularProgressIndicator(
-                                                  strokeWidth: 2.5,
-                                                  color: cs.primary,
-                                                ),
-                                              ),
-                                            )
-                                          : SingleChildScrollView(
-                                              physics: const BouncingScrollPhysics(),
-                                              child: Column(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                children: [
-                                                  Row(
-                                                    children: [
-                                                      Icon(
-                                                        Icons.auto_stories_rounded,
-                                                        size: 18,
-                                                        color: cs.primary,
-                                                      ),
-                                                      const SizedBox(width: 8),
-                                                      Text(
-                                                        'Synopsis',
-                                                        style: text.titleSmall?.copyWith(
-                                                          fontWeight: FontWeight.w700,
-                                                          color: cs.onSurface,
-                                                          letterSpacing: 0.5,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                  const SizedBox(height: 12),
-                                                  Text(
-                                                    _bookDescription!,
-                                                    style: text.bodyMedium?.copyWith(
-                                                      color: cs.onSurfaceVariant,
-                                                      height: 1.6,
-                                                      letterSpacing: 0.15,
-                                                    ),
-                                                    textAlign: TextAlign.justify,
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                    )
-                                  : const SizedBox.shrink(),
-                            ),
                             const SizedBox(height: 8), // Extra padding at bottom
                           ],
                           ),
@@ -1006,7 +860,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                       ),
                     ),
 
-                    // POSITION + SLIDER
+                    // POSITION + SLIDER - Material Design 3 Enhanced
                     Padding(
                       padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
                       child: StreamBuilder<Duration>(
@@ -1021,12 +875,14 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                             final globalPos = playback.globalBookPosition ?? Duration.zero;
                             final max = globalTotal.inMilliseconds.toDouble();
                             final value = globalPos.inMilliseconds.toDouble().clamp(0.0, max > 0 ? max : 1.0);
+                            final progressPercent = max > 0 ? (value / max * 100).clamp(0.0, 100.0) : 0.0;
 
                             // Determine chapter info for display
                             final np = playback.nowPlaying;
                             int chapterIdx = 0;
                             Duration? chapterStart;
                             Duration? chapterEnd;
+                            String? currentChapterTitle;
                             if (np != null && np.chapters.isNotEmpty) {
                               for (int i = 0; i < np.chapters.length; i++) {
                                 if (globalPos >= np.chapters[i].start) {
@@ -1035,7 +891,9 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                   break;
                                 }
                               }
-                              chapterStart = np.chapters[chapterIdx].start;
+                              final chapter = np.chapters[chapterIdx];
+                              currentChapterTitle = chapter.title.isEmpty ? null : chapter.title;
+                              chapterStart = chapter.start;
                               if (chapterIdx + 1 < np.chapters.length) {
                                 chapterEnd = np.chapters[chapterIdx + 1].start;
                               } else {
@@ -1055,20 +913,62 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
+                                  // Material Design 3 progress indicator - balanced size
+                                  Padding(
+                                    padding: const EdgeInsets.only(bottom: 6),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                          decoration: BoxDecoration(
+                                            color: cs.primaryContainer,
+                                            borderRadius: BorderRadius.circular(12),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                Icons.auto_stories_rounded,
+                                                size: 14,
+                                                color: cs.onPrimaryContainer,
+                                              ),
+                                              const SizedBox(width: 6),
+                                              Text(
+                                                '${progressPercent.toStringAsFixed(1)}% Complete',
+                                                style: text.labelMedium?.copyWith(
+                                                  color: cs.onPrimaryContainer,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  // Slider with enhanced Material Design 3 styling
                                   SliderTheme(
                                     data: SliderTheme.of(context).copyWith(
-                                      trackHeight: 5,
+                                      trackHeight: 6,
                                       thumbShape: const RoundSliderThumbShape(
-                                        enabledThumbRadius: 10,
-                                        elevation: 4,
-                                        pressedElevation: 6,
+                                        enabledThumbRadius: 12,
+                                        elevation: 6,
+                                        pressedElevation: 8,
                                       ),
-                                      overlayShape: const RoundSliderOverlayShape(overlayRadius: 18),
+                                      overlayShape: const RoundSliderOverlayShape(overlayRadius: 24),
                                       activeTrackColor: cs.primary,
                                       inactiveTrackColor: cs.surfaceContainerHighest,
                                       thumbColor: cs.primary,
-                                      overlayColor: cs.primary.withOpacity(0.20),
+                                      overlayColor: cs.primary.withOpacity(0.16),
                                       trackShape: const RoundedRectSliderTrackShape(),
+                                      valueIndicatorShape: const PaddleSliderValueIndicatorShape(),
+                                      valueIndicatorColor: cs.primary,
+                                      valueIndicatorTextStyle: text.labelMedium?.copyWith(
+                                        color: cs.onPrimary,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                      showValueIndicator: ShowValueIndicator.onlyForDiscrete,
                                     ),
                                     child: Slider(
                                       min: 0.0,
@@ -1097,8 +997,8 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                         Text(
                                           _fmt(globalPos),
                                           style: text.labelLarge?.copyWith(
-                                            color: cs.onSurfaceVariant,
-                                            fontWeight: FontWeight.w500,
+                                            color: cs.onSurface,
+                                            fontWeight: FontWeight.w600,
                                           ),
                                         ),
                                         StreamBuilder<double>(
@@ -1119,8 +1019,8 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                                 Text(
                                                   '-${_fmt(adjustedRemaining)}',
                                                   style: text.labelLarge?.copyWith(
-                                                    color: cs.onSurfaceVariant,
-                                                    fontWeight: FontWeight.w500,
+                                                    color: cs.onSurface,
+                                                    fontWeight: FontWeight.w600,
                                                   ),
                                                 ),
                                                 if (speed != 1.0) ...[
@@ -1177,23 +1077,58 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                           final pos = posSnap.data ?? Duration.zero;
                           final max = total.inMilliseconds.toDouble().clamp(0.0, double.infinity);
                           final value = pos.inMilliseconds.toDouble().clamp(0.0, max);
+                          final progressPercent = max > 0 ? (value / max * 100).clamp(0.0, 100.0) : 0.0;
 
                           return RepaintBoundary(
                             child: Column(
                               children: [
+                                // Material Design 3 progress indicator - balanced size
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 6),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                        decoration: BoxDecoration(
+                                          color: cs.primaryContainer,
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              Icons.auto_stories_rounded,
+                                              size: 14,
+                                              color: cs.onPrimaryContainer,
+                                            ),
+                                            const SizedBox(width: 6),
+                                            Text(
+                                              '${progressPercent.toStringAsFixed(1)}% Complete',
+                                              style: text.labelMedium?.copyWith(
+                                                color: cs.onPrimaryContainer,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
                                 SliderTheme(
                                   data: SliderTheme.of(context).copyWith(
-                                    trackHeight: 5,
+                                    trackHeight: 6,
                                     thumbShape: const RoundSliderThumbShape(
-                                      enabledThumbRadius: 10,
-                                      elevation: 4,
-                                      pressedElevation: 6,
+                                      enabledThumbRadius: 12,
+                                      elevation: 6,
+                                      pressedElevation: 8,
                                     ),
-                                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 18),
+                                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 24),
                                     activeTrackColor: cs.primary,
                                     inactiveTrackColor: cs.surfaceContainerHighest,
                                     thumbColor: cs.primary,
-                                    overlayColor: cs.primary.withOpacity(0.20),
+                                    overlayColor: cs.primary.withOpacity(0.16),
                                     trackShape: const RoundedRectSliderTrackShape(),
                                   ),
                                   child: Slider(
@@ -1222,8 +1157,8 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                     Text(
                                       _fmt(pos),
                                       style: text.labelLarge?.copyWith(
-                                        color: cs.onSurfaceVariant,
-                                        fontWeight: FontWeight.w500,
+                                        color: cs.onSurface,
+                                        fontWeight: FontWeight.w600,
                                       ),
                                     ),
                                     StreamBuilder<double>(
@@ -1248,8 +1183,8 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                             Text(
                                               '-${_fmt(adjustedRemaining)}',
                                               style: text.labelLarge?.copyWith(
-                                                color: cs.onSurfaceVariant,
-                                                fontWeight: FontWeight.w500,
+                                                color: cs.onSurface,
+                                                fontWeight: FontWeight.w600,
                                               ),
                                             ),
                                             if (speed != 1.0) ...[
@@ -1276,7 +1211,74 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                       ),
                     ),
 
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 12),
+
+                    // Material Design 3 Chapter Name (if available)
+                    StreamBuilder<Duration>(
+                      stream: playback.positionStream,
+                      initialData: playback.player.position,
+                      builder: (_, posSnap) {
+                        final globalTotal = playback.totalBookDuration;
+                        final useGlobal = _dualProgressEnabled && globalTotal != null && globalTotal > Duration.zero;
+                        final globalPos = useGlobal ? (playback.globalBookPosition ?? Duration.zero) : (posSnap.data ?? Duration.zero);
+                        
+                        final np = playback.nowPlaying;
+                        if (np == null || np.chapters.isEmpty) {
+                          return const SizedBox.shrink();
+                        }
+
+                        // Find current chapter
+                        int chapterIdx = 0;
+                        for (int i = 0; i < np.chapters.length; i++) {
+                          if (globalPos >= np.chapters[i].start) {
+                            chapterIdx = i;
+                          } else {
+                            break;
+                          }
+                        }
+                        
+                        final currentChapter = np.chapters[chapterIdx];
+                        final chapterTitle = currentChapter.title.isEmpty 
+                            ? 'Chapter ${chapterIdx + 1}' 
+                            : currentChapter.title;
+
+                        return Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: cs.surfaceContainerHighest,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: cs.outlineVariant.withOpacity(0.5),
+                                width: 1,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.bookmark_rounded,
+                                  size: 18,
+                                  color: cs.primary,
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    chapterTitle,
+                                    style: text.bodyMedium?.copyWith(
+                                      color: cs.onSurface,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
 
                     // CONTROLS + CHAPTERS
                     AnimatedBuilder(
@@ -1372,28 +1374,28 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
 
                                     const SizedBox(height: 24),
 
-                                    // Chapters + Sleep controls with enhanced design
+                                    // Chapters + Sleep controls - compact design
                                     Row(
                                       children: [
                                         Expanded(
                                           child: FilledButton.tonalIcon(
-                                            icon: const Icon(Icons.list_alt_rounded, size: 22),
+                                            icon: const Icon(Icons.list_alt_rounded, size: 20),
                                             label: const Text('Chapters'),
                                             onPressed: () => _showChaptersSheet(context, playback, np),
                                             style: FilledButton.styleFrom(
-                                              padding: const EdgeInsets.symmetric(vertical: 18),
+                                              padding: const EdgeInsets.symmetric(vertical: 14),
                                               elevation: 1,
                                               shape: RoundedRectangleBorder(
-                                                borderRadius: BorderRadius.circular(18),
+                                                borderRadius: BorderRadius.circular(16),
                                               ),
-                                              textStyle: text.labelLarge?.copyWith(
+                                              textStyle: text.labelMedium?.copyWith(
                                                 fontWeight: FontWeight.w600,
-                                                letterSpacing: 0.5,
+                                                letterSpacing: 0.3,
                                               ),
                                             ),
                                           ),
                                         ),
-                                        const SizedBox(width: 16),
+                                        const SizedBox(width: 12),
                                         Expanded(
                                           child: StreamBuilder<Duration?>(
                                             stream: SleepTimerService.instance.remainingTimeStream,
@@ -1406,19 +1408,19 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                               return FilledButton.tonalIcon(
                                                 icon: Icon(
                                                   active ? Icons.nightlight : Icons.nightlight_round,
-                                                  size: 22,
+                                                  size: 20,
                                                 ),
                                                 label: Text(label),
                                                 onPressed: () => _showSleepTimerSheet(context, np),
                                                 style: FilledButton.styleFrom(
-                                                  padding: const EdgeInsets.symmetric(vertical: 18),
+                                                  padding: const EdgeInsets.symmetric(vertical: 14),
                                                   elevation: 1,
                                                   shape: RoundedRectangleBorder(
-                                                    borderRadius: BorderRadius.circular(18),
+                                                    borderRadius: BorderRadius.circular(16),
                                                   ),
-                                                  textStyle: text.labelLarge?.copyWith(
+                                                  textStyle: text.labelMedium?.copyWith(
                                                     fontWeight: FontWeight.w600,
-                                                    letterSpacing: 0.5,
+                                                    letterSpacing: 0.3,
                                                   ),
                                                 ),
                                               );
