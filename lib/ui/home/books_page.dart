@@ -7,6 +7,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import '../../core/books_repository.dart';
 import '../../core/auth_repository.dart';
 import '../../core/play_history_service.dart';
+import '../../core/play_history_repository.dart';
 import '../../core/image_cache_manager.dart';
 import '../../models/book.dart';
 import '../../widgets/skeleton_widgets.dart';
@@ -51,6 +52,7 @@ class _BooksPageState extends State<BooksPage> {
   SortMode _sort = SortMode.addedDesc;
   String _query = '';
   bool _isEbookLibrary = false;
+  bool _searchVisible = false; // Toggle search visibility
 
   static const _viewKey = 'library_view_pref';
   static const _sortKey = 'library_sort_pref';
@@ -174,6 +176,345 @@ class _BooksPageState extends State<BooksPage> {
       duration: const Duration(milliseconds: 350),
       curve: Curves.easeOutCubic,
     );
+  }
+
+  Future<void> _showPlayHistory(BuildContext context) async {
+    final services = ServicesScope.of(context).services;
+    final historyRepo = services.playHistory;
+    final playback = services.playback;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return FutureBuilder<List<PlayHistoryEntry>>(
+          future: historyRepo.getHistory(),
+          builder: (context, snapshot) {
+            final cs = Theme.of(context).colorScheme;
+            final entries = snapshot.data ?? [];
+
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.9,
+              decoration: BoxDecoration(
+                color: cs.surface,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+              ),
+              child: Column(
+                children: [
+                  // Header with drag handle
+                  Container(
+                    padding: const EdgeInsets.only(top: 12, bottom: 8),
+                    child: Column(
+                      children: [
+                        // Drag handle
+                        Container(
+                          width: 32,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: cs.onSurfaceVariant.withOpacity(0.4),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        // Title and clear button
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: Row(
+                            children: [
+                              Icon(Icons.history_rounded, color: cs.primary),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  'Play History',
+                                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              if (entries.isNotEmpty)
+                                TextButton.icon(
+                                  onPressed: () async {
+                                    final confirmed = await showDialog<bool>(
+                                      context: context,
+                                      builder: (context) => AlertDialog(
+                                        title: const Text('Clear All History?'),
+                                        content: const Text('This will delete all play history entries. This cannot be undone.'),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () => Navigator.of(context).pop(false),
+                                            child: const Text('Cancel'),
+                                          ),
+                                          FilledButton(
+                                            onPressed: () => Navigator.of(context).pop(true),
+                                            style: FilledButton.styleFrom(
+                                              backgroundColor: cs.error,
+                                            ),
+                                            child: const Text('Clear All'),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                    if (confirmed == true && context.mounted) {
+                                      await historyRepo.clearAll();
+                                      Navigator.of(context).pop();
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(content: Text('Play history cleared')),
+                                      );
+                                    }
+                                  },
+                                  icon: const Icon(Icons.delete_sweep_rounded),
+                                  label: const Text('Clear All'),
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: cs.error,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  // List of history entries
+                  Expanded(
+                    child: entries.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.history_rounded,
+                                  size: 64,
+                                  color: cs.onSurfaceVariant.withOpacity(0.3),
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  'No play history yet',
+                                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                    color: cs.onSurfaceVariant,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Your recent playback positions will appear here',
+                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    color: cs.onSurfaceVariant.withOpacity(0.7),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : ListView.builder(
+                            itemCount: entries.length,
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            itemBuilder: (context, index) {
+                              final entry = entries[index];
+                              return Dismissible(
+                                key: Key('history_${entry.id}'),
+                                direction: DismissDirection.endToStart,
+                                confirmDismiss: (direction) async {
+                                  final confirmed = await showDialog<bool>(
+                                    context: context,
+                                    builder: (context) => AlertDialog(
+                                      title: const Text('Delete Entry?'),
+                                      content: Text('Remove "${entry.bookTitle}" from play history?'),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () => Navigator.of(context).pop(false),
+                                          child: const Text('Cancel'),
+                                        ),
+                                        FilledButton(
+                                          onPressed: () => Navigator.of(context).pop(true),
+                                          style: FilledButton.styleFrom(
+                                            backgroundColor: cs.error,
+                                          ),
+                                          child: const Text('Delete'),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                  return confirmed ?? false;
+                                },
+                                onDismissed: (direction) async {
+                                  await historyRepo.deleteEntry(entry.id);
+                                },
+                                background: Container(
+                                  alignment: Alignment.centerRight,
+                                  padding: const EdgeInsets.only(right: 20),
+                                  decoration: BoxDecoration(
+                                    color: cs.errorContainer,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Icon(
+                                    Icons.delete_rounded,
+                                    color: cs.onErrorContainer,
+                                  ),
+                                ),
+                                child: Card(
+                                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                                  elevation: 0,
+                                  color: cs.surfaceContainerHighest,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: ListTile(
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                    leading: ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: entry.coverUrl != null && entry.coverUrl!.isNotEmpty
+                                        ? Image.network(
+                                            entry.coverUrl!,
+                                            width: 48,
+                                            height: 48,
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (context, error, stackTrace) {
+                                              return Container(
+                                                width: 48,
+                                                height: 48,
+                                                color: cs.surfaceContainer,
+                                                child: Icon(
+                                                  Icons.book_rounded,
+                                                  color: cs.onSurfaceVariant,
+                                                ),
+                                              );
+                                            },
+                                          )
+                                        : Container(
+                                            width: 48,
+                                            height: 48,
+                                            color: cs.surfaceContainer,
+                                            child: Icon(
+                                              Icons.book_rounded,
+                                              color: cs.onSurfaceVariant,
+                                            ),
+                                          ),
+                                    ),
+                                    title: Text(
+                                      entry.bookTitle,
+                                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    subtitle: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        if (entry.author != null) ...[
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            'By ${entry.author}',
+                                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                              color: cs.onSurfaceVariant,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ],
+                                        if (entry.narrator != null) ...[
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            'Narrated by ${entry.narrator}',
+                                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                              color: cs.onSurfaceVariant.withOpacity(0.7),
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ],
+                                        const SizedBox(height: 6),
+                                        Row(
+                                          children: [
+                                            // Duration "x of y"
+                                            Text(
+                                              _formatDuration(entry.currentTime, entry.totalDuration),
+                                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                                color: cs.primary,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              '• ${(entry.progress * 100).toStringAsFixed(0)}%',
+                                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                                color: cs.onSurfaceVariant.withOpacity(0.7),
+                                              ),
+                                            ),
+                                            const Spacer(),
+                                            // Timestamp
+                                            Text(
+                                              _formatTimestamp(entry.timestamp),
+                                              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                                color: cs.onSurfaceVariant.withOpacity(0.6),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                    onTap: () async {
+                                      // Play from this position
+                                      Navigator.of(context).pop(); // Close modal
+                                      await playback.playItem(entry.bookId);
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text('Playing: ${entry.bookTitle}'),
+                                            duration: const Duration(seconds: 2),
+                                          ),
+                                        );
+                                      }
+                                    },
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  String _formatTimestamp(DateTime timestamp) {
+    final now = DateTime.now();
+    final diff = now.difference(timestamp);
+    
+    if (diff.inMinutes < 1) return 'Just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    if (diff.inDays == 1) return 'Yesterday';
+    if (diff.inDays < 7) return '${diff.inDays}d ago';
+    if (diff.inDays < 30) return '${(diff.inDays / 7).floor()}w ago';
+    
+    // Format as date for older entries
+    return '${timestamp.month}/${timestamp.day}/${timestamp.year}';
+  }
+
+  String _formatDuration(double currentSeconds, double totalSeconds) {
+    if (totalSeconds <= 0) return '0h of 0h';
+    
+    String formatTime(double seconds) {
+      final hours = (seconds / 3600).floor();
+      final minutes = ((seconds % 3600) / 60).floor();
+      
+      if (hours > 0) {
+        if (minutes > 0) {
+          return '${hours}h ${minutes}m';
+        }
+        return '${hours}h';
+      }
+      return '${minutes}m';
+    }
+    
+    return '${formatTime(currentSeconds)} of ${formatTime(totalSeconds)}';
   }
 
   Future<void> _startConnectivityWatch() async {
@@ -553,6 +894,34 @@ class _BooksPageState extends State<BooksPage> {
             ),
             actions: [
               IconButton.filledTonal(
+                tooltip: 'Play History',
+                onPressed: () => _showPlayHistory(context),
+                icon: const Icon(Icons.history_rounded),
+                style: IconButton.styleFrom(
+                  backgroundColor: cs.surfaceContainerHighest,
+                ),
+              ),
+              IconButton.filledTonal(
+                tooltip: _searchVisible ? 'Hide search' : 'Search',
+                onPressed: () {
+                  setState(() => _searchVisible = !_searchVisible);
+                  if (!_searchVisible) {
+                    // Clear search when hiding
+                    FocusScope.of(context).unfocus();
+                    if (_query.isNotEmpty) {
+                      _searchCtrl.clear();
+                      setState(() => _query = '');
+                      _saveSearchPref('');
+                      _restartSearchPagination();
+                    }
+                  }
+                },
+                icon: Icon(_searchVisible ? Icons.search_off_rounded : Icons.search_rounded),
+                style: IconButton.styleFrom(
+                  backgroundColor: cs.surfaceContainerHighest,
+                ),
+              ),
+              IconButton.filledTonal(
                 tooltip: 'Scroll to top',
                 onPressed: _loading ? null : _scrollToTop,
                 icon: const Icon(Icons.vertical_align_top_rounded),
@@ -600,10 +969,11 @@ class _BooksPageState extends State<BooksPage> {
             ],
           ),
 
-          // Enhanced Search Bar
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          // Enhanced Search Bar (collapsible)
+          if (_searchVisible)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
               child: Column(
                 children: [
                   // Modern search bar

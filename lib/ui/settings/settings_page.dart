@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/playback_speed_service.dart';
 import '../../core/play_history_service.dart';
 import '../../core/ui_prefs.dart';
+import '../../core/play_history_repository.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -28,6 +29,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool? _bluetoothAutoPlay;
   String? _activeLibraryId;
   List<Map<String, String>> _libraries = const [];
+  int? _playHistoryLimit;
 
   @override
   void initState() {
@@ -38,6 +40,9 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _loadPrefs() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      final services = ServicesScope.of(context).services;
+      final historyRepo = services.playHistory;
+      
       setState(() {
         _wifiOnly = prefs.getBool('downloads_wifi_only') ?? false;
         _syncProgressBeforePlay = prefs.getBool('sync_progress_before_play') ?? true;
@@ -47,6 +52,7 @@ class _SettingsPageState extends State<SettingsPage> {
         _authorViewEnabled = prefs.getBool('ui_author_view_enabled') ?? true;
         _bluetoothAutoPlay = prefs.getBool('bluetooth_auto_play') ?? true;
         _activeLibraryId = prefs.getString('books_library_id');
+        _playHistoryLimit = historyRepo.getHistoryLimit();
       });
       await _loadLibraries();
     } catch (_) {
@@ -55,6 +61,7 @@ class _SettingsPageState extends State<SettingsPage> {
         _syncProgressBeforePlay = true;
         _pauseCancelsSleepTimer = true;
         _bluetoothAutoPlay = true;
+        _playHistoryLimit = 30;
       });
     }
   }
@@ -449,6 +456,30 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
               );
             },
+          ),
+          ListTile(
+            title: const Text('Play history limit'),
+            subtitle: Text('Keep last ${_playHistoryLimit ?? 30} play positions'),
+            trailing: DropdownButton<int>(
+              value: _playHistoryLimit ?? 30,
+              items: const [
+                DropdownMenuItem(value: 15, child: Text('15')),
+                DropdownMenuItem(value: 30, child: Text('30')),
+                DropdownMenuItem(value: 50, child: Text('50')),
+                DropdownMenuItem(value: 100, child: Text('100')),
+              ],
+              onChanged: (v) async {
+                if (v == null) return;
+                final historyRepo = services.playHistory;
+                await historyRepo.setHistoryLimit(v);
+                if (mounted) {
+                  setState(() => _playHistoryLimit = v);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Play history limit set to $v')),
+                  );
+                }
+              },
+            ),
           ),
           const Divider(height: 32),
           Padding(

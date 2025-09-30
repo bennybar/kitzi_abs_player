@@ -9,6 +9,7 @@ import 'core/downloads_repository.dart';
 import 'core/theme_service.dart';
 import 'core/audio_service_binding.dart';
 import 'core/notification_service.dart';
+import 'core/play_history_repository.dart';
 
 import 'ui/login/login_screen.dart';
 import 'ui/main/main_scaffold.dart';
@@ -21,11 +22,13 @@ class AppServices {
   final PlaybackRepository playback;
   final DownloadsRepository downloads;
   final ThemeService theme;
+  final PlayHistoryRepository playHistory;
   AppServices({
     required this.auth,
     required this.playback,
     required this.downloads,
     required this.theme,
+    required this.playHistory,
   });
 }
 
@@ -65,9 +68,11 @@ Future<void> main() async {
   // Initialize notifications early
   await NotificationService.instance.initialize();
 
-  // Construct singletons (Auth -> Playback -> Downloads)
+  // Construct singletons (Auth -> PlayHistory -> Playback -> Downloads)
   final auth = await AuthRepository.ensure();
-  final playback = PlaybackRepository(auth);
+  final playHistory = PlayHistoryRepository();
+  await playHistory.init();
+  final playback = PlaybackRepository(auth, playHistoryRepo: playHistory);
   final downloads = DownloadsRepository(auth, playback);
   final theme = ThemeService();
   await downloads.init();
@@ -77,6 +82,7 @@ Future<void> main() async {
     playback: playback,
     downloads: downloads,
     theme: theme,
+    playHistory: playHistory,
   );
 
   // Ensure AudioService is initialized early so Android Auto can discover the
@@ -184,7 +190,7 @@ class _AbsAppState extends State<AbsApp> {
             ),
           );
         }
-
+        
         return DynamicColorBuilder(
           builder: (lightDynamic, darkDynamic) {
             final seed = Colors.deepPurple;

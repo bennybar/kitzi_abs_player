@@ -17,6 +17,7 @@ import 'sleep_timer_service.dart';
 import 'playback_speed_service.dart';
 import 'download_storage.dart';
 import 'play_history_service.dart';
+import 'play_history_repository.dart';
 import '../models/book.dart';
 import 'books_repository.dart';
 
@@ -105,11 +106,13 @@ class PlaybackRepository {
     _debugLogCtr.add(msg);
   }
 
-  PlaybackRepository(this._auth) {
+  PlaybackRepository(this._auth, {PlayHistoryRepository? playHistoryRepo}) 
+      : _playHistoryRepo = playHistoryRepo {
     _init();
   }
 
   final AuthRepository _auth;
+  final PlayHistoryRepository? _playHistoryRepo;
   final AudioPlayer player = AudioPlayer();
 
   final StreamController<NowPlaying?> _nowPlayingCtr =
@@ -492,7 +495,7 @@ class PlaybackRepository {
       episodeId: episodeId,
     );
     
-    // Add to play history
+    // Add to play history (Resume Playing feature)
     try {
       final book = await _getBookForHistory(libraryItemId);
       if (book != null) {
@@ -502,6 +505,31 @@ class PlaybackRepository {
       // Don't fail playback if history tracking fails
       _log('Failed to add to play history: $e');
     }
+    
+    // Add to new play history repository (for Play History modal)
+    try {
+      if (_playHistoryRepo != null) {
+        final resumeSec = await fetchServerProgress(libraryItemId) ?? 0.0;
+        final totalDuration = tracks.fold<double>(0, (sum, t) => sum + (t.duration ?? 0));
+        final progress = totalDuration > 0 
+            ? (resumeSec / totalDuration).clamp(0.0, 1.0) 
+            : 0.0;
+        
+        await _playHistoryRepo!.addEntry(
+          bookId: libraryItemId,
+          bookTitle: _titleFromMeta(meta) ?? 'Audiobook',
+          author: _authorFromMeta(meta),
+          narrator: _narratorFromMeta(meta),
+          progress: progress,
+          currentTime: resumeSec,
+          totalDuration: totalDuration,
+          coverUrl: await _coverUrl(libraryItemId),
+        );
+      }
+    } catch (e) {
+      debugPrint('Failed to add to play history: $e');
+    }
+    
     _setNowPlaying(np);
     _progressItemId = libraryItemId;
     _activeSessionId = openedSessionId;
