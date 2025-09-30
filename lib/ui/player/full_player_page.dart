@@ -21,55 +21,34 @@ class FullPlayerPage extends StatefulWidget {
       await Navigator.of(context).push(PageRouteBuilder(
         pageBuilder: (_, __, ___) => const FullPlayerPage(),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          // Create multiple curved animations for different elements
-          final slideCurve = CurvedAnimation(
+          // YouTube Music style: smooth slide up from bottom with fade
+          final curve = CurvedAnimation(
             parent: animation,
-            curve: const Interval(0.0, 0.8, curve: Curves.easeOutQuart),
-          );
-          final fadeCurve = CurvedAnimation(
-            parent: animation,
-            curve: const Interval(0.0, 1.0, curve: Curves.easeOut),
-          );
-          final scaleCurve = CurvedAnimation(
-            parent: animation,
-            curve: const Interval(0.0, 0.9, curve: Curves.elasticOut),
-          );
-          final contentCurve = CurvedAnimation(
-            parent: animation,
-            curve: const Interval(0.2, 1.0, curve: Curves.easeOutCubic),
+            curve: Curves.easeInOutCubic,
+            reverseCurve: Curves.easeInOutCubic,
           );
 
           return SlideTransition(
             position: Tween<Offset>(
-              begin: const Offset(0, 0.15),
+              begin: const Offset(0, 1.0), // Start from bottom
               end: Offset.zero,
-            ).animate(slideCurve),
+            ).animate(curve),
             child: FadeTransition(
-              opacity: fadeCurve,
-              child: ScaleTransition(
-                scale: Tween<double>(
-                  begin: 0.95,
-                  end: 1.0,
-                ).animate(scaleCurve),
-                child: AnimatedBuilder(
-                  animation: contentCurve,
-                  builder: (context, child) {
-                    return Transform.translate(
-                      offset: Offset(0, 20 * (1 - contentCurve.value)),
-                      child: Opacity(
-                        opacity: contentCurve.value,
-                        child: child,
-                      ),
-                    );
-                  },
-                  child: child,
-                ),
-              ),
+              opacity: Tween<double>(
+                begin: 0.0,
+                end: 1.0,
+              ).animate(CurvedAnimation(
+                parent: animation,
+                curve: const Interval(0.0, 0.3, curve: Curves.easeOut),
+              )),
+              child: child,
             ),
           );
         },
-        transitionDuration: const Duration(milliseconds: 350),
-        reverseTransitionDuration: const Duration(milliseconds: 250),
+        transitionDuration: const Duration(milliseconds: 300),
+        reverseTransitionDuration: const Duration(milliseconds: 300),
+        opaque: false, // Allow background to show through during transition
+        barrierColor: Colors.black54,
       ));
     } finally {
       _isOpen = false;

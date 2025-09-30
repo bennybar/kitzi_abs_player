@@ -251,99 +251,114 @@ class _BookDetailPageState extends State<BookDetailPage> {
     final text = Theme.of(context).textTheme;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Book details'),
-        actions: [
-          // Mark as finished button - only show for audio books
-          FutureBuilder<Book>(
-            future: _bookFut,
-            builder: (context, bookSnap) {
-              if (bookSnap.connectionState != ConnectionState.done || !bookSnap.hasData) {
-                return const SizedBox.shrink();
-              }
-              
-              final book = bookSnap.data!;
-              if (!book.isAudioBook) {
-                return const SizedBox.shrink();
-              }
-              
-              return StreamBuilder<bool>(
-                stream: _getBookCompletionStream(playbackRepo, book.id),
-                initialData: false,
-                builder: (_, completionSnap) {
-                  final isCompleted = completionSnap.data ?? false;
-                  
-                  // Only show the button if the book is not finished
-                  debugPrint('[COMPLETION_DEBUG] Mark as finished button stream: book=${book.id}, isCompleted=$isCompleted');
-                  debugPrint('[COMPLETION_DEBUG] Stream data: ${completionSnap.data}');
-                  
-                  if (isCompleted) {
-                    debugPrint('[COMPLETION_DEBUG] Hiding mark as finished button - book is completed');
-                    return const SizedBox.shrink();
-                  }
-                  
-                  debugPrint('[COMPLETION_DEBUG] Showing mark as finished button - book is not completed');
-                  
-                  return IconButton.filledTonal(
-                    onPressed: () => _toggleBookCompletion(context, book, isCompleted),
-                    icon: const Icon(Icons.check_circle_outline_rounded),
-                    tooltip: 'Mark as finished',
-                    style: IconButton.styleFrom(
-                      backgroundColor: cs.surfaceContainerHighest,
-                      foregroundColor: cs.onSurface,
+      backgroundColor: cs.surface,
+      body: Column(
+        children: [
+          // Material Design drag handle (centered, subtle)
+          Center(
+            child: Container(
+              width: 32,
+              height: 4,
+              margin: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                color: cs.onSurfaceVariant.withOpacity(0.4),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          // Header with title and mark as finished button
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Book Details',
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w600),
+                  ),
+                ),
+                // Mark as finished button - only show for audio books
+                FutureBuilder<Book>(
+                  future: _bookFut,
+                  builder: (context, bookSnap) {
+                    if (bookSnap.connectionState != ConnectionState.done || !bookSnap.hasData) {
+                      return const SizedBox.shrink();
+                    }
+                    
+                    final book = bookSnap.data!;
+                    if (!book.isAudioBook) {
+                      return const SizedBox.shrink();
+                    }
+                    
+                    return StreamBuilder<bool>(
+                      stream: _getBookCompletionStream(playbackRepo, book.id),
+                      initialData: false,
+                      builder: (_, completionSnap) {
+                        final isCompleted = completionSnap.data ?? false;
+                        
+                        if (isCompleted) {
+                          return const SizedBox.shrink();
+                        }
+                        
+                        return IconButton.filledTonal(
+                          onPressed: () => _toggleBookCompletion(context, book, isCompleted),
+                          icon: const Icon(Icons.check_circle_outline_rounded),
+                          tooltip: 'Mark as finished',
+                          style: IconButton.styleFrom(
+                            backgroundColor: cs.surfaceContainerHighest,
+                            foregroundColor: cs.onSurface,
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+          // Content
+          Expanded(
+            child: FutureBuilder<Book>(
+              future: _bookFut,
+              builder: (context, snap) {
+                if (snap.connectionState != ConnectionState.done) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (snap.hasError || !snap.hasData) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Text(
+                        snap.error.toString().contains('offline_not_cached')
+                            ? 'This book has not been opened before. Connect to the internet once to cache details for offline access.'
+                            : 'Failed to load book.',
+                        style: TextStyle(color: cs.error),
+                      ),
                     ),
                   );
-                },
-              );
-            },
-          ),
-        ],
-      ),
-      body: Stack(
-        children: [
-          FutureBuilder<Book>(
-            future: _bookFut,
-            builder: (context, snap) {
-              if (snap.connectionState != ConnectionState.done) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              if (snap.hasError || !snap.hasData) {
-                return Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Text(
-                      snap.error.toString().contains('offline_not_cached')
-                          ? 'This book has not been opened before. Connect to the internet once to cache details for offline access.'
-                          : 'Failed to load book.',
-                      style: TextStyle(color: cs.error),
-                    ),
-                  ),
-                );
-              }
+                }
 
-              final b = snap.data!;
+                final b = snap.data!;
               // No verbose logging in production
 
-              String fmtDuration() {
-                final ms = _resolvedDurationMs ?? b.durationMs;
-                if (ms == null || ms == 0) return 'Unknown';
-                final d = Duration(milliseconds: ms);
-                final h = d.inHours;
-                final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
-                return h > 0 ? '$h h $m m' : '$m m';
-              }
+                String fmtDuration() {
+                  final ms = _resolvedDurationMs ?? b.durationMs;
+                  if (ms == null || ms == 0) return 'Unknown';
+                  final d = Duration(milliseconds: ms);
+                  final h = d.inHours;
+                  final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+                  return h > 0 ? '$h h $m m' : '$m m';
+                }
 
-              String fmtSize() {
-                final sz = _resolvedSizeBytes ?? b.sizeBytes;
-                if (sz == null || sz == 0) return '—';
-                final mb = (sz / (1024 * 1024));
-                return '${mb.toStringAsFixed(1)} MB';
-              }
+                String fmtSize() {
+                  final sz = _resolvedSizeBytes ?? b.sizeBytes;
+                  if (sz == null || sz == 0) return '—';
+                  final mb = (sz / (1024 * 1024));
+                  return '${mb.toStringAsFixed(1)} MB';
+                }
 
-              // Layout: header and actions stay static; description area scrolls independently.
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 112), // room for mini player
-                child: Column(
+                // Layout: header and actions stay static; description area scrolls independently.
+                return Column(
                   children: [
                     if (!_kickedResolve) ...[
                       // Kick best-effort resolves once when page builds with data
@@ -748,17 +763,8 @@ class _BookDetailPageState extends State<BookDetailPage> {
                         ),
                       ),
                   ],
-                ),
-              );
-            },
-          ),
-
-          // Mini player
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: SafeArea(
-              top: false,
-              child: MiniPlayer(height: 72),
+                );
+              },
             ),
           ),
         ],

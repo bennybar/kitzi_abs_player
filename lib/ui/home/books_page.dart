@@ -414,8 +414,19 @@ class _BooksPageState extends State<BooksPage> {
   }
 
   void _openDetails(Book b) {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => BookDetailPage(bookId: b.id)),
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        height: MediaQuery.of(context).size.height * 0.95,
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        child: BookDetailPage(bookId: b.id),
+      ),
     );
   }
 
@@ -746,7 +757,7 @@ class _BooksPageState extends State<BooksPage> {
 
   Widget _buildGrid(List<Book> list) {
     return SliverPadding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
       sliver: SliverGrid(
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 3,
@@ -835,7 +846,7 @@ class _BooksPageState extends State<BooksPage> {
 
   Widget _buildList(List<Book> list) {
     return SliverPadding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
       sliver: SliverList.separated(
         itemCount: list.length,
         separatorBuilder: (_, __) => const SizedBox(height: 8),

@@ -249,14 +249,40 @@ class _SeriesPageState extends State<SeriesPage> {
                           name: name,
                           books: items,
                           onTapBook: (b) {
-                            Navigator.of(context).push(MaterialPageRoute(builder: (_) => BookDetailPage(bookId: b.id)));
+                            showModalBottomSheet(
+                              context: context,
+                              isScrollControlled: true,
+                              useSafeArea: true,
+                              backgroundColor: Colors.transparent,
+                              builder: (context) => Container(
+                                height: MediaQuery.of(context).size.height * 0.95,
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context).colorScheme.surface,
+                                  borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                                ),
+                                child: BookDetailPage(bookId: b.id),
+                              ),
+                            );
                           },
                         )
                       : _CollectionCard(
                           name: name,
                           books: items,
                           onTapBook: (b) {
-                            Navigator.of(context).push(MaterialPageRoute(builder: (_) => BookDetailPage(bookId: b.id)));
+                            showModalBottomSheet(
+                              context: context,
+                              isScrollControlled: true,
+                              useSafeArea: true,
+                              backgroundColor: Colors.transparent,
+                              builder: (context) => Container(
+                                height: MediaQuery.of(context).size.height * 0.95,
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context).colorScheme.surface,
+                                  borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                                ),
+                                child: BookDetailPage(bookId: b.id),
+                              ),
+                            );
                           },
                         );
                 },

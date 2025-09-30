@@ -93,9 +93,7 @@ class _MainScaffoldState extends State<MainScaffold> {
       builder: (_, snap) {
         final hideOnSettingsIndex = pages.length - 1;
         final hasMini = snap.data != null && safeIndex != hideOnSettingsIndex; // hide on Settings
-        // Use a single consistent NavigationBar height across all pages
         const double navHeight = 60;
-        const double miniHeight = 60;
 
         return Scaffold(
           backgroundColor: cs.surface,
@@ -103,9 +101,14 @@ class _MainScaffoldState extends State<MainScaffold> {
           bottomNavigationBar: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (hasMini)
-                const SafeArea(top: false, bottom: false, child: MiniPlayer(height: 60)),
-              if (hasMini) const SizedBox(height: 4),
+              // Mini player with animated size - only takes space when visible
+              AnimatedSize(
+                duration: const Duration(milliseconds: 250),
+                curve: Curves.easeInOut,
+                child: hasMini
+                    ? const MiniPlayer(height: 68)
+                    : const SizedBox.shrink(),
+              ),
               NavigationBar(
                 selectedIndex: safeIndex,
                 onDestinationSelected: (i) {

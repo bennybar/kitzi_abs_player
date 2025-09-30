@@ -40,40 +40,14 @@ class MiniPlayer extends StatelessWidget {
             child: StreamBuilder<NowPlaying?>(
               stream: playback.nowPlayingStream,
               initialData: playback.nowPlaying,
-              builder: (context, snap) {
-                final np = snap.data;
-                if (np == null) {
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            color: cs.surfaceContainerHighest,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Icon(
-                            Icons.menu_book_outlined,
-                            color: cs.onSurfaceVariant,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            'Nothing playing',
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: cs.onSurfaceVariant,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                }
+               builder: (context, snap) {
+                 final np = snap.data;
+                 // Return empty when no content - parent AnimatedSize will collapse this
+                 if (np == null) {
+                   return const SizedBox.shrink();
+                 }
 
-                return Padding(
+                 return Padding(
                   padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
                   child: Row(
                     children: [
