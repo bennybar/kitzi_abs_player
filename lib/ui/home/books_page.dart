@@ -603,6 +603,8 @@ class _BooksPageState extends State<BooksPage> {
                           IconButton(
                             tooltip: 'Clear',
                             onPressed: () {
+                              // Hide keyboard
+                              FocusScope.of(context).unfocus();
                               _searchCtrl.clear();
                               setState(() => _query = '');
                               _saveSearchPref('');
