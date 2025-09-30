@@ -9,11 +9,9 @@ import 'dart:io';
 import '../../core/books_repository.dart';
 import '../../models/book.dart';
 import '../../core/playback_repository.dart';
-import '../../widgets/mini_player.dart';
 import '../../widgets/download_button.dart';
 import '../../main.dart'; // ServicesScope
 import '../../ui/player/full_player_page.dart'; // Added import for FullPlayerPage
-import 'dart:io';
 import '../../core/books_repository.dart' as repo_helpers;
 import 'package:just_audio/just_audio.dart';
 
@@ -1144,21 +1142,21 @@ class _ProgressSummary extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  '${_fmtHMS(seconds)}',
+                  _fmtHMS(seconds),
                   style: text.titleMedium?.copyWith(
                     color: cs.onSurface,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
                 Text(
-                  '${progressPercent}%',
+                  '$progressPercent%',
                   style: text.titleMedium?.copyWith(
                     color: cs.primary,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
                 Text(
-                  '${_fmtHMS(totalSeconds)}',
+                  _fmtHMS(totalSeconds),
                   style: text.titleMedium?.copyWith(
                     color: cs.onSurfaceVariant,
                     fontWeight: FontWeight.w500,

@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../core/books_repository.dart';
-import '../../models/book.dart';
 import '../../widgets/author_card.dart';
 
 class AuthorsPage extends StatefulWidget {
@@ -227,7 +226,6 @@ class _AuthorsPageState extends State<AuthorsPage> {
 
 class _AuthorTile extends StatelessWidget {
   const _AuthorTile({
-    super.key,
     required this.author,
     required this.onTap,
   });

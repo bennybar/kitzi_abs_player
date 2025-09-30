@@ -13,6 +13,11 @@ import '../../widgets/skeleton_widgets.dart';
 import '../book_detail/book_detail_page.dart';
 import '../../main.dart';
 
+// For unawaited background tasks
+void _unawaited(Future<void> future) {
+  unawaited(future);
+}
+
 enum LibraryView { grid, list }
 enum SortMode { nameAsc, addedDesc }
 
@@ -443,6 +448,7 @@ class _BooksPageState extends State<BooksPage> {
 
     // Show only audiobooks
     list = list.where((b) => b.isAudioBook && (b.libraryId == null || !_isEbookLibrary)).toList();
+    
     switch (_sort) {
       case SortMode.nameAsc:
         list.sort(
@@ -460,6 +466,39 @@ class _BooksPageState extends State<BooksPage> {
         break;
     }
     return list;
+  }
+  
+  Future<double> _fetchProgress(String bookId) async {
+    try {
+      final playback = ServicesScope.of(context).services.playback;
+      final progress = await playback.fetchServerProgress(bookId);
+      if (progress != null && progress > 0) {
+        // Fetch duration to calculate percentage
+        final repo = await _repoFut;
+        final book = await repo.getBookFromDb(bookId);
+        if (book != null && book.durationMs != null && book.durationMs! > 0) {
+          final durationSec = book.durationMs! / 1000;
+          return (progress / durationSec).clamp(0.0, 1.0);
+        }
+      }
+      return 0.0;
+    } catch (_) {
+      return 0.0;
+    }
+  }
+  
+  double _getBookProgress(String bookId) {
+    // Synchronous version for filters - uses completion cache only
+    try {
+      final playback = ServicesScope.of(context).services.playback;
+      final isCompleted = playback.completionCache[bookId];
+      if (isCompleted == true) return 1.0;
+      // For in-progress detection, we'd need async - return 0 for now
+      // Filters will work best with completed status
+      return 0.0;
+    } catch (_) {
+      return 0.0;
+    }
   }
 
   @override
@@ -759,7 +798,7 @@ class _BooksPageState extends State<BooksPage> {
 
   Widget _buildGrid(List<Book> list) {
     return SliverPadding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
       sliver: SliverGrid(
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 3,
@@ -848,7 +887,7 @@ class _BooksPageState extends State<BooksPage> {
 
   Widget _buildList(List<Book> list) {
     return SliverPadding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
       sliver: SliverList.separated(
         itemCount: list.length,
         separatorBuilder: (_, __) => const SizedBox(height: 8),
@@ -864,11 +903,89 @@ class _BooksPageState extends State<BooksPage> {
             });
           }
           
-          return _BookListTile(
-            key: ValueKey(b.id), // Add key for better widget recycling
-            book: b,
-            onTap: b.isAudioBook ? () => _openDetails(b) : null,
-            checkIfCompleted: _checkIfCompleted,
+          return Dismissible(
+            key: ValueKey(b.id),
+            direction: DismissDirection.horizontal,
+            dismissThresholds: const {
+              DismissDirection.endToStart: 0.4,
+              DismissDirection.startToEnd: 0.4,
+            },
+            confirmDismiss: (direction) async {
+              // Execute actions in background and bounce back immediately
+              if (direction == DismissDirection.endToStart) {
+                // Swipe left → Play (background)
+                if (b.isAudioBook) {
+                  final playback = ServicesScope.of(context).services.playback;
+                  final ctx = context;
+                  // Fire and forget - bounce back immediately
+                  unawaited(playback.playItem(b.id, context: ctx).then((success) {
+                    if (ctx.mounted && success) {
+                      ScaffoldMessenger.of(ctx).showSnackBar(
+                        SnackBar(
+                          content: Text('Playing: ${b.title}'),
+                          duration: const Duration(seconds: 2),
+                        ),
+                      );
+                    }
+                  }));
+                }
+              } else if (direction == DismissDirection.startToEnd) {
+                // Swipe right → Download/Delete (background)
+                if (b.isAudioBook) {
+                  final downloads = ServicesScope.of(context).services.downloads;
+                  final ctx = context;
+                  // Fire and forget - bounce back immediately
+                  unawaited(downloads.hasLocalDownloads(b.id).then((hasLocal) async {
+                    if (hasLocal) {
+                      await downloads.deleteLocal(b.id);
+                      if (ctx.mounted) {
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                          SnackBar(
+                            content: Text('Deleted: ${b.title}'),
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                      }
+                    } else {
+                      await downloads.enqueueItemDownloads(b.id, displayTitle: b.title);
+                      if (ctx.mounted) {
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                          SnackBar(
+                            content: Text('Downloading: ${b.title}'),
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                      }
+                    }
+                  }));
+                }
+              }
+              return false; // Return immediately - action runs in background
+            },
+            background: Container(
+              alignment: Alignment.centerLeft,
+              padding: const EdgeInsets.only(left: 20),
+              decoration: BoxDecoration(
+                color: Colors.green,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Icon(Icons.download_rounded, color: Colors.white, size: 28),
+            ),
+            secondaryBackground: Container(
+              alignment: Alignment.centerRight,
+              padding: const EdgeInsets.only(right: 20),
+              decoration: BoxDecoration(
+                color: Colors.blue,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 32),
+            ),
+            child: _BookListTile(
+              key: ValueKey('tile-${b.id}'),
+              book: b,
+              onTap: b.isAudioBook ? () => _openDetails(b) : null,
+              checkIfCompleted: _checkIfCompleted,
+            ),
           );
         },
       ),
@@ -1251,16 +1368,49 @@ class _ResumeBookCard extends StatelessWidget {
   }
 }
 
-class _BookListTile extends StatelessWidget {
+class _BookListTile extends StatefulWidget {
   const _BookListTile({super.key, required this.book, required this.onTap, required this.checkIfCompleted});
   final Book book;
   final VoidCallback? onTap;
   final Future<bool> Function(String) checkIfCompleted;
 
   @override
+  State<_BookListTile> createState() => _BookListTileState();
+}
+
+class _BookListTileState extends State<_BookListTile> {
+  Future<double>? _progressFuture;
+  
+  @override
+  void initState() {
+    super.initState();
+    // Fetch progress once when tile is created
+    _progressFuture = _fetchProgress();
+  }
+  
+  Future<double> _fetchProgress() async {
+    try {
+      final services = ServicesScope.of(context).services;
+      final playback = services.playback;
+      final progress = await playback.fetchServerProgress(widget.book.id);
+      if (progress != null && progress > 0) {
+        final durationMs = widget.book.durationMs;
+        if (durationMs != null && durationMs > 0) {
+          final durationSec = durationMs / 1000;
+          return (progress / durationSec).clamp(0.0, 1.0);
+        }
+      }
+      return 0.0;
+    } catch (_) {
+      return 0.0;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final disabled = !book.isAudioBook;
+    final disabled = !widget.book.isAudioBook;
+    final services = ServicesScope.of(context).services;
 
     return Card(
       elevation: 0,
@@ -1272,13 +1422,13 @@ class _BookListTile extends StatelessWidget {
         ),
       ),
       child: InkWell(
-        onTap: onTap,
+        onTap: widget.onTap,
         borderRadius: BorderRadius.circular(16),
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Row(
             children: [
-              // Enhanced cover with completion indicator
+              // Enhanced cover with progress indicator, download badge, and completion
               Stack(
                 children: [
                   Container(
@@ -1293,39 +1443,80 @@ class _BookListTile extends StatelessWidget {
                       ],
                     ),
                     child: Hero(
-                      tag: 'home-cover-${book.id}',
+                      tag: 'home-cover-${widget.book.id}',
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(12),
-                        child: EnhancedCoverImage(url: book.coverUrl, width: 72, height: 72),
+                        child: EnhancedCoverImage(url: widget.book.coverUrl, width: 72, height: 72),
                       ),
                     ),
                   ),
-                  // Completion checkmark overlay
-                  if (book.isAudioBook)
-                    FutureBuilder<bool>(
-                      future: checkIfCompleted(book.id),
+                  // Circular progress indicator around cover
+                  if (widget.book.isAudioBook)
+                    Positioned.fill(
+                      child: FutureBuilder<double>(
+                        future: _progressFuture,
+                        builder: (context, snapshot) {
+                          final progress = snapshot.data ?? 0.0;
+                          if (progress > 0 && progress < 0.99) {
+                            return CircularProgressIndicator(
+                              value: progress,
+                              strokeWidth: 3,
+                              backgroundColor: Colors.black.withOpacity(0.2),
+                              valueColor: AlwaysStoppedAnimation<Color>(cs.primary),
+                            );
+                          }
+                          return const SizedBox.shrink();
+                        },
+                      ),
+                    ),
+                  // Download badge (bottom right)
+                  if (widget.book.isAudioBook)
+                    StreamBuilder<bool>(
+                      stream: services.downloads.watchItemProgress(widget.book.id).map((p) => p.status == 'complete'),
+                      initialData: false,
                       builder: (context, snapshot) {
                         if (snapshot.data == true) {
                           return Positioned(
-                            top: 4,
-                            right: 4,
+                            bottom: 2,
+                            right: 2,
                             child: Container(
-                              padding: const EdgeInsets.all(2),
+                              padding: const EdgeInsets.all(3),
+                              decoration: BoxDecoration(
+                                color: cs.primaryContainer,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: cs.surface, width: 1.5),
+                              ),
+                              child: Icon(
+                                Icons.offline_pin,
+                                color: cs.onPrimaryContainer,
+                                size: 14,
+                              ),
+                            ),
+                          );
+                        }
+                        return const SizedBox.shrink();
+                      },
+                    ),
+                  // Completion checkmark overlay (top right)
+                  if (widget.book.isAudioBook)
+                    FutureBuilder<bool>(
+                      future: widget.checkIfCompleted(widget.book.id),
+                      builder: (context, snapshot) {
+                        if (snapshot.data == true) {
+                          return Positioned(
+                            top: 2,
+                            right: 2,
+                            child: Container(
+                              padding: const EdgeInsets.all(3),
                               decoration: BoxDecoration(
                                 color: Colors.green,
-                                borderRadius: BorderRadius.circular(12),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(0.3),
-                                    blurRadius: 4,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ],
+                                shape: BoxShape.circle,
+                                border: Border.all(color: cs.surface, width: 1.5),
                               ),
                               child: const Icon(
                                 Icons.check,
                                 color: Colors.white,
-                                size: 16,
+                                size: 12,
                               ),
                             ),
                           );
@@ -1337,13 +1528,13 @@ class _BookListTile extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               
-              // Title and author
+              // Title, author, and narrator
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      book.title,
+                      widget.book.title,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
@@ -1351,15 +1542,42 @@ class _BookListTile extends StatelessWidget {
                         color: disabled ? cs.onSurface.withOpacity(0.4) : null,
                       ),
                     ),
-                    if (book.author != null && book.author!.isNotEmpty) ...[
+                    if (widget.book.author != null && widget.book.author!.isNotEmpty) ...[
                       const SizedBox(height: 4),
                       Text(
-                        book.author!,
+                        widget.book.author!,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: disabled ? cs.onSurfaceVariant.withOpacity(0.4) : cs.onSurfaceVariant,
                         ),
+                      ),
+                    ],
+                    if (widget.book.narrators != null && widget.book.narrators!.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        'Narrated by ${widget.book.narrators!.join(', ')}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: disabled ? cs.onSurfaceVariant.withOpacity(0.3) : cs.onSurfaceVariant.withOpacity(0.8),
+                        ),
+                      ),
+                    ],
+                    // Duration
+                    if (widget.book.durationMs != null && widget.book.durationMs! > 0) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(Icons.schedule_rounded, size: 14, color: cs.onSurfaceVariant.withOpacity(0.7)),
+                          const SizedBox(width: 4),
+                          Text(
+                            _formatDuration(widget.book.durationMs!),
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: disabled ? cs.onSurfaceVariant.withOpacity(0.3) : cs.onSurfaceVariant.withOpacity(0.7),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                     if (disabled) ...[
@@ -1395,6 +1613,18 @@ class _BookListTile extends StatelessWidget {
         ),
       ),
     );
+  }
+  
+  String _formatDuration(int durationMs) {
+    final duration = Duration(milliseconds: durationMs);
+    final hours = duration.inHours;
+    final minutes = duration.inMinutes.remainder(60);
+    
+    if (hours > 0) {
+      return '${hours}h ${minutes}m';
+    } else {
+      return '${minutes}m';
+    }
   }
 
 }

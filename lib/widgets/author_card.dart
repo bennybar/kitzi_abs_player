@@ -129,10 +129,21 @@ class _AuthorCardState extends State<AuthorCard> {
                       return _AuthorBookTile(
                         book: book,
                         onTap: () {
-                          Navigator.of(context).pop();
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (context) => BookDetailPage(bookId: book.id),
+                          // Open book detail as modal on top of author books
+                          // Don't close the author books modal - when book detail is dismissed,
+                          // user returns to this author's books list
+                          showModalBottomSheet(
+                            context: context,
+                            isScrollControlled: true,
+                            useSafeArea: true,
+                            backgroundColor: Colors.transparent,
+                            builder: (context) => Container(
+                              height: MediaQuery.of(context).size.height * 0.95,
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.surface,
+                                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                              ),
+                              child: BookDetailPage(bookId: book.id),
                             ),
                           );
                         },
