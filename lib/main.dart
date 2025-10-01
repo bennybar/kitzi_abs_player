@@ -234,6 +234,18 @@ class _AbsAppState extends State<AbsApp> {
                       surfaceContainerHighest: Color.lerp(lightScheme.surfaceContainerHighest, primary, 0.08),
                     );
                     break;
+                  case SurfaceTintLevel.veryStrong:
+                    // Very Strong tint - heavily saturated color
+                    final primary = lightScheme.primary;
+                    lightScheme = lightScheme.copyWith(
+                      surface: Color.lerp(lightScheme.surface, primary, 0.08),
+                      surfaceContainerLowest: Color.lerp(lightScheme.surfaceContainerLowest, primary, 0.08),
+                      surfaceContainerLow: Color.lerp(lightScheme.surfaceContainerLow, primary, 0.10),
+                      surfaceContainer: Color.lerp(lightScheme.surfaceContainer, primary, 0.12),
+                      surfaceContainerHigh: Color.lerp(lightScheme.surfaceContainerHigh, primary, 0.14),
+                      surfaceContainerHighest: Color.lerp(lightScheme.surfaceContainerHighest, primary, 0.16),
+                    );
+                    break;
                 }
 
                 return MaterialApp(

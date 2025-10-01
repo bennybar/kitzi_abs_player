@@ -7,7 +7,8 @@ enum SurfaceTintLevel {
   none('Pure White', 0),
   light('Light Tint', 1),
   medium('Medium Tint', 2),
-  strong('Strong Tint', 3);
+  strong('Strong Tint', 3),
+  veryStrong('Very Strong Tint', 4);
 
   final String label;
   final int value;

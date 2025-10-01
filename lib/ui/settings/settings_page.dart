@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/playback_speed_service.dart';
 import '../../core/play_history_service.dart';
 import '../../core/ui_prefs.dart';
+import '../../core/theme_service.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
