@@ -17,8 +17,10 @@ class MiniPlayer extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
 
     // YouTube Music style: full-width, flat, no rounded corners
+    // Use lighter surface to avoid being too dark with tinted surfaces
     return Material(
-      color: cs.surfaceContainer,
+      color: cs.surface,
+      elevation: 2,
       child: InkWell(
         onTap: () async {
           await FullPlayerPage.openOnce(context);
