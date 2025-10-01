@@ -137,9 +137,9 @@ class _AbsAppState extends State<AbsApp> {
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: services.theme.mode,
       builder: (_, themeMode, __) {
-        return ValueListenableBuilder<bool>(
-          valueListenable: services.theme.useTintedSurfaces,
-          builder: (_, useTintedSurfaces, __) {
+        return ValueListenableBuilder<SurfaceTintLevel>(
+          valueListenable: services.theme.surfaceTintLevel,
+          builder: (_, tintLevel, __) {
             ThemeData expressiveTheme(ColorScheme scheme) {
               return ThemeData(
                 useMaterial3: true,
@@ -194,16 +194,46 @@ class _AbsAppState extends State<AbsApp> {
                 var lightScheme = (lightDynamic ?? ColorScheme.fromSeed(seedColor: seed)).harmonized();
                 final darkScheme = (darkDynamic ?? ColorScheme.fromSeed(seedColor: seed, brightness: Brightness.dark)).harmonized();
 
-                // If tinted surfaces are disabled, create a pure white light scheme
-                if (!useTintedSurfaces) {
-                  lightScheme = lightScheme.copyWith(
-                    surface: Colors.white,
-                    surfaceContainerLowest: Colors.white,
-                    surfaceContainerLow: const Color(0xFFFAFAFA),
-                    surfaceContainer: const Color(0xFFF5F5F5),
-                    surfaceContainerHigh: const Color(0xFFF0F0F0),
-                    surfaceContainerHighest: const Color(0xFFEEEEEE),
-                  );
+                // Apply surface tint level to light scheme
+                switch (tintLevel) {
+                  case SurfaceTintLevel.none:
+                    // Pure white - no tint at all
+                    lightScheme = lightScheme.copyWith(
+                      surface: Colors.white,
+                      surfaceContainerLowest: Colors.white,
+                      surfaceContainerLow: const Color(0xFFFAFAFA),
+                      surfaceContainer: const Color(0xFFF5F5F5),
+                      surfaceContainerHigh: const Color(0xFFF0F0F0),
+                      surfaceContainerHighest: const Color(0xFFEEEEEE),
+                    );
+                    break;
+                  case SurfaceTintLevel.light:
+                    // Light tint - very subtle color
+                    final primary = lightScheme.primary;
+                    lightScheme = lightScheme.copyWith(
+                      surface: Color.lerp(Colors.white, primary, 0.01),
+                      surfaceContainerLowest: Color.lerp(Colors.white, primary, 0.01),
+                      surfaceContainerLow: Color.lerp(const Color(0xFFFAFAFA), primary, 0.015),
+                      surfaceContainer: Color.lerp(const Color(0xFFF5F5F5), primary, 0.02),
+                      surfaceContainerHigh: Color.lerp(const Color(0xFFF0F0F0), primary, 0.025),
+                      surfaceContainerHighest: Color.lerp(const Color(0xFFEEEEEE), primary, 0.03),
+                    );
+                    break;
+                  case SurfaceTintLevel.medium:
+                    // Medium tint - default Material 3 behavior (do nothing)
+                    break;
+                  case SurfaceTintLevel.strong:
+                    // Strong tint - more pronounced color
+                    final primary = lightScheme.primary;
+                    lightScheme = lightScheme.copyWith(
+                      surface: Color.lerp(lightScheme.surface, primary, 0.04),
+                      surfaceContainerLowest: Color.lerp(lightScheme.surfaceContainerLowest, primary, 0.04),
+                      surfaceContainerLow: Color.lerp(lightScheme.surfaceContainerLow, primary, 0.05),
+                      surfaceContainer: Color.lerp(lightScheme.surfaceContainer, primary, 0.06),
+                      surfaceContainerHigh: Color.lerp(lightScheme.surfaceContainerHigh, primary, 0.07),
+                      surfaceContainerHighest: Color.lerp(lightScheme.surfaceContainerHighest, primary, 0.08),
+                    );
+                    break;
                 }
 
                 return MaterialApp(

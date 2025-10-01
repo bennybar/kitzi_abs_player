@@ -315,16 +315,26 @@ class _SettingsPageState extends State<SettingsPage> {
               },
             ),
           ),
-          ValueListenableBuilder<bool>(
-            valueListenable: theme.useTintedSurfaces,
-            builder: (_, useTintedSurfaces, __) {
-              return SwitchListTile(
-                title: const Text('Material 3 tinted surfaces (Light mode)'),
-                subtitle: const Text('Disable for pure white background'),
-                value: useTintedSurfaces,
-                onChanged: (v) async {
-                  await theme.setTintedSurfaces(v);
-                },
+          ValueListenableBuilder<SurfaceTintLevel>(
+            valueListenable: theme.surfaceTintLevel,
+            builder: (_, tintLevel, __) {
+              return ListTile(
+                title: const Text('Surface tint (Light mode)'),
+                subtitle: Text(tintLevel.label),
+                trailing: DropdownButton<SurfaceTintLevel>(
+                  value: tintLevel,
+                  items: SurfaceTintLevel.values.map((level) {
+                    return DropdownMenuItem(
+                      value: level,
+                      child: Text(level.label),
+                    );
+                  }).toList(),
+                  onChanged: (v) async {
+                    if (v != null) {
+                      await theme.setSurfaceTintLevel(v);
+                    }
+                  },
+                ),
               );
             },
           ),
