@@ -137,78 +137,95 @@ class _AbsAppState extends State<AbsApp> {
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: services.theme.mode,
       builder: (_, themeMode, __) {
-        ThemeData expressiveTheme(ColorScheme scheme) {
-          return ThemeData(
-            useMaterial3: true,
-            colorScheme: scheme,
-            appBarTheme: AppBarTheme(
-              centerTitle: false,
-              elevation: 0,
-              scrolledUnderElevation: 0,
-              backgroundColor: scheme.surface,
-              surfaceTintColor: scheme.surfaceTint,
-              foregroundColor: scheme.onSurface,
-            ),
-            navigationBarTheme: NavigationBarThemeData(
-              elevation: 0,
-              backgroundColor: scheme.surface,
-              surfaceTintColor: scheme.surfaceTint,
-              indicatorColor: scheme.primaryContainer,
-              labelTextStyle: WidgetStateProperty.resolveWith((states) {
-                final isSelected = states.contains(WidgetState.selected);
-                return TextStyle(
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                );
-              }),
-            ),
-            cardTheme: CardTheme(
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-            ),
-            elevatedButtonTheme: ElevatedButtonThemeData(
-              style: ElevatedButton.styleFrom(
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+        return ValueListenableBuilder<bool>(
+          valueListenable: services.theme.useTintedSurfaces,
+          builder: (_, useTintedSurfaces, __) {
+            ThemeData expressiveTheme(ColorScheme scheme) {
+              return ThemeData(
+                useMaterial3: true,
+                colorScheme: scheme,
+                appBarTheme: AppBarTheme(
+                  centerTitle: false,
+                  elevation: 0,
+                  scrolledUnderElevation: 0,
+                  backgroundColor: scheme.surface,
+                  surfaceTintColor: scheme.surfaceTint,
+                  foregroundColor: scheme.onSurface,
                 ),
-              ),
-            ),
-            filledButtonTheme: FilledButtonThemeData(
-              style: FilledButton.styleFrom(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            ),
-          );
-        }
-
-        return DynamicColorBuilder(
-          builder: (lightDynamic, darkDynamic) {
-            final seed = Colors.deepPurple;
-            final lightScheme = (lightDynamic ?? ColorScheme.fromSeed(seedColor: seed)).harmonized();
-            final darkScheme = (darkDynamic ?? ColorScheme.fromSeed(seedColor: seed, brightness: Brightness.dark)).harmonized();
-
-            return MaterialApp(
-              title: 'ABS Client',
-              theme: expressiveTheme(lightScheme),
-              darkTheme: expressiveTheme(darkScheme),
-              themeMode: themeMode,
-              home: FutureBuilder<bool>(
-                future: _sessionFuture,
-                builder: (context, snap) {
-                  if (!snap.hasData) {
-                    return const Scaffold(
-                      body: Center(child: CircularProgressIndicator()),
+                navigationBarTheme: NavigationBarThemeData(
+                  elevation: 0,
+                  backgroundColor: scheme.surface,
+                  surfaceTintColor: scheme.surfaceTint,
+                  indicatorColor: scheme.primaryContainer,
+                  labelTextStyle: WidgetStateProperty.resolveWith((states) {
+                    final isSelected = states.contains(WidgetState.selected);
+                    return TextStyle(
+                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                     );
-                  }
-                  return snap.data!
-                      ? MainScaffold(downloadsRepo: services.downloads)
-                      : LoginScreen(auth: services.auth);
-                },
-              ),
+                  }),
+                ),
+                cardTheme: CardTheme(
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+                elevatedButtonTheme: ElevatedButtonThemeData(
+                  style: ElevatedButton.styleFrom(
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+                filledButtonTheme: FilledButtonThemeData(
+                  style: FilledButton.styleFrom(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              );
+            }
+
+            return DynamicColorBuilder(
+              builder: (lightDynamic, darkDynamic) {
+                final seed = Colors.deepPurple;
+                var lightScheme = (lightDynamic ?? ColorScheme.fromSeed(seedColor: seed)).harmonized();
+                final darkScheme = (darkDynamic ?? ColorScheme.fromSeed(seedColor: seed, brightness: Brightness.dark)).harmonized();
+
+                // If tinted surfaces are disabled, create a pure white light scheme
+                if (!useTintedSurfaces) {
+                  lightScheme = lightScheme.copyWith(
+                    surface: Colors.white,
+                    surfaceContainerLowest: Colors.white,
+                    surfaceContainerLow: const Color(0xFFFAFAFA),
+                    surfaceContainer: const Color(0xFFF5F5F5),
+                    surfaceContainerHigh: const Color(0xFFF0F0F0),
+                    surfaceContainerHighest: const Color(0xFFEEEEEE),
+                  );
+                }
+
+                return MaterialApp(
+                  title: 'ABS Client',
+                  theme: expressiveTheme(lightScheme),
+                  darkTheme: expressiveTheme(darkScheme),
+                  themeMode: themeMode,
+                  home: FutureBuilder<bool>(
+                    future: _sessionFuture,
+                    builder: (context, snap) {
+                      if (!snap.hasData) {
+                        return const Scaffold(
+                          body: Center(child: CircularProgressIndicator()),
+                        );
+                      }
+                      return snap.data!
+                          ? MainScaffold(downloadsRepo: services.downloads)
+                          : LoginScreen(auth: services.auth);
+                    },
+                  ),
+                );
+              },
             );
           },
         );

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:rxdart/rxdart.dart';
 import 'dart:io';
+import 'package:flutter_html/flutter_html.dart';
 
 import '../../core/books_repository.dart';
 import '../../models/book.dart';
@@ -1773,11 +1774,60 @@ class _RichDescription extends StatelessWidget {
   const _RichDescription({required this.book});
   final Book book;
 
+  /// Check if the string contains HTML tags
+  bool _isHtml(String text) {
+    final htmlPattern = RegExp(r'<\/?[a-z][\s\S]*>', caseSensitive: false);
+    return htmlPattern.hasMatch(text);
+  }
+
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
     final raw = book.description ?? '';
     if (raw.isEmpty) return const SizedBox.shrink();
+    
+    // Check if description is HTML
+    if (_isHtml(raw)) {
+      return Html(
+        data: raw,
+        style: {
+          "body": Style(
+            margin: Margins.zero,
+            padding: HtmlPaddings.zero,
+            fontSize: FontSize(text.bodyMedium?.fontSize ?? 14),
+            color: cs.onSurface,
+            lineHeight: const LineHeight(1.5),
+          ),
+          "p": Style(
+            margin: Margins.only(bottom: 8),
+          ),
+          "a": Style(
+            color: cs.primary,
+            textDecoration: TextDecoration.underline,
+          ),
+          "strong": Style(
+            fontWeight: FontWeight.bold,
+          ),
+          "em": Style(
+            fontStyle: FontStyle.italic,
+          ),
+          "h1, h2, h3, h4, h5, h6": Style(
+            fontWeight: FontWeight.bold,
+            margin: Margins.only(top: 12, bottom: 8),
+          ),
+          "ul, ol": Style(
+            margin: Margins.only(bottom: 8),
+            padding: HtmlPaddings.only(left: 20),
+          ),
+          "li": Style(
+            margin: Margins.only(bottom: 4),
+          ),
+        },
+      );
+    }
+    
+    // Original behavior for non-HTML (image URL detection)
     final re = RegExp(r'https?://[^\s"\)]+\.(?:png|jpg|jpeg|webp|gif)', caseSensitive: false);
     final parts = <InlineSpan>[];
     int last = 0;

@@ -315,6 +315,19 @@ class _SettingsPageState extends State<SettingsPage> {
               },
             ),
           ),
+          ValueListenableBuilder<bool>(
+            valueListenable: theme.useTintedSurfaces,
+            builder: (_, useTintedSurfaces, __) {
+              return SwitchListTile(
+                title: const Text('Material 3 tinted surfaces (Light mode)'),
+                subtitle: const Text('Disable for pure white background'),
+                value: useTintedSurfaces,
+                onChanged: (v) async {
+                  await theme.setTintedSurfaces(v);
+                },
+              );
+            },
+          ),
           const Divider(height: 32),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
