@@ -9,6 +9,7 @@ import '../../core/playback_speed_service.dart';
 import '../../core/sleep_timer_service.dart';
 import '../../core/books_repository.dart';
 import '../../main.dart'; // ServicesScope
+import '../../widgets/audio_waveform.dart';
 
 class FullPlayerPage extends StatefulWidget {
   const FullPlayerPage({super.key});
@@ -746,7 +747,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                     opacity: _coverAnimation.value,
                                     child: Center(
                                       child: SizedBox(
-                                        width: MediaQuery.of(context).size.width * 0.62, // 62% of screen width - balanced size
+                                        width: MediaQuery.of(context).size.width * 0.56, // 56% of screen width - balanced size
                                         child: Hero(
                                           tag: 'mini-cover-${np.libraryItemId}',
                                           child: Container(
@@ -795,7 +796,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                 );
                               },
                             ),
-                            const SizedBox(height: 24),
+                            const SizedBox(height: 16),
 
                             // Title / author / narrator with enhanced typography
                             AnimatedBuilder(
@@ -853,16 +854,44 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ],
-                            const SizedBox(height: 8), // Extra padding at bottom
+                            const SizedBox(height: 4), // Reduced padding
                           ],
                           ),
                         ),
                       ),
                     ),
 
+                    // Waveform visualization (only visible when playing)
+                    StreamBuilder<bool>(
+                      stream: playback.playingStream,
+                      initialData: playback.player.playing,
+                      builder: (_, playSnap) {
+                        final playing = playSnap.data ?? false;
+                        return AnimatedSize(
+                          duration: const Duration(milliseconds: 350),
+                          curve: Curves.easeInOut,
+                          child: playing
+                              ? Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  child: Center(
+                                    child: AudioWaveform(
+                                      isPlaying: playing,
+                                      barCount: 7,
+                                      height: 28,
+                                      spacing: 3.5,
+                                      color: cs.primary.withOpacity(0.8),
+                                      animationSpeed: const Duration(milliseconds: 300),
+                                    ),
+                                  ),
+                                )
+                              : const SizedBox(height: 4),
+                        );
+                      },
+                    ),
+
                     // POSITION + SLIDER - Material Design 3 Enhanced
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
                       child: StreamBuilder<Duration>(
                         stream: playback.positionStream,
                         initialData: playback.player.position,

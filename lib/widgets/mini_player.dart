@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:io';
 import '../main.dart'; // ServicesScope
 import '../ui/player/full_player_page.dart';
+import 'audio_waveform.dart';
 
 class MiniPlayer extends StatelessWidget {
   const MiniPlayer({super.key, this.height = 60});
@@ -87,6 +88,28 @@ class MiniPlayer extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 12),
+
+                    // Waveform indicator (only visible when playing)
+                    StreamBuilder<bool>(
+                      stream: playback.playingStream,
+                      initialData: playback.player.playing,
+                      builder: (_, playSnap) {
+                        final playing = playSnap.data ?? false;
+                        return AnimatedSize(
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeInOut,
+                          child: playing
+                              ? Padding(
+                                  padding: const EdgeInsets.only(right: 8),
+                                  child: MiniAudioWaveform(
+                                    isPlaying: playing,
+                                    color: cs.primary,
+                                  ),
+                                )
+                              : const SizedBox.shrink(),
+                        );
+                      },
+                    ),
 
                     // Play/Pause button only (YouTube Music style)
                     StreamBuilder<bool>(
