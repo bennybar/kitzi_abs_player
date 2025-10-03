@@ -200,7 +200,23 @@ class PlaybackRepository {
         } catch (_) {}
 
         // Do not attempt to ensure durations online; play with what we have
-        final chapters = _chaptersFromTracks(localTracks);
+        // But try to get proper chapter metadata from server for better chapter titles
+        List<Chapter> chapters = _chaptersFromTracks(localTracks);
+        
+        // Try to fetch proper chapter metadata from server
+        try {
+          final meta = await _getItemMeta(last);
+          final serverChapters = _extractChapters(meta);
+          if (serverChapters.isNotEmpty) {
+            chapters = serverChapters;
+            _log('Warm load: using server chapter metadata (${chapters.length} chapters)');
+          } else {
+            _log('Warm load: no server chapters found, using local track-based chapters');
+          }
+        } catch (e) {
+          _log('Warm load: failed to fetch server chapter metadata: $e, using local chapters');
+        }
+        
         final np = NowPlaying(
           libraryItemId: last,
           title: title,
