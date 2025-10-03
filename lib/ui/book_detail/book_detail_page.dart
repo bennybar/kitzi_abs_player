@@ -127,12 +127,19 @@ class _BookDetailPageState extends State<BookDetailPage> {
     debugPrint('[COMPLETION_DEBUG] Toggle called: book=${book.id}, current=$isCurrentlyCompleted, new=$newCompletionStatus');
     debugPrint('[COMPLETION_DEBUG] Cache before: ${playback.completionCache[book.id]}');
     
-    // Show confirmation dialog for marking as finished
+    // Show confirmation dialog for both actions
+    bool confirmed;
     if (newCompletionStatus) {
-      final confirmed = await _showMarkAsFinishedDialog(context);
-      if (!confirmed) return;
-      
-      // Stop any ongoing playback immediately when marking as finished
+      confirmed = await _showMarkAsFinishedDialog(context);
+    } else {
+      confirmed = await _showMarkAsUnfinishedDialog(context, book);
+    }
+    if (!confirmed) return;
+    
+    // Note: Position preservation is handled in the API call by including currentTime
+    
+    // Stop any ongoing playback immediately when marking as finished
+    if (newCompletionStatus) {
       try {
         await playback.stop();
         debugPrint('[COMPLETION_DEBUG] Stopped playback before marking as finished');
@@ -146,6 +153,8 @@ class _BookDetailPageState extends State<BookDetailPage> {
       await _markBookAsFinished(context, book.id, newCompletionStatus);
       
       debugPrint('[COMPLETION_DEBUG] Cache after: ${playback.completionCache[book.id]}');
+      
+      // Position is preserved by including currentTime in the API call
       
       // Show feedback to user
       if (mounted) {
@@ -210,18 +219,131 @@ class _BookDetailPageState extends State<BookDetailPage> {
     return confirmed ?? false;
   }
 
+  Future<bool> _showMarkAsUnfinishedDialog(BuildContext context, Book book) async {
+    final cs = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    final playback = ServicesScope.of(context).services.playback;
+    
+    // Get current position from server (more reliable than local player position)
+    final currentPositionSeconds = await playback.fetchServerProgress(book.id);
+    final currentPosition = currentPositionSeconds != null 
+        ? Duration(seconds: currentPositionSeconds.round())
+        : playback.player.position;
+    final positionText = _formatDuration(currentPosition);
+    
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          'Mark as Unfinished',
+          style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Are you sure you want to mark this book as unfinished?',
+              style: text.bodyMedium,
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: cs.primaryContainer,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: cs.primary.withOpacity(0.3),
+                  width: 1,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.access_time_rounded,
+                    size: 16,
+                    color: cs.onPrimaryContainer,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Current position: $positionText',
+                    style: text.bodyMedium?.copyWith(
+                      color: cs.onPrimaryContainer,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'This position will be preserved.',
+              style: text.bodySmall?.copyWith(
+                color: cs.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: cs.onSurfaceVariant),
+            ),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Mark as Unfinished'),
+          ),
+        ],
+      ),
+    );
+    
+    return confirmed ?? false;
+  }
+
+  String _formatDuration(Duration duration) {
+    final hours = duration.inHours;
+    final minutes = duration.inMinutes.remainder(60);
+    final seconds = duration.inSeconds.remainder(60);
+    
+    if (hours > 0) {
+      return '${hours}h ${minutes}m ${seconds}s';
+    } else if (minutes > 0) {
+      return '${minutes}m ${seconds}s';
+    } else {
+      return '${seconds}s';
+    }
+  }
+
   Future<void> _markBookAsFinished(BuildContext context, String libraryItemId, bool finished) async {
     final playback = ServicesScope.of(context).services.playback;
     final api = ServicesScope.of(context).services.auth.api;
     
-    debugPrint('[COMPLETION_DEBUG] API request: PATCH /api/me/progress/$libraryItemId, isFinished=$finished');
+    // Prepare the request body
+    Map<String, dynamic> requestBody = {'isFinished': finished};
+    
+         // If unfinishing, include current progress to preserve position
+         if (!finished && playback.nowPlaying?.libraryItemId == libraryItemId) {
+           // Get position from server (more reliable than local player position)
+           final currentPositionSeconds = await playback.fetchServerProgress(libraryItemId);
+           final currentTimeSeconds = currentPositionSeconds ?? playback.player.position.inSeconds.toDouble();
+
+           if (currentTimeSeconds > 0) {
+             requestBody['currentTime'] = currentTimeSeconds;
+             debugPrint('[COMPLETION_DEBUG] Including currentTime: ${currentTimeSeconds}s to preserve position');
+           }
+         }
+    
+    debugPrint('[COMPLETION_DEBUG] API request: PATCH /api/me/progress/$libraryItemId, body=$requestBody');
     
     try {
       final response = await api.request(
         'PATCH',
         '/api/me/progress/$libraryItemId',
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'isFinished': finished}),
+        body: jsonEncode(requestBody),
       );
       
       debugPrint('[COMPLETION_DEBUG] API response: ${response.statusCode}');
@@ -295,17 +417,19 @@ class _BookDetailPageState extends State<BookDetailPage> {
                       builder: (_, completionSnap) {
                         final isCompleted = completionSnap.data ?? false;
                         
-                        if (isCompleted) {
-                          return const SizedBox.shrink();
-                        }
-                        
                         return IconButton.filledTonal(
                           onPressed: () => _toggleBookCompletion(context, book, isCompleted),
-                          icon: const Icon(Icons.check_circle_outline_rounded),
-                          tooltip: 'Mark as finished',
+                          icon: Icon(isCompleted 
+                              ? Icons.undo_rounded 
+                              : Icons.check_circle_outline_rounded),
+                          tooltip: isCompleted ? 'Mark as unfinished' : 'Mark as finished',
                           style: IconButton.styleFrom(
-                            backgroundColor: cs.surfaceContainerHighest,
-                            foregroundColor: cs.onSurface,
+                            backgroundColor: isCompleted 
+                                ? cs.errorContainer 
+                                : cs.surfaceContainerHighest,
+                            foregroundColor: isCompleted 
+                                ? cs.onErrorContainer 
+                                : cs.onSurface,
                           ),
                         );
                       },

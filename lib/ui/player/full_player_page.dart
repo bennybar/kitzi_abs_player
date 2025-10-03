@@ -198,11 +198,16 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
 
     final newCompletionStatus = !isCurrentlyCompleted;
     
-    // Show confirmation dialog for marking as finished
+    // Show confirmation dialog for both actions
+    bool confirmed;
     if (newCompletionStatus) {
-      final confirmed = await _showMarkAsFinishedDialog(context);
-      if (!confirmed) return;
+      confirmed = await _showMarkAsFinishedDialog(context);
+    } else {
+      confirmed = await _showMarkAsUnfinishedDialog(context);
     }
+    if (!confirmed) return;
+
+    // Note: Position preservation is handled in the API call by including currentTime
 
     try {
       // Log the request for troubleshooting
@@ -238,7 +243,9 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
           // due to the global completion status stream we set up
         }
       } else {
-        // Just show feedback for unmarking as finished
+        // Position is preserved by including currentTime in the API call
+        
+        // Show feedback for unmarking as finished
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -297,20 +304,135 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     return confirmed ?? false;
   }
 
+  Future<bool> _showMarkAsUnfinishedDialog(BuildContext context) async {
+    final cs = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    final playback = ServicesScope.of(context).services.playback;
+    final np = playback.nowPlaying;
+    if (np == null) return false;
+    
+    // Get current position from server (more reliable than local player position)
+    final currentPositionSeconds = await playback.fetchServerProgress(np.libraryItemId);
+    final currentPosition = currentPositionSeconds != null 
+        ? Duration(seconds: currentPositionSeconds.round())
+        : playback.player.position;
+    final positionText = _formatDuration(currentPosition);
+    
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          'Mark as Unfinished',
+          style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Are you sure you want to mark this book as unfinished?',
+              style: text.bodyMedium,
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: cs.primaryContainer,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: cs.primary.withOpacity(0.3),
+                  width: 1,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.access_time_rounded,
+                    size: 16,
+                    color: cs.onPrimaryContainer,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Current position: $positionText',
+                    style: text.bodyMedium?.copyWith(
+                      color: cs.onPrimaryContainer,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'This position will be preserved.',
+              style: text.bodySmall?.copyWith(
+                color: cs.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: cs.onSurfaceVariant),
+            ),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Mark as Unfinished'),
+          ),
+        ],
+      ),
+    );
+    
+    return confirmed ?? false;
+  }
+
+  String _formatDuration(Duration duration) {
+    final hours = duration.inHours;
+    final minutes = duration.inMinutes.remainder(60);
+    final seconds = duration.inSeconds.remainder(60);
+    
+    if (hours > 0) {
+      return '${hours}h ${minutes}m ${seconds}s';
+    } else if (minutes > 0) {
+      return '${minutes}m ${seconds}s';
+    } else {
+      return '${seconds}s';
+    }
+  }
+
   Future<void> _markBookAsFinished(String libraryItemId, bool finished) async {
     final playback = ServicesScope.of(context).services.playback;
     final api = ServicesScope.of(context).services.auth.api;
     
+    // Prepare the request body
+    Map<String, dynamic> requestBody = {'isFinished': finished};
+    
+         // If unfinishing, include current progress to preserve position
+         if (!finished) {
+           // Get position from server (more reliable than local player position)
+           final currentPositionSeconds = await playback.fetchServerProgress(libraryItemId);
+           final currentTimeSeconds = currentPositionSeconds ?? playback.player.position.inSeconds.toDouble();
+
+           if (currentTimeSeconds > 0) {
+             requestBody['currentTime'] = currentTimeSeconds;
+             debugPrint('[MARK_FINISHED] Including currentTime: ${currentTimeSeconds}s to preserve position');
+           }
+         }
+    
     // Log the API request for troubleshooting
     debugPrint('[MARK_FINISHED] API Request: PATCH /api/me/progress/$libraryItemId');
-    debugPrint('[MARK_FINISHED] Request body: {"isFinished": $finished}');
+    debugPrint('[MARK_FINISHED] Request body: $requestBody');
     
     try {
       final response = await api.request(
         'PATCH',
         '/api/me/progress/$libraryItemId',
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'isFinished': finished}),
+        body: jsonEncode(requestBody),
       );
       
       debugPrint('[MARK_FINISHED] API Response: ${response.statusCode} ${response.body}');
@@ -683,25 +805,26 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                             ),
                           ),
                           const Spacer(),
-                          // Mark as finished button - only show if not completed
+                          // Mark as finished/unfinished button
                           StreamBuilder<bool>(
                             stream: _getBookCompletionStream(),
                             initialData: false,
                             builder: (_, completionSnap) {
                               final isCompleted = completionSnap.data ?? false;
                               
-                              // Only show the button if the book is not finished
-                              if (isCompleted) {
-                                return const SizedBox.shrink();
-                              }
-                              
                               return IconButton.filledTonal(
                                 onPressed: () => _toggleBookCompletion(context, isCompleted),
-                                icon: const Icon(Icons.check_circle_outline_rounded),
-                                tooltip: 'Mark as finished',
+                                icon: Icon(isCompleted 
+                                    ? Icons.undo_rounded 
+                                    : Icons.check_circle_outline_rounded),
+                                tooltip: isCompleted ? 'Mark as unfinished' : 'Mark as finished',
                                 style: IconButton.styleFrom(
-                                  backgroundColor: cs.surfaceContainerHighest,
-                                  foregroundColor: cs.onSurface,
+                                  backgroundColor: isCompleted 
+                                      ? cs.errorContainer 
+                                      : cs.surfaceContainerHighest,
+                                  foregroundColor: isCompleted 
+                                      ? cs.onErrorContainer 
+                                      : cs.onSurface,
                                 ),
                               );
                             },
