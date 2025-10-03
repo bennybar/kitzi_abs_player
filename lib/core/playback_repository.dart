@@ -26,7 +26,7 @@ enum ProgressResetChoice {
   cancel,
 }
 
-const _kProgressPing = Duration(seconds: 10);
+const _kProgressPing = Duration(seconds: 26);
 const _kLocalProgPrefix = 'abs_progress:';      // local fallback per item
 const _kLastItemKey = 'abs_last_item_id';       // last played item id
 
