@@ -207,7 +207,14 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     }
     if (!confirmed) return;
 
-    // Note: Position preservation is handled in the API call by including currentTime
+    // Save current position if we're unfinishing
+    Duration? savedPosition;
+    bool wasPlaying = false;
+    if (!newCompletionStatus) {
+      savedPosition = playback.player.position;
+      wasPlaying = playback.player.playing;
+      debugPrint('[MARK_FINISHED] Saved position: ${savedPosition.inSeconds}s, wasPlaying: $wasPlaying');
+    }
 
     try {
       // Log the request for troubleshooting
@@ -243,7 +250,37 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
           // due to the global completion status stream we set up
         }
       } else {
-        // Position is preserved by including currentTime in the API call
+        // If unfinishing, seek to the saved position
+        if (savedPosition != null && savedPosition.inSeconds > 0) {
+          debugPrint('[MARK_FINISHED] Seeking to saved position: ${savedPosition.inSeconds}s');
+          try {
+            // Wait a bit for the API call to complete
+            await Future.delayed(const Duration(milliseconds: 500));
+
+            // Seek to the saved position (the one we actually sent to the server)
+            // Use seekGlobal for multi-track books to properly map position across tracks
+            await playback.seekGlobal(savedPosition, reportNow: true);
+
+            // Resume playback if it was playing before
+            if (wasPlaying) {
+              // Temporarily disable sync to avoid overriding our preserved position
+              await playback.resume(skipSync: true);
+              debugPrint('[MARK_FINISHED] Resumed playback at saved position (sync disabled)');
+            }
+
+            // Push the position to server after a delay to ensure it's preserved
+            Future.delayed(const Duration(seconds: 1), () async {
+              try {
+                debugPrint('[MARK_FINISHED] Pushing position to server after unfinish: ${savedPosition?.inSeconds}s');
+                await playback.reportProgressNow();
+              } catch (e) {
+                debugPrint('[MARK_FINISHED] Error pushing position to server: $e');
+              }
+            });
+          } catch (e) {
+            debugPrint('[MARK_FINISHED] Error seeking to saved position: $e');
+          }
+        }
         
         // Show feedback for unmarking as finished
         if (mounted) {
@@ -419,7 +456,17 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
 
            if (currentTimeSeconds > 0) {
              requestBody['currentTime'] = currentTimeSeconds;
-             debugPrint('[MARK_FINISHED] Including currentTime: ${currentTimeSeconds}s to preserve position');
+             
+             // Include duration and progress like regular progress updates
+             final totalDuration = playback.totalBookDuration;
+             if (totalDuration != null && totalDuration.inSeconds > 0) {
+               final totalSeconds = totalDuration.inSeconds.toDouble();
+               requestBody['duration'] = totalSeconds;
+               requestBody['progress'] = (currentTimeSeconds / totalSeconds).clamp(0.0, 1.0);
+               debugPrint('[MARK_FINISHED] Including full progress: currentTime=${currentTimeSeconds}s, duration=${totalSeconds}s, progress=${requestBody['progress']}');
+             } else {
+               debugPrint('[MARK_FINISHED] Including currentTime: ${currentTimeSeconds}s to preserve position (no duration available)');
+             }
            }
          }
     

@@ -582,18 +582,20 @@ class PlaybackRepository {
   }
 
   /// UPDATED: Check server position and sync before resuming
-  Future<bool> resume() async {
+  Future<bool> resume({bool skipSync = false}) async {
     final itemId = _progressItemId;
     final np = _nowPlaying;
     
-    // Check if sync is required and server is available
-    final canProceed = await _checkSyncRequirement();
-    if (!canProceed) {
-      _log('Cannot resume: server unavailable and sync progress is required');
-      return false;
+    // Check if sync is required and server is available (unless skipSync is true)
+    if (!skipSync) {
+      final canProceed = await _checkSyncRequirement();
+      if (!canProceed) {
+        _log('Cannot resume: server unavailable and sync progress is required');
+        return false;
+      }
     }
     
-    if (itemId != null && np != null) {
+    if (itemId != null && np != null && !skipSync) {
       await _syncPositionFromServer();
       if ((_activeSessionId == null || _activeSessionId!.isEmpty) && np.tracks.isNotEmpty && !np.tracks.first.isLocal) {
         // Re-open streaming session after pause/close
