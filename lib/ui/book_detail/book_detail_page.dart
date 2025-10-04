@@ -127,14 +127,15 @@ class _BookDetailPageState extends State<BookDetailPage> {
     debugPrint('[COMPLETION_DEBUG] Toggle called: book=${book.id}, current=$isCurrentlyCompleted, new=$newCompletionStatus');
     debugPrint('[COMPLETION_DEBUG] Cache before: ${playback.completionCache[book.id]}');
     
-    // Show confirmation dialog for both actions
-    bool confirmed;
+    // Show confirmation dialog(s)
+    Duration? unfinishChoice; // null => cancel, 0 => restart, >0 => resume to that
     if (newCompletionStatus) {
-      confirmed = await _showMarkAsFinishedDialog(context);
+      final confirmed = await _showMarkAsFinishedDialog(context);
+      if (!confirmed) return;
     } else {
-      confirmed = await _showMarkAsUnfinishedDialog(context, book);
+      unfinishChoice = await _showMarkAsUnfinishedDialog(context, book);
+      if (unfinishChoice == null) return; // cancelled
     }
-    if (!confirmed) return;
     
     // Save current position and playback state if we're unfinishing
     Duration? savedPosition;
@@ -157,20 +158,25 @@ class _BookDetailPageState extends State<BookDetailPage> {
   
     try {
       // Send the request to server (this will also update the cache)
-      await _markBookAsFinished(context, book.id, newCompletionStatus);
+      double? overrideSeconds;
+      if (!newCompletionStatus && unfinishChoice != null) {
+        overrideSeconds = unfinishChoice.inSeconds.toDouble();
+      }
+      await _markBookAsFinished(context, book.id, newCompletionStatus, overrideCurrentTimeSeconds: overrideSeconds);
       
       debugPrint('[COMPLETION_DEBUG] Cache after: ${playback.completionCache[book.id]}');
       
-      // If unfinishing, seek to the preserved position
-      if (!newCompletionStatus && savedPosition != null && savedPosition.inSeconds > 0) {
-        debugPrint('[COMPLETION_DEBUG] Seeking to saved position: ${savedPosition.inSeconds}s');
+      // If unfinishing, apply the user's choice locally if this book is active
+      if (!newCompletionStatus && playback.nowPlaying?.libraryItemId == book.id && unfinishChoice != null) {
+        final chosen = unfinishChoice;
+        debugPrint('[COMPLETION_DEBUG] Applying user choice after unfinish: seek to ${chosen.inSeconds}s');
         try {
           // Wait a bit for the API call to complete
           await Future.delayed(const Duration(milliseconds: 500));
 
           // Seek to the saved position (the one we actually sent to the server)
           // Use seekGlobal for multi-track books to properly map position across tracks
-          await playback.seekGlobal(savedPosition, reportNow: true);
+          await playback.seekGlobal(chosen, reportNow: true);
 
           // Resume playback if it was playing before
           if (wasPlaying) {
@@ -256,7 +262,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
     return confirmed ?? false;
   }
 
-  Future<bool> _showMarkAsUnfinishedDialog(BuildContext context, Book book) async {
+  Future<Duration?> _showMarkAsUnfinishedDialog(BuildContext context, Book book) async {
     final cs = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
     final playback = ServicesScope.of(context).services.playback;
@@ -336,8 +342,40 @@ class _BookDetailPageState extends State<BookDetailPage> {
         ],
       ),
     );
-    
-    return confirmed ?? false;
+    if (confirmed != true) return null;
+
+    // Second step: choose where to resume
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          'Choose where to resume',
+          style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+        ),
+        content: Text(
+          'Resume from the preserved position or start from the beginning.',
+          style: text.bodyMedium,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop('cancel'),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop('restart'),
+            child: const Text('Start from beginning'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop('resume'),
+            child: Text('Return to $positionText'),
+          ),
+        ],
+      ),
+    );
+
+    if (choice == 'restart') return Duration.zero;
+    if (choice == 'resume') return currentPosition; // default to resume
+    return null; // cancel
   }
 
   String _formatDuration(Duration duration) {
@@ -354,7 +392,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
     }
   }
 
-  Future<void> _markBookAsFinished(BuildContext context, String libraryItemId, bool finished) async {
+  Future<void> _markBookAsFinished(BuildContext context, String libraryItemId, bool finished, {double? overrideCurrentTimeSeconds}) async {
     final playback = ServicesScope.of(context).services.playback;
     final api = ServicesScope.of(context).services.auth.api;
     
@@ -365,11 +403,16 @@ class _BookDetailPageState extends State<BookDetailPage> {
     // Always do this using server progress when available (even if this book isn't currently playing)
     if (!finished) {
       // Get position from server (more reliable than local player position)
-      final currentPositionSeconds = await playback.fetchServerProgress(libraryItemId);
+      double? currentPositionSeconds = await playback.fetchServerProgress(libraryItemId);
+      if (overrideCurrentTimeSeconds != null) {
+        currentPositionSeconds = overrideCurrentTimeSeconds;
+      }
       final bool isActiveOnPlayer = playback.nowPlaying?.libraryItemId == libraryItemId;
       final currentTimeSeconds = currentPositionSeconds ?? (isActiveOnPlayer ? playback.player.position.inSeconds.toDouble() : 0.0);
 
-      if (currentTimeSeconds > 0) {
+      // Always include currentTime when override was provided, even if 0; otherwise include only when > 0
+      final shouldInclude = overrideCurrentTimeSeconds != null || currentTimeSeconds > 0;
+      if (shouldInclude) {
         requestBody['currentTime'] = currentTimeSeconds;
 
         // Include duration and progress like regular progress updates
@@ -382,8 +425,6 @@ class _BookDetailPageState extends State<BookDetailPage> {
         } else {
           debugPrint('[COMPLETION_DEBUG] Including currentTime: '+currentTimeSeconds.toString()+'s to preserve position (no duration available)');
         }
-      } else {
-        debugPrint('[COMPLETION_DEBUG] No known currentTime to include on unfinish; will only toggle isFinished');
       }
     }
     
@@ -404,6 +445,14 @@ class _BookDetailPageState extends State<BookDetailPage> {
         // Update the global completion status cache and notify all listeners
         await playback.updateBookCompletionStatus(libraryItemId, finished);
         debugPrint('[COMPLETION_DEBUG] Cache updated successfully');
+
+        // Persist the chosen progress locally so the next Play uses it
+        if (!finished && overrideCurrentTimeSeconds != null) {
+          try {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setDouble('abs_progress:$libraryItemId', overrideCurrentTimeSeconds);
+          } catch (_) {}
+        }
       } else {
         throw Exception('Server returned ${response.statusCode}: ${response.body}');
       }
@@ -467,21 +516,19 @@ class _BookDetailPageState extends State<BookDetailPage> {
                       initialData: false,
                       builder: (_, completionSnap) {
                         final isCompleted = completionSnap.data ?? false;
-                        
-                        return IconButton.filledTonal(
+                        final label = isCompleted ? 'Mark as Unfinished' : 'Mark as Finished';
+                        return FilledButton.tonal(
                           onPressed: () => _toggleBookCompletion(context, book, isCompleted),
-                          icon: Icon(isCompleted 
-                              ? Icons.undo_rounded 
-                              : Icons.check_circle_outline_rounded),
-                          tooltip: isCompleted ? 'Mark as unfinished' : 'Mark as finished',
-                          style: IconButton.styleFrom(
+                          style: FilledButton.styleFrom(
                             backgroundColor: isCompleted 
                                 ? cs.errorContainer 
                                 : cs.surfaceContainerHighest,
                             foregroundColor: isCompleted 
                                 ? cs.onErrorContainer 
                                 : cs.onSurface,
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                           ),
+                          child: Text(label),
                         );
                       },
                     );

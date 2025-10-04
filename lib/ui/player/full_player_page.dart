@@ -198,14 +198,15 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
 
     final newCompletionStatus = !isCurrentlyCompleted;
     
-    // Show confirmation dialog for both actions
-    bool confirmed;
+    // Show confirmation dialog(s)
+    Duration? unfinishChoice; // null => cancel, 0 => restart, >0 => resume
     if (newCompletionStatus) {
-      confirmed = await _showMarkAsFinishedDialog(context);
+      final confirmed = await _showMarkAsFinishedDialog(context);
+      if (!confirmed) return;
     } else {
-      confirmed = await _showMarkAsUnfinishedDialog(context);
+      unfinishChoice = await _showMarkAsUnfinishedDialog(context);
+      if (unfinishChoice == null) return;
     }
-    if (!confirmed) return;
 
     // Save current position if we're unfinishing
     Duration? savedPosition;
@@ -221,7 +222,11 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
       debugPrint('[MARK_FINISHED] Toggling book completion: ${np.libraryItemId} -> $newCompletionStatus');
       
       // Send the request to server
-      await _markBookAsFinished(np.libraryItemId, newCompletionStatus);
+      double? overrideSeconds;
+      if (!newCompletionStatus && unfinishChoice != null) {
+        overrideSeconds = unfinishChoice.inSeconds.toDouble();
+      }
+      await _markBookAsFinished(np.libraryItemId, newCompletionStatus, overrideCurrentTimeSeconds: overrideSeconds);
       
       // Update the global completion status cache and notify all listeners
       await playback.updateBookCompletionStatus(np.libraryItemId, newCompletionStatus);
@@ -250,16 +255,16 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
           // due to the global completion status stream we set up
         }
       } else {
-        // If unfinishing, seek to the saved position
-        if (savedPosition != null && savedPosition.inSeconds > 0) {
-          debugPrint('[MARK_FINISHED] Seeking to saved position: ${savedPosition.inSeconds}s');
+        // If unfinishing, apply the user's choice locally
+        if (unfinishChoice != null) {
+          debugPrint('[MARK_FINISHED] Seeking to chosen position: ${unfinishChoice.inSeconds}s');
           try {
             // Wait a bit for the API call to complete
             await Future.delayed(const Duration(milliseconds: 500));
 
             // Seek to the saved position (the one we actually sent to the server)
             // Use seekGlobal for multi-track books to properly map position across tracks
-            await playback.seekGlobal(savedPosition, reportNow: true);
+            await playback.seekGlobal(unfinishChoice, reportNow: true);
 
             // Resume playback if it was playing before
             if (wasPlaying) {
@@ -341,12 +346,12 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     return confirmed ?? false;
   }
 
-  Future<bool> _showMarkAsUnfinishedDialog(BuildContext context) async {
+  Future<Duration?> _showMarkAsUnfinishedDialog(BuildContext context) async {
     final cs = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
     final playback = ServicesScope.of(context).services.playback;
     final np = playback.nowPlaying;
-    if (np == null) return false;
+    if (np == null) return null;
     
     // Get current position from server (more reliable than local player position)
     final currentPositionSeconds = await playback.fetchServerProgress(np.libraryItemId);
@@ -423,8 +428,40 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
         ],
       ),
     );
-    
-    return confirmed ?? false;
+    if (confirmed != true) return null;
+
+    // Second choice: resume or restart
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          'Choose where to resume',
+          style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+        ),
+        content: Text(
+          'Resume from saved position or start from the beginning.',
+          style: text.bodyMedium,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop('cancel'),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop('restart'),
+            child: const Text('Start from beginning'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop('resume'),
+            child: Text('Return to $positionText'),
+          ),
+        ],
+      ),
+    );
+
+    if (choice == 'restart') return Duration.zero;
+    if (choice == 'resume') return currentPosition;
+    return null;
   }
 
   String _formatDuration(Duration duration) {
@@ -441,7 +478,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     }
   }
 
-  Future<void> _markBookAsFinished(String libraryItemId, bool finished) async {
+  Future<void> _markBookAsFinished(String libraryItemId, bool finished, {double? overrideCurrentTimeSeconds}) async {
     final playback = ServicesScope.of(context).services.playback;
     final api = ServicesScope.of(context).services.auth.api;
     
@@ -451,7 +488,10 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
          // If unfinishing, include current progress to preserve position
          if (!finished) {
            // Get position from server (more reliable than local player position)
-           final currentPositionSeconds = await playback.fetchServerProgress(libraryItemId);
+           double? currentPositionSeconds = await playback.fetchServerProgress(libraryItemId);
+           if (overrideCurrentTimeSeconds != null) {
+             currentPositionSeconds = overrideCurrentTimeSeconds;
+           }
            final currentTimeSeconds = currentPositionSeconds ?? playback.player.position.inSeconds.toDouble();
 
            if (currentTimeSeconds > 0) {
