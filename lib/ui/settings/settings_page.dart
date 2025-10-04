@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/play_history_service.dart';
 import '../../core/ui_prefs.dart';
 import '../../core/theme_service.dart';
+import '../profile/profile_page.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -217,7 +218,22 @@ class _SettingsPageState extends State<SettingsPage> {
     final theme = services.theme;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: AppBar(
+        title: const Text('Settings'),
+        actions: [
+          IconButton(
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const ProfilePage(),
+                ),
+              );
+            },
+            icon: const Icon(Icons.person),
+            tooltip: 'View Profile',
+          ),
+        ],
+      ),
       body: ListView(
         children: [
           const ListTile(
