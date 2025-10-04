@@ -245,6 +245,14 @@ class PlaybackRepository {
 
         if (playAfterLoad) {
           await player.play();
+          
+          // Apply saved playback speed
+          try {
+            await PlaybackSpeedService.instance.applyCurrentSpeed();
+          } catch (e) {
+            _log('Failed to apply current playback speed: $e');
+          }
+          
           await _sendProgressImmediate();
         }
         return;
@@ -297,6 +305,14 @@ class PlaybackRepository {
       }
 
       await player.play();
+      
+      // Apply saved playback speed
+      try {
+        await PlaybackSpeedService.instance.applyCurrentSpeed();
+      } catch (e) {
+        _log('Failed to apply current playback speed: $e');
+      }
+      
       await _sendProgressImmediate();
     } catch (e) {
       _log('warmLoadLastItem error: $e');
@@ -552,6 +568,14 @@ class PlaybackRepository {
         if (next < cur.tracks.length) {
           await _setTrackAt(next, preload: true);
           await player.play();
+          
+          // Apply saved playback speed
+          try {
+            await PlaybackSpeedService.instance.applyCurrentSpeed();
+          } catch (e) {
+            _log('Failed to apply current playback speed: $e');
+          }
+          
           await _sendProgressImmediate();
         } else {
           // Completed last track; mark finished and close session to stop transcodes
@@ -562,6 +586,14 @@ class PlaybackRepository {
     });
 
     await player.play();
+    
+    // Apply saved playback speed
+    try {
+      await PlaybackSpeedService.instance.applyCurrentSpeed();
+    } catch (e) {
+      _log('Failed to apply current playback speed: $e');
+    }
+    
     await _sendProgressImmediate();
     return true;
   }
@@ -617,6 +649,14 @@ class PlaybackRepository {
       }
     }
     await player.play();
+    
+    // Apply saved playback speed
+    try {
+      await PlaybackSpeedService.instance.applyCurrentSpeed();
+    } catch (e) {
+      _log('Failed to apply current playback speed: $e');
+    }
+    
     await _sendProgressImmediate();
     return true;
   }
@@ -921,6 +961,14 @@ class PlaybackRepository {
     final idx = _nowPlaying!.currentIndex - 1;
     await _setTrackAt(idx, preload: true);
     await player.play();
+    
+    // Apply saved playback speed
+    try {
+      await PlaybackSpeedService.instance.applyCurrentSpeed();
+    } catch (e) {
+      _log('Failed to apply current playback speed: $e');
+    }
+    
     await _sendProgressImmediate();
   }
 
@@ -957,6 +1005,14 @@ class PlaybackRepository {
     final idx = _nowPlaying!.currentIndex + 1;
     await _setTrackAt(idx, preload: true);
     await player.play();
+    
+    // Apply saved playback speed
+    try {
+      await PlaybackSpeedService.instance.applyCurrentSpeed();
+    } catch (e) {
+      _log('Failed to apply current playback speed: $e');
+    }
+    
     await _sendProgressImmediate();
   }
 
@@ -1052,6 +1108,13 @@ class PlaybackRepository {
     }
     if (wasPlaying) {
       await player.play();
+      
+      // Apply saved playback speed
+      try {
+        await PlaybackSpeedService.instance.applyCurrentSpeed();
+      } catch (e) {
+        _log('Failed to apply current playback speed: $e');
+      }
     }
 
     // Close any active streaming session to stop server-side work
@@ -1217,6 +1280,16 @@ class PlaybackRepository {
     final session = await AudioSession.instance;
     await _configureAudioSession(session);
     WidgetsBinding.instance.addObserver(_lifecycleHook);
+    
+    // Initialize playback speed service early
+    await PlaybackSpeedService.instance.initialize(this);
+    
+    // Apply the loaded speed to the player immediately
+    try {
+      await PlaybackSpeedService.instance.applyCurrentSpeed();
+    } catch (e) {
+      _log('Failed to apply initial playback speed: $e');
+    }
 
     // Pause when headphones unplug or audio becomes noisy
     // and respect interruption events (e.g., phone calls)
@@ -1285,9 +1358,6 @@ class PlaybackRepository {
     
     // Update sleep timer service
     SleepTimerService.instance.initialize(this);
-    
-    // Update playback speed service
-    PlaybackSpeedService.instance.initialize(this);
 
     // If we know the duration after loading, update the queue/media item so
     // system UIs (notification/lockscreen) can show a determinate progress bar.

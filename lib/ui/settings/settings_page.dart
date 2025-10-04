@@ -7,7 +7,6 @@ import '../../core/books_repository.dart';
 import '../../ui/login/login_screen.dart';
 import '../../core/download_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../../core/playback_speed_service.dart';
 import '../../core/play_history_service.dart';
 import '../../core/ui_prefs.dart';
 import '../../core/theme_service.dart';
@@ -216,7 +215,6 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget build(BuildContext context) {
     final services = ServicesScope.of(context).services;
     final theme = services.theme;
-    final playbackSpeed = PlaybackSpeedService.instance; // singleton service
 
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
@@ -448,30 +446,6 @@ class _SettingsPageState extends State<SettingsPage> {
               try {
                 await services.playback.reconfigureAudioSession();
               } catch (_) {}
-            },
-          ),
-          ValueListenableBuilder<double>(
-            valueListenable: playbackSpeed.speed,
-            builder: (_, spd, __) {
-              // Ensure current value is always selectable, even if persisted from legacy list
-              final speeds = playbackSpeed.availableSpeeds;
-              final items = [
-                for (final s in speeds)
-                  DropdownMenuItem(value: s, child: Text('${s.toStringAsFixed(2)}×')),
-              ];
-              final value = speeds.contains(spd) ? spd : playbackSpeed.currentSpeed;
-              return ListTile(
-                title: const Text('Playback speed'),
-                subtitle: Text('${value.toStringAsFixed(2)}×'),
-                trailing: DropdownButton<double>(
-                  value: value,
-                  items: items,
-                  onChanged: (v) async {
-                    if (v == null) return;
-                    await playbackSpeed.setSpeed(v);
-                  },
-                ),
-              );
             },
           ),
           const Divider(height: 32),
