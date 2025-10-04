@@ -360,28 +360,32 @@ class _BookDetailPageState extends State<BookDetailPage> {
     
     // Prepare the request body
     Map<String, dynamic> requestBody = {'isFinished': finished};
-    
-         // If unfinishing, include current progress to preserve position
-         if (!finished && playback.nowPlaying?.libraryItemId == libraryItemId) {
-           // Get position from server (more reliable than local player position)
-           final currentPositionSeconds = await playback.fetchServerProgress(libraryItemId);
-           final currentTimeSeconds = currentPositionSeconds ?? playback.player.position.inSeconds.toDouble();
 
-           if (currentTimeSeconds > 0) {
-             requestBody['currentTime'] = currentTimeSeconds;
-             
-             // Include duration and progress like regular progress updates
-             final totalDuration = playback.totalBookDuration;
-             if (totalDuration != null && totalDuration.inSeconds > 0) {
-               final totalSeconds = totalDuration.inSeconds.toDouble();
-               requestBody['duration'] = totalSeconds;
-               requestBody['progress'] = (currentTimeSeconds / totalSeconds).clamp(0.0, 1.0);
-               debugPrint('[COMPLETION_DEBUG] Including full progress: currentTime=${currentTimeSeconds}s, duration=${totalSeconds}s, progress=${requestBody['progress']}');
-             } else {
-               debugPrint('[COMPLETION_DEBUG] Including currentTime: ${currentTimeSeconds}s to preserve position (no duration available)');
-             }
-           }
-         }
+    // If unfinishing, include current progress to preserve position
+    // Always do this using server progress when available (even if this book isn't currently playing)
+    if (!finished) {
+      // Get position from server (more reliable than local player position)
+      final currentPositionSeconds = await playback.fetchServerProgress(libraryItemId);
+      final bool isActiveOnPlayer = playback.nowPlaying?.libraryItemId == libraryItemId;
+      final currentTimeSeconds = currentPositionSeconds ?? (isActiveOnPlayer ? playback.player.position.inSeconds.toDouble() : 0.0);
+
+      if (currentTimeSeconds > 0) {
+        requestBody['currentTime'] = currentTimeSeconds;
+
+        // Include duration and progress like regular progress updates
+        final totalDuration = playback.totalBookDuration;
+        if (totalDuration != null && totalDuration.inSeconds > 0) {
+          final totalSeconds = totalDuration.inSeconds.toDouble();
+          requestBody['duration'] = totalSeconds;
+          requestBody['progress'] = (currentTimeSeconds / totalSeconds).clamp(0.0, 1.0);
+          debugPrint('[COMPLETION_DEBUG] Including full progress: currentTime='+currentTimeSeconds.toString()+'s, duration='+totalSeconds.toString()+'s, progress='+requestBody['progress'].toString());
+        } else {
+          debugPrint('[COMPLETION_DEBUG] Including currentTime: '+currentTimeSeconds.toString()+'s to preserve position (no duration available)');
+        }
+      } else {
+        debugPrint('[COMPLETION_DEBUG] No known currentTime to include on unfinish; will only toggle isFinished');
+      }
+    }
     
     debugPrint('[COMPLETION_DEBUG] API request: PATCH /api/me/progress/$libraryItemId, body=$requestBody');
     
@@ -1165,7 +1169,7 @@ class _ProgressSummary extends StatelessWidget {
           }
           final posSec = prefixSec + curPos.inSeconds;
           final isCompleted = totalSec > 0 && (posSec / totalSec) >= 0.999;
-          return _renderTextWithCompletion(context, posSec, totalSec > 0 ? totalSec : null, isCompleted);
+      return _renderTextWithCompletion(context, posSec, totalSec > 0 ? totalSec : null, isCompleted);
         },
       );
     }
@@ -1201,33 +1205,30 @@ class _ProgressSummary extends StatelessWidget {
     final text = Theme.of(context).textTheme;
     
     if (isCompleted) {
-      return InkWell(
-        onTap: () => _showResetProgressDialog(context),
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            color: cs.primaryContainer,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: cs.primary.withOpacity(0.2),
-              width: 1,
-            ),
+      // No action (redundant with top unfinish button)
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: cs.primaryContainer,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: cs.primary.withOpacity(0.2),
+            width: 1,
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.check_circle_rounded, size: 20, color: cs.primary),
-              const SizedBox(width: 8),
-              Text(
-                'Completed',
-                style: text.titleMedium?.copyWith(
-                  color: cs.onPrimaryContainer,
-                  fontWeight: FontWeight.w600,
-                ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.check_circle_rounded, size: 20, color: cs.primary),
+            const SizedBox(width: 8),
+            Text(
+              'Completed',
+              style: text.titleMedium?.copyWith(
+                color: cs.onPrimaryContainer,
+                fontWeight: FontWeight.w600,
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       );
     } else if (seconds == null || seconds <= 0) {

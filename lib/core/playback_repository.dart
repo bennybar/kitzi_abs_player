@@ -703,16 +703,22 @@ class PlaybackRepository {
         }
       }
       
-      // Default behavior: SERVER WINS
+      // Default behavior: prefer server only if it's > 0; otherwise prefer local when available
+      if (serverSec != null && serverSec > 0) return serverSec;
+      if (localSec != null && localSec > 0) return localSec;
       return serverSec ?? localSec;
     } catch (e) {
       _log('Error in progress reset confirmation: $e');
       // Fallback to original behavior
       try {
         final serverSec = await fetchServerProgress(libraryItemId);
-        return serverSec ?? prefs.getDouble('$_kLocalProgPrefix$libraryItemId');
+        final localSec = prefs.getDouble('$_kLocalProgPrefix$libraryItemId');
+        if (serverSec != null && serverSec > 0) return serverSec;
+        if (localSec != null && localSec > 0) return localSec;
+        return serverSec ?? localSec;
       } catch (_) {
-        return prefs.getDouble('$_kLocalProgPrefix$libraryItemId');
+        final localSec = prefs.getDouble('$_kLocalProgPrefix$libraryItemId');
+        return localSec;
       }
     }
   }
