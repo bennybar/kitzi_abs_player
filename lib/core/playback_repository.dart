@@ -139,6 +139,15 @@ class PlaybackRepository {
       await _sendProgressImmediate(paused: true);
       await _closeActiveSession();
     },
+    onResume: () async {
+      // Refresh chapter metadata when app resumes in case network is now available
+      if (_nowPlaying != null) {
+        // Delay the refresh to avoid blocking the resume
+        Future.delayed(const Duration(seconds: 2), () {
+          refreshChapterMetadata();
+        });
+      }
+    },
   );
 
   Future<List<PlaybackTrack>> getPlayableTracks(String libraryItemId,
@@ -210,11 +219,29 @@ class PlaybackRepository {
           if (serverChapters.isNotEmpty) {
             chapters = serverChapters;
             _log('Warm load: using server chapter metadata (${chapters.length} chapters)');
+            // Cache the server chapters for future use
+            await _cacheChapterMetadata(last, serverChapters);
           } else {
-            _log('Warm load: no server chapters found, using local track-based chapters');
+            _log('Warm load: no server chapters found, trying cached chapters');
+            // Try to load cached chapter metadata
+            final cachedChapters = await _loadCachedChapterMetadata(last);
+            if (cachedChapters.isNotEmpty) {
+              chapters = cachedChapters;
+              _log('Warm load: using cached chapter metadata (${chapters.length} chapters)');
+            } else {
+              _log('Warm load: no cached chapters found, using local track-based chapters');
+            }
           }
         } catch (e) {
-          _log('Warm load: failed to fetch server chapter metadata: $e, using local chapters');
+          _log('Warm load: failed to fetch server chapter metadata: $e, trying cached chapters');
+          // Try to load cached chapter metadata as fallback
+          final cachedChapters = await _loadCachedChapterMetadata(last);
+          if (cachedChapters.isNotEmpty) {
+            chapters = cachedChapters;
+            _log('Warm load: using cached chapter metadata (${chapters.length} chapters)');
+          } else {
+            _log('Warm load: no cached chapters available, using local track-based chapters');
+          }
         }
         
         final np = NowPlaying(
@@ -492,6 +519,11 @@ class PlaybackRepository {
     _log('Loaded item metadata for $libraryItemId: keys=${meta.keys.toList()}');
     var chapters = _extractChapters(meta);
     _log('Extracted ${chapters.length} chapters');
+    
+    // Cache server chapters if we got them
+    if (chapters.isNotEmpty) {
+      await _cacheChapterMetadata(libraryItemId, chapters);
+    }
 
     // Determine tracks and open a remote session only if we need to stream
     List<PlaybackTrack> tracks;
@@ -1848,6 +1880,79 @@ class PlaybackRepository {
     return chapters;
   }
 
+  /// Cache chapter metadata locally for offline use
+  Future<void> _cacheChapterMetadata(String libraryItemId, List<Chapter> chapters) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final chapterData = chapters.map((c) => {
+        'title': c.title,
+        'startMs': c.start.inMilliseconds,
+      }).toList();
+      await prefs.setString('chapters_$libraryItemId', jsonEncode(chapterData));
+      _log('Cached ${chapters.length} chapters for $libraryItemId');
+    } catch (e) {
+      _log('Failed to cache chapter metadata: $e');
+    }
+  }
+
+  /// Load cached chapter metadata
+  Future<List<Chapter>> _loadCachedChapterMetadata(String libraryItemId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cachedData = prefs.getString('chapters_$libraryItemId');
+      if (cachedData == null || cachedData.isEmpty) return [];
+      
+      final List<dynamic> chapterList = jsonDecode(cachedData);
+      final chapters = chapterList.map((data) {
+        final map = data as Map<String, dynamic>;
+        return Chapter(
+          title: map['title'] as String? ?? '',
+          start: Duration(milliseconds: (map['startMs'] as num?)?.toInt() ?? 0),
+        );
+      }).toList();
+      
+      _log('Loaded ${chapters.length} cached chapters for $libraryItemId');
+      return chapters;
+    } catch (e) {
+      _log('Failed to load cached chapter metadata: $e');
+      return [];
+    }
+  }
+
+  /// Refresh chapter metadata for the currently playing item
+  Future<void> refreshChapterMetadata() async {
+    final np = _nowPlaying;
+    if (np == null) return;
+    
+    try {
+      _log('Refreshing chapter metadata for ${np.libraryItemId}');
+      final meta = await _getItemMeta(np.libraryItemId);
+      final serverChapters = _extractChapters(meta);
+      
+      if (serverChapters.isNotEmpty) {
+        // Update the current NowPlaying with fresh chapter data
+        final updatedNp = NowPlaying(
+          libraryItemId: np.libraryItemId,
+          title: np.title,
+          author: np.author,
+          narrator: np.narrator,
+          coverUrl: np.coverUrl,
+          tracks: np.tracks,
+          currentIndex: np.currentIndex,
+          chapters: serverChapters,
+          episodeId: np.episodeId,
+        );
+        _setNowPlaying(updatedNp);
+        
+        // Cache the fresh chapters
+        await _cacheChapterMetadata(np.libraryItemId, serverChapters);
+        _log('Refreshed chapter metadata: ${serverChapters.length} chapters');
+      }
+    } catch (e) {
+      _log('Failed to refresh chapter metadata: $e');
+    }
+  }
+
   Map<String, dynamic>? _firstMapValue(Map<String, dynamic> m) {
     for (final v in m.values) {
       if (v is Map) {
@@ -1885,7 +1990,8 @@ class PlaybackRepository {
 
 class _LifecycleHook extends WidgetsBindingObserver {
   final Future<void> Function() onPauseOrDetach;
-  _LifecycleHook({required this.onPauseOrDetach});
+  final Future<void> Function()? onResume;
+  _LifecycleHook({required this.onPauseOrDetach, this.onResume});
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -1893,6 +1999,8 @@ class _LifecycleHook extends WidgetsBindingObserver {
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
       onPauseOrDetach();
+    } else if (state == AppLifecycleState.resumed && onResume != null) {
+      onResume!();
     }
   }
 }
