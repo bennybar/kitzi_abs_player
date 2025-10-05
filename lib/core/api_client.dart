@@ -122,29 +122,47 @@ class ApiClient {
   Future<bool> _refreshAccessToken() async {
     final base = baseUrl;
     final refresh = await _getRefreshToken();
-    if (base == null || refresh == null) return false;
-
-    final resp = await http.post(
-      Uri.parse('$base/auth/refresh'),
-      headers: {
-        'Content-Type': 'application/json',
-        'x-refresh-token': refresh,
-      },
-    );
-    if (resp.statusCode != 200) return false;
-
-    final data = jsonDecode(resp.body);
-    final user = data['user'] as Map<String, dynamic>?;
-    final access = user?['accessToken'] as String?;
-    final newRefresh = user?['refreshToken'] as String?;
-    if (access == null) return false;
-
-    final assumedExpiry = DateTime.now().toUtc().add(const Duration(hours: 12));
-    await _setAccessToken(access, assumedExpiry);
-    if (newRefresh != null && newRefresh.isNotEmpty) {
-      await _setRefreshToken(newRefresh);
+    if (base == null || refresh == null) {
+      debugPrint('[API] Token refresh failed: missing baseUrl or refresh token');
+      return false;
     }
-    return true;
+
+    try {
+      final resp = await http.post(
+        Uri.parse('$base/auth/refresh'),
+        headers: {
+          'Content-Type': 'application/json',
+          'x-refresh-token': refresh,
+        },
+      );
+      
+      if (resp.statusCode != 200) {
+        debugPrint('[API] Token refresh failed: HTTP ${resp.statusCode}');
+        return false;
+      }
+
+      final data = jsonDecode(resp.body);
+      final user = data['user'] as Map<String, dynamic>?;
+      final access = user?['accessToken'] as String?;
+      final newRefresh = user?['refreshToken'] as String?;
+      
+      if (access == null) {
+        debugPrint('[API] Token refresh failed: no access token in response');
+        return false;
+      }
+
+      final assumedExpiry = DateTime.now().toUtc().add(const Duration(hours: 12));
+      await _setAccessToken(access, assumedExpiry);
+      if (newRefresh != null && newRefresh.isNotEmpty) {
+        await _setRefreshToken(newRefresh);
+      }
+      
+      debugPrint('[API] Token refresh successful');
+      return true;
+    } catch (e) {
+      debugPrint('[API] Token refresh failed: $e');
+      return false;
+    }
   }
 
   Future<bool> refreshAccessToken() => _refreshAccessToken();

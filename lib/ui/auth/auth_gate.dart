@@ -33,7 +33,9 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
     super.didChangeDependencies();
     _auth = ServicesScope.of(context).services.auth;
     _check();
-    _poll ??= Timer.periodic(const Duration(seconds: 15), (_) => _check());
+    // Reduce polling frequency to avoid unnecessary network requests
+    // Only poll every 2 minutes instead of every 15 seconds
+    _poll ??= Timer.periodic(const Duration(minutes: 2), (_) => _check());
   }
 
   @override
@@ -52,12 +54,25 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
 
   Future<void> _check() async {
     try {
-      final token = await _auth.api.accessToken();
-      final isValid = token != null && token.isNotEmpty;
+      // Use proper session validation instead of just checking token existence
+      final isValid = await _auth.hasValidSession();
       if (!mounted) return;
       setState(() => _isLoggedIn = isValid);
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[AUTH_GATE] Session check failed: $e');
       if (!mounted) return;
+      
+      // Check if this is a network error vs authentication error
+      if (e.toString().contains('SocketException') || 
+          e.toString().contains('TimeoutException') ||
+          e.toString().contains('HandshakeException')) {
+        // Network error - don't logout, keep current state
+        debugPrint('[AUTH_GATE] Network error detected, keeping current auth state');
+        return;
+      }
+      
+      // Only set to false if we're sure the session is invalid
+      // (e.g., 401 Unauthorized, invalid tokens, etc.)
       setState(() => _isLoggedIn = false);
     }
   }
