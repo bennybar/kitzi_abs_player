@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:io';
 import 'dart:async';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import '../../core/books_repository.dart';
 import '../../models/book.dart';
 import '../book_detail/book_detail_page.dart';
@@ -36,6 +37,10 @@ class _SeriesPageState extends State<SeriesPage> {
   bool _searchVisible = false;
   String _query = '';
   
+  // Connectivity tracking
+  StreamSubscription<List<ConnectivityResult>>? _connSub;
+  bool _isOnline = true;
+  
   static const String _viewTypeKey = 'series_view_type_pref';
   static const String _searchKey = 'series_search_pref';
 
@@ -43,12 +48,14 @@ class _SeriesPageState extends State<SeriesPage> {
   void initState() {
     super.initState();
     _repoFut = BooksRepository.create();
-    _loadViewTypePref().then((_) => _loadSearchPref().then((_) => _loadAll()));
+    _startConnectivityWatch();
+    _loadViewTypePref().then((_) => _loadSearchPref().then((_) => _refresh(initial: true)));
   }
 
   @override
   void dispose() {
     _searchDebounce?.cancel();
+    _connSub?.cancel();
     _searchCtrl.dispose();
     _searchFocusNode.dispose();
     super.dispose();
@@ -91,6 +98,27 @@ class _SeriesPageState extends State<SeriesPage> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_searchKey, query);
     } catch (_) {}
+  }
+
+  Future<void> _startConnectivityWatch() async {
+    final current = await Connectivity().checkConnectivity();
+    if (mounted) setState(() => _isOnline = _isConnectedList(current));
+    _connSub = Connectivity().onConnectivityChanged.listen((conn) {
+      if (!mounted) return;
+      setState(() => _isOnline = _isConnectedList(conn));
+    });
+  }
+
+  bool _isConnectedList(List<ConnectivityResult> results) {
+    for (final r in results) {
+      if (r == ConnectivityResult.mobile ||
+          r == ConnectivityResult.wifi ||
+          r == ConnectivityResult.ethernet ||
+          r == ConnectivityResult.vpn) {
+        return true;
+      }
+    }
+    return false;
   }
 
   void _toggleSearch() {
@@ -175,96 +203,129 @@ class _SeriesPageState extends State<SeriesPage> {
     return filtered;
   }
 
-  Future<void> _loadAll() async {
-    setState(() { _loading = true; _error = null; });
+  Future<void> _refresh({bool initial = false}) async {
+    setState(() {
+      if (initial) _loading = true;
+      _error = null;
+    });
+    
     try {
       final repo = await _repoFut;
-      // Ensure full sync to DB then read everything from local DB (paged)
-      await repo.syncAllBooksToDb(pageSize: 200);
-      final all = <Book>[];
-      int page = 1;
-      const limit = 200;
-      while (true) {
-        final chunk = await repo.listBooksFromDbPaged(page: page, limit: limit);
-        if (chunk.isEmpty) break;
-        all.addAll(chunk);
-        if (chunk.length < limit) break;
-        page += 1;
-      }
       
-      debugPrint('Total books loaded: ${all.length}');
-      for (final book in all.take(5)) {
-        debugPrint('Book: "${book.title}" - Series: "${book.series}" - Collection: "${book.collection}"');
-      }
+      // Load from local DB first (fast start)
+      final all = await _loadAllBooksFromDb(repo);
       
-      // Load series with normalized names
-      final seriesMap = <String, List<Book>>{};
-      for (final b in all) {
-        final originalName = (b.series ?? '').trim();
-        if (originalName.isEmpty) continue;
-        
-        final normalizedName = _normalizeSeriesName(originalName);
-        (seriesMap[normalizedName] ??= <Book>[]).add(b);
-        debugPrint('Series: "$originalName" -> "$normalizedName" - Book: "${b.title}"');
-      }
-      debugPrint('Total series found: ${seriesMap.length}');
-      for (final entry in seriesMap.entries) {
-        debugPrint('Series "${entry.key}": ${entry.value.length} books');
-      }
-      // Show all series, regardless of book count
-      // sort each series by sequence then title
-      for (final e in seriesMap.entries) {
-        e.value.sort((a, b) {
-          final sa = a.seriesSequence ?? double.nan;
-          final sb = b.seriesSequence ?? double.nan;
-          final aNum = !sa.isNaN;
-          final bNum = !sb.isNaN;
-          if (aNum && bNum) return sa.compareTo(sb);
-          if (aNum && !bNum) return -1;
-          if (!aNum && bNum) return 1;
-          return a.title.toLowerCase().compareTo(b.title.toLowerCase());
-        });
-      }
-      
-      // Load collections with normalized names
-      final collectionsMap = <String, List<Book>>{};
-      for (final b in all) {
-        final originalName = (b.collection ?? '').trim();
-        if (originalName.isEmpty) continue;
-        
-        final normalizedName = _normalizeSeriesName(originalName);
-        (collectionsMap[normalizedName] ??= <Book>[]).add(b);
-        debugPrint('Collection: "$originalName" -> "$normalizedName" - Book: "${b.title}"');
-      }
-      debugPrint('Total collections found: ${collectionsMap.length}');
-      for (final entry in collectionsMap.entries) {
-        debugPrint('Collection "${entry.key}": ${entry.value.length} books');
-      }
-      // Show all collections, regardless of book count
-      // sort each collection by sequence then title
-      for (final e in collectionsMap.entries) {
-        e.value.sort((a, b) {
-          final sa = a.collectionSequence ?? double.nan;
-          final sb = b.collectionSequence ?? double.nan;
-          final aNum = !sa.isNaN;
-          final bNum = !sb.isNaN;
-          if (aNum && bNum) return sa.compareTo(sb);
-          if (aNum && !bNum) return -1;
-          if (!aNum && bNum) return 1;
-          return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+      // Background refresh from server only when online
+      if (_isOnline) {
+        // Kick off background full sync
+        Future.microtask(() async {
+          try {
+            await repo.syncAllBooksToDb(
+              pageSize: 200, 
+              removeDeleted: true,
+            );
+            if (!mounted) return;
+            // Reload from DB after sync to get fresh data
+            final fresh = await _loadAllBooksFromDb(repo);
+            if (!mounted) return;
+            _processBooksData(fresh);
+          } catch (_) {}
         });
       }
       
       if (!mounted) return;
-      setState(() { 
-        _series = seriesMap; 
-        _collections = collectionsMap;
-        _loading = false; 
-      });
+      _processBooksData(all);
+      setState(() => _loading = false);
+      
     } catch (e) {
       if (!mounted) return;
       setState(() { _loading = false; _error = e.toString(); });
     }
+  }
+
+  Future<List<Book>> _loadAllBooksFromDb(BooksRepository repo) async {
+    final all = <Book>[];
+    int page = 1;
+    const limit = 200;
+    while (true) {
+      final chunk = await repo.listBooksFromDbPaged(page: page, limit: limit);
+      if (chunk.isEmpty) break;
+      all.addAll(chunk);
+      if (chunk.length < limit) break;
+      page += 1;
+    }
+    return all;
+  }
+
+  void _processBooksData(List<Book> all) {
+    debugPrint('Total books loaded: ${all.length}');
+    for (final book in all.take(5)) {
+      debugPrint('Book: "${book.title}" - Series: "${book.series}" - Collection: "${book.collection}"');
+    }
+    
+    // Load series with normalized names
+    final seriesMap = <String, List<Book>>{};
+    for (final b in all) {
+      final originalName = (b.series ?? '').trim();
+      if (originalName.isEmpty) continue;
+      
+      final normalizedName = _normalizeSeriesName(originalName);
+      (seriesMap[normalizedName] ??= <Book>[]).add(b);
+      debugPrint('Series: "$originalName" -> "$normalizedName" - Book: "${b.title}"');
+    }
+    debugPrint('Total series found: ${seriesMap.length}');
+    for (final entry in seriesMap.entries) {
+      debugPrint('Series "${entry.key}": ${entry.value.length} books');
+    }
+    
+    // Sort each series by sequence then title
+    for (final e in seriesMap.entries) {
+      e.value.sort((a, b) {
+        final sa = a.seriesSequence ?? double.nan;
+        final sb = b.seriesSequence ?? double.nan;
+        final aNum = !sa.isNaN;
+        final bNum = !sb.isNaN;
+        if (aNum && bNum) return sa.compareTo(sb);
+        if (aNum && !bNum) return -1;
+        if (!aNum && bNum) return 1;
+        return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+      });
+    }
+    
+    // Load collections with normalized names
+    final collectionsMap = <String, List<Book>>{};
+    for (final b in all) {
+      final originalName = (b.collection ?? '').trim();
+      if (originalName.isEmpty) continue;
+      
+      final normalizedName = _normalizeSeriesName(originalName);
+      (collectionsMap[normalizedName] ??= <Book>[]).add(b);
+      debugPrint('Collection: "$originalName" -> "$normalizedName" - Book: "${b.title}"');
+    }
+    debugPrint('Total collections found: ${collectionsMap.length}');
+    for (final entry in collectionsMap.entries) {
+      debugPrint('Collection "${entry.key}": ${entry.value.length} books');
+    }
+    
+    // Sort each collection by sequence then title
+    for (final e in collectionsMap.entries) {
+      e.value.sort((a, b) {
+        final sa = a.collectionSequence ?? double.nan;
+        final sb = b.collectionSequence ?? double.nan;
+        final aNum = !sa.isNaN;
+        final bNum = !sb.isNaN;
+        if (aNum && bNum) return sa.compareTo(sb);
+        if (aNum && !bNum) return -1;
+        if (!aNum && bNum) return 1;
+        return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+      });
+    }
+    
+    if (!mounted) return;
+    setState(() { 
+      _series = seriesMap; 
+      _collections = collectionsMap;
+    });
   }
 
   @override
@@ -286,7 +347,7 @@ class _SeriesPageState extends State<SeriesPage> {
               const SizedBox(height: 8),
               Text(_error!, textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant)),
               const SizedBox(height: 12),
-              FilledButton.icon(onPressed: _loadAll, icon: const Icon(Icons.refresh_rounded), label: const Text('Retry')),
+              FilledButton.icon(onPressed: () => _refresh(), icon: const Icon(Icons.refresh_rounded), label: const Text('Retry')),
             ],
           ),
         ),
@@ -303,7 +364,7 @@ class _SeriesPageState extends State<SeriesPage> {
     final filteredCount = filteredData.length;
 
     return RefreshIndicator(
-      onRefresh: _loadAll,
+      onRefresh: () => _refresh(),
       edgeOffset: 100,
       color: cs.primary,
       backgroundColor: cs.surface,
@@ -330,6 +391,30 @@ class _SeriesPageState extends State<SeriesPage> {
             backgroundColor: cs.surface,
             surfaceTintColor: cs.surfaceTint,
             elevation: 0,
+            bottom: PreferredSize(
+              preferredSize: const Size.fromHeight(28),
+              child: _isOnline
+                  ? const SizedBox.shrink()
+                  : Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                      color: cs.errorContainer,
+                      child: Row(
+                        children: [
+                          Icon(Icons.wifi_off_rounded, size: 16, color: cs.onErrorContainer),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Offline – showing cached ${_viewType.name}',
+                              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                                    color: cs.onErrorContainer,
+                                  ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+            ),
             actions: [
               // Search button
               IconButton.filledTonal(
