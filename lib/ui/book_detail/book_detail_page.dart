@@ -85,15 +85,35 @@ class _BookDetailPageState extends State<BookDetailPage> {
     super.didChangeDependencies();
     final pb = ServicesScope.of(context).services.playback;
     _serverProgressFut ??= pb.fetchServerProgress(widget.bookId);
-    
-    // Send background ping when book details page is opened
-    _sendBackgroundPing();
   }
 
-  /// Send a background ping to track book details page views
-  void _sendBackgroundPing() {
-    // Run in background without blocking the UI
-    unawaited(_performBackgroundPing());
+  /// Check if we should send a ping today (only once per day)
+  Future<bool> _shouldSendPingToday() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final lastPingDate = prefs.getString('last_ping_date');
+      final today = DateTime.now().toIso8601String().substring(0, 10); // YYYY-MM-DD
+      
+      if (lastPingDate == today) {
+        debugPrint('[BACKGROUND_PING] Already sent ping today');
+        return false;
+      }
+      
+      // Update the last ping date
+      await prefs.setString('last_ping_date', today);
+      return true;
+    } catch (e) {
+      debugPrint('[BACKGROUND_PING] Error checking ping date: $e');
+      return false;
+    }
+  }
+
+  /// Send a background ping to track play events (once per day)
+  Future<void> _sendBackgroundPingIfNeeded() async {
+    if (await _shouldSendPingToday()) {
+      // Run in background without blocking the UI
+      unawaited(_performBackgroundPing());
+    }
   }
 
   /// Perform the actual ping request in the background
@@ -961,6 +981,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
                                   // This will trigger a rebuild of the entire page
                                 });
                               },
+                              onPlay: _sendBackgroundPingIfNeeded,
                             ),
                           ),
                           const SizedBox(width: 12),
@@ -1516,10 +1537,12 @@ class _PlayPrimaryButton extends StatelessWidget {
     required this.book, 
     required this.playback,
     this.onResetPerformed,
+    this.onPlay,
   });
   final Book book;
   final PlaybackRepository playback;
   final VoidCallback? onResetPerformed;
+  final Future<void> Function()? onPlay;
 
   /// Show reset dialog for completed book
   /// Returns true if reset was performed, false if cancelled
@@ -1783,6 +1806,12 @@ class _PlayPrimaryButton extends StatelessWidget {
                 }
                 
                 debugPrint('[COMPLETION_DEBUG] Book not completed (from cache), starting playback');
+                
+                // Send background ping before starting playback (once per day)
+                if (onPlay != null) {
+                  await onPlay!();
+                }
+                
                 final success = await playback.playItem(book.id, context: context);
                 if (!success && context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
