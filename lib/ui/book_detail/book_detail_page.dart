@@ -87,62 +87,6 @@ class _BookDetailPageState extends State<BookDetailPage> {
     _serverProgressFut ??= pb.fetchServerProgress(widget.bookId);
   }
 
-  /// Check if we should send a ping today (only once per day)
-  Future<bool> _shouldSendPingToday() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final lastPingDate = prefs.getString('last_ping_date');
-      final today = DateTime.now().toIso8601String().substring(0, 10); // YYYY-MM-DD
-      
-      debugPrint('[BACKGROUND_PING] Checking ping: lastPingDate=$lastPingDate, today=$today');
-      
-      if (lastPingDate == today) {
-        debugPrint('[BACKGROUND_PING] Already sent ping today (dates match)');
-        return false;
-      }
-      
-      // Update the last ping date
-      debugPrint('[BACKGROUND_PING] Setting last_ping_date to: $today');
-      await prefs.setString('last_ping_date', today);
-      debugPrint('[BACKGROUND_PING] Should send ping (first time today)');
-      return true;
-    } catch (e) {
-      debugPrint('[BACKGROUND_PING] Error checking ping date: $e');
-      return false;
-    }
-  }
-
-  /// Send a background ping to track play events (once per day)
-  Future<void> _sendBackgroundPingIfNeeded() async {
-    debugPrint('[BACKGROUND_PING] _sendBackgroundPingIfNeeded called');
-    final shouldSend = await _shouldSendPingToday();
-    debugPrint('[BACKGROUND_PING] shouldSend: $shouldSend');
-    if (shouldSend) {
-      debugPrint('[BACKGROUND_PING] Initiating ping...');
-      // Run in background without blocking the UI
-      unawaited(_performBackgroundPing());
-    } else {
-      debugPrint('[BACKGROUND_PING] Skipping ping (already sent today)');
-    }
-  }
-
-  /// Perform the actual ping request in the background
-  Future<void> _performBackgroundPing() async {
-    debugPrint('[BACKGROUND_PING] _performBackgroundPing started');
-    try {
-      final client = HttpClient();
-      debugPrint('[BACKGROUND_PING] Making HTTP request...');
-      final request = await client.getUrl(Uri.parse('https://customapi.kenes.com/listenedabs/ovrmyte2590254nm7y698n28v0jm'));
-      final response = await request.close();
-      client.close();
-      
-      debugPrint('[BACKGROUND_PING] Ping completed successfully, status: ${response.statusCode}');
-    } catch (e) {
-      // Silently ignore errors to not interfere with app functionality
-      debugPrint('[BACKGROUND_PING] Error sending ping: $e');
-    }
-  }
-
   Stream<bool> _getBookCompletionStream(PlaybackRepository playback, String bookId) {
     // Start with the current cache value to avoid race conditions
     final currentValue = playback.completionCache[bookId] ?? false;
@@ -174,7 +118,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
     if (!newCompletionStatus && playback.nowPlaying?.libraryItemId == book.id) {
       savedPosition = playback.player.position;
       wasPlaying = playback.player.playing;
-      debugPrint('[COMPLETION_DEBUG] Saved position: ${savedPosition?.inSeconds}s, wasPlaying: $wasPlaying');
+      debugPrint('[COMPLETION_DEBUG] Saved position: ${savedPosition.inSeconds}s, wasPlaying: $wasPlaying');
     }
     
     // Stop any ongoing playback immediately when marking as finished
@@ -452,9 +396,9 @@ class _BookDetailPageState extends State<BookDetailPage> {
           final totalSeconds = totalDuration.inSeconds.toDouble();
           requestBody['duration'] = totalSeconds;
           requestBody['progress'] = (currentTimeSeconds / totalSeconds).clamp(0.0, 1.0);
-          debugPrint('[COMPLETION_DEBUG] Including full progress: currentTime='+currentTimeSeconds.toString()+'s, duration='+totalSeconds.toString()+'s, progress='+requestBody['progress'].toString());
+          debugPrint('[COMPLETION_DEBUG] Including full progress: currentTime=${currentTimeSeconds}s, duration=${totalSeconds}s, progress=${requestBody['progress']}');
         } else {
-          debugPrint('[COMPLETION_DEBUG] Including currentTime: '+currentTimeSeconds.toString()+'s to preserve position (no duration available)');
+          debugPrint('[COMPLETION_DEBUG] Including currentTime: ${currentTimeSeconds}s to preserve position (no duration available)');
         }
       }
     }
@@ -992,7 +936,6 @@ class _BookDetailPageState extends State<BookDetailPage> {
                                   // This will trigger a rebuild of the entire page
                                 });
                               },
-                              onPlay: _sendBackgroundPingIfNeeded,
                             ),
                           ),
                           const SizedBox(width: 12),
@@ -1548,12 +1491,10 @@ class _PlayPrimaryButton extends StatelessWidget {
     required this.book, 
     required this.playback,
     this.onResetPerformed,
-    this.onPlay,
   });
   final Book book;
   final PlaybackRepository playback;
   final VoidCallback? onResetPerformed;
-  final Future<void> Function()? onPlay;
 
   /// Show reset dialog for completed book
   /// Returns true if reset was performed, false if cancelled
@@ -1817,14 +1758,6 @@ class _PlayPrimaryButton extends StatelessWidget {
                 }
                 
                 debugPrint('[COMPLETION_DEBUG] Book not completed (from cache), starting playback');
-                
-                // Send background ping before starting playback (once per day)
-                debugPrint('[BACKGROUND_PING] onPlay callback: ${onPlay != null ? "exists" : "null"}');
-                if (onPlay != null) {
-                  debugPrint('[BACKGROUND_PING] Calling onPlay callback...');
-                  await onPlay!();
-                  debugPrint('[BACKGROUND_PING] onPlay callback completed');
-                }
                 
                 final success = await playback.playItem(book.id, context: context);
                 if (!success && context.mounted) {

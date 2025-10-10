@@ -990,10 +990,10 @@ class _BooksPageState extends State<BooksPage> {
                           ),
                           FilledButton(
                             onPressed: () => Navigator.of(context).pop(true),
-                            child: Text(hasLocal ? 'Delete' : 'Download'),
                             style: hasLocal ? FilledButton.styleFrom(
                               backgroundColor: Theme.of(context).colorScheme.error,
                             ) : null,
+                            child: Text(hasLocal ? 'Delete' : 'Download'),
                           ),
                         ],
                       ),

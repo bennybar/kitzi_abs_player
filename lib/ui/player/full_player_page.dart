@@ -7,7 +7,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/playback_repository.dart';
 import '../../core/playback_speed_service.dart';
 import '../../core/sleep_timer_service.dart';
-import '../../core/books_repository.dart';
 import '../../main.dart'; // ServicesScope
 import '../../widgets/audio_waveform.dart';
 

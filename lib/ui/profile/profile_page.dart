@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import '../../main.dart'; // ServicesScope
-import '../../core/auth_repository.dart';
 import '../../core/books_repository.dart';
-import '../../models/book.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -439,7 +437,7 @@ class _ProfilePageState extends State<ProfilePage> {
   Widget _buildRecentActivity() {
     try {
       final mediaProgress = _profileData!['mediaProgress'];
-      if (mediaProgress == null || !(mediaProgress is List<dynamic>) || mediaProgress.isEmpty) {
+      if (mediaProgress == null || mediaProgress is! List<dynamic> || mediaProgress.isEmpty) {
         return Text(
           'No recent activity',
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
