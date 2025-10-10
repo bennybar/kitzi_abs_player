@@ -94,13 +94,17 @@ class _BookDetailPageState extends State<BookDetailPage> {
       final lastPingDate = prefs.getString('last_ping_date');
       final today = DateTime.now().toIso8601String().substring(0, 10); // YYYY-MM-DD
       
+      debugPrint('[BACKGROUND_PING] Checking ping: lastPingDate=$lastPingDate, today=$today');
+      
       if (lastPingDate == today) {
-        debugPrint('[BACKGROUND_PING] Already sent ping today');
+        debugPrint('[BACKGROUND_PING] Already sent ping today (dates match)');
         return false;
       }
       
       // Update the last ping date
+      debugPrint('[BACKGROUND_PING] Setting last_ping_date to: $today');
       await prefs.setString('last_ping_date', today);
+      debugPrint('[BACKGROUND_PING] Should send ping (first time today)');
       return true;
     } catch (e) {
       debugPrint('[BACKGROUND_PING] Error checking ping date: $e');
@@ -110,22 +114,29 @@ class _BookDetailPageState extends State<BookDetailPage> {
 
   /// Send a background ping to track play events (once per day)
   Future<void> _sendBackgroundPingIfNeeded() async {
-    if (await _shouldSendPingToday()) {
+    debugPrint('[BACKGROUND_PING] _sendBackgroundPingIfNeeded called');
+    final shouldSend = await _shouldSendPingToday();
+    debugPrint('[BACKGROUND_PING] shouldSend: $shouldSend');
+    if (shouldSend) {
+      debugPrint('[BACKGROUND_PING] Initiating ping...');
       // Run in background without blocking the UI
       unawaited(_performBackgroundPing());
+    } else {
+      debugPrint('[BACKGROUND_PING] Skipping ping (already sent today)');
     }
   }
 
   /// Perform the actual ping request in the background
   Future<void> _performBackgroundPing() async {
+    debugPrint('[BACKGROUND_PING] _performBackgroundPing started');
     try {
       final client = HttpClient();
+      debugPrint('[BACKGROUND_PING] Making HTTP request...');
       final request = await client.getUrl(Uri.parse('https://customapi.kenes.com/listenedabs/ovrmyte2590254nm7y698n28v0jm'));
       final response = await request.close();
       client.close();
       
-      // Log for debugging (optional)
-      debugPrint('[BACKGROUND_PING] Sent ping, status: ${response.statusCode}');
+      debugPrint('[BACKGROUND_PING] Ping completed successfully, status: ${response.statusCode}');
     } catch (e) {
       // Silently ignore errors to not interfere with app functionality
       debugPrint('[BACKGROUND_PING] Error sending ping: $e');
@@ -1808,8 +1819,11 @@ class _PlayPrimaryButton extends StatelessWidget {
                 debugPrint('[COMPLETION_DEBUG] Book not completed (from cache), starting playback');
                 
                 // Send background ping before starting playback (once per day)
+                debugPrint('[BACKGROUND_PING] onPlay callback: ${onPlay != null ? "exists" : "null"}');
                 if (onPlay != null) {
+                  debugPrint('[BACKGROUND_PING] Calling onPlay callback...');
                   await onPlay!();
+                  debugPrint('[BACKGROUND_PING] onPlay callback completed');
                 }
                 
                 final success = await playback.playItem(book.id, context: context);
