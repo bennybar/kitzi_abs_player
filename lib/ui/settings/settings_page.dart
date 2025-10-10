@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'dart:async' show unawaited;
+import 'dart:io' show exit;
+import 'package:flutter/services.dart' show SystemNavigator;
 import '../../main.dart'; // ServicesScope
 import '../../core/audio_service_binding.dart';
 import '../../core/books_repository.dart';
@@ -520,6 +522,63 @@ class _SettingsPageState extends State<SettingsPage> {
               },
               style: FilledButton.styleFrom(
                 foregroundColor: Theme.of(context).colorScheme.error,
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: FilledButton.tonalIcon(
+              icon: const Icon(Icons.exit_to_app_rounded),
+              label: const Text('Exit App'),
+              onPressed: () async {
+                final confirmed = await showDialog<bool>(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text('Exit App'),
+                    content: const Text(
+                      'This will stop playback and completely close the app. Are you sure?',
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(false),
+                        child: const Text('Cancel'),
+                      ),
+                      FilledButton(
+                        onPressed: () => Navigator.of(context).pop(true),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: Theme.of(context).colorScheme.error,
+                          foregroundColor: Theme.of(context).colorScheme.onError,
+                        ),
+                        child: const Text('Exit'),
+                      ),
+                    ],
+                  ),
+                );
+
+                if (confirmed == true) {
+                  try {
+                    // Stop playback
+                    await services.playback.stop();
+                  } catch (_) {}
+                  
+                  try {
+                    // Unbind audio service
+                    await AudioServiceBinding.instance.unbind();
+                  } catch (_) {}
+
+                  // Exit the app
+                  if (context.mounted) {
+                    // For Android, use SystemNavigator.pop()
+                    await SystemNavigator.pop();
+                  }
+                  
+                  // Fallback for iOS or if SystemNavigator doesn't work
+                  exit(0);
+                }
+              },
+              style: FilledButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.secondary,
               ),
             ),
           ),
