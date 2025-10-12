@@ -18,7 +18,7 @@ class BooksRepository {
   final AuthRepository _auth;
   final SharedPreferences _prefs;
   
-  // Enable/disable verbose logging
+  // Enable/disable verbose logging  
   static const bool _verboseLogging = false;
   Database? _db;
   String? _dbLibId; // track which library the DB connection belongs to
@@ -1118,6 +1118,119 @@ class BooksRepository {
     });
     
     return books;
+  }
+
+  /// Get server status information including version
+  /// Optimized - only uses endpoints that work on your server
+  Future<Map<String, dynamic>> getServerStatus() async {
+    return await NetworkService.withRetry(() async {
+      final api = _auth.api;
+      final token = await api.accessToken();
+      final tokenQS = (token != null && token.isNotEmpty) ? '?token=$token' : '';
+      
+      // Use /status (without /api/) - we know this works and has serverVersion
+      try {
+        _log('[BOOKS] Getting server version from /status');
+        final resp = await api.request('GET', '/status$tokenQS');
+        if (resp.statusCode == 200) {
+          final bodyStr = resp.body;
+          final body = bodyStr.isNotEmpty ? jsonDecode(bodyStr) : <String, dynamic>{};
+          if (body is Map<String, dynamic> && body.isNotEmpty) {
+            final serverVersion = body['serverVersion'];
+            if (serverVersion != null) {
+              _log('[BOOKS] Found server version: $serverVersion');
+              return {'serverVersion': serverVersion, 'source': 'status'};
+            }
+          }
+        }
+      } catch (e) {
+        _log('[BOOKS] /status failed: $e');
+      }
+      
+      // Return empty if no version found
+      return <String, dynamic>{};
+    });
+  }
+
+  /// Get library statistics including total count
+  /// Optimized - only uses endpoint that works on your server
+  Future<Map<String, dynamic>> getLibraryStats() async {
+    return await NetworkService.withRetry(() async {
+      final api = _auth.api;
+      final token = await api.accessToken();
+      final libId = await _ensureLibraryId();
+      final tokenQS = (token != null && token.isNotEmpty) ? '?token=$token' : '';
+      
+      // Use /api/libraries/{id}/stats - we know this works and returns library data
+      try {
+        _log('[BOOKS] Getting library stats from /api/libraries/$libId/stats');
+        final resp = await api.request('GET', '/api/libraries/$libId/stats$tokenQS');
+        if (resp.statusCode == 200) {
+          final bodyStr = resp.body;
+          final body = bodyStr.isNotEmpty ? jsonDecode(bodyStr) : <String, dynamic>{};
+          if (body is Map<String, dynamic> && body.isNotEmpty) {
+            _log('[BOOKS] Library stats loaded successfully');
+            return body;
+          }
+        }
+      } catch (e) {
+        _log('[BOOKS] Library stats failed: $e');
+      }
+      
+      // Fallback to /api/libraries endpoint if stats fails
+      return await _getLibraryStatsFromLibrariesEndpoint();
+    });
+  }
+
+  /// Fallback method to get library stats from the libraries endpoint
+  Future<Map<String, dynamic>> _getLibraryStatsFromLibrariesEndpoint() async {
+    try {
+      final api = _auth.api;
+      final token = await api.accessToken();
+      final libId = await _ensureLibraryId();
+      final tokenQS = (token != null && token.isNotEmpty) ? '?token=$token' : '';
+      
+      final resp = await api.request('GET', '/api/libraries$tokenQS');
+      if (resp.statusCode != 200) {
+        return <String, dynamic>{};
+      }
+      
+      final bodyStr = resp.body;
+      final body = bodyStr.isNotEmpty ? jsonDecode(bodyStr) : null;
+      
+      // Look for the current library in the response
+      List<dynamic> libraries = const [];
+      if (body is Map && body['libraries'] is List) {
+        libraries = body['libraries'] as List;
+      } else if (body is List) {
+        libraries = body;
+      }
+      
+      for (final lib in libraries) {
+        if (lib is Map) {
+          final m = lib.cast<String, dynamic>();
+          final id = (m['id'] ?? m['_id'] ?? '').toString();
+          if (id == libId) {
+            // Extract useful stats from library info
+            return {
+              'totalItems': m['stats']?['totalItems'] ?? m['numItems'] ?? 0,
+              'totalSize': m['stats']?['totalSize'] ?? m['size'] ?? 0,
+              'totalDuration': m['stats']?['totalDuration'] ?? m['duration'] ?? 0,
+              'numAuthors': m['stats']?['numAuthors'] ?? 0,
+              'numGenres': m['stats']?['numGenres'] ?? 0,
+              'name': m['name'] ?? 'Unknown Library',
+              'mediaType': m['mediaType'] ?? 'Unknown',
+              'source': 'libraries_fallback'
+            };
+          }
+        }
+      }
+      
+      return <String, dynamic>{};
+    } catch (e) {
+      _log('[BOOKS] _getLibraryStatsFromLibrariesEndpoint error: $e');
+      return <String, dynamic>{};
+    }
   }
 
   Future<int> syncAllBooksToDb({

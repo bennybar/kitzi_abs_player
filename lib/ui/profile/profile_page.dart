@@ -15,6 +15,10 @@ class _ProfilePageState extends State<ProfilePage> {
   bool _isLoading = true;
   String? _error;
   final Map<String, String> _bookNames = {}; // Cache for book names
+  
+  // Server information cache
+  Map<String, dynamic>? _serverStatus;
+  Map<String, dynamic>? _libraryStats;
 
   @override
   void initState() {
@@ -39,6 +43,7 @@ class _ProfilePageState extends State<ProfilePage> {
       final services = ServicesScope.of(context).services;
       final api = services.auth.api;
       
+      // Load profile data
       final response = await api.request('GET', '/api/me', auth: true);
       
       if (response.statusCode == 200) {
@@ -59,6 +64,24 @@ class _ProfilePageState extends State<ProfilePage> {
             }
           }
         }
+        
+        // Load server status and library stats in parallel
+        await Future.wait([
+          _loadServerStatus(),
+          _loadLibraryStats(),
+        ]);
+        
+        // Also check if the profile data itself contains server version info
+        final serverVersionFromProfile = data['serverVersion'] ?? data['version'] ?? data['appVersion'];
+        if (serverVersionFromProfile != null) {
+          debugPrint('[PROFILE] Found server version in profile data: $serverVersionFromProfile');
+          if (mounted) {
+            setState(() {
+              _serverStatus = {'serverVersion': serverVersionFromProfile, 'source': 'profile'};
+            });
+          }
+        }
+        
         setState(() {
           _profileData = data;
           _isLoading = false;
@@ -74,6 +97,36 @@ class _ProfilePageState extends State<ProfilePage> {
         _error = 'Error loading profile: $e';
         _isLoading = false;
       });
+    }
+  }
+
+  Future<void> _loadServerStatus() async {
+    try {
+      final repo = await BooksRepository.create();
+      final status = await repo.getServerStatus();
+      if (mounted) {
+        setState(() {
+          _serverStatus = status;
+        });
+      }
+    } catch (e) {
+      debugPrint('Failed to load server status: $e');
+      // Don't fail the whole profile load just because of server status
+    }
+  }
+
+  Future<void> _loadLibraryStats() async {
+    try {
+      final repo = await BooksRepository.create();
+      final stats = await repo.getLibraryStats();
+      if (mounted) {
+        setState(() {
+          _libraryStats = stats;
+        });
+      }
+    } catch (e) {
+      debugPrint('Failed to load library stats: $e');
+      // Don't fail the whole profile load just because of library stats
     }
   }
 
@@ -117,7 +170,12 @@ class _ProfilePageState extends State<ProfilePage> {
               ),
               const SizedBox(height: 16),
               FilledButton.icon(
-                onPressed: _loadProfileData,
+                onPressed: () {
+                  // Clear cached data and reload
+                  _serverStatus = null;
+                  _libraryStats = null;
+                  _loadProfileData();
+                },
                 icon: const Icon(Icons.refresh),
                 label: const Text('Retry'),
               ),
@@ -214,6 +272,7 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
             const SizedBox(height: 8),
             _buildDetailRow('Server URL', _getServerUrl()),
+            _buildDetailRow('Server Version', _getServerVersion()),
             _buildDetailRow('Token Expiry', _getTokenExpiry()),
             
             // Statistics section
@@ -229,6 +288,8 @@ class _ProfilePageState extends State<ProfilePage> {
             const SizedBox(height: 8),
             _buildDetailRow('Books in Progress', _getBooksInProgress()),
             _buildDetailRow('Total Books', _getTotalBooks()),
+            _buildDetailRow('Library Size', _getLibrarySize()),
+            _buildDetailRow('Library Duration', _getLibraryDuration()),
             _buildDetailRow('Total Listening Time', _getTotalListeningTime()),
             
             // Recent Activity section
@@ -250,7 +311,12 @@ class _ProfilePageState extends State<ProfilePage> {
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
-                onPressed: _loadProfileData,
+                onPressed: () {
+                  // Clear cached data and reload
+                  _serverStatus = null;
+                  _libraryStats = null;
+                  _loadProfileData();
+                },
                 icon: const Icon(Icons.refresh),
                 label: const Text('Refresh Profile'),
               ),
@@ -323,6 +389,17 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
+  String _getServerVersion() {
+    try {
+      if (_serverStatus == null) return 'Loading...';
+      
+      final version = _serverStatus!['serverVersion'];
+      return version?.toString() ?? 'N/A';
+    } catch (e) {
+      return 'N/A';
+    }
+  }
+
   String _getTokenExpiry() {
     try {
       final services = ServicesScope.of(context).services;
@@ -343,6 +420,63 @@ class _ProfilePageState extends State<ProfilePage> {
       }
     } catch (e) {
       return 'N/A';
+    }
+  }
+
+  String _getLibrarySize() {
+    try {
+      if (_libraryStats == null) return 'Loading...';
+      final totalSize = _libraryStats!['totalSize'];
+      if (totalSize == null) return 'N/A';
+      
+      // Convert bytes to human readable format
+      final sizeInBytes = totalSize is int ? totalSize : int.tryParse(totalSize.toString()) ?? 0;
+      return _formatBytes(sizeInBytes);
+    } catch (e) {
+      return 'N/A';
+    }
+  }
+
+  String _getLibraryDuration() {
+    try {
+      if (_libraryStats == null) return 'Loading...';
+      final totalDuration = _libraryStats!['totalDuration'];
+      if (totalDuration == null) return 'N/A';
+      
+      // Convert seconds to human readable format
+      final durationInSeconds = totalDuration is num ? totalDuration.toInt() : int.tryParse(totalDuration.toString()) ?? 0;
+      return _formatDuration(durationInSeconds);
+    } catch (e) {
+      return 'N/A';
+    }
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes == 0) return '0 B';
+    
+    // Use decimal format (1000 base) to match file system reporting
+    const suffixes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    int i = 0;
+    double size = bytes.toDouble();
+    
+    while (size >= 1000 && i < suffixes.length - 1) {
+      size /= 1000;
+      i++;
+    }
+    
+    return '${size.toStringAsFixed(1)} ${suffixes[i]}';
+  }
+
+  String _formatDuration(int seconds) {
+    if (seconds == 0) return '0 hours';
+    
+    final hours = seconds ~/ 3600;
+    final minutes = (seconds % 3600) ~/ 60;
+    
+    if (hours > 0) {
+      return minutes > 0 ? '${hours}h ${minutes}m' : '${hours}h';
+    } else {
+      return '${minutes}m';
     }
   }
 
@@ -389,7 +523,16 @@ class _ProfilePageState extends State<ProfilePage> {
 
   String _getTotalBooks() {
     try {
-      final mediaProgress = _profileData!['mediaProgress'];
+      // First try to get count from library stats (more accurate)
+      if (_libraryStats != null) {
+        final totalItems = _libraryStats!['totalItems'];
+        if (totalItems != null) {
+          return totalItems.toString();
+        }
+      }
+      
+      // Fallback to media progress count
+      final mediaProgress = _profileData?['mediaProgress'];
       if (mediaProgress == null) return '0';
       
       if (mediaProgress is List<dynamic>) {
@@ -566,7 +709,12 @@ class _ProfilePageState extends State<ProfilePage> {
         title: const Text('Profile'),
         actions: [
           IconButton(
-            onPressed: _loadProfileData,
+            onPressed: () {
+              // Clear cached data and reload
+              _serverStatus = null;
+              _libraryStats = null;
+              _loadProfileData();
+            },
             icon: const Icon(Icons.refresh),
             tooltip: 'Refresh Profile',
           ),
