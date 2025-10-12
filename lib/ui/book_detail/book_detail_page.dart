@@ -771,7 +771,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
                                         
                                         // Always close the session to prevent transcoding from continuing
                                         if (open.sessionId != null && open.sessionId!.isNotEmpty) {
-                                          unawaited(playbackRepo.closeSessionById(open.sessionId!));
+                                          await playbackRepo.closeSessionById(open.sessionId!);
                                         }
                                       } catch (e) {
                                         if (mounted) {
