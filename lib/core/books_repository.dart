@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import 'dart:io';
 import 'package:crypto/crypto.dart';
 import '../models/book.dart';
+import '../models/series.dart';
 import 'auth_repository.dart';
 import 'network_service.dart';
 import 'offline_first_repository.dart';
@@ -957,6 +958,168 @@ class BooksRepository {
   /// until exhaustion. Returns the total number of items synced. Optionally
   /// reports progress via [onProgress] with (currentPage, totalSynced).
   /// If [removeDeleted] is true, removes books that exist locally but not on server.
+  /// Fetch series directly from the audiobookshelf series endpoint
+  Future<List<Map<String, dynamic>>> fetchSeries({
+    int limit = 100,
+    int page = 0,
+    String sort = 'name',
+    bool desc = false,
+    String filter = 'all',
+    bool minified = true,
+  }) async {
+    return await NetworkService.withRetry(() async {
+      final api = _auth.api;
+      final token = await api.accessToken();
+      final libId = await _ensureLibraryId();
+      final tokenQS = (token != null && token.isNotEmpty) ? '&token=$token' : '';
+      
+      final descParam = desc ? '1' : '0';
+      final minifiedParam = minified ? '1' : '0';
+      final includes = 'rssfeed,numEpisodesIncomplete,share';
+      
+      final path = '/api/libraries/$libId/series?sort=$sort&desc=$descParam&filter=$filter&limit=$limit&page=$page&minified=$minifiedParam&include=$includes$tokenQS';
+      
+      _log('[BOOKS] fetchSeries: GET $path');
+      final resp = await api.request('GET', path, headers: {});
+      if (resp.statusCode != 200) {
+        throw Exception('Failed to fetch series: ${resp.statusCode}');
+      }
+      
+      final bodyStr = resp.body;
+      final body = bodyStr.isNotEmpty ? jsonDecode(bodyStr) : null;
+      
+      if (body is Map) {
+        // Handle paginated response format
+        if (body['results'] is List) {
+          return (body['results'] as List).cast<Map<String, dynamic>>();
+        }
+        // Handle direct results format
+        if (body['series'] is List) {
+          return (body['series'] as List).cast<Map<String, dynamic>>();
+        }
+      }
+      
+      // Handle direct list response
+      if (body is List) {
+        return body.cast<Map<String, dynamic>>();
+      }
+      
+      _log('[BOOKS] fetchSeries: unexpected response format');
+      return <Map<String, dynamic>>[];
+    });
+  }
+
+  /// Fetch all series by paginating through the series endpoint
+  Future<List<Map<String, dynamic>>> fetchAllSeries({
+    String sort = 'name',
+    bool desc = false,
+    String filter = 'all',
+  }) async {
+    final allSeries = <Map<String, dynamic>>[];
+    int page = 0;
+    const pageSize = 100;
+    
+    while (true) {
+      try {
+        final seriesChunk = await fetchSeries(
+          limit: pageSize,
+          page: page,
+          sort: sort,
+          desc: desc,
+          filter: filter,
+        );
+        
+        if (seriesChunk.isEmpty) break;
+        
+        allSeries.addAll(seriesChunk);
+        _log('[BOOKS] fetchAllSeries: page=$page loaded=${seriesChunk.length} total=${allSeries.length}');
+        
+        // If we got less than the page size, we've reached the end
+        if (seriesChunk.length < pageSize) break;
+        
+        page++;
+      } catch (e) {
+        _log('[BOOKS] fetchAllSeries: error at page=$page: $e');
+        break;
+      }
+    }
+    
+    _log('[BOOKS] fetchAllSeries: completed with ${allSeries.length} total series');
+    return allSeries;
+  }
+
+  /// Convert series JSON to Series objects with proper URL construction
+  Future<List<Series>> _seriesToObjects(List<Map<String, dynamic>> seriesData) async {
+    final baseUrl = _auth.api.baseUrl ?? '';
+    final token = await _auth.api.accessToken();
+    return seriesData
+        .map((s) => Series.fromJson(s, baseUrl: baseUrl, token: token))
+        .where((s) => s.name.isNotEmpty)
+        .toList();
+  }
+
+  /// Get all series as Series objects
+  Future<List<Series>> getAllSeries({
+    String sort = 'name',
+    bool desc = false,
+    String filter = 'all',
+  }) async {
+    try {
+      final seriesData = await fetchAllSeries(sort: sort, desc: desc, filter: filter);
+      return await _seriesToObjects(seriesData);
+    } catch (e) {
+      _log('[BOOKS] getAllSeries error: $e');
+      return <Series>[];
+    }
+  }
+
+  /// Get books for a specific series by fetching all books that belong to that series
+  Future<List<Book>> getBooksForSeries(Series series) async {
+    if (series.bookIds.isEmpty) return <Book>[];
+    
+    final books = <Book>[];
+    
+    // First try to get books from local DB
+    try {
+      for (final bookId in series.bookIds) {
+        final book = await getBookFromDb(bookId);
+        if (book != null) {
+          books.add(book);
+        }
+      }
+    } catch (e) {
+      _log('[BOOKS] getBooksForSeries: DB error: $e');
+    }
+    
+    // If we don't have all books locally, try to fetch them from server
+    if (books.length < series.bookIds.length) {
+      try {
+        for (final bookId in series.bookIds) {
+          if (!books.any((b) => b.id == bookId)) {
+            final book = await getBook(bookId);
+            books.add(book);
+          }
+        }
+      } catch (e) {
+        _log('[BOOKS] getBooksForSeries: server fetch error: $e');
+      }
+    }
+    
+    // Sort books by series sequence if available
+    books.sort((a, b) {
+      final sa = a.seriesSequence ?? double.nan;
+      final sb = b.seriesSequence ?? double.nan;
+      final aNum = !sa.isNaN;
+      final bNum = !sb.isNaN;
+      if (aNum && bNum) return sa.compareTo(sb);
+      if (aNum && !bNum) return -1;
+      if (!aNum && bNum) return 1;
+      return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+    });
+    
+    return books;
+  }
+
   Future<int> syncAllBooksToDb({
     int pageSize = 100,
     String sort = 'updatedAt:desc',

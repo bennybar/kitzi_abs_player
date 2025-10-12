@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import '../../core/books_repository.dart';
 import '../../models/book.dart';
+import '../../models/series.dart';
 import '../book_detail/book_detail_page.dart';
 
 enum SeriesViewType { series, collections }
@@ -26,9 +27,12 @@ class _SeriesPageState extends State<SeriesPage> {
   late final Future<BooksRepository> _repoFut;
   bool _loading = true;
   String? _error;
-  Map<String, List<Book>> _series = const {};
+  List<Series> _series = const <Series>[];
   Map<String, List<Book>> _collections = const {};
   SeriesViewType _viewType = SeriesViewType.series;
+  
+  // Cache for series books to avoid repeated fetches
+  final Map<String, List<Book>> _seriesBooksCache = <String, List<Book>>{};
   
   // Search functionality
   final _searchCtrl = TextEditingController();
@@ -176,7 +180,18 @@ class _SeriesPageState extends State<SeriesPage> {
     return normalized;
   }
 
-  Map<String, List<Book>> _filterData(Map<String, List<Book>> data) {
+  List<Series> _filterSeriesData(List<Series> data) {
+    if (_query.trim().isEmpty) return data;
+    
+    final query = _query.trim().toLowerCase();
+    return data.where((series) {
+      final name = series.name.toLowerCase();
+      final description = (series.description ?? '').toLowerCase();
+      return name.contains(query) || description.contains(query);
+    }).toList();
+  }
+
+  Map<String, List<Book>> _filterCollectionsData(Map<String, List<Book>> data) {
     if (_query.trim().isEmpty) return data;
     
     final query = _query.trim().toLowerCase();
@@ -187,7 +202,7 @@ class _SeriesPageState extends State<SeriesPage> {
       if (name.contains(query)) {
         filtered[entry.key] = entry.value;
       } else {
-        // Check if any book in the series/collection matches
+        // Check if any book in the collection matches
         final matchingBooks = entry.value.where((book) {
           final title = book.title.toLowerCase();
           final author = (book.author ?? '').toLowerCase();
@@ -212,34 +227,53 @@ class _SeriesPageState extends State<SeriesPage> {
     try {
       final repo = await _repoFut;
       
-      // Load from local DB first (fast start)
-      final all = await _loadAllBooksFromDb(repo);
-      
-      // Background refresh from server only when online
+      // For series, use the direct series API
       if (_isOnline) {
-        // Kick off background full sync
+        // Fetch series directly from server
+        debugPrint('[SERIES] Fetching series from server...');
+        final series = await repo.getAllSeries(sort: 'name', desc: false);
+        debugPrint('[SERIES] Fetched ${series.length} series from server');
+        
+        if (!mounted) return;
+        setState(() {
+          _series = series;
+          _loading = false;
+        });
+        
+        // Also fetch collections in the background for the collections view
         Future.microtask(() async {
           try {
-            await repo.syncAllBooksToDb(
-              pageSize: 200, 
-              removeDeleted: true,
-            );
+            final all = await _loadAllBooksFromDb(repo);
             if (!mounted) return;
-            // Reload from DB after sync to get fresh data
-            final fresh = await _loadAllBooksFromDb(repo);
-            if (!mounted) return;
-            _processBooksData(fresh);
+            _processCollectionsData(all);
           } catch (_) {}
         });
+      } else {
+        // When offline, fall back to book grouping
+        debugPrint('[SERIES] Offline mode - falling back to book grouping...');
+        final all = await _loadAllBooksFromDb(repo);
+        if (!mounted) return;
+        _processBooksDataFallback(all);
+        setState(() => _loading = false);
       }
       
-      if (!mounted) return;
-      _processBooksData(all);
-      setState(() => _loading = false);
-      
     } catch (e) {
+      debugPrint('[SERIES] Error fetching series: $e');
       if (!mounted) return;
-      setState(() { _loading = false; _error = e.toString(); });
+      
+      // Fallback to book grouping on error
+      try {
+        final repo = await _repoFut;
+        final all = await _loadAllBooksFromDb(repo);
+        if (!mounted) return;
+        _processBooksDataFallback(all);
+        setState(() => _loading = false);
+      } catch (fallbackError) {
+        setState(() { 
+          _loading = false; 
+          _error = 'Failed to load series: $e. Fallback also failed: $fallbackError'; 
+        });
+      }
     }
   }
 
@@ -257,40 +291,8 @@ class _SeriesPageState extends State<SeriesPage> {
     return all;
   }
 
-  void _processBooksData(List<Book> all) {
-    debugPrint('Total books loaded: ${all.length}');
-    for (final book in all.take(5)) {
-      debugPrint('Book: "${book.title}" - Series: "${book.series}" - Collection: "${book.collection}"');
-    }
-    
-    // Load series with normalized names
-    final seriesMap = <String, List<Book>>{};
-    for (final b in all) {
-      final originalName = (b.series ?? '').trim();
-      if (originalName.isEmpty) continue;
-      
-      final normalizedName = _normalizeSeriesName(originalName);
-      (seriesMap[normalizedName] ??= <Book>[]).add(b);
-      debugPrint('Series: "$originalName" -> "$normalizedName" - Book: "${b.title}"');
-    }
-    debugPrint('Total series found: ${seriesMap.length}');
-    for (final entry in seriesMap.entries) {
-      debugPrint('Series "${entry.key}": ${entry.value.length} books');
-    }
-    
-    // Sort each series by sequence then title
-    for (final e in seriesMap.entries) {
-      e.value.sort((a, b) {
-        final sa = a.seriesSequence ?? double.nan;
-        final sb = b.seriesSequence ?? double.nan;
-        final aNum = !sa.isNaN;
-        final bNum = !sb.isNaN;
-        if (aNum && bNum) return sa.compareTo(sb);
-        if (aNum && !bNum) return -1;
-        if (!aNum && bNum) return 1;
-        return a.title.toLowerCase().compareTo(b.title.toLowerCase());
-      });
-    }
+  void _processCollectionsData(List<Book> all) {
+    debugPrint('[COLLECTIONS] Processing ${all.length} books for collections...');
     
     // Load collections with normalized names
     final collectionsMap = <String, List<Book>>{};
@@ -300,12 +302,8 @@ class _SeriesPageState extends State<SeriesPage> {
       
       final normalizedName = _normalizeSeriesName(originalName);
       (collectionsMap[normalizedName] ??= <Book>[]).add(b);
-      debugPrint('Collection: "$originalName" -> "$normalizedName" - Book: "${b.title}"');
     }
-    debugPrint('Total collections found: ${collectionsMap.length}');
-    for (final entry in collectionsMap.entries) {
-      debugPrint('Collection "${entry.key}": ${entry.value.length} books');
-    }
+    debugPrint('[COLLECTIONS] Total collections found: ${collectionsMap.length}');
     
     // Sort each collection by sequence then title
     for (final e in collectionsMap.entries) {
@@ -323,9 +321,79 @@ class _SeriesPageState extends State<SeriesPage> {
     
     if (!mounted) return;
     setState(() { 
-      _series = seriesMap; 
       _collections = collectionsMap;
     });
+  }
+
+  void _processBooksDataFallback(List<Book> all) {
+    debugPrint('[FALLBACK] Processing ${all.length} books (fallback mode)...');
+    
+    // Create fake Series objects from grouped books as fallback
+    final seriesMap = <String, List<Book>>{};
+    for (final b in all) {
+      final originalName = (b.series ?? '').trim();
+      if (originalName.isEmpty) continue;
+      
+      final normalizedName = _normalizeSeriesName(originalName);
+      (seriesMap[normalizedName] ??= <Book>[]).add(b);
+    }
+    
+    // Sort each series by sequence then title
+    for (final e in seriesMap.entries) {
+      e.value.sort((a, b) {
+        final sa = a.seriesSequence ?? double.nan;
+        final sb = b.seriesSequence ?? double.nan;
+        final aNum = !sa.isNaN;
+        final bNum = !sb.isNaN;
+        if (aNum && bNum) return sa.compareTo(sb);
+        if (aNum && !bNum) return -1;
+        if (!aNum && bNum) return 1;
+        return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+      });
+    }
+
+    // Convert to Series objects
+    final seriesList = seriesMap.entries.map((entry) {
+      final books = entry.value;
+      final firstBook = books.first;
+      return Series(
+        id: 'fallback_${entry.key}',
+        name: entry.key,
+        numBooks: books.length,
+        bookIds: books.map((b) => b.id).toList(),
+        coverUrl: firstBook.coverUrl,
+      );
+    }).toList();
+
+    debugPrint('[FALLBACK] Created ${seriesList.length} series from grouped books');
+    
+    // Also process collections
+    _processCollectionsData(all);
+    
+    if (!mounted) return;
+    setState(() { 
+      _series = seriesList;
+    });
+  }
+
+  /// Get books for a series, using cache to avoid repeated fetches
+  Future<List<Book>> _getBooksForSeries(Series series) async {
+    // Check cache first
+    if (_seriesBooksCache.containsKey(series.id)) {
+      return _seriesBooksCache[series.id]!;
+    }
+    
+    try {
+      final repo = await _repoFut;
+      final books = await repo.getBooksForSeries(series);
+      
+      // Cache the result
+      _seriesBooksCache[series.id] = books;
+      return books;
+    } catch (e) {
+      debugPrint('[SERIES] Error fetching books for series ${series.name}: $e');
+      return <Book>[];
+    }
   }
 
   @override
@@ -354,14 +422,15 @@ class _SeriesPageState extends State<SeriesPage> {
       );
     }
 
-    final currentData = _viewType == SeriesViewType.series ? _series : _collections;
-    final filteredData = _filterData(currentData);
-    final isEmpty = filteredData.isEmpty;
-    final keys = isEmpty ? <String>[] : filteredData.keys.toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    final isEmpty = _viewType == SeriesViewType.series ? _series.isEmpty : _collections.isEmpty;
+    
+    // Filter data based on view type
+    final filteredSeries = _viewType == SeriesViewType.series ? _filterSeriesData(_series) : <Series>[];
+    final filteredCollections = _viewType == SeriesViewType.collections ? _filterCollectionsData(_collections) : <String, List<Book>>{};
     
     // Calculate total count for display
-    final totalCount = currentData.length;
-    final filteredCount = filteredData.length;
+    final totalCount = _viewType == SeriesViewType.series ? _series.length : _collections.length;
+    final filteredCount = _viewType == SeriesViewType.series ? filteredSeries.length : filteredCollections.length;
 
     return RefreshIndicator(
       onRefresh: () => _refresh(),
@@ -558,15 +627,13 @@ class _SeriesPageState extends State<SeriesPage> {
           else
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-              sliver: SliverList.builder(
-                itemCount: keys.length,
-                itemBuilder: (context, i) {
-                  final name = keys[i];
-                  final items = filteredData[name]!;
-                  return _viewType == SeriesViewType.series
-                      ? _SeriesCard(
-                          name: name,
-                          books: items,
+              sliver: _viewType == SeriesViewType.series
+                  ? SliverList.builder(
+                      itemCount: filteredSeries.length,
+                      itemBuilder: (context, i) {
+                        final series = filteredSeries[i];
+                        return _NewSeriesCard(
+                          series: series,
                           onTapBook: (b) {
                             showModalBottomSheet(
                               context: context,
@@ -583,8 +650,17 @@ class _SeriesPageState extends State<SeriesPage> {
                               ),
                             );
                           },
-                        )
-                      : _CollectionCard(
+                          getBooksForSeries: _getBooksForSeries,
+                        );
+                      },
+                    )
+                  : SliverList.builder(
+                      itemCount: filteredCollections.length,
+                      itemBuilder: (context, i) {
+                        final entry = filteredCollections.entries.elementAt(i);
+                        final name = entry.key;
+                        final items = entry.value;
+                        return _CollectionCard(
                           name: name,
                           books: items,
                           onTapBook: (b) {
@@ -604,8 +680,8 @@ class _SeriesPageState extends State<SeriesPage> {
                             );
                           },
                         );
-                },
-              ),
+                      },
+                    ),
             ),
         ],
       ),
@@ -645,6 +721,134 @@ class _SeriesPageState extends State<SeriesPage> {
                 color: isSelected ? cs.onPrimary : cs.onSurfaceVariant,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _NewSeriesCard extends StatefulWidget {
+  const _NewSeriesCard({
+    required this.series,
+    required this.onTapBook,
+    required this.getBooksForSeries,
+  });
+  
+  final Series series;
+  final void Function(Book) onTapBook;
+  final Future<List<Book>> Function(Series) getBooksForSeries;
+
+  @override
+  State<_NewSeriesCard> createState() => _NewSeriesCardState();
+}
+
+class _NewSeriesCardState extends State<_NewSeriesCard> {
+  List<Book>? _books;
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBooks();
+  }
+
+  Future<void> _loadBooks() async {
+    setState(() => _loading = true);
+    try {
+      final books = await widget.getBooksForSeries(widget.series);
+      if (mounted) {
+        setState(() {
+          _books = books;
+          _loading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _books = <Book>[];
+          _loading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: cs.outline.withOpacity(0.1), width: 1),
+      ),
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.collections_bookmark_rounded, size: 20, color: cs.primary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    widget.series.name, 
+                    maxLines: 1, 
+                    overflow: TextOverflow.ellipsis, 
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(color: cs.surfaceContainerHighest, borderRadius: BorderRadius.circular(12)),
+                  child: Text(
+                    '${widget.series.numBooks}', 
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(color: cs.onSurfaceVariant)
+                  ),
+                )
+              ],
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 140,
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _books == null || _books!.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.book_outlined, color: cs.onSurfaceVariant),
+                              const SizedBox(height: 4),
+                              Text(
+                                'No books loaded',
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                              ),
+                            ],
+                          ),
+                        )
+                      : ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: _books!.length,
+                          separatorBuilder: (_, __) => const SizedBox(width: 8),
+                          itemBuilder: (context, i) {
+                            final b = _books![i];
+                            return AspectRatio(
+                              aspectRatio: 2/3,
+                              child: InkWell(
+                                onTap: () => widget.onTapBook(b),
+                                borderRadius: BorderRadius.circular(12),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: _CoverThumb(url: b.coverUrl),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
             ),
           ],
         ),
