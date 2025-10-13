@@ -28,7 +28,7 @@ class BooksPage extends StatefulWidget {
   State<BooksPage> createState() => _BooksPageState();
 }
 
-class _BooksPageState extends State<BooksPage> {
+class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
   late final Future<BooksRepository> _repoFut;
   List<Book> _books = [];
   int _currentPage = 1;
@@ -72,6 +72,7 @@ class _BooksPageState extends State<BooksPage> {
     _repoFut = BooksRepository.create();
     _addController(_searchCtrl); // Track search controller
     _scrollCtrl.addListener(_onScrollChanged); // Add scroll listener for image preloading
+    WidgetsBinding.instance.addObserver(this); // Observe app lifecycle
     _startConnectivityWatch();
     _restorePrefs().then((_) {
       // Load recent first so the section appears immediately
@@ -80,6 +81,21 @@ class _BooksPageState extends State<BooksPage> {
       _refresh(initial: true);
       _setupAutoRefresh();
     });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // Clear search when app is paused/detached
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+      if (_searchVisible && _query.isNotEmpty) {
+        setState(() {
+          _searchCtrl.clear();
+          _query = '';
+        });
+        _saveSearchPref('');
+      }
+    }
   }
 
   @override
@@ -98,6 +114,9 @@ class _BooksPageState extends State<BooksPage> {
 
   @override
   void dispose() {
+    // Remove lifecycle observer
+    WidgetsBinding.instance.removeObserver(this);
+    
     // Cancel all timers
     _timer?.cancel();
     _searchDebounce?.cancel();
@@ -127,16 +146,13 @@ class _BooksPageState extends State<BooksPage> {
     final prefs = await SharedPreferences.getInstance();
     final v = prefs.getString(_viewKey);
     final s = prefs.getString(_sortKey);
-    final q = prefs.getString(_searchKey);
+    // Don't restore search query - always start fresh with no search filter
     final mt = prefs.getString('books_library_media_type')?.toLowerCase();
     String? activeLibId = prefs.getString('books_library_id');
 
     if (v == 'list') _view = LibraryView.list;
     if (s == 'nameAsc') _sort = SortMode.nameAsc;
-    if (q != null) {
-      _query = q;
-      _searchCtrl.text = q;
-    }
+    // Search query is not restored - always starts empty
     bool isEbook = (mt != null && mt.contains('ebook'));
     if (!isEbook && (mt == null || mt.isEmpty)) {
       // Fallback: query server for library mediaType
@@ -180,6 +196,11 @@ class _BooksPageState extends State<BooksPage> {
   }
 
   void _toggleSearch() {
+    // Cancel any pending search debounce when hiding
+    if (_searchVisible) {
+      _searchDebounce?.cancel();
+    }
+    
     setState(() {
       _searchVisible = !_searchVisible;
       if (_searchVisible) {
@@ -190,8 +211,16 @@ class _BooksPageState extends State<BooksPage> {
       } else {
         // Clear search when hiding
         _searchFocusNode.unfocus();
+        _searchCtrl.clear();
+        _query = '';
       }
     });
+    
+    // Refresh data when hiding search to clear filter
+    if (!_searchVisible) {
+      _saveSearchPref('');
+      _refresh();
+    }
   }
 
   Future<void> _startConnectivityWatch() async {
@@ -292,7 +321,12 @@ class _BooksPageState extends State<BooksPage> {
 
   Future<void> _saveSearchPref(String q) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_searchKey, q);
+    if (q.isEmpty) {
+      // Remove the key entirely when clearing search
+      await prefs.remove(_searchKey);
+    } else {
+      await prefs.setString(_searchKey, q);
+    }
   }
 
   

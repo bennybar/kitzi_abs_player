@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/playback_repository.dart';
 import '../../core/playback_speed_service.dart';
 import '../../core/sleep_timer_service.dart';
+import '../../core/ui_prefs.dart';
 import '../../main.dart'; // ServicesScope
 import '../../widgets/audio_waveform.dart';
 
@@ -1070,30 +1071,39 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                       ),
                     ),
 
-                    // Waveform visualization (only visible when playing)
-                    StreamBuilder<bool>(
-                      stream: playback.playingStream,
-                      initialData: playback.player.playing,
-                      builder: (_, playSnap) {
-                        final playing = playSnap.data ?? false;
-                        return AnimatedSize(
-                          duration: const Duration(milliseconds: 350),
-                          curve: Curves.easeInOut,
-                          child: playing
-                              ? Padding(
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
-                                  child: Center(
-                                    child: AudioWaveform(
-                                      isPlaying: playing,
-                                      barCount: 7,
-                                      height: 28,
-                                      spacing: 3.5,
-                                      color: cs.primary.withOpacity(0.8),
-                                      animationSpeed: const Duration(milliseconds: 300),
-                                    ),
-                                  ),
-                                )
-                              : const SizedBox(height: 4),
+                    // Waveform visualization (only visible when playing and enabled in settings)
+                    ValueListenableBuilder<bool>(
+                      valueListenable: UiPrefs.waveformAnimationEnabled,
+                      builder: (_, waveformEnabled, __) {
+                        if (!waveformEnabled) {
+                          return const SizedBox(height: 4);
+                        }
+                        
+                        return StreamBuilder<bool>(
+                          stream: playback.playingStream,
+                          initialData: playback.player.playing,
+                          builder: (_, playSnap) {
+                            final playing = playSnap.data ?? false;
+                            return AnimatedSize(
+                              duration: const Duration(milliseconds: 350),
+                              curve: Curves.easeInOut,
+                              child: playing
+                                  ? Padding(
+                                      padding: const EdgeInsets.symmetric(vertical: 12),
+                                      child: Center(
+                                        child: AudioWaveform(
+                                          isPlaying: playing,
+                                          barCount: 7,
+                                          height: 28,
+                                          spacing: 3.5,
+                                          color: cs.primary.withOpacity(0.8),
+                                          animationSpeed: const Duration(milliseconds: 300),
+                                        ),
+                                      ),
+                                    )
+                                  : const SizedBox(height: 4),
+                            );
+                          },
                         );
                       },
                     ),

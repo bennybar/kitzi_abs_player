@@ -29,6 +29,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool? _showSeriesTab;
   bool? _authorViewEnabled;
   bool? _bluetoothAutoPlay;
+  bool? _waveformAnimationEnabled;
   String? _activeLibraryId;
   List<Map<String, String>> _libraries = const [];
 
@@ -40,6 +41,9 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _loadPrefs() async {
     try {
+      // Ensure waveform default is set based on device size
+      await UiPrefs.ensureWaveformDefault(context);
+      
       final prefs = await SharedPreferences.getInstance();
       setState(() {
         _wifiOnly = prefs.getBool('downloads_wifi_only') ?? false;
@@ -49,6 +53,10 @@ class _SettingsPageState extends State<SettingsPage> {
         _showSeriesTab = prefs.getBool('ui_show_series_tab') ?? false;
         _authorViewEnabled = prefs.getBool('ui_author_view_enabled') ?? true;
         _bluetoothAutoPlay = prefs.getBool('bluetooth_auto_play') ?? true;
+        
+        // Load waveform animation setting (default already set above)
+        _waveformAnimationEnabled = prefs.getBool('ui_waveform_animation_enabled') ?? true;
+        
         _activeLibraryId = prefs.getString('books_library_id');
       });
       await _loadLibraries();
@@ -296,6 +304,17 @@ class _SettingsPageState extends State<SettingsPage> {
             onChanged: (v) async {
               await UiPrefs.setAuthorViewEnabled(v, pinToSettingsOnChange: true);
               if (mounted) setState(() { _authorViewEnabled = v; });
+            },
+          ),
+          SwitchListTile(
+            title: const Text('Waveform animation'),
+            subtitle: Text(
+              'Show animated waveform in full screen player (default: ${UiPrefs.getScreenDiagonalInches(context) >= 6.2 ? 'enabled for your device' : 'disabled for your device'})',
+            ),
+            value: _waveformAnimationEnabled ?? true,
+            onChanged: (v) async {
+              await UiPrefs.setWaveformAnimationEnabled(v, pinToSettingsOnChange: true);
+              if (mounted) setState(() { _waveformAnimationEnabled = v; });
             },
           ),
           // Live-bind to ThemeService.mode

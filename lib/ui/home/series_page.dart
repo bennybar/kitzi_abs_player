@@ -23,7 +23,7 @@ class SeriesPage extends StatefulWidget {
   State<SeriesPage> createState() => _SeriesPageState();
 }
 
-class _SeriesPageState extends State<SeriesPage> {
+class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
   late final Future<BooksRepository> _repoFut;
   bool _loading = true;
   String? _error;
@@ -52,12 +52,29 @@ class _SeriesPageState extends State<SeriesPage> {
   void initState() {
     super.initState();
     _repoFut = BooksRepository.create();
+    WidgetsBinding.instance.addObserver(this); // Observe app lifecycle
     _startConnectivityWatch();
     _loadViewTypePref().then((_) => _loadSearchPref().then((_) => _refresh(initial: true)));
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // Clear search when app is paused/detached
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+      if (_searchVisible && _query.isNotEmpty) {
+        setState(() {
+          _searchCtrl.clear();
+          _query = '';
+        });
+        _saveSearchPref('');
+      }
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this); // Remove lifecycle observer
     _searchDebounce?.cancel();
     _connSub?.cancel();
     _searchCtrl.dispose();
@@ -88,19 +105,20 @@ class _SeriesPageState extends State<SeriesPage> {
 
   Future<void> _loadSearchPref() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final searchQuery = prefs.getString(_searchKey);
-      if (searchQuery != null) {
-        _query = searchQuery;
-        _searchCtrl.text = searchQuery;
-      }
+      // Don't restore search query - always start fresh with no search filter
+      // Search is ephemeral and should not persist across page loads
     } catch (_) {}
   }
 
   Future<void> _saveSearchPref(String query) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_searchKey, query);
+      if (query.isEmpty) {
+        // Remove the key entirely when clearing search
+        await prefs.remove(_searchKey);
+      } else {
+        await prefs.setString(_searchKey, query);
+      }
     } catch (_) {}
   }
 
@@ -126,6 +144,11 @@ class _SeriesPageState extends State<SeriesPage> {
   }
 
   void _toggleSearch() {
+    // Cancel any pending search debounce when hiding
+    if (_searchVisible) {
+      _searchDebounce?.cancel();
+    }
+    
     setState(() {
       _searchVisible = !_searchVisible;
       if (_searchVisible) {
@@ -136,8 +159,16 @@ class _SeriesPageState extends State<SeriesPage> {
       } else {
         // Clear search when hiding
         _searchFocusNode.unfocus();
+        _searchCtrl.clear();
+        _query = '';
       }
     });
+    
+    // Refresh data when hiding search to clear filter
+    if (!_searchVisible) {
+      _saveSearchPref('');
+      _refresh();
+    }
   }
 
   /// Normalize series name by removing sequence numbers and extra formatting

@@ -35,7 +35,15 @@ class _MainScaffoldState extends State<MainScaffold> {
     _showAuthors = UiPrefs.authorViewEnabled.value;
     // Load persisted prefs and listen for changes
     _loadTabPrefs();
-    UiPrefs.loadFromPrefs();
+    // Load UiPrefs after first frame when context is available
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (mounted) {
+        // Ensure waveform animation default is set early
+        await UiPrefs.ensureWaveformDefault(context);
+        // Load other prefs
+        await UiPrefs.loadFromPrefs(context: context);
+      }
+    });
     UiPrefs.seriesTabVisible.addListener(_onTabPrefsChanged);
     UiPrefs.authorViewEnabled.addListener(_onTabPrefsChanged);
   }
