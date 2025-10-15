@@ -1668,6 +1668,7 @@ class _PlayPrimaryButton extends StatelessWidget {
               // More robust check: ensure we have a valid nowPlaying item and it's actually playing
               final hasValidNowPlaying = isThis && (processing == ProcessingState.ready || processing == ProcessingState.completed);
               final shouldShowAsPlaying = hasValidNowPlaying && isPlaying;
+              
 
               if (isBuffering && !isPlaying) {
                 return FilledButton.icon(
@@ -1684,9 +1685,7 @@ class _PlayPrimaryButton extends StatelessWidget {
                     foregroundColor: Theme.of(context).colorScheme.onError,
                   ),
                   onPressed: () async {
-                    debugPrint('[BOOK_DETAILS] Stop button pressed. isPlaying: $isPlaying, hasValidNowPlaying: $hasValidNowPlaying, shouldShowAsPlaying: $shouldShowAsPlaying');
                     await playback.pause();
-                    debugPrint('[BOOK_DETAILS] Pause completed');
                   },
                   icon: const Icon(Icons.stop_rounded),
                   label: const Text('Stop'),
@@ -1696,25 +1695,19 @@ class _PlayPrimaryButton extends StatelessWidget {
               // Active but paused/ready -> Resume
               return FilledButton.icon(
                 onPressed: () async {
-                  debugPrint('[BOOK_DETAILS] Resume button pressed. isPlaying: $isPlaying, hasValidNowPlaying: $hasValidNowPlaying, shouldShowAsPlaying: $shouldShowAsPlaying, NowPlaying: ${playback.nowPlaying?.title}');
                   // Try to resume first, but if that fails (no current item), 
                   // warm load the last item and play it
                   bool success = await playback.resume();
-                  debugPrint('[BOOK_DETAILS] Resume result: $success');
                   if (!success) {
                     try {
-                      debugPrint('[BOOK_DETAILS] Resume failed, trying warmLoadLastItem');
                       await playback.warmLoadLastItem(playAfterLoad: true);
                       success = true; // Consider warm load a success
-                      debugPrint('[BOOK_DETAILS] WarmLoadLastItem succeeded');
                     } catch (e) {
-                      debugPrint('[BOOK_DETAILS] WarmLoadLastItem failed: $e');
                       success = false;
                     }
                   }
                   
                   if (!success && context.mounted) {
-                    debugPrint('[BOOK_DETAILS] Both resume and warmLoad failed, showing error');
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
                         content: Text('Cannot play: server unavailable and sync progress is required'),
@@ -1722,9 +1715,13 @@ class _PlayPrimaryButton extends StatelessWidget {
                       ),
                     );
                   } else if (success && context.mounted) {
-                    debugPrint('[BOOK_DETAILS] Success, opening full player');
-                    // Only open the full player page when resume/play succeeds
-                    await FullPlayerPage.openOnce(context);
+                    // Check if we're still playing before opening full player
+                    // This prevents opening the player if the user paused during the async operations
+                    final stillPlaying = playback.player.playing;
+                    if (stillPlaying) {
+                      // Only open the full player page when resume/play succeeds
+                      await FullPlayerPage.openOnce(context);
+                    }
                   }
                 },
                 icon: const Icon(Icons.play_arrow_rounded),

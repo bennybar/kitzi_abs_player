@@ -254,6 +254,7 @@ class PlaybackRepository {
           currentIndex: 0,
           chapters: chapters,
         );
+        _log('Warm load: setting nowPlaying for downloaded book: ${np.title}, tracks: ${np.tracks.length}, playAfterLoad: $playAfterLoad');
         _setNowPlaying(np);
         _progressItemId = last;
 
