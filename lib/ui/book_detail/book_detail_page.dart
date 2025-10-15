@@ -1685,7 +1685,9 @@ class _PlayPrimaryButton extends StatelessWidget {
                     foregroundColor: Theme.of(context).colorScheme.onError,
                   ),
                   onPressed: () async {
+                    debugPrint('[BOOK_DETAILS] Stop button pressed');
                     await playback.pause();
+                    debugPrint('[BOOK_DETAILS] Pause completed');
                   },
                   icon: const Icon(Icons.stop_rounded),
                   label: const Text('Stop'),
@@ -1695,19 +1697,24 @@ class _PlayPrimaryButton extends StatelessWidget {
               // Active but paused/ready -> Resume
               return FilledButton.icon(
                 onPressed: () async {
+                  debugPrint('[BOOK_DETAILS] Resume button pressed');
                   // Try to resume first, but if that fails (no current item), 
                   // warm load the last item and play it
                   bool success = await playback.resume();
+                  debugPrint('[BOOK_DETAILS] Resume result: $success');
                   if (!success) {
                     try {
                       await playback.warmLoadLastItem(playAfterLoad: true);
                       success = true; // Consider warm load a success
+                      debugPrint('[BOOK_DETAILS] Warm load succeeded');
                     } catch (e) {
                       success = false;
+                      debugPrint('[BOOK_DETAILS] Warm load failed: $e');
                     }
                   }
                   
                   if (!success && context.mounted) {
+                    debugPrint('[BOOK_DETAILS] Showing error snackbar');
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
                         content: Text('Cannot play: server unavailable and sync progress is required'),
@@ -1715,12 +1722,18 @@ class _PlayPrimaryButton extends StatelessWidget {
                       ),
                     );
                   } else if (success && context.mounted) {
+                    // Wait a brief moment for the player state to update
+                    await Future.delayed(const Duration(milliseconds: 100));
+                    
                     // Check if we're still playing before opening full player
                     // This prevents opening the player if the user paused during the async operations
                     final stillPlaying = playback.player.playing;
+                    debugPrint('[BOOK_DETAILS] Still playing after resume (with delay): $stillPlaying');
                     if (stillPlaying) {
-                      // Only open the full player page when resume/play succeeds
+                      debugPrint('[BOOK_DETAILS] Opening full player after successful resume');
                       await FullPlayerPage.openOnce(context);
+                    } else {
+                      debugPrint('[BOOK_DETAILS] Not opening full player - playback was paused');
                     }
                   }
                 },
