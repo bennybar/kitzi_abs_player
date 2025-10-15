@@ -1664,6 +1664,10 @@ class _PlayPrimaryButton extends StatelessWidget {
               final isPlaying = playingSnap.data ?? false;
               final processing = processingSnap.data ?? ProcessingState.idle;
               final isBuffering = processing == ProcessingState.loading || processing == ProcessingState.buffering;
+              
+              // More robust check: ensure we have a valid nowPlaying item and it's actually playing
+              final hasValidNowPlaying = isThis && (processing == ProcessingState.ready || processing == ProcessingState.completed);
+              final shouldShowAsPlaying = hasValidNowPlaying && isPlaying;
 
               if (isBuffering && !isPlaying) {
                 return FilledButton.icon(
@@ -1673,14 +1677,14 @@ class _PlayPrimaryButton extends StatelessWidget {
                 );
               }
 
-              if (isPlaying) {
+              if (shouldShowAsPlaying) {
                 return FilledButton.icon(
                   style: FilledButton.styleFrom(
                     backgroundColor: Theme.of(context).colorScheme.error,
                     foregroundColor: Theme.of(context).colorScheme.onError,
                   ),
                   onPressed: () async {
-                    debugPrint('[BOOK_DETAILS] Stop button pressed. isPlaying: $isPlaying');
+                    debugPrint('[BOOK_DETAILS] Stop button pressed. isPlaying: $isPlaying, hasValidNowPlaying: $hasValidNowPlaying, shouldShowAsPlaying: $shouldShowAsPlaying');
                     await playback.pause();
                     debugPrint('[BOOK_DETAILS] Pause completed');
                   },
@@ -1692,7 +1696,7 @@ class _PlayPrimaryButton extends StatelessWidget {
               // Active but paused/ready -> Resume
               return FilledButton.icon(
                 onPressed: () async {
-                  debugPrint('[BOOK_DETAILS] Resume button pressed. isPlaying: $isPlaying, NowPlaying: ${playback.nowPlaying?.title}');
+                  debugPrint('[BOOK_DETAILS] Resume button pressed. isPlaying: $isPlaying, hasValidNowPlaying: $hasValidNowPlaying, shouldShowAsPlaying: $shouldShowAsPlaying, NowPlaying: ${playback.nowPlaying?.title}');
                   // Try to resume first, but if that fails (no current item), 
                   // warm load the last item and play it
                   bool success = await playback.resume();
