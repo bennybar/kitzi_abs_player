@@ -34,20 +34,17 @@ class AuthRepository {
     final prefs = await SharedPreferences.getInstance();
     const secure = FlutterSecureStorage();
     _instanceInternal = AuthRepository._(prefs, secure);
-    debugPrint('[AUTH] ensure: baseUrl=${_instanceInternal!._api.baseUrl ?? '(none)'}');
     return _instanceInternal!;
   }
 
   /// Returns true if we have a base URL + refresh token and a refresh succeeds.
   Future<bool> hasValidSession() async {
     if (_api.baseUrl == null) {
-      debugPrint('[AUTH] No base URL configured');
       return false;
     }
     
     // Trust non-expired access tokens first to avoid forcing refresh on every launch
     if (_api.hasFreshAccessToken(leewaySeconds: 60)) {
-      debugPrint('[AUTH] Access token is still fresh');
       return true;
     }
     
@@ -55,9 +52,7 @@ class AuthRepository {
     // We'll let the refresh method handle this check internally
     
     // Otherwise try refresh
-    debugPrint('[AUTH] Access token expired, attempting refresh');
     final ok = await _api.refreshAccessToken();
-    debugPrint('[AUTH] Token refresh result: $ok');
     return ok;
   }
 

@@ -46,7 +46,7 @@ class OfflineFirstBooksRepository implements OfflineFirstRepository<dynamic> {
   /// Log debug message only if verbose logging is enabled
   void _log(String message) {
     if (_verboseLogging) {
-      debugPrint(message);
+      // message);
     }
   }
   final Future<List<dynamic>> Function() _networkFetcher;
@@ -95,12 +95,12 @@ class OfflineFirstBooksRepository implements OfflineFirstRepository<dynamic> {
       }
       
       // Try network with timeout and retry
-      debugPrint('[OFFLINE_FIRST] Attempting network fetch...');
+      // '[OFFLINE_FIRST] Attempting network fetch...');
       final networkData = await NetworkService.withRetry(
         () => _networkFetcher(),
         timeout: const Duration(seconds: 15),
         onRetry: (attempt, error) {
-          debugPrint('[OFFLINE_FIRST] Network attempt $attempt failed: $error');
+          // '[OFFLINE_FIRST] Network attempt $attempt failed: $error');
         },
       );
       
@@ -110,7 +110,7 @@ class OfflineFirstBooksRepository implements OfflineFirstRepository<dynamic> {
       return networkData;
       
     } catch (error) {
-      debugPrint('[OFFLINE_FIRST] Network fetch failed, falling back to cache: $error');
+      // '[OFFLINE_FIRST] Network fetch failed, falling back to cache: $error');
       
       // Fallback to cache
       final cachedData = await getFromCache();
@@ -134,28 +134,28 @@ class OfflineFirstBooksRepository implements OfflineFirstRepository<dynamic> {
       if (!forceRefresh) {
         final cachedItem = await getFromCacheById(id);
         if (cachedItem != null) {
-          debugPrint('[OFFLINE_FIRST] Returning cached item: $id');
+          // '[OFFLINE_FIRST] Returning cached item: $id');
           return cachedItem;
         }
       }
       
       // Try network with timeout and retry
-      debugPrint('[OFFLINE_FIRST] Attempting network fetch for item: $id');
+      // '[OFFLINE_FIRST] Attempting network fetch for item: $id');
       final networkItem = await NetworkService.withRetry(
         () => _networkItemFetcher(id),
         timeout: const Duration(seconds: 10),
       );
       
-      debugPrint('[OFFLINE_FIRST] Network fetch successful for item: $id');
+      // '[OFFLINE_FIRST] Network fetch successful for item: $id');
       return networkItem;
       
     } catch (error) {
-      debugPrint('[OFFLINE_FIRST] Network fetch failed for item $id, falling back to cache: $error');
+      // '[OFFLINE_FIRST] Network fetch failed for item $id, falling back to cache: $error');
       
       // Fallback to cache
       final cachedItem = await getFromCacheById(id);
       if (cachedItem != null) {
-        debugPrint('[OFFLINE_FIRST] Returning stale cached item: $id');
+        // '[OFFLINE_FIRST] Returning stale cached item: $id');
         return cachedItem;
       }
       
@@ -168,7 +168,7 @@ class OfflineFirstBooksRepository implements OfflineFirstRepository<dynamic> {
   Future<void> saveToCache(List<dynamic> data) async {
     await _cacheSaver(data);
     await _saveCacheTime(DateTime.now());
-    debugPrint('[OFFLINE_FIRST] Saved ${data.length} items to cache');
+    // '[OFFLINE_FIRST] Saved ${data.length} items to cache');
   }
   
   @override
@@ -184,7 +184,7 @@ class OfflineFirstBooksRepository implements OfflineFirstRepository<dynamic> {
   @override
   Future<void> clearCache() async {
     await _cacheClearer();
-    debugPrint('[OFFLINE_FIRST] Cache cleared');
+    // '[OFFLINE_FIRST] Cache cleared');
   }
   
   @override
@@ -194,7 +194,7 @@ class OfflineFirstBooksRepository implements OfflineFirstRepository<dynamic> {
     
     final now = DateTime.now();
     final isValid = now.difference(lastTime) < timeout;
-    debugPrint('[OFFLINE_FIRST] Cache valid: $isValid (age: ${now.difference(lastTime).inMinutes} minutes)');
+    // '[OFFLINE_FIRST] Cache valid: $isValid (age: ${now.difference(lastTime).inMinutes} minutes)');
     return isValid;
   }
   
@@ -223,7 +223,7 @@ class OfflineFirstService {
     if (_isOffline != offline) {
       _isOffline = offline;
       _offlineController.add(offline);
-      debugPrint('[OFFLINE_FIRST] Offline state changed: $offline');
+      // '[OFFLINE_FIRST] Offline state changed: $offline');
     }
   }
   

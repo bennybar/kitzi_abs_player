@@ -43,7 +43,9 @@ class DownloadsRepository {
 
   static const _wifiOnlyKey = 'downloads_wifi_only';
 
-  void _d(String m) => debugPrint('[DL] $m');
+  void _d(String m) {
+    // Logging removed for cleaner console output
+  }
   
   // Progress notification tracking
   final Map<String, String> _progressNotificationTitles = {};
@@ -121,7 +123,7 @@ class DownloadsRepository {
         error: null,
       );
     } catch (e) {
-      debugPrint('[DL] Error configuring notifications: $e');
+      // '[DL] Error configuring notifications: $e');
     }
 
     // Load persistent blocked items (ensures hard-stop even across restarts)
@@ -806,7 +808,7 @@ class DownloadsRepository {
         );
       }
     } catch (e) {
-      debugPrint('[DL] Error updating progress notification: $e');
+      // '[DL] Error updating progress notification: $e');
     }
   }
 

@@ -1118,12 +1118,12 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       final repo = await _repoFut;
       final nextPage = _currentPage + 1;
       final q = _query.trim();
-      debugPrint('[BOOKS_UI] loadMore: nextPage=$nextPage queryEmpty=${q.isEmpty}');
+      // Loading more books
       // Try offset-first via full sync helper by requesting exactly one chunk
       await repo.syncAllBooksToDb(pageSize: 50, query: q.isEmpty ? null : q, onProgress: (p, _) {});
       // Then read the next page from DB
       final page = await repo.listBooksFromDbPaged(page: nextPage, limit: 50, query: q.isEmpty ? null : q);
-      debugPrint('[BOOKS_UI] loadMore: dbPageLen=${page.length}');
+      // Loaded page from database
       if (!mounted) return;
       setState(() {
         // Use DB-mapped rows to keep sorting consistent

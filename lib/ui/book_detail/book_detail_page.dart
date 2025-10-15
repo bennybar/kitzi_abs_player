@@ -90,8 +90,6 @@ class _BookDetailPageState extends State<BookDetailPage> {
   Stream<bool> _getBookCompletionStream(PlaybackRepository playback, String bookId) {
     // Start with the current cache value to avoid race conditions
     final currentValue = playback.completionCache[bookId] ?? false;
-    debugPrint('[COMPLETION_DEBUG] _getBookCompletionStream: book=$bookId, currentCacheValue=$currentValue');
-    
     return playback.getBookCompletionStream(bookId).startWith(currentValue);
   }
 
@@ -99,8 +97,6 @@ class _BookDetailPageState extends State<BookDetailPage> {
     final playback = ServicesScope.of(context).services.playback;
     final newCompletionStatus = !isCurrentlyCompleted;
     
-    debugPrint('[COMPLETION_DEBUG] Toggle called: book=${book.id}, current=$isCurrentlyCompleted, new=$newCompletionStatus');
-    debugPrint('[COMPLETION_DEBUG] Cache before: ${playback.completionCache[book.id]}');
     
     // Show confirmation dialog(s)
     Duration? unfinishChoice; // null => cancel, 0 => restart, >0 => resume to that
@@ -118,16 +114,14 @@ class _BookDetailPageState extends State<BookDetailPage> {
     if (!newCompletionStatus && playback.nowPlaying?.libraryItemId == book.id) {
       savedPosition = playback.player.position;
       wasPlaying = playback.player.playing;
-      debugPrint('[COMPLETION_DEBUG] Saved position: ${savedPosition.inSeconds}s, wasPlaying: $wasPlaying');
     }
     
     // Stop any ongoing playback immediately when marking as finished
     if (newCompletionStatus) {
       try {
         await playback.stop();
-        debugPrint('[COMPLETION_DEBUG] Stopped playback before marking as finished');
       } catch (e) {
-        debugPrint('[COMPLETION_DEBUG] Error stopping playback: $e');
+        // Error stopping playback
       }
     }
   
@@ -139,12 +133,10 @@ class _BookDetailPageState extends State<BookDetailPage> {
       }
       await _markBookAsFinished(context, book.id, newCompletionStatus, overrideCurrentTimeSeconds: overrideSeconds);
       
-      debugPrint('[COMPLETION_DEBUG] Cache after: ${playback.completionCache[book.id]}');
       
       // If unfinishing, apply the user's choice locally if this book is active
       if (!newCompletionStatus && playback.nowPlaying?.libraryItemId == book.id && unfinishChoice != null) {
         final chosen = unfinishChoice;
-        debugPrint('[COMPLETION_DEBUG] Applying user choice after unfinish: seek to ${chosen.inSeconds}s');
         try {
           // Wait a bit for the API call to complete
           await Future.delayed(const Duration(milliseconds: 500));
@@ -157,20 +149,18 @@ class _BookDetailPageState extends State<BookDetailPage> {
           if (wasPlaying) {
             // Temporarily disable sync to avoid overriding our preserved position
             await playback.resume(skipSync: true);
-            debugPrint('[COMPLETION_DEBUG] Resumed playback at saved position (sync disabled)');
           }
 
           // Push the position to server after a delay to ensure it's preserved
           Future.delayed(const Duration(seconds: 1), () async {
             try {
-              debugPrint('[COMPLETION_DEBUG] Pushing position to server after unfinish: ${savedPosition?.inSeconds}s');
               await playback.reportProgressNow();
             } catch (e) {
-              debugPrint('[COMPLETION_DEBUG] Error pushing position to server: $e');
+              // Error pushing position to server
             }
           });
         } catch (e) {
-          debugPrint('[COMPLETION_DEBUG] Error seeking to saved position: $e');
+          // Error seeking to saved position
         }
       }
       
@@ -190,7 +180,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
       }
       
     } catch (e) {
-      debugPrint('[COMPLETION_DEBUG] Error toggling completion: $e');
+      // Error toggling completion
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -396,14 +386,10 @@ class _BookDetailPageState extends State<BookDetailPage> {
           final totalSeconds = totalDuration.inSeconds.toDouble();
           requestBody['duration'] = totalSeconds;
           requestBody['progress'] = (currentTimeSeconds / totalSeconds).clamp(0.0, 1.0);
-          debugPrint('[COMPLETION_DEBUG] Including full progress: currentTime=${currentTimeSeconds}s, duration=${totalSeconds}s, progress=${requestBody['progress']}');
-        } else {
-          debugPrint('[COMPLETION_DEBUG] Including currentTime: ${currentTimeSeconds}s to preserve position (no duration available)');
         }
       }
     }
     
-    debugPrint('[COMPLETION_DEBUG] API request: PATCH /api/me/progress/$libraryItemId, body=$requestBody');
     
     try {
       final response = await api.request(
@@ -413,13 +399,10 @@ class _BookDetailPageState extends State<BookDetailPage> {
         body: jsonEncode(requestBody),
       );
       
-      debugPrint('[COMPLETION_DEBUG] API response: ${response.statusCode}');
       
       if (response.statusCode == 200 || response.statusCode == 204) {
-        debugPrint('[COMPLETION_DEBUG] Updating cache: $libraryItemId -> $finished');
         // Update the global completion status cache and notify all listeners
         await playback.updateBookCompletionStatus(libraryItemId, finished);
-        debugPrint('[COMPLETION_DEBUG] Cache updated successfully');
 
         // Persist the chosen progress locally so the next Play uses it
         if (!finished && overrideCurrentTimeSeconds != null) {
@@ -432,7 +415,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
         throw Exception('Server returned ${response.statusCode}: ${response.body}');
       }
     } catch (e) {
-      debugPrint('[COMPLETION_DEBUG] API Error: $e');
+      // API Error
       rethrow;
     }
   }
@@ -1619,18 +1602,13 @@ class _PlayPrimaryButton extends StatelessWidget {
       // The cache is the source of truth for UI state
       bool isCompleted = playback.completionCache[bookId] ?? false;
       
-      debugPrint('[COMPLETION_DEBUG] _getBookProgressInfo: book=$bookId, progress=$progress, isCompleted=$isCompleted');
-      debugPrint('[COMPLETION_DEBUG] Cache contains key: ${playback.completionCache.containsKey(bookId)}');
-      debugPrint('[COMPLETION_DEBUG] Cache value: ${playback.completionCache[bookId]}');
-      debugPrint('[COMPLETION_DEBUG] Full cache: ${playback.completionCache}');
-      debugPrint('[COMPLETION_DEBUG] Cache lookup: ${playback.completionCache[bookId] ?? false}');
       
       return {
         'hasProgress': (progress ?? 0) > 0,
         'isCompleted': isCompleted,
       };
     } catch (e) {
-      debugPrint('[COMPLETION_DEBUG] Error in _getBookProgressInfo: $e');
+      // Error in _getBookProgressInfo
       return {'hasProgress': false, 'isCompleted': false};
     }
   }
@@ -1653,97 +1631,86 @@ class _PlayPrimaryButton extends StatelessWidget {
         final isThis = nowPlayingSnap.data?.libraryItemId == book.id;
         
         if (isThis) {
-      return StreamBuilder<bool>(
-        stream: playback.playingStream,
-        initialData: playback.player.playing,
-        builder: (context, playingSnap) {
-          return StreamBuilder<ProcessingState>(
-            stream: playback.processingStateStream,
-            initialData: playback.player.processingState,
-            builder: (context, processingSnap) {
-              final isPlaying = playingSnap.data ?? false;
-              final processing = processingSnap.data ?? ProcessingState.idle;
-              final isBuffering = processing == ProcessingState.loading || processing == ProcessingState.buffering;
-              
-              // More robust check: ensure we have a valid nowPlaying item and it's actually playing
-              final hasValidNowPlaying = isThis && (processing == ProcessingState.ready || processing == ProcessingState.completed);
-              final shouldShowAsPlaying = hasValidNowPlaying && isPlaying;
-              
-
-              if (isBuffering && !isPlaying) {
-                return FilledButton.icon(
-                  onPressed: null,
-                  icon: const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
-                  label: const Text('Loading'),
-                );
-              }
-
-              if (shouldShowAsPlaying) {
-                return FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: Theme.of(context).colorScheme.error,
-                    foregroundColor: Theme.of(context).colorScheme.onError,
-                  ),
-                  onPressed: () async {
-                    debugPrint('[BOOK_DETAILS] Stop button pressed');
-                    await playback.pause();
-                    debugPrint('[BOOK_DETAILS] Pause completed');
-                  },
-                  icon: const Icon(Icons.stop_rounded),
-                  label: const Text('Stop'),
-                );
-              }
-
-              // Active but paused/ready -> Resume
-              return FilledButton.icon(
-                onPressed: () async {
-                  debugPrint('[BOOK_DETAILS] Resume button pressed');
-                  // Try to resume first, but if that fails (no current item), 
-                  // warm load the last item and play it
-                  bool success = await playback.resume();
-                  debugPrint('[BOOK_DETAILS] Resume result: $success');
-                  if (!success) {
-                    try {
-                      await playback.warmLoadLastItem(playAfterLoad: true);
-                      success = true; // Consider warm load a success
-                      debugPrint('[BOOK_DETAILS] Warm load succeeded');
-                    } catch (e) {
-                      success = false;
-                      debugPrint('[BOOK_DETAILS] Warm load failed: $e');
-                    }
-                  }
+          return StreamBuilder<bool>(
+            stream: playback.playingStream,
+            initialData: playback.player.playing,
+            builder: (context, playingSnap) {
+              return StreamBuilder<ProcessingState>(
+                stream: playback.processingStateStream,
+                initialData: playback.player.processingState,
+                builder: (context, processingSnap) {
+                  final isPlaying = playingSnap.data ?? false;
+                  final processing = processingSnap.data ?? ProcessingState.idle;
+                  final isBuffering = processing == ProcessingState.loading || processing == ProcessingState.buffering;
                   
-                  if (!success && context.mounted) {
-                    debugPrint('[BOOK_DETAILS] Showing error snackbar');
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Cannot play: server unavailable and sync progress is required'),
-                        duration: Duration(seconds: 4),
-                      ),
+                  // More robust check: ensure we have a valid nowPlaying item and it's actually playing
+                  final hasValidNowPlaying = isThis && (processing == ProcessingState.ready || processing == ProcessingState.completed);
+                  final shouldShowAsPlaying = hasValidNowPlaying && isPlaying;
+                  
+
+                  if (isBuffering && !isPlaying) {
+                    return FilledButton.icon(
+                      onPressed: null,
+                      icon: const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                      label: const Text('Loading'),
                     );
-                  } else if (success && context.mounted) {
-                    // Wait a brief moment for the player state to update
-                    await Future.delayed(const Duration(milliseconds: 100));
-                    
-                    // Check if we're still playing before opening full player
-                    // This prevents opening the player if the user paused during the async operations
-                    final stillPlaying = playback.player.playing;
-                    debugPrint('[BOOK_DETAILS] Still playing after resume (with delay): $stillPlaying');
-                    if (stillPlaying) {
-                      debugPrint('[BOOK_DETAILS] Opening full player after successful resume');
-                      await FullPlayerPage.openOnce(context);
-                    } else {
-                      debugPrint('[BOOK_DETAILS] Not opening full player - playback was paused');
-                    }
                   }
+
+                  if (shouldShowAsPlaying) {
+                    return FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: Theme.of(context).colorScheme.error,
+                        foregroundColor: Theme.of(context).colorScheme.onError,
+                      ),
+                      onPressed: () async {
+                        await playback.pause();
+                      },
+                      icon: const Icon(Icons.stop_rounded),
+                      label: const Text('Stop'),
+                    );
+                  }
+
+                  // Active but paused/ready -> Resume
+                  return FilledButton.icon(
+                    onPressed: () async {
+                      // Try to resume first, but if that fails (no current item), 
+                      // warm load the last item and play it
+                      bool success = await playback.resume();
+                      if (!success) {
+                        try {
+                          await playback.warmLoadLastItem(playAfterLoad: true);
+                          success = true; // Consider warm load a success
+                        } catch (e) {
+                          success = false;
+                        }
+                      }
+                      
+                      if (!success && context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Cannot play: server unavailable and sync progress is required'),
+                            duration: Duration(seconds: 4),
+                          ),
+                        );
+                      } else if (success && context.mounted) {
+                        // Wait a brief moment for the player state to update
+                        await Future.delayed(const Duration(milliseconds: 100));
+                        
+                        // Check if we're still playing before opening full player
+                        // This prevents opening the player if the user paused during the async operations
+                        final stillPlaying = playback.player.playing;
+                        if (stillPlaying) {
+                          await FullPlayerPage.openOnce(context);
+                        }
+                      }
+                    },
+                    icon: const Icon(Icons.play_arrow_rounded),
+                    label: const Text('Resume'),
+                  );
                 },
-                icon: const Icon(Icons.play_arrow_rounded),
-                label: const Text('Resume'),
               );
             },
           );
-        },
-      );
         }
 
         // Not active on player: decide between Resume vs Play by checking saved progress
@@ -1779,11 +1746,9 @@ class _PlayPrimaryButton extends StatelessWidget {
               onPressed: () async {
                 // Check cache directly to avoid race conditions
                 final currentCompletionStatus = playback.completionCache[book.id] ?? false;
-                debugPrint('[COMPLETION_DEBUG] Play button pressed: book=${book.id}, streamIsCompleted=$isCompleted, cacheIsCompleted=$currentCompletionStatus, label=$label');
                 
                 // Use cache value as source of truth for completion status
                 if (currentCompletionStatus) {
-                  debugPrint('[COMPLETION_DEBUG] Book is completed (from cache), showing reset dialog');
                   final resetPerformed = await _showResetDialogForCompletedBook(context, book.id);
                   if (resetPerformed && onResetPerformed != null) {
                     onResetPerformed!();
@@ -1791,7 +1756,6 @@ class _PlayPrimaryButton extends StatelessWidget {
                   return;
                 }
                 
-                debugPrint('[COMPLETION_DEBUG] Book not completed (from cache), starting playback');
                 
                 // Start playback in background and open full player immediately
                 unawaited(playback.playItem(book.id, context: context).then((success) {

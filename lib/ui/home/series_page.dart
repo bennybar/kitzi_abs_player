@@ -261,9 +261,9 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
       // For series, use the direct series API
       if (_isOnline) {
         // Fetch series directly from server
-        debugPrint('[SERIES] Fetching series from server...');
+        // Fetching series from server
         final series = await repo.getAllSeries(sort: 'name', desc: false);
-        debugPrint('[SERIES] Fetched ${series.length} series from server');
+        // Fetched series from server
         
         if (!mounted) return;
         setState(() {
@@ -281,7 +281,7 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
         });
       } else {
         // When offline, fall back to book grouping
-        debugPrint('[SERIES] Offline mode - falling back to book grouping...');
+        // Offline mode - falling back to book grouping
         final all = await _loadAllBooksFromDb(repo);
         if (!mounted) return;
         _processBooksDataFallback(all);
@@ -289,7 +289,7 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
       }
       
     } catch (e) {
-      debugPrint('[SERIES] Error fetching series: $e');
+      // Error fetching series
       if (!mounted) return;
       
       // Fallback to book grouping on error
@@ -323,7 +323,7 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
   }
 
   void _processCollectionsData(List<Book> all) {
-    debugPrint('[COLLECTIONS] Processing ${all.length} books for collections...');
+    // Processing books for collections
     
     // Load collections with normalized names
     final collectionsMap = <String, List<Book>>{};
@@ -334,7 +334,7 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
       final normalizedName = _normalizeSeriesName(originalName);
       (collectionsMap[normalizedName] ??= <Book>[]).add(b);
     }
-    debugPrint('[COLLECTIONS] Total collections found: ${collectionsMap.length}');
+    // Total collections found
     
     // Sort each collection by sequence then title
     for (final e in collectionsMap.entries) {
@@ -357,7 +357,7 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
   }
 
   void _processBooksDataFallback(List<Book> all) {
-    debugPrint('[FALLBACK] Processing ${all.length} books (fallback mode)...');
+    // Processing books (fallback mode)
     
     // Create fake Series objects from grouped books as fallback
     final seriesMap = <String, List<Book>>{};
@@ -396,7 +396,7 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
       );
     }).toList();
 
-    debugPrint('[FALLBACK] Created ${seriesList.length} series from grouped books');
+    // Created series from grouped books
     
     // Also process collections
     _processCollectionsData(all);
@@ -422,7 +422,7 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
       _seriesBooksCache[series.id] = books;
       return books;
     } catch (e) {
-      debugPrint('[SERIES] Error fetching books for series ${series.name}: $e');
+      // Error fetching books for series
       return <Book>[];
     }
   }

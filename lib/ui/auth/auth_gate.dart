@@ -59,7 +59,7 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
       if (!mounted) return;
       setState(() => _isLoggedIn = isValid);
     } catch (e) {
-      debugPrint('[AUTH_GATE] Session check failed: $e');
+      // Session check failed
       if (!mounted) return;
       
       // Check if this is a network error vs authentication error
@@ -67,7 +67,7 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
           e.toString().contains('TimeoutException') ||
           e.toString().contains('HandshakeException')) {
         // Network error - don't logout, keep current state
-        debugPrint('[AUTH_GATE] Network error detected, keeping current auth state');
+        // Network error detected, keeping current auth state
         return;
       }
       

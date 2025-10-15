@@ -48,19 +48,19 @@ class _ProfilePageState extends State<ProfilePage> {
       
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
-        debugPrint('Profile data keys: ${data.keys.toList()}');
+        // Profile data received
         if (data['mediaProgress'] != null) {
-          debugPrint('MediaProgress type: ${data['mediaProgress'].runtimeType}');
+          // MediaProgress data available
           if (data['mediaProgress'] is List) {
             final progressList = data['mediaProgress'] as List;
-            debugPrint('MediaProgress length: ${progressList.length}');
+            // MediaProgress list available
             if (progressList.isNotEmpty) {
-              debugPrint('First progress item: ${progressList.first}');
-              debugPrint('First progress item keys: ${(progressList.first as Map).keys.toList()}');
+              // First progress item available
+              // First progress item keys available
               final firstItem = progressList.first as Map<String, dynamic>;
-              debugPrint('First item currentTime: ${firstItem['currentTime']}');
-              debugPrint('First item duration: ${firstItem['duration']}');
-              debugPrint('First item progress: ${firstItem['progress']}');
+              // First item currentTime available
+              // First item duration available
+              // First item progress available
             }
           }
         }
@@ -74,7 +74,7 @@ class _ProfilePageState extends State<ProfilePage> {
         // Also check if the profile data itself contains server version info
         final serverVersionFromProfile = data['serverVersion'] ?? data['version'] ?? data['appVersion'];
         if (serverVersionFromProfile != null) {
-          debugPrint('[PROFILE] Found server version in profile data: $serverVersionFromProfile');
+          // Found server version in profile data
           if (mounted) {
             setState(() {
               _serverStatus = {'serverVersion': serverVersionFromProfile, 'source': 'profile'};
@@ -110,7 +110,7 @@ class _ProfilePageState extends State<ProfilePage> {
         });
       }
     } catch (e) {
-      debugPrint('Failed to load server status: $e');
+      // Failed to load server status
       // Don't fail the whole profile load just because of server status
     }
   }
@@ -125,7 +125,7 @@ class _ProfilePageState extends State<ProfilePage> {
         });
       }
     } catch (e) {
-      debugPrint('Failed to load library stats: $e');
+      // Failed to load library stats
       // Don't fail the whole profile load just because of library stats
     }
   }
@@ -492,7 +492,7 @@ class _ProfilePageState extends State<ProfilePage> {
       _bookNames[libraryItemId] = name;
       return name;
     } catch (e) {
-      debugPrint('Failed to fetch book name for $libraryItemId: $e');
+      // Failed to fetch book name
       return 'Unknown Book';
     }
   }
@@ -516,7 +516,7 @@ class _ProfilePageState extends State<ProfilePage> {
       
       return inProgress.toString();
     } catch (e) {
-      debugPrint('Error in _getBooksInProgress: $e');
+      // Error in _getBooksInProgress
       return 'N/A';
     }
   }
@@ -541,7 +541,7 @@ class _ProfilePageState extends State<ProfilePage> {
       
       return '0';
     } catch (e) {
-      debugPrint('Error in _getTotalBooks: $e');
+      // Error in _getTotalBooks
       return 'N/A';
     }
   }
@@ -572,7 +572,7 @@ class _ProfilePageState extends State<ProfilePage> {
         return '${minutes}m';
       }
     } catch (e) {
-      debugPrint('Error in _getTotalListeningTime: $e');
+      // Error in _getTotalListeningTime
       return 'N/A';
     }
   }
@@ -611,17 +611,17 @@ class _ProfilePageState extends State<ProfilePage> {
             final currentTime = item['currentTime'] as num? ?? 0;
             final duration = item['duration'] as num? ?? 0;
             
-            debugPrint('Progress calculation for $libraryItemId: currentTime=$currentTime, duration=$duration');
+            // Progress calculation
             
             if (duration > 0) {
               progressPercent = (currentTime / duration) * 100;
-              debugPrint('Calculated progress: ${progressPercent.toStringAsFixed(1)}%');
+              // Calculated progress
             } else {
               // Fallback to progress field if duration is not available
               final progress = item['progress'] as num?;
               if (progress != null) {
                 progressPercent = progress * 100;
-                debugPrint('Using progress field: ${progressPercent.toStringAsFixed(1)}%');
+                // Using progress field
               }
             }
             

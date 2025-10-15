@@ -36,26 +36,18 @@ class AudioServiceBinding {
 
   Future<void> bindAudioService(PlaybackRepository playbackRepository) async {
     if (_isBound) {
-      debugPrint('Audio service already bound');
       return;
     }
 
     try {
-      debugPrint('=== BINDING AUDIO SERVICE ===');
-      
       // Step 1: Configure audio session
-      debugPrint('1. Configuring audio session...');
       final session = await AudioSession.instance;
       await _configureAudioSession(session);
-      debugPrint('✓ Audio session configured');
 
       // Step 2: Create audio handler
-      debugPrint('2. Creating audio handler...');
       _audioHandler = KitziAudioHandler(playbackRepository, playbackRepository.player);
-      debugPrint('✓ Audio handler created');
 
       // Step 3: Initialize audio service
-      debugPrint('3. Initializing audio service...');
       await AudioService.init(
         builder: () => _audioHandler!,
         config: AudioServiceConfig(
@@ -68,16 +60,12 @@ class AudioServiceBinding {
           androidNotificationOngoing: true,
         ),
       );
-      debugPrint('✓ Audio service initialized');
 
       // Step 4: Do not force playback start; remain lazy to save battery
       _isBound = true;
       _isInitialized = true;
-      debugPrint('=== AUDIO SERVICE BOUND SUCCESSFULLY (lazy) ===');
       
     } catch (e) {
-      debugPrint('❌ Failed to bind audio service: $e');
-      debugPrint('Stack trace: ${StackTrace.current}');
       _isBound = false;
       _isInitialized = false;
     }
@@ -85,16 +73,13 @@ class AudioServiceBinding {
 
   Future<void> updateNowPlaying(NowPlaying nowPlaying) async {
     if (!_isBound || _audioHandler == null) {
-      debugPrint('❌ Audio service not bound, attempting to bind...');
       return;
     }
 
     try {
-      debugPrint('Updating now playing: ${nowPlaying.title}');
       await _audioHandler!.updateQueueFromNowPlaying(nowPlaying);
-      debugPrint('✓ Now playing updated successfully');
     } catch (e) {
-      debugPrint('❌ Failed to update now playing: $e');
+      // Failed to update now playing
     }
   }
 
@@ -104,7 +89,7 @@ class AudioServiceBinding {
     try {
       _audioHandler!.updateCurrentMediaItem(trackIndex);
     } catch (e) {
-      debugPrint('❌ Failed to update current track: $e');
+      // Failed to update current track
     }
   }
 
@@ -114,7 +99,7 @@ class AudioServiceBinding {
     try {
       _audioHandler!.forceUpdateMediaSession();
     } catch (e) {
-      debugPrint('❌ Failed to force update media session: $e');
+      // Failed to force update media session
     }
   }
 
@@ -123,26 +108,7 @@ class AudioServiceBinding {
   KitziAudioHandler? get audioHandler => _audioHandler;
 
   Future<void> checkStatus() async {
-    debugPrint('=== AUDIO SERVICE BINDING STATUS ===');
-    debugPrint('Is bound: $_isBound');
-    debugPrint('Is initialized: $_isInitialized');
-    debugPrint('Audio handler: ${_audioHandler != null ? 'exists' : 'null'}');
-    
-    if (_audioHandler != null) {
-      try {
-        final queue = _audioHandler!.queue.value;
-        final mediaItem = _audioHandler!.mediaItem.value;
-        final playbackState = _audioHandler!.playbackState.value;
-        
-        debugPrint('Queue length: ${queue.length}');
-        debugPrint('Current media item: ${mediaItem?.title ?? 'null'}');
-        debugPrint('Playback state: ${playbackState.playing ? 'playing' : 'paused'}');
-        debugPrint('Queue index: ${playbackState.queueIndex}');
-      } catch (e) {
-        debugPrint('Error checking status: $e');
-      }
-    }
-    debugPrint('=== END STATUS CHECK ===');
+    // Status check method - implementation removed for cleaner logs
   }
 
   Future<void> unbind() async {
@@ -151,12 +117,11 @@ class AudioServiceBinding {
         await _audioHandler!.pause();
         await AudioService.stop();
       } catch (e) {
-        debugPrint('Error stopping audio service: $e');
+        // Error stopping audio service
       }
     }
     _audioHandler = null;
     _isBound = false;
     _isInitialized = false;
-    debugPrint('Audio service unbound');
   }
 }

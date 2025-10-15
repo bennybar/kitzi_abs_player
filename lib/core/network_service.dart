@@ -29,7 +29,7 @@ class NetworkService {
         if (isLastAttempt || !shouldRetryError) {
           // Only log final failures, not intermediate retries
           if (attempt > 0) {
-            debugPrint('Network operation failed after ${attempt + 1} attempts: $error');
+            // 'Network operation failed after ${attempt + 1} attempts: $error');
           }
           rethrow;
         }
@@ -40,7 +40,7 @@ class NetworkService {
         
         // Reduce retry logging verbosity
         if (attempt == 0) {
-          debugPrint('Network operation failed, retrying in ${retryDelay.inMilliseconds}ms: $error');
+          // 'Network operation failed, retrying in ${retryDelay.inMilliseconds}ms: $error');
         }
         onRetry?.call(attempt + 1, error);
         
@@ -202,7 +202,7 @@ class ConnectivityMonitor {
       _isConnected = connected;
       _connectivityController.add(connected);
       // Only log connectivity changes, not every check
-      debugPrint('[OFFLINE_FIRST] Connectivity changed: ${connected ? 'Connected' : 'Disconnected'}');
+      // '[OFFLINE_FIRST] Connectivity changed: ${connected ? 'Connected' : 'Disconnected'}');
     }
   }
   

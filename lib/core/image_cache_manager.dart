@@ -118,7 +118,7 @@ class ImageCacheManager {
         );
       }
     } catch (e) {
-      debugPrint('Failed to preload image: $url - $e');
+      // 'Failed to preload image: $url - $e');
     }
   }
   
@@ -126,9 +126,9 @@ class ImageCacheManager {
   static Future<void> clearCache() async {
     try {
       await _instance.emptyCache();
-      debugPrint('Image cache cleared');
+      // 'Image cache cleared');
     } catch (e) {
-      debugPrint('Failed to clear image cache: $e');
+      // 'Failed to clear image cache: $e');
     }
   }
   
@@ -149,7 +149,7 @@ class ImageCacheManager {
       
       return totalSize;
     } catch (e) {
-      debugPrint('Failed to get cache size: $e');
+      // 'Failed to get cache size: $e');
       return 0;
     }
   }

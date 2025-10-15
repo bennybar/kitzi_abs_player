@@ -125,7 +125,7 @@ class _AbsAppState extends State<AbsApp> {
         final services = ServicesScope.of(context).services;
         services.playback.warmLoadLastItem(playAfterLoad: false);
       } catch (e) {
-        debugPrint('Error warming last item: $e');
+        // 'Error warming last item: $e');
       }
     });
   }

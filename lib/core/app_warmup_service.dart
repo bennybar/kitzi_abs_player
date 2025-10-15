@@ -15,7 +15,7 @@ class AppWarmupService {
       return _warmupCompleter.future;
     }
     
-    debugPrint('[APP_WARMUP] Starting app warmup...');
+    // Starting app warmup
     final stopwatch = Stopwatch()..start();
     
     try {
@@ -34,9 +34,9 @@ class AppWarmupService {
       _warmupCompleter.complete();
       
       stopwatch.stop();
-      debugPrint('[APP_WARMUP] App warmup completed in ${stopwatch.elapsedMilliseconds}ms');
+      // App warmup completed
     } catch (e) {
-      debugPrint('[APP_WARMUP] Error during warmup: $e');
+      // Error during warmup
       _warmupCompleter.completeError(e);
     }
   }
@@ -45,9 +45,9 @@ class AppWarmupService {
   static Future<void> _initializeAuth() async {
     try {
       await AuthRepository.ensure();
-      debugPrint('[APP_WARMUP] Auth initialized');
+      // APP_WARMUP Auth initialized');
     } catch (e) {
-      debugPrint('[APP_WARMUP] Error initializing auth: $e');
+      // APP_WARMUP Error initializing auth: $e');
     }
   }
   
@@ -55,9 +55,9 @@ class AppWarmupService {
   static Future<void> _initializeBooksRepository() async {
     try {
       await BooksRepository.create();
-      debugPrint('[APP_WARMUP] Books repository initialized');
+      // APP_WARMUP Books repository initialized');
     } catch (e) {
-      debugPrint('[APP_WARMUP] Error initializing books repository: $e');
+      // APP_WARMUP Error initializing books repository: $e');
     }
   }
   
@@ -65,9 +65,9 @@ class AppWarmupService {
   static Future<void> _initializePlayHistory() async {
     try {
       // PlayHistoryService doesn't have an initialize method, skip for now
-      debugPrint('[APP_WARMUP] Play history service ready');
+      // APP_WARMUP Play history service ready');
     } catch (e) {
-      debugPrint('[APP_WARMUP] Error initializing play history: $e');
+      // APP_WARMUP Error initializing play history: $e');
     }
   }
   
@@ -81,9 +81,9 @@ class AppWarmupService {
       // Load recent books in background
       unawaited(PlayHistoryService.getLastPlayedBooks(4));
       
-      debugPrint('[APP_WARMUP] Critical data preloading started');
+      // APP_WARMUP Critical data preloading started');
     } catch (e) {
-      debugPrint('[APP_WARMUP] Error preloading critical data: $e');
+      // APP_WARMUP Error preloading critical data: $e');
     }
   }
   
@@ -98,10 +98,10 @@ class AppWarmupService {
         final urls = popularBooks.map((b) => b.coverUrl).toList();
         // Note: We can't pass context here, so we'll skip image preloading
         // The images will be loaded when the UI is ready
-        debugPrint('[APP_WARMUP] Image cache warmup prepared for ${urls.length} images');
+        // APP_WARMUP Image cache warmup prepared for ${urls.length} images');
       }
     } catch (e) {
-      debugPrint('[APP_WARMUP] Error warming up image cache: $e');
+      // APP_WARMUP Error warming up image cache: $e');
     }
   }
   
@@ -151,7 +151,7 @@ class _OptimizedSplashScreenState extends State<OptimizedSplashScreen> {
         }
         
         if (snapshot.hasError) {
-          debugPrint('[APP_WARMUP] Warmup failed: ${snapshot.error}');
+          // APP_WARMUP Warmup failed: ${snapshot.error}');
           // Continue anyway - don't block the app
           return widget.child;
         }

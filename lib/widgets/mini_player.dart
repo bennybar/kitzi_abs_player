@@ -121,31 +121,31 @@ class MiniPlayer extends StatelessWidget {
                         final hasValidNowPlaying = np != null && playing;
                         return IconButton(
                           onPressed: () async {
-                            debugPrint('[MINI_PLAYER] Button pressed. Playing: $playing, NowPlaying: ${playback.nowPlaying?.title}, hasValidNowPlaying: $hasValidNowPlaying');
+                            // Button pressed
                             if (hasValidNowPlaying) {
-                              debugPrint('[MINI_PLAYER] Pausing playback');
+                              // Pausing playback
                               await playback.pause();
                               // Don't open full player on pause
                             } else {
-                              debugPrint('[MINI_PLAYER] Attempting to resume/play');
+                              // Attempting to resume/play
                               // Try to resume first, but if that fails (no current item), 
                               // warm load the last item and play it
                               bool success = await playback.resume();
-                              debugPrint('[MINI_PLAYER] Resume result: $success');
+                              // Resume result
                               if (!success) {
                                 try {
-                                  debugPrint('[MINI_PLAYER] Resume failed, trying warmLoadLastItem');
+                                  // Resume failed, trying warmLoadLastItem
                                   await playback.warmLoadLastItem(playAfterLoad: true);
                                   success = true; // Consider warm load a success
-                                  debugPrint('[MINI_PLAYER] WarmLoadLastItem succeeded');
+                                  // WarmLoadLastItem succeeded
                                 } catch (e) {
-                                  debugPrint('[MINI_PLAYER] WarmLoadLastItem failed: $e');
+                                  // WarmLoadLastItem failed
                                   success = false;
                                 }
                               }
                               
                               if (!success && context.mounted) {
-                                debugPrint('[MINI_PLAYER] Both resume and warmLoad failed, showing error');
+                                // Both resume and warmLoad failed, showing error
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(
                                     content: Text('Cannot play: server unavailable and sync progress is required'),
@@ -153,7 +153,7 @@ class MiniPlayer extends StatelessWidget {
                                   ),
                                 );
                               } else if (success && context.mounted) {
-                                debugPrint('[MINI_PLAYER] Success, opening full player');
+                                // Success, opening full player
                                 // Open the full player page when resuming, like the book detail page does
                                 await FullPlayerPage.openOnce(context);
                               }

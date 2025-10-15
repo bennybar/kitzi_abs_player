@@ -19,7 +19,7 @@ class ApiClient {
       url = 'https://$url';
     }
     url = url.replaceAll(RegExp(r'/+$'), '');
-    debugPrint('[API] setBaseUrl: input="$original" -> stored="$url"');
+    // '[API] setBaseUrl: input="$original" -> stored="$url"');
     await _prefs.setString('abs_base_url', url);
   }
 
@@ -123,7 +123,7 @@ class ApiClient {
     final base = baseUrl;
     final refresh = await _getRefreshToken();
     if (base == null || refresh == null) {
-      debugPrint('[API] Token refresh failed: missing baseUrl or refresh token');
+      // '[API] Token refresh failed: missing baseUrl or refresh token');
       return false;
     }
 
@@ -137,7 +137,7 @@ class ApiClient {
       );
       
       if (resp.statusCode != 200) {
-        debugPrint('[API] Token refresh failed: HTTP ${resp.statusCode}');
+        // '[API] Token refresh failed: HTTP ${resp.statusCode}');
         return false;
       }
 
@@ -147,7 +147,7 @@ class ApiClient {
       final newRefresh = user?['refreshToken'] as String?;
       
       if (access == null) {
-        debugPrint('[API] Token refresh failed: no access token in response');
+        // '[API] Token refresh failed: no access token in response');
         return false;
       }
 
@@ -157,10 +157,10 @@ class ApiClient {
         await _setRefreshToken(newRefresh);
       }
       
-      debugPrint('[API] Token refresh successful');
+      // '[API] Token refresh successful');
       return true;
     } catch (e) {
-      debugPrint('[API] Token refresh failed: $e');
+      // '[API] Token refresh failed: $e');
       return false;
     }
   }
@@ -174,7 +174,7 @@ class ApiClient {
   }) async {
     await setBaseUrl(baseUrl);
     final loginUrl = '$baseUrl/login';
-    debugPrint('[API] login: url="$loginUrl" user="$username" hasPassword=${password.isNotEmpty}');
+    // '[API] login: url="$loginUrl" user="$username" hasPassword=${password.isNotEmpty}');
     http.Response resp;
     try {
       resp = await http.post(
@@ -185,9 +185,9 @@ class ApiClient {
         },
         body: jsonEncode({'username': username, 'password': password}),
       );
-      debugPrint('[API] login: status=${resp.statusCode} len=${resp.body.length}');
+      // '[API] login: status=${resp.statusCode} len=${resp.body.length}');
     } catch (e) {
-      debugPrint('[API] login: network error: $e');
+      // '[API] login: network error: $e');
       return false;
     }
 
@@ -197,7 +197,7 @@ class ApiClient {
     try {
       data = jsonDecode(resp.body) as Map<String, dynamic>;
     } catch (e) {
-      debugPrint('[API] login: JSON decode error: $e');
+      // '[API] login: JSON decode error: $e');
       return false;
     }
     final user = data['user'] as Map<String, dynamic>?;
@@ -208,7 +208,7 @@ class ApiClient {
     final topLevelRefresh = data['refreshToken'] as String?;
     final chosenAccess = access ?? topLevelAccess;
     final chosenRefresh = refresh ?? topLevelRefresh;
-    debugPrint('[API] login: tokens present -> access=${chosenAccess != null} refresh=${chosenRefresh != null}');
+    // '[API] login: tokens present -> access=${chosenAccess != null} refresh=${chosenRefresh != null}');
     if (chosenAccess == null) return false;
 
     final assumedExpiry = DateTime.now().toUtc().add(

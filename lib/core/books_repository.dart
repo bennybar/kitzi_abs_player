@@ -30,9 +30,7 @@ class BooksRepository {
   
   /// Log debug message only if verbose logging is enabled
   void _log(String message) {
-    if (_verboseLogging) {
-      debugPrint(message);
-    }
+    // Logging removed for cleaner console output
   }
   
   /// Clear expired cache entries
@@ -51,7 +49,7 @@ class BooksRepository {
   void _clearAllCache() {
     _queryCache.clear();
     _cacheTimestamps.clear();
-    debugPrint('[BOOKS_CACHE] All cache cleared due to memory pressure');
+    // Cache cleared due to memory pressure
   }
 
   static const _etagKey = 'books_list_etag';
@@ -333,7 +331,7 @@ class BooksRepository {
   
   /// Migrate database from version 1 to version 2
   Future<void> _migrateToVersion2(Database db) async {
-    debugPrint('[BOOKS_DB] Migrating from version 1 to 2');
+    // Migrating from version 1 to 2
     
     // Add new columns only if they don't exist
     await _addColumnIfNotExists(db, 'books', 'coverPath', 'TEXT');
@@ -360,7 +358,7 @@ class BooksRepository {
     await db.execute('CREATE INDEX IF NOT EXISTS idx_books_series_collection ON books(series, collection, seriesSequence)');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_books_audio_updated ON books(isAudioBook, updatedAt DESC)');
     
-    debugPrint('[BOOKS_DB] Migration to version 2 completed');
+    // Migration to version 2 completed
   }
   
   /// Add a column to a table only if it doesn't already exist
@@ -377,7 +375,7 @@ class BooksRepository {
         _log('[BOOKS_DB] Column $columnName already exists in $tableName');
       }
     } catch (e) {
-      debugPrint('[BOOKS_DB] Error adding column $columnName to $tableName: $e');
+      // Error adding column
     }
   }
 
@@ -442,7 +440,7 @@ class BooksRepository {
       );
       await _prefs.setString(_cacheMetadataKey, jsonEncode(metadata.toJson()));
     } catch (e) {
-      debugPrint('Failed to update cache metadata: $e');
+      // Failed to update cache metadata
     }
   }
   
@@ -454,7 +452,7 @@ class BooksRepository {
       final json = jsonDecode(jsonStr);
       return CacheMetadata.fromJson(json);
     } catch (e) {
-      debugPrint('Failed to get cache metadata: $e');
+      // Failed to get cache metadata
       return null;
     }
   }
@@ -832,7 +830,7 @@ class BooksRepository {
 
   /// Clear ETag cache to force fresh data on next request
   Future<void> _clearEtagCache() async {
-    debugPrint('BooksRepository: Clearing ETag cache to force fresh data');
+    // Clearing ETag cache to force fresh data
     await _prefs.remove(_etagKey);
     await _prefs.remove(_cacheKey);
   }
@@ -848,7 +846,6 @@ class BooksRepository {
     if (etag != null) headers['If-None-Match'] = etag;
     final path = '/api/libraries/$libId/items?limit=50&sort=updatedAt:desc$tokenQS';
     final bool localEmpty = await _isDbEmpty();
-    debugPrint('[BOOKS] refreshFromServer: GET $path headers=${headers.keys.toList()}');
     http.Response resp = await api.request('GET', path, headers: headers);
 
     if (resp.statusCode == 304) {
@@ -858,7 +855,6 @@ class BooksRepository {
 
     if (resp.statusCode == 200) {
       final bodyStr = resp.body;
-      debugPrint('[BOOKS] refreshFromServer: 200 etag=${resp.headers['etag']} len=${bodyStr.length}');
       final body = bodyStr.isNotEmpty ? jsonDecode(bodyStr) : null;
       final newEtag = resp.headers['etag'];
       await _prefs.setString(_cacheKey, bodyStr);
@@ -874,7 +870,6 @@ class BooksRepository {
       return await _listBooksFromDb();
     }
     // On error, return local DB
-    debugPrint('[BOOKS] refreshFromServer: non-200=${resp.statusCode} -> returning local');
     return await _listBooksFromDb();
   }
 
@@ -911,7 +906,7 @@ class BooksRepository {
         ? '$basePage&search=$encodedQ$tokenQS'
         : '$basePage$tokenQS';
     List<Book> books = await requestAndParse(pathPage).catchError((e) async {
-      debugPrint('[BOOKS] fetchBooksPage: primary failed -> trying q= fallback. err=$e');
+      // Primary failed, trying fallback
       if (encodedQ != null) {
         final alt = '$basePage&q=$encodedQ$tokenQS';
         return requestAndParse(alt);
@@ -921,7 +916,7 @@ class BooksRepository {
 
     // If page > 1 and all IDs already exist (server ignored page), try offset
     if (page > 1 && await _allIdsExistInDb(books.map((b) => b.id))) {
-      debugPrint('[BOOKS] fetchBooksPage: page ignored? all ids known -> trying offset');
+      // Page ignored, trying offset
       final offset = (page - 1) * limit;
       final baseOffset = '/api/libraries/$libId/items?limit=$limit&offset=$offset&sort=$sort';
       final pathOffset = (encodedQ != null)
@@ -934,7 +929,7 @@ class BooksRepository {
         }
       } catch (_) {
         // Try skip as last resort
-        debugPrint('[BOOKS] fetchBooksPage: offset failed -> trying skip');
+        // Offset failed, trying skip
         final baseSkip = '/api/libraries/$libId/items?limit=$limit&skip=$offset&sort=$sort';
         final pathSkip = (encodedQ != null)
             ? '$baseSkip&search=$encodedQ$tokenQS'
@@ -1257,7 +1252,7 @@ class BooksRepository {
           query: query,
         );
       } catch (e) {
-        debugPrint('[BOOKS] syncAll: error: $e at page=$page offset=$offset');
+        // Error during sync
         break;
       }
       if (chunk.isEmpty) break;
@@ -1272,7 +1267,6 @@ class BooksRepository {
       seenIds.addAll(ids);
       final added = seenIds.length - before;
       total += added;
-      debugPrint('[BOOKS] syncAll: page=$page chunk=${chunk.length} new=$added total=$total');
       if (added == 0) {
         // Try page-based as fallback when offset/skip made no progress
         try {
@@ -1284,7 +1278,6 @@ class BooksRepository {
           seenIds.addAll(pageChunk.map((b) => b.id));
           final added2 = seenIds.length - before2;
           if (added2 > 0) {
-            debugPrint('[BOOKS] syncAll: fallback page-based yielded new=$added2');
             noProgressStreak = 0;
           } else {
             noProgressStreak += 1;
@@ -1326,12 +1319,10 @@ class BooksRepository {
     final toDelete = localIds.difference(serverIds);
     
     if (toDelete.isNotEmpty) {
-      debugPrint('[BOOKS] Removing ${toDelete.length} deleted books from local DB');
       await db.transaction((txn) async {
         final batch = txn.batch();
         for (final id in toDelete) {
           batch.delete('books', where: 'id = ?', whereArgs: [id]);
-          debugPrint('[BOOKS] Removing deleted book: $id');
         }
         await batch.commit(noResult: true);
       });
@@ -1353,7 +1344,6 @@ class BooksRepository {
     
     if (totalBooks == 0) return 0;
     
-    debugPrint('[BOOKS] Starting cleanup of $totalBooks cached books');
     
     final api = _auth.api;
     final toDelete = <String>[];
@@ -1362,7 +1352,7 @@ class BooksRepository {
     for (final row in localRows) {
       // Check if cancelled
       if (shouldContinue != null && !shouldContinue()) {
-        debugPrint('[BOOKS] Cleanup cancelled by user');
+        // Cleanup cancelled by user
         break;
       }
       
@@ -1380,16 +1370,14 @@ class BooksRepository {
         if (resp.statusCode == 404) {
           // Book deleted from server
           toDelete.add(bookId);
-          debugPrint('[BOOKS] Book deleted on server: $bookTitle ($bookId)');
         } else if (resp.statusCode != 200) {
           // Other error - could be network issue, don't delete
-          debugPrint('[BOOKS] Server error ${resp.statusCode} for book: $bookTitle ($bookId) - keeping');
         }
         // If 200, book exists and is fine
         
       } catch (e) {
         // Network error or other issue - don't delete, could be temporary
-        debugPrint('[BOOKS] Network error checking book: $bookTitle ($bookId) - keeping. Error: $e');
+        // Network error checking book - keeping
       }
       
       // Small delay to avoid overwhelming the server
@@ -1398,7 +1386,7 @@ class BooksRepository {
         
         // Check cancellation after delay too
         if (shouldContinue != null && !shouldContinue()) {
-          debugPrint('[BOOKS] Cleanup cancelled by user');
+          // Cleanup cancelled by user
           break;
         }
       }
@@ -1406,7 +1394,6 @@ class BooksRepository {
     
     // Remove deleted books
     if (toDelete.isNotEmpty) {
-      debugPrint('[BOOKS] Cleaning up ${toDelete.length} deleted/broken books');
       await db.transaction((txn) async {
         final batch = txn.batch();
         for (final id in toDelete) {
@@ -1419,7 +1406,6 @@ class BooksRepository {
       await _updateCacheMetadata(totalBooks - toDelete.length);
     }
     
-    debugPrint('[BOOKS] Cleanup completed: ${toDelete.length} books removed');
     return toDelete.length;
   }
 
@@ -1458,7 +1444,6 @@ class BooksRepository {
         : null;
 
     Future<List<Book>> requestAndParse(String path) async {
-      debugPrint('[BOOKS] chunk: GET $path');
       final resp = await api.request('GET', path, headers: {});
       if (resp.statusCode != 200) {
         throw Exception('Failed to fetch: ${resp.statusCode}');
@@ -1467,7 +1452,6 @@ class BooksRepository {
       final body = bodyStr.isNotEmpty ? jsonDecode(bodyStr) : null;
       final items = _extractItems(body);
       final books = await _toBooks(items);
-      debugPrint('[BOOKS] chunk: offset=$offset limit=$limit items=${books.length}');
       await _upsertBooks(books);
       return books;
     }
@@ -1480,7 +1464,7 @@ class BooksRepository {
     try {
       final books = await requestAndParse(pathOffset);
       if (offset > 0 && await _allIdsExistInDb(books.map((b) => b.id))) {
-        debugPrint('[BOOKS] chunk: offset returned known items, trying skip');
+        // Offset returned known items, trying skip
       } else {
         return books;
       }
@@ -1494,7 +1478,7 @@ class BooksRepository {
     try {
       final books = await requestAndParse(pathSkip);
       if (offset > 0 && await _allIdsExistInDb(books.map((b) => b.id))) {
-        debugPrint('[BOOKS] chunk: skip returned known items, falling back to page');
+        // Skip returned known items, falling back to page
       } else {
         return books;
       }

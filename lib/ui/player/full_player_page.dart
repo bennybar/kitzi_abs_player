@@ -214,12 +214,12 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     if (!newCompletionStatus) {
       savedPosition = playback.player.position;
       wasPlaying = playback.player.playing;
-      debugPrint('[MARK_FINISHED] Saved position: ${savedPosition.inSeconds}s, wasPlaying: $wasPlaying');
+      // Saved position and playback state
     }
 
     try {
       // Log the request for troubleshooting
-      debugPrint('[MARK_FINISHED] Toggling book completion: ${np.libraryItemId} -> $newCompletionStatus');
+      // Toggling book completion
       
       // Send the request to server
       double? overrideSeconds;
@@ -233,7 +233,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
       
       // If marking as finished, stop playback and navigate to book details
       if (newCompletionStatus) {
-        debugPrint('[MARK_FINISHED] Book marked as finished, stopping playback and navigating to book details');
+        // Book marked as finished, stopping playback
         
         // Stop the current playback
         await playback.stop();
@@ -257,7 +257,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
       } else {
         // If unfinishing, apply the user's choice locally
         if (unfinishChoice != null) {
-          debugPrint('[MARK_FINISHED] Seeking to chosen position: ${unfinishChoice.inSeconds}s');
+          // Seeking to chosen position
           try {
             // Wait a bit for the API call to complete
             await Future.delayed(const Duration(milliseconds: 500));
@@ -270,20 +270,20 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
             if (wasPlaying) {
               // Temporarily disable sync to avoid overriding our preserved position
               await playback.resume(skipSync: true);
-              debugPrint('[MARK_FINISHED] Resumed playback at saved position (sync disabled)');
+              // Resumed playback at saved position
             }
 
             // Push the position to server after a delay to ensure it's preserved
             Future.delayed(const Duration(seconds: 1), () async {
               try {
-                debugPrint('[MARK_FINISHED] Pushing position to server after unfinish: ${savedPosition?.inSeconds}s');
+                // Pushing position to server after unfinish
                 await playback.reportProgressNow();
               } catch (e) {
-                debugPrint('[MARK_FINISHED] Error pushing position to server: $e');
+                // Error pushing position to server
               }
             });
           } catch (e) {
-            debugPrint('[MARK_FINISHED] Error seeking to saved position: $e');
+            // Error seeking to saved position
           }
         }
         
@@ -299,7 +299,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
       }
       
     } catch (e) {
-      debugPrint('[MARK_FINISHED] Error toggling completion: $e');
+      // Error toggling completion
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -503,16 +503,15 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                final totalSeconds = totalDuration.inSeconds.toDouble();
                requestBody['duration'] = totalSeconds;
                requestBody['progress'] = (currentTimeSeconds / totalSeconds).clamp(0.0, 1.0);
-               debugPrint('[MARK_FINISHED] Including full progress: currentTime=${currentTimeSeconds}s, duration=${totalSeconds}s, progress=${requestBody['progress']}');
+               // Including full progress
              } else {
-               debugPrint('[MARK_FINISHED] Including currentTime: ${currentTimeSeconds}s to preserve position (no duration available)');
+               // Including currentTime to preserve position
              }
            }
          }
     
     // Log the API request for troubleshooting
-    debugPrint('[MARK_FINISHED] API Request: PATCH /api/me/progress/$libraryItemId');
-    debugPrint('[MARK_FINISHED] Request body: $requestBody');
+    // API Request for updating progress
     
     try {
       final response = await api.request(
@@ -522,15 +521,15 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
         body: jsonEncode(requestBody),
       );
       
-      debugPrint('[MARK_FINISHED] API Response: ${response.statusCode} ${response.body}');
+      // API Response received
       
       if (response.statusCode == 200 || response.statusCode == 204) {
-        debugPrint('[MARK_FINISHED] Successfully updated book completion status');
+        // Successfully updated book completion status
       } else {
         throw Exception('Server returned ${response.statusCode}: ${response.body}');
       }
     } catch (e) {
-      debugPrint('[MARK_FINISHED] API Error: $e');
+      // API Error
       rethrow;
     }
   }
@@ -632,7 +631,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                           ),
                           // Show raw time for debugging when long-pressing a row
                           onLongPress: () {
-                            debugPrint('[Chapters] Tap ${i+1}: "${c.title}" start=${c.start.inMilliseconds}ms');
+                            // Chapter tap
                           },
                           subtitle: Text(
                             _fmt(c.start),

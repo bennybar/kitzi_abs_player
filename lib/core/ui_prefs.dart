@@ -47,7 +47,7 @@ class UiPrefs {
         waveformAnimationEnabled.value = defaultValue;
         // Save the default for future use
         await prefs.setBool(_kWaveformAnimation, defaultValue);
-        debugPrint('[UiPrefs] Waveform animation default set to $defaultValue (screen size: ${screenSize.toStringAsFixed(2)}" diagonal)');
+        // Waveform animation default set
       }
       // If context not available and key doesn't exist, keep current value (default is true from initialization)
     } catch (_) {}
@@ -62,7 +62,7 @@ class UiPrefs {
         final defaultValue = screenSize >= 6.2;
         waveformAnimationEnabled.value = defaultValue;
         await prefs.setBool(_kWaveformAnimation, defaultValue);
-        debugPrint('[UiPrefs] Waveform animation default initialized to $defaultValue (screen size: ${screenSize.toStringAsFixed(2)}" diagonal)');
+        // Waveform animation default initialized
       }
     } catch (_) {}
   }

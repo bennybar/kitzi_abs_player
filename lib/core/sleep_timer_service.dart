@@ -40,7 +40,7 @@ class SleepTimerService {
       }
     });
     
-    debugPrint('Sleep timer started for ${duration.inMinutes} minutes');
+    // 'Sleep timer started for ${duration.inMinutes} minutes');
   }
 
   /// Stop sleep timer
@@ -54,7 +54,7 @@ class SleepTimerService {
       _sleepTimer!.cancel();
       _sleepTimer = null;
       _isActive = false;
-      debugPrint('Sleep timer paused');
+      // 'Sleep timer paused');
     }
   }
 
@@ -72,7 +72,7 @@ class SleepTimerService {
           }
         }
       });
-      debugPrint('Sleep timer resumed');
+      // 'Sleep timer resumed');
     }
   }
 
@@ -105,7 +105,7 @@ class SleepTimerService {
     if (_remainingTime != null) {
       _remainingTime = _remainingTime! + additionalTime;
       _remainingCtr.add(_remainingTime);
-      debugPrint('Added ${additionalTime.inMinutes} minutes to sleep timer');
+      // 'Added ${additionalTime.inMinutes} minutes to sleep timer');
     }
   }
 
@@ -117,7 +117,7 @@ class SleepTimerService {
         _remainingTime = Duration.zero;
       }
       _remainingCtr.add(_remainingTime);
-      debugPrint('Subtracted ${timeToSubtract.inMinutes} minutes from sleep timer');
+      // 'Subtracted ${timeToSubtract.inMinutes} minutes from sleep timer');
     }
   }
 
@@ -127,15 +127,15 @@ class SleepTimerService {
     _isActive = false;
     _remainingTime = null;
     _remainingCtr.add(null);
-    debugPrint('Sleep timer stopped');
+    // 'Sleep timer stopped');
   }
 
   void _pausePlayback() {
     try {
       _playbackRepository?.pause();
-      debugPrint('Playback paused due to sleep timer');
+      // 'Playback paused due to sleep timer');
     } catch (e) {
-      debugPrint('Failed to pause playback: $e');
+      // 'Failed to pause playback: $e');
     }
   }
 

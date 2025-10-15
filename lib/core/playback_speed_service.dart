@@ -24,14 +24,14 @@ class PlaybackSpeedService {
 
   Future<void> initialize(PlaybackRepository playbackRepository) async {
     if (_isInitialized) {
-      debugPrint('PlaybackSpeedService already initialized, skipping');
+      // Already initialized, skipping
       return;
     }
     
     _playbackRepository = playbackRepository;
     await _loadSpeed();
     _isInitialized = true;
-    debugPrint('PlaybackSpeedService initialized successfully');
+    // Initialized successfully
   }
 
   /// Get available playback speeds
@@ -43,7 +43,7 @@ class PlaybackSpeedService {
   /// Set playback speed
   Future<void> setSpeed(double speed) async {
     if (!_availableSpeeds.contains(speed)) {
-      debugPrint('Invalid speed: $speed');
+      // Invalid speed: $speed');
       return;
     }
 
@@ -52,9 +52,9 @@ class PlaybackSpeedService {
       _currentSpeed = speed;
       this.speed.value = speed;
       await _saveSpeed();
-      debugPrint('Playback speed set to: ${speed}x');
+      // Playback speed set to: ${speed}x');
     } catch (e) {
-      debugPrint('Failed to set playback speed: $e');
+      // Failed to set playback speed: $e');
     }
   }
 
@@ -116,16 +116,16 @@ class PlaybackSpeedService {
     try {
       final prefs = await SharedPreferences.getInstance();
       final savedSpeed = prefs.getDouble(_speedKey);
-      debugPrint('Loading speed from preferences: savedSpeed=$savedSpeed');
+      // Loading speed from preferences: savedSpeed=$savedSpeed');
       if (savedSpeed != null && _availableSpeeds.contains(savedSpeed)) {
         _currentSpeed = savedSpeed;
         speed.value = savedSpeed;
-        debugPrint('Loaded saved speed: ${savedSpeed}x');
+        // Loaded saved speed: ${savedSpeed}x');
       } else {
-        debugPrint('No valid saved speed found, using default: ${_defaultSpeed}x');
+        // No valid saved speed found, using default: ${_defaultSpeed}x');
       }
     } catch (e) {
-      debugPrint('Failed to load speed: $e');
+      // Failed to load speed: $e');
     }
   }
 
@@ -135,7 +135,7 @@ class PlaybackSpeedService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setDouble(_speedKey, _currentSpeed);
     } catch (e) {
-      debugPrint('Failed to save speed: $e');
+      // Failed to save speed: $e');
     }
   }
 
@@ -187,16 +187,16 @@ class PlaybackSpeedService {
 
   /// Apply speed to current playback
   Future<void> applyCurrentSpeed() async {
-    debugPrint('Applying current speed: ${_currentSpeed}x');
+    // Applying current speed: ${_currentSpeed}x');
     if (_playbackRepository != null) {
       try {
         await _playbackRepository!.setSpeed(_currentSpeed);
-        debugPrint('Successfully applied speed: ${_currentSpeed}x');
+        // Successfully applied speed: ${_currentSpeed}x');
       } catch (e) {
-        debugPrint('Failed to apply current speed: $e');
+        // Failed to apply current speed: $e');
       }
     } else {
-      debugPrint('Cannot apply speed: playback repository is null');
+      // Cannot apply speed: playback repository is null');
     }
   }
 }

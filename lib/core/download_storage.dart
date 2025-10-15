@@ -12,7 +12,9 @@ class DownloadStorage {
   static const String _defaultBaseSubfolder = 'abs';
   static const String _externalDefaultSubfolder = 'Audiobooks';
 
-  static void _d(String m) => debugPrint('[DL-STORAGE] $m');
+  static void _d(String m) {
+    // Logging removed for cleaner console output
+  }
 
   /// Returns the configured base subfolder under the app's documents directory.
   /// Defaults to `abs` if not set.

@@ -33,7 +33,7 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
       queue.add([initialItem]);
       mediaItem.add(initialItem);
     } catch (e) {
-      debugPrint("Error loading empty playlist: $e");
+      // Error loading empty playlist
     }
   }
 
@@ -104,7 +104,7 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
             mediaItem.add(newMediaItem);
           }
         } catch (e) {
-          debugPrint('Error updating MediaItem duration: $e');
+          // Error updating MediaItem duration
         }
       }
     });
@@ -172,9 +172,7 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
   }
 
   void _listenForNowPlayingChanges() {
-    debugPrint('Setting up now playing listener...');
     _playback.nowPlayingStream.listen((nowPlaying) {
-      debugPrint('Received now playing update: ${nowPlaying?.title ?? 'null'}');
       if (nowPlaying != null) {
         updateQueueFromNowPlaying(nowPlaying);
       }
@@ -205,7 +203,6 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
       final prefs = await SharedPreferences.getInstance();
       final allowAutoPlay = prefs.getBool('bluetooth_auto_play') ?? true;
       if (!allowAutoPlay) {
-        debugPrint('Automatic play blocked due to bluetooth_auto_play=false');
         return;
       }
     } catch (_) {
@@ -254,8 +251,6 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
   // Update the queue with current playing item
   Future<void> updateQueueFromNowPlaying(NowPlaying nowPlaying) async {
     try {
-      debugPrint('Updating queue with now playing: ${nowPlaying.title}');
-      
       final mediaItems = nowPlaying.tracks.map((track) {
         return MediaItem(
           id: '${nowPlaying.libraryItemId}_${track.index}',
@@ -272,7 +267,6 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
         );
       }).toList(growable: false);
 
-      debugPrint('Created ${mediaItems.length} media items');
       queue.add(mediaItems);
       
       // Set the current index
@@ -284,10 +278,9 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
         // Update the current media item for lock screen
         final currentItem = mediaItems[nowPlaying.currentIndex];
         mediaItem.add(currentItem);
-        debugPrint('Updated current media item: ${currentItem.title}');
       }
     } catch (e) {
-      debugPrint('Error updating queue from now playing: $e');
+      // Error updating queue from now playing
     }
   }
 
@@ -331,25 +324,21 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
       if (currentIndex != null && currentIndex >= 0 && currentIndex < currentQueue.length) {
         final currentItem = currentQueue[currentIndex];
         mediaItem.add(currentItem);
-        debugPrint('Forced media session update: ${currentItem.title}');
-            }
+      }
     } catch (e) {
-      debugPrint('Error forcing media session update: $e');
+      // Error forcing media session update
     }
   }
 
   // =================== Android Auto / Browse Tree ===================
   @override
   Future<String> getRoot([Map<String, dynamic>? extras]) async {
-    debugPrint('AA:getRoot called');
     // Support search and browsing
     return 'root';
   }
 
   @override
   Future<List<MediaItem>> getChildren(String parentMediaId, [Map<String, dynamic>? options]) async {
-    debugPrint('AA:getChildren for parent=$parentMediaId, options=$options');
-    
     // Handle search queries
     final String? query = options?['android.media.browse.extra.QUERY'] as String?;
     final bool isSearch = query != null && query.trim().isNotEmpty;
@@ -376,7 +365,7 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
         query: query,
       );
       
-      debugPrint('AA:_getBrowsableBooks found ${books.length} cached books${query != null ? ' for query "$query"' : ''}');
+      // Found cached books
       
       if (books.isEmpty) {
         return <MediaItem>[
@@ -413,10 +402,8 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
         );
       }).toList(growable: false);
 
-      debugPrint('AA:_getBrowsableBooks returning ${items.length} items');
       return items;
     } catch (e) {
-      debugPrint('AA:_getBrowsableBooks error: $e');
       return <MediaItem>[
         MediaItem(
           id: 'kitzi_placeholder_error',
@@ -431,15 +418,11 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
 
   @override
   Future<List<MediaItem>> search(String query, [Map<String, dynamic>? extras]) async {
-    debugPrint('AA:search called with query="$query"');
-    
     // Android Auto search - return search results as browsable media items
     try {
       final results = await _getBrowsableBooks(query: query.trim());
-      debugPrint('AA:search returning ${results.length} results for "$query"');
       return results;
     } catch (e) {
-      debugPrint('AA:search error: $e');
       return <MediaItem>[
         MediaItem(
           id: 'kitzi_placeholder_search_error',
@@ -476,7 +459,7 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
       }
       // No extra play() here; playItem already handles starting playbook
     } catch (e) {
-      debugPrint('playFromMediaId failed: $e');
+      // playFromMediaId failed
     }
   }
 }

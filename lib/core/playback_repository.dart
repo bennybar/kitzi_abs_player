@@ -101,8 +101,7 @@ class PlaybackRepository {
   Stream<String> get debugLogStream => _debugLogCtr.stream;
 
   void _log(String msg) {
-    debugPrint("[ABS] $msg");
-    _debugLogCtr.add(msg);
+    // Logging removed for cleaner console output
   }
 
   PlaybackRepository(this._auth) {
@@ -408,15 +407,9 @@ class PlaybackRepository {
 
   /// Update book completion status and notify all listeners
   Future<void> updateBookCompletionStatus(String libraryItemId, bool isCompleted) async {
-    debugPrint('[COMPLETION_DEBUG] updateBookCompletionStatus: $libraryItemId -> $isCompleted');
-    debugPrint('[COMPLETION_DEBUG] Cache before update: ${completionCache[libraryItemId]}');
-    
     completionCache[libraryItemId] = isCompleted;
     final newCache = Map<String, bool>.from(completionCache);
-    
-    debugPrint('[COMPLETION_DEBUG] Sending to stream: $newCache');
     _completionStatusCtr.add(newCache);
-    
     _log('Updated completion status for $libraryItemId: $isCompleted');
   }
 
@@ -427,10 +420,8 @@ class PlaybackRepository {
 
   /// Stream of completion status for a specific book
   Stream<bool> getBookCompletionStream(String libraryItemId) {
-    debugPrint('[COMPLETION_DEBUG] getBookCompletionStream called for: $libraryItemId');
     return completionStatusStream.map((statusMap) {
       final result = statusMap[libraryItemId] ?? false;
-      debugPrint('[COMPLETION_DEBUG] Stream map result for $libraryItemId: $result');
       return result;
     });
   }

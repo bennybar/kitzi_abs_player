@@ -35,27 +35,18 @@ class AudioServiceManager {
 
   Future<void> initialize(PlaybackRepository playbackRepository) async {
     if (_isInitialized) {
-      debugPrint('Audio service already initialized');
       return;
     }
 
     try {
-      debugPrint('=== AUDIO SERVICE INITIALIZATION START ===');
-      debugPrint('Initializing audio service...');
-      
       // Configure audio session
-      debugPrint('Configuring audio session...');
       final session = await AudioSession.instance;
       await _configureAudioSession(session);
-      debugPrint('✓ Audio session configured successfully');
 
       // Create audio handler
-      debugPrint('Creating audio handler...');
       _audioHandler = KitziAudioHandler(playbackRepository, playbackRepository.player);
-      debugPrint('✓ Audio handler created successfully');
 
       // Start audio service
-      debugPrint('Starting AudioService.init...');
       await AudioService.init(
         builder: () => _audioHandler!,
         config: AudioServiceConfig(
@@ -69,15 +60,11 @@ class AudioServiceManager {
           notificationColor: Colors.deepPurple,
         ),
       );
-      debugPrint('✓ AudioService.init completed successfully');
 
       // Do not force playback start; keep service lazy for battery savings.
 
       _isInitialized = true;
-      debugPrint('=== AUDIO SERVICE INITIALIZATION COMPLETE ===');
     } catch (e) {
-      debugPrint('❌ Failed to initialize audio service: $e');
-      debugPrint('Stack trace: ${StackTrace.current}');
       _isInitialized = false;
     }
   }
@@ -85,23 +72,12 @@ class AudioServiceManager {
   KitziAudioHandler? get audioHandler => _audioHandler;
 
   Future<void> updateNowPlaying(NowPlaying nowPlaying) async {
-    debugPrint('AudioServiceManager: updateNowPlaying called with ${nowPlaying.title}');
-    
-    // Check status before update
-    await checkAudioServiceStatus();
-    
     if (_audioHandler != null) {
       try {
         await _audioHandler!.updateQueueFromNowPlaying(nowPlaying);
-        debugPrint('✓ Audio handler updated successfully');
-        
-        // Check status after update
-        await checkAudioServiceStatus();
       } catch (e) {
-        debugPrint('❌ Error updating audio handler: $e');
+        // Error updating audio handler
       }
-    } else {
-      debugPrint('❌ Audio handler is null - audio service not initialized');
     }
   }
 
@@ -120,25 +96,7 @@ class AudioServiceManager {
   bool get isInitialized => _isInitialized;
 
   Future<void> checkAudioServiceStatus() async {
-    debugPrint('=== AUDIO SERVICE STATUS CHECK ===');
-    debugPrint('Is initialized: $_isInitialized');
-    debugPrint('Audio handler: ${_audioHandler != null ? 'exists' : 'null'}');
-    
-    if (_audioHandler != null) {
-      try {
-        final queue = _audioHandler!.queue.value;
-        final mediaItem = _audioHandler!.mediaItem.value;
-        final playbackState = _audioHandler!.playbackState.value;
-        
-        debugPrint('Queue length: ${queue.length}');
-        debugPrint('Current media item: ${mediaItem?.title ?? 'null'}');
-        debugPrint('Playback state: ${playbackState.playing ? 'playing' : 'paused'}');
-        debugPrint('Queue index: ${playbackState.queueIndex}');
-      } catch (e) {
-        debugPrint('Error checking audio service status: $e');
-      }
-    }
-    debugPrint('=== END STATUS CHECK ===');
+    // Status check method - implementation removed for cleaner logs
   }
 
   Future<void> dispose() async {

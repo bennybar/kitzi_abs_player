@@ -37,9 +37,9 @@ class NotificationService {
       
       _isInitialized = true;
       
-      debugPrint('Notification service initialized successfully');
+      // 'Notification service initialized successfully');
     } catch (e) {
-      debugPrint('Failed to initialize notification service: $e');
+      // 'Failed to initialize notification service: $e');
     }
   }
   
@@ -61,9 +61,9 @@ class NotificationService {
               AndroidFlutterLocalNotificationsPlugin>()
           ?.createNotificationChannel(downloadChannel);
       
-      debugPrint('Download notification channel created');
+      // 'Download notification channel created');
     } catch (e) {
-      debugPrint('Failed to create notification channels: $e');
+      // 'Failed to create notification channels: $e');
     }
   }
 
@@ -120,7 +120,7 @@ class NotificationService {
         payload: 'media_playback',
       );
     } catch (e) {
-      debugPrint('Failed to show media notification: $e');
+      // 'Failed to show media notification: $e');
     }
   }
 
@@ -130,7 +130,7 @@ class NotificationService {
     try {
       await _notifications.cancel(1001);
     } catch (e) {
-      debugPrint('Failed to hide media notification: $e');
+      // 'Failed to hide media notification: $e');
     }
   }
 
@@ -155,7 +155,7 @@ class NotificationService {
         speed: speed,
       );
     } catch (e) {
-      debugPrint('Failed to update media notification: $e');
+      // 'Failed to update media notification: $e');
     }
   }
 
@@ -204,7 +204,7 @@ class NotificationService {
         payload: 'book_download',
       );
     } catch (e) {
-      debugPrint('Failed to show download notification: $e');
+      // 'Failed to show download notification: $e');
     }
   }
 
@@ -213,7 +213,7 @@ class NotificationService {
     try {
       await _notifications.cancel(_downloadNotificationId);
     } catch (e) {
-      debugPrint('Failed to hide download notification: $e');
+      // 'Failed to hide download notification: $e');
     }
   }
 
@@ -253,7 +253,7 @@ class NotificationService {
         payload: 'book_download_progress',
       );
     } catch (e) {
-      debugPrint('Failed to show download progress notification: $e');
+      // 'Failed to show download progress notification: $e');
     }
   }
 
@@ -285,7 +285,7 @@ class NotificationService {
         payload: 'book_download_complete',
       );
     } catch (e) {
-      debugPrint('Failed to show download complete notification: $e');
+      // 'Failed to show download complete notification: $e');
     }
   }
 }

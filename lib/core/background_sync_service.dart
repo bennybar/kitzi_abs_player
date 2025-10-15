@@ -18,30 +18,30 @@ class BackgroundSyncService {
     _syncTimer = Timer.periodic(_syncInterval, (_) async {
       await _performBackgroundSync();
     });
-    debugPrint('[BACKGROUND_SYNC] Started with ${_syncInterval.inMinutes} minute interval');
+    // Background sync started
   }
   
   /// Stop background sync
   static void stop() {
     _syncTimer?.cancel();
     _syncTimer = null;
-    debugPrint('[BACKGROUND_SYNC] Stopped');
+    // Background sync stopped
   }
   
   /// Perform background sync
   static Future<void> _performBackgroundSync() async {
     if (_isSyncing) {
-      debugPrint('[BACKGROUND_SYNC] Already syncing, skipping');
+      // Already syncing, skipping
       return;
     }
     
     try {
       _isSyncing = true;
-      debugPrint('[BACKGROUND_SYNC] Starting background sync');
+      // Starting background sync
       
       // Check if we should sync
       if (!await _shouldSync()) {
-        debugPrint('[BACKGROUND_SYNC] Skipping sync - conditions not met');
+        // Skipping sync - conditions not met
         return;
       }
       
@@ -52,9 +52,9 @@ class BackgroundSyncService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt(_lastSyncKey, DateTime.now().millisecondsSinceEpoch);
       
-      debugPrint('[BACKGROUND_SYNC] Background sync completed');
+      // Background sync completed
     } catch (e) {
-      debugPrint('[BACKGROUND_SYNC] Error during background sync: $e');
+      // Error during background sync
     } finally {
       _isSyncing = false;
     }
@@ -66,14 +66,14 @@ class BackgroundSyncService {
       // Check if user is authenticated
       final auth = await AuthRepository.ensure();
       if (!await auth.hasValidSession()) {
-        debugPrint('[BACKGROUND_SYNC] No valid session, skipping sync');
+        // No valid session, skipping sync
         return false;
       }
       
       // Check network connectivity
       final isOnline = await _checkConnectivity();
       if (!isOnline) {
-        debugPrint('[BACKGROUND_SYNC] No network connection, skipping sync');
+        // No network connection, skipping sync
         return false;
       }
       
@@ -84,14 +84,14 @@ class BackgroundSyncService {
         final lastSync = DateTime.fromMillisecondsSinceEpoch(lastSyncMs);
         final timeSinceLastSync = DateTime.now().difference(lastSync);
         if (timeSinceLastSync < const Duration(minutes: 10)) {
-          debugPrint('[BACKGROUND_SYNC] Too soon since last sync, skipping');
+          // Too soon since last sync, skipping
           return false;
         }
       }
       
       return true;
     } catch (e) {
-      debugPrint('[BACKGROUND_SYNC] Error checking sync conditions: $e');
+      // Error checking sync conditions
       return false;
     }
   }
@@ -105,22 +105,22 @@ class BackgroundSyncService {
       await repo.fetchBooksPage(page: 1, limit: 50);
       await repo.fetchBooksPage(page: 2, limit: 50);
       
-      debugPrint('[BACKGROUND_SYNC] Incremental sync completed');
+      // Incremental sync completed
     } catch (e) {
-      debugPrint('[BACKGROUND_SYNC] Error during incremental sync: $e');
+      // Error during incremental sync
     }
   }
   
   /// Perform full sync (called manually)
   static Future<void> performFullSync() async {
     if (_isSyncing) {
-      debugPrint('[BACKGROUND_SYNC] Already syncing, skipping full sync');
+      // Already syncing, skipping full sync
       return;
     }
     
     try {
       _isSyncing = true;
-      debugPrint('[BACKGROUND_SYNC] Starting full sync');
+      // Starting full sync
       
       final repo = await BooksRepository.create();
       await repo.syncAllBooksToDb(pageSize: 100);
@@ -129,9 +129,9 @@ class BackgroundSyncService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt(_lastFullSyncKey, DateTime.now().millisecondsSinceEpoch);
       
-      debugPrint('[BACKGROUND_SYNC] Full sync completed');
+      // Full sync completed
     } catch (e) {
-      debugPrint('[BACKGROUND_SYNC] Error during full sync: $e');
+      // Error during full sync
     } finally {
       _isSyncing = false;
     }
@@ -176,6 +176,6 @@ class BackgroundSyncService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_lastSyncKey);
     await prefs.remove(_lastFullSyncKey);
-    debugPrint('[BACKGROUND_SYNC] Sync history cleared');
+    // Sync history cleared
   }
 }
