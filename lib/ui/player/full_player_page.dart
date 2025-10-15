@@ -1593,7 +1593,9 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                                   isCircular: !playing, // keep round when showing Play triangle
                                                   size: center,
                                                   onTap: () async {
-                                                    if (playing) {
+                                                    // Check if we have a valid nowPlaying item and it's actually playing
+                                                    final hasValidNowPlaying = np != null && playing;
+                                                    if (hasValidNowPlaying) {
                                                       await playback.pause();
                                                     } else {
                                                       // Try to resume first, but if that fails (no current item), 

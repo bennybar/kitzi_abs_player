@@ -1690,16 +1690,27 @@ class _PlayPrimaryButton extends StatelessWidget {
               // Active but paused/ready -> Resume
               return FilledButton.icon(
                 onPressed: () async {
-                  final ok = await playback.resume();
-                  if (!ok && context.mounted) {
+                  // Try to resume first, but if that fails (no current item), 
+                  // warm load the last item and play it
+                  bool success = await playback.resume();
+                  if (!success) {
+                    try {
+                      await playback.warmLoadLastItem(playAfterLoad: true);
+                      success = true; // Consider warm load a success
+                    } catch (e) {
+                      success = false;
+                    }
+                  }
+                  
+                  if (!success && context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                        content: Text('Cannot resume: server unavailable and sync progress is required'),
+                        content: Text('Cannot play: server unavailable and sync progress is required'),
                         duration: Duration(seconds: 4),
                       ),
                     );
-                  }
-                  if (context.mounted) {
+                  } else if (success && context.mounted) {
+                    // Only open the full player page when resume/play succeeds
                     await FullPlayerPage.openOnce(context);
                   }
                 },
