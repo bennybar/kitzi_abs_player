@@ -1313,10 +1313,11 @@ class _ResumeBookCard extends StatelessWidget {
                       Positioned.fill(
                         child: EnhancedCoverImage(url: book.coverUrl),
                       ),
-                      // Top-right percentage indicator
+                      // Material 3 progress indicator overlay
                       Positioned(
-                        top: 8,
-                        right: 8,
+                        left: 4,
+                        right: 4,
+                        bottom: 4,
                         child: FutureBuilder<Map<String, dynamic>>(
                           future: _getBookProgress(context, book.id),
                           builder: (context, snapshot) {
@@ -1324,63 +1325,28 @@ class _ResumeBookCard extends StatelessWidget {
                             final progressInfo = snapshot.data!;
                             final raw = progressInfo['progress'] as double?;
                             final isCompleted = progressInfo['isCompleted'] as bool? ?? false;
-                            if (raw == null && !isCompleted) return const SizedBox.shrink();
-                            final pct = (isCompleted ? 1.0 : (raw ?? 0.0)).clamp(0.0, 1.0);
+                            
+                            // Don't show progress for completed books
+                            if (isCompleted) return const SizedBox.shrink();
+                            
+                            if (raw == null || raw <= 0) return const SizedBox.shrink();
+                            final progress = raw.clamp(0.0, 0.99);
+                            
                             return Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              height: 3,
                               decoration: BoxDecoration(
-                                color: Colors.black.withOpacity(0.7),
-                                borderRadius: BorderRadius.circular(12),
+                                color: Colors.black.withOpacity(0.3),
+                                borderRadius: BorderRadius.circular(1.5),
                               ),
-                              child: Text(
-                                '${(pct * 100).round()}%',
-                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 10,
+                              child: FractionallySizedBox(
+                                alignment: Alignment.centerLeft,
+                                widthFactor: progress,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context).colorScheme.primary,
+                                    borderRadius: BorderRadius.circular(1.5),
+                                  ),
                                 ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                      // Bottom progress bar overlay
-                      Positioned(
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        child: FutureBuilder<Map<String, dynamic>>(
-                          future: _getBookProgress(context, book.id),
-                          builder: (context, snapshot) {
-                            final progress = snapshot.hasData
-                                ? (snapshot.data!['progress'] as double?)
-                                : null;
-                            final isCompleted = snapshot.hasData
-                                ? (snapshot.data!['isCompleted'] as bool)
-                                : false;
-                            if (!isCompleted && (progress == null || progress <= 0)) {
-                              return const SizedBox.shrink();
-                            }
-                            return Container(
-                              height: 6,
-                              decoration: BoxDecoration(
-                                color: Colors.black.withOpacity(0.25),
-                              ),
-                              child: LayoutBuilder(
-                                builder: (context, constraints) {
-                                  final effective = isCompleted ? 1.0 : (progress ?? 0.0);
-                                  final width = constraints.maxWidth * effective.clamp(0.0, 1.0);
-                                  return Align(
-                                    alignment: Alignment.centerLeft,
-                                    child: Container(
-                                      width: width,
-                                      height: 6,
-                                      decoration: BoxDecoration(
-                                        color: Theme.of(context).colorScheme.primary,
-                                      ),
-                                    ),
-                                  );
-                                },
                               ),
                             );
                           },
@@ -1553,22 +1519,46 @@ class _BookListTileState extends State<_BookListTile> {
                       ),
                     ),
                   ),
-                  // Circular progress indicator around cover
+                  // Material 3 progress indicator overlay
                   if (widget.book.isAudioBook)
-                    Positioned.fill(
-                      child: FutureBuilder<double>(
-                        future: _progressFuture,
-                        builder: (context, snapshot) {
-                          final progress = snapshot.data ?? 0.0;
-                          if (progress > 0 && progress < 0.99) {
-                            return CircularProgressIndicator(
-                              value: progress,
-                              strokeWidth: 3,
-                              backgroundColor: Colors.black.withOpacity(0.2),
-                              valueColor: AlwaysStoppedAnimation<Color>(cs.primary),
-                            );
+                    Positioned(
+                      left: 4,
+                      right: 4,
+                      bottom: 4,
+                      child: FutureBuilder<bool>(
+                        future: widget.checkIfCompleted(widget.book.id),
+                        builder: (context, completionSnapshot) {
+                          // Don't show progress for completed books
+                          if (completionSnapshot.data == true) {
+                            return const SizedBox.shrink();
                           }
-                          return const SizedBox.shrink();
+                          
+                          return FutureBuilder<double>(
+                            future: _progressFuture,
+                            builder: (context, progressSnapshot) {
+                              final progress = progressSnapshot.data ?? 0.0;
+                              if (progress > 0 && progress < 0.99) {
+                                return Container(
+                                  height: 3,
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withOpacity(0.3),
+                                    borderRadius: BorderRadius.circular(1.5),
+                                  ),
+                                  child: FractionallySizedBox(
+                                    alignment: Alignment.centerLeft,
+                                    widthFactor: progress,
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        color: cs.primary,
+                                        borderRadius: BorderRadius.circular(1.5),
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }
+                              return const SizedBox.shrink();
+                            },
+                          );
                         },
                       ),
                     ),
