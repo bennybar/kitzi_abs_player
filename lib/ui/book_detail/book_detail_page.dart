@@ -1759,18 +1759,22 @@ class _PlayPrimaryButton extends StatelessWidget {
                 
                 debugPrint('[COMPLETION_DEBUG] Book not completed (from cache), starting playback');
                 
-                final success = await playback.playItem(book.id, context: context);
-                if (!success && context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Cannot play: server unavailable and sync progress is required'),
-                      duration: Duration(seconds: 4),
-                    ),
-                  );
-                  return;
+                // Start playback in background and open full player immediately
+                unawaited(playback.playItem(book.id, context: context).then((success) {
+                  if (!success && context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Cannot play: server unavailable and sync progress is required'),
+                        duration: Duration(seconds: 4),
+                      ),
+                    );
+                  }
+                }));
+                
+                // Open full player page immediately - it will show loading state until NowPlaying is ready
+                if (context.mounted) {
+                  await FullPlayerPage.openOnce(context);
                 }
-                if (!context.mounted) return;
-                await FullPlayerPage.openOnce(context);
               },
               icon: Icon(icon),
               label: Text(label),

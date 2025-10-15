@@ -11,6 +11,7 @@ import '../../core/image_cache_manager.dart';
 import '../../models/book.dart';
 import '../../widgets/skeleton_widgets.dart';
 import '../book_detail/book_detail_page.dart';
+import '../player/full_player_page.dart';
 import '../../main.dart';
 
 // For unawaited background tasks
@@ -986,8 +987,11 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                   final playback = ServicesScope.of(context).services.playback;
                   final ctx = context;
                   // Fire and forget - bounce back immediately
-                  unawaited(playback.playItem(b.id, context: ctx).then((success) {
+                  unawaited(playback.playItem(b.id, context: ctx).then((success) async {
                     if (ctx.mounted && success) {
+                      // Open the full player page when starting playback
+                      await FullPlayerPage.openOnce(ctx);
+                      
                       ScaffoldMessenger.of(ctx).showSnackBar(
                         SnackBar(
                           content: Text('Playing: ${b.title}'),

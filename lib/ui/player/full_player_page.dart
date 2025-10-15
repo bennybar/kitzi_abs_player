@@ -867,7 +867,21 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
               builder: (context, snap) {
                 final np = snap.data;
                 if (np == null) {
-                  return const Center(child: Text('Nothing playing'));
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const CircularProgressIndicator(),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Loading...',
+                          style: text.titleMedium?.copyWith(
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
                 }
 
                 return Column(
