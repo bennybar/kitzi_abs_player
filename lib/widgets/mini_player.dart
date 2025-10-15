@@ -130,6 +130,9 @@ class MiniPlayer extends StatelessWidget {
                                     duration: Duration(seconds: 4),
                                   ),
                                 );
+                              } else if (success && context.mounted) {
+                                // Open the full player page when resuming, like the book detail page does
+                                await FullPlayerPage.openOnce(context);
                               }
                             }
                           },
