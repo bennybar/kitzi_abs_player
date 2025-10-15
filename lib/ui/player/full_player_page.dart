@@ -574,17 +574,8 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                margin: const EdgeInsets.only(top: 8, bottom: 16),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Theme.of(ctx).colorScheme.onSurfaceVariant.withOpacity(0.3),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
                 child: Row(
                   children: [
                     Icon(
