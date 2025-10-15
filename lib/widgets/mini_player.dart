@@ -122,7 +122,18 @@ class MiniPlayer extends StatelessWidget {
                             if (playing) {
                               await playback.pause();
                             } else {
-                              final success = await playback.resume();
+                              // Try to resume first, but if that fails (no current item), 
+                              // warm load the last item and play it
+                              bool success = await playback.resume();
+                              if (!success) {
+                                try {
+                                  await playback.warmLoadLastItem(playAfterLoad: true);
+                                  success = true; // Consider warm load a success
+                                } catch (e) {
+                                  success = false;
+                                }
+                              }
+                              
                               if (!success && context.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(

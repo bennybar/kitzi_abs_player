@@ -1596,7 +1596,24 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                                     if (playing) {
                                                       await playback.pause();
                                                     } else {
-                                                      await playback.resume();
+                                                      // Try to resume first, but if that fails (no current item), 
+                                                      // warm load the last item and play it
+                                                      bool success = await playback.resume();
+                                                      if (!success) {
+                                                        try {
+                                                          await playback.warmLoadLastItem(playAfterLoad: true);
+                                                        } catch (e) {
+                                                          // If warm load fails, show error message
+                                                          if (context.mounted) {
+                                                            ScaffoldMessenger.of(context).showSnackBar(
+                                                              const SnackBar(
+                                                                content: Text('Cannot play: server unavailable and sync progress is required'),
+                                                                duration: Duration(seconds: 4),
+                                                              ),
+                                                            );
+                                                          }
+                                                        }
+                                                      }
                                                     }
                                                   },
                                                 );
