@@ -577,8 +577,8 @@ class _SettingsPageState extends State<SettingsPage> {
 
                 if (confirmed == true) {
                   try {
-                    // Stop playback
-                    await services.playback.stop();
+                    // Just pause playback, don't stop (which marks as finished)
+                    await services.playback.pause();
                   } catch (_) {}
                   
                   try {
