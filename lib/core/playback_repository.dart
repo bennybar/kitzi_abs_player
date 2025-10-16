@@ -19,6 +19,7 @@ import 'download_storage.dart';
 import 'play_history_service.dart';
 import '../models/book.dart';
 import 'books_repository.dart';
+import 'smart_rewind_service.dart';
 
 enum ProgressResetChoice {
   useServer,
@@ -271,6 +272,17 @@ class PlaybackRepository {
         }
 
         if (playAfterLoad) {
+          // Apply smart rewind before resuming playback
+          try {
+            if (await SmartRewindService.instance.isEnabled()) {
+              final rewind = await SmartRewindService.instance.computeRewind();
+              final seconds = rewind.inSeconds;
+              if (seconds > 0) {
+                await nudgeSeconds(-seconds);
+              }
+            }
+          } catch (_) {}
+
           await player.play();
           
           // Apply saved playback speed
@@ -331,6 +343,16 @@ class PlaybackRepository {
         await _setTrackAt(0, preload: true);
       }
 
+      // Apply smart rewind before starting playback
+      try {
+        if (await SmartRewindService.instance.isEnabled()) {
+          final rewind = await SmartRewindService.instance.computeRewind();
+          final seconds = rewind.inSeconds;
+          if (seconds > 0) {
+            await nudgeSeconds(-seconds);
+          }
+        }
+      } catch (_) {}
       await player.play();
       
       // Apply saved playback speed
@@ -635,6 +657,7 @@ class PlaybackRepository {
     await player.pause();
     await _sendProgressImmediate(paused: true);
     await _closeActiveSession();
+    try { await SmartRewindService.instance.recordPauseNow(); } catch (_) {}
   }
 
   /// UPDATED: Check server position and sync before resuming
@@ -672,6 +695,17 @@ class PlaybackRepository {
         }
       }
     }
+    // Apply smart rewind before resuming playback
+    try {
+      if (await SmartRewindService.instance.isEnabled()) {
+        final rewind = await SmartRewindService.instance.computeRewind();
+        final seconds = rewind.inSeconds;
+        if (seconds > 0) {
+          await nudgeSeconds(-seconds);
+        }
+      }
+    } catch (_) {}
+
     await player.play();
     
     // Apply saved playback speed

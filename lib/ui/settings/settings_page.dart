@@ -30,6 +30,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool? _authorViewEnabled;
   bool? _bluetoothAutoPlay;
   bool? _waveformAnimationEnabled;
+  bool? _smartRewindEnabled;
   String? _activeLibraryId;
   List<Map<String, String>> _libraries = const [];
 
@@ -53,6 +54,7 @@ class _SettingsPageState extends State<SettingsPage> {
         _showSeriesTab = prefs.getBool('ui_show_series_tab') ?? false;
         _authorViewEnabled = prefs.getBool('ui_author_view_enabled') ?? true;
         _bluetoothAutoPlay = prefs.getBool('bluetooth_auto_play') ?? true;
+        _smartRewindEnabled = prefs.getBool('smart_rewind_enabled') ?? false;
         
         // Load waveform animation setting (default already set above)
         _waveformAnimationEnabled = prefs.getBool('ui_waveform_animation_enabled') ?? true;
@@ -440,6 +442,19 @@ class _SettingsPageState extends State<SettingsPage> {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
             child: Text('Playback', style: Theme.of(context).textTheme.titleMedium),
+          ),
+          SwitchListTile(
+            title: const Text('Smart rewind on resume'),
+            subtitle: const Text('Rewind a few seconds based on pause duration'),
+            value: _smartRewindEnabled ?? false,
+            onChanged: (v) async {
+              try {
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.setBool('smart_rewind_enabled', v);
+              } catch (_) {}
+              if (!mounted) return;
+              setState(() { _smartRewindEnabled = v; });
+            },
           ),
           SwitchListTile(
             title: const Text('Sync progress before play'),
