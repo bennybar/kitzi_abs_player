@@ -45,5 +45,32 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	
+	<!-- Audio and Media Permissions -->
+	<key>NSAppleMusicUsageDescription</key>
+	<string>Kitzi needs access to your music library to play audiobooks and manage your listening experience.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Kitzi may need microphone access for voice commands and audio processing features.</string>
+	
+	<!-- Background Modes for Audio Playback and Downloads -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+		<string>background-processing</string>
+		<string>background-fetch</string>
+	</array>
+	
+	<!-- Network Security -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
+	
+	<!-- File Sharing -->
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
 </dict>
 </plist>

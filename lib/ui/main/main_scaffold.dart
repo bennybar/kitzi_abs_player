@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'dart:io';
+import 'dart:ui';
 
 import '../settings/settings_page.dart';
 import '../home/books_page.dart';
@@ -117,7 +119,8 @@ class _MainScaffoldState extends State<MainScaffold> {
                     ? const MiniPlayer(height: 68)
                     : const SizedBox.shrink(),
               ),
-              NavigationBar(
+              _buildNavigationBar(
+                context: context,
                 selectedIndex: safeIndex,
                 onDestinationSelected: (i) {
                   setState(() {
@@ -129,46 +132,158 @@ class _MainScaffoldState extends State<MainScaffold> {
                     }
                   });
                 },
-                backgroundColor: cs.surface,
-                surfaceTintColor: cs.surfaceTint,
-                elevation: 0,
+                colorScheme: cs,
                 height: navHeight,
-                indicatorColor: cs.primaryContainer,
-                labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-                destinations: [
-                  const NavigationDestination(
-                    icon: Icon(Icons.library_books_outlined, semanticLabel: 'Books'),
-                    selectedIcon: Icon(Icons.library_books, semanticLabel: 'Books'),
-                    label: 'Books',
-                  ),
-                  if (_showAuthors)
-                    const NavigationDestination(
-                      icon: Icon(Icons.person_outlined, semanticLabel: 'Authors'),
-                      selectedIcon: Icon(Icons.person, semanticLabel: 'Authors'),
-                      label: 'Authors',
-                    ),
-                  if (_showSeries)
-                    const NavigationDestination(
-                      icon: Icon(Icons.collections_bookmark_outlined, semanticLabel: 'Series'),
-                      selectedIcon: Icon(Icons.collections_bookmark, semanticLabel: 'Series'),
-                      label: 'Series',
-                    ),
-                  const NavigationDestination(
-                    icon: Icon(Icons.download_outlined, semanticLabel: 'Downloads'),
-                    selectedIcon: Icon(Icons.download, semanticLabel: 'Downloads'),
-                    label: 'Downloads',
-                  ),
-                  const NavigationDestination(
-                    icon: Icon(Icons.settings_outlined, semanticLabel: 'Settings'),
-                    selectedIcon: Icon(Icons.settings, semanticLabel: 'Settings'),
-                    label: 'Settings',
-                  ),
-                ],
+                showAuthors: _showAuthors,
+                showSeries: _showSeries,
               ),
             ],
           ),
         );
       },
     );
+  }
+
+  Widget _buildNavigationBar({
+    required BuildContext context,
+    required int selectedIndex,
+    required ValueChanged<int> onDestinationSelected,
+    required ColorScheme colorScheme,
+    required double height,
+    required bool showAuthors,
+    required bool showSeries,
+  }) {
+    // Use iOS glass effect only on iOS
+    if (Platform.isIOS) {
+      return _buildIOSGlassNavigationBar(
+        context: context,
+        selectedIndex: selectedIndex,
+        onDestinationSelected: onDestinationSelected,
+        colorScheme: colorScheme,
+        height: height,
+        showAuthors: showAuthors,
+        showSeries: showSeries,
+      );
+    }
+
+    // Default Material Design navigation bar for Android
+    return NavigationBar(
+      selectedIndex: selectedIndex,
+      onDestinationSelected: onDestinationSelected,
+      backgroundColor: colorScheme.surface,
+      surfaceTintColor: colorScheme.surfaceTint,
+      elevation: 0,
+      height: height,
+      indicatorColor: colorScheme.primaryContainer,
+      labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+      destinations: _buildDestinations(showAuthors, showSeries),
+    );
+  }
+
+  Widget _buildIOSGlassNavigationBar({
+    required BuildContext context,
+    required int selectedIndex,
+    required ValueChanged<int> onDestinationSelected,
+    required ColorScheme colorScheme,
+    required double height,
+    required bool showAuthors,
+    required bool showSeries,
+  }) {
+    final destinations = _buildDestinations(showAuthors, showSeries);
+    
+    return Container(
+      height: height + MediaQuery.of(context).padding.bottom,
+      child: ClipRRect(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: Container(
+            decoration: BoxDecoration(
+              color: colorScheme.surface.withOpacity(0.8),
+              border: Border(
+                top: BorderSide(
+                  color: colorScheme.outline.withOpacity(0.1),
+                  width: 0.5,
+                ),
+              ),
+            ),
+            child: SafeArea(
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: destinations.asMap().entries.map((entry) {
+                  final index = entry.key;
+                  final destination = entry.value;
+                  final isSelected = index == selectedIndex;
+                  
+                  return Expanded(
+                    child: GestureDetector(
+                      onTap: () => onDestinationSelected(index),
+                      child: Container(
+                        height: height,
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            // Icon with subtle scale animation
+                            AnimatedScale(
+                              duration: const Duration(milliseconds: 200),
+                              scale: isSelected ? 1.05 : 1.0,
+                              child: isSelected ? destination.selectedIcon : destination.icon,
+                            ),
+                            const SizedBox(height: 2),
+                            // Label with smooth color transition
+                            AnimatedDefaultTextStyle(
+                              duration: const Duration(milliseconds: 200),
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                                color: isSelected
+                                    ? colorScheme.primary
+                                    : colorScheme.onSurface.withOpacity(0.7),
+                              ),
+                              child: Text(destination.label),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<NavigationDestination> _buildDestinations(bool showAuthors, bool showSeries) {
+    return [
+      const NavigationDestination(
+        icon: Icon(Icons.library_books_outlined, semanticLabel: 'Books'),
+        selectedIcon: Icon(Icons.library_books, semanticLabel: 'Books'),
+        label: 'Books',
+      ),
+      if (showAuthors)
+        const NavigationDestination(
+          icon: Icon(Icons.person_outlined, semanticLabel: 'Authors'),
+          selectedIcon: Icon(Icons.person, semanticLabel: 'Authors'),
+          label: 'Authors',
+        ),
+      if (showSeries)
+        const NavigationDestination(
+          icon: Icon(Icons.collections_bookmark_outlined, semanticLabel: 'Series'),
+          selectedIcon: Icon(Icons.collections_bookmark, semanticLabel: 'Series'),
+          label: 'Series',
+        ),
+      const NavigationDestination(
+        icon: Icon(Icons.download_outlined, semanticLabel: 'Downloads'),
+        selectedIcon: Icon(Icons.download, semanticLabel: 'Downloads'),
+        label: 'Downloads',
+      ),
+      const NavigationDestination(
+        icon: Icon(Icons.settings_outlined, semanticLabel: 'Settings'),
+        selectedIcon: Icon(Icons.settings, semanticLabel: 'Settings'),
+        label: 'Settings',
+      ),
+    ];
   }
 }
