@@ -7,6 +7,7 @@ import '../../core/books_repository.dart';
 import '../../models/book.dart';
 import '../../models/series.dart';
 import '../book_detail/book_detail_page.dart';
+import '../../widgets/glass_widget.dart';
 
 enum SeriesViewType { series, collections }
 
@@ -563,16 +564,12 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
                       padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
                       child: Column(
                         children: [
-                          // Modern search bar
-                          Container(
-                            decoration: BoxDecoration(
-                              color: cs.surfaceContainerHighest,
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(
-                                color: cs.outline.withOpacity(0.1),
-                                width: 1,
-                              ),
-                            ),
+                          // Glass search bar
+                          GlassContainer(
+                            blur: 30,
+                            opacity: 0.85,
+                            borderRadius: 16,
+                            borderWidth: 0.5,
                             child: SearchBar(
                               controller: _searchCtrl,
                               focusNode: _searchFocusNode,
