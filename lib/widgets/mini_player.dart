@@ -18,30 +18,51 @@ class MiniPlayer extends StatelessWidget {
     final playback = ServicesScope.of(context).services.playback;
     final cs = Theme.of(context).colorScheme;
 
-    // YouTube Music style: full-width, flat, no rounded corners
-    // Use lighter surface to avoid being too dark with tinted surfaces
+    // iOS: floating rounded liquid glass
+    if (Platform.isIOS) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+        child: GlassContainer(
+          blur: 30.0,
+          opacity: 0.9,
+          borderRadius: 22,
+          borderWidth: 0.5,
+          elevation: 8,
+          child: _buildContent(context, playback, cs, showTopBorder: false),
+        ),
+      );
+    }
+
+    // Others: full-width, flat with top divider
     return GlassContainer(
       blur: 20.0,
       opacity: 0.85,
       borderRadius: 0,
       borderWidth: 0.5,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () async {
-            await FullPlayerPage.openOnce(context);
-          },
-          child: Container(
-            height: height,
-            decoration: BoxDecoration(
-              border: Border(
-                top: BorderSide(
-                  color: cs.outlineVariant.withOpacity(0.3),
-                  width: 0.5,
-                ),
-              ),
-            ),
-            child: StreamBuilder<NowPlaying?>(
+      child: _buildContent(context, playback, cs, showTopBorder: true),
+    );
+  }
+
+  Widget _buildContent(BuildContext context, PlaybackRepository playback, ColorScheme cs, {bool showTopBorder = true}) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () async {
+          await FullPlayerPage.openOnce(context);
+        },
+        child: Container(
+          height: height,
+          decoration: showTopBorder
+              ? BoxDecoration(
+                  border: Border(
+                    top: BorderSide(
+                      color: cs.outlineVariant.withOpacity(0.3),
+                      width: 0.5,
+                    ),
+                  ),
+                )
+              : null,
+          child: StreamBuilder<NowPlaying?>(
               stream: playback.nowPlayingStream,
               initialData: playback.nowPlaying,
               builder: (context, snap) {
@@ -182,8 +203,7 @@ class MiniPlayer extends StatelessWidget {
             ),
           ),
         ),
-      ),
-    );
+      );
   }
 }
 
