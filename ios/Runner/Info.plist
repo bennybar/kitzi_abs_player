@@ -60,6 +60,12 @@
 		<string>background-fetch</string>
 	</array>
 	
+	<!-- Live Activities and Dynamic Island Support -->
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+	<key>NSSupportsLiveActivitiesFrequentUpdates</key>
+	<true/>
+	
 	<!-- Network Security -->
 	<key>NSAppTransportSecurity</key>
 	<dict>

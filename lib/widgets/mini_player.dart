@@ -6,6 +6,7 @@ import 'dart:io';
 import '../main.dart'; // ServicesScope
 import '../ui/player/full_player_page.dart';
 import 'audio_waveform.dart';
+import 'glass_widget.dart';
 
 class MiniPlayer extends StatelessWidget {
   const MiniPlayer({super.key, this.height = 60});
@@ -19,161 +20,166 @@ class MiniPlayer extends StatelessWidget {
 
     // YouTube Music style: full-width, flat, no rounded corners
     // Use lighter surface to avoid being too dark with tinted surfaces
-    return Material(
-      color: cs.surface,
-      elevation: 2,
-      child: InkWell(
-        onTap: () async {
-          await FullPlayerPage.openOnce(context);
-        },
-        child: Container(
-          height: height,
-          decoration: BoxDecoration(
-            border: Border(
-              top: BorderSide(
-                color: cs.outlineVariant.withOpacity(0.5),
-                width: 1,
+    return GlassContainer(
+      blur: 20.0,
+      opacity: 0.85,
+      borderRadius: 0,
+      borderWidth: 0.5,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () async {
+            await FullPlayerPage.openOnce(context);
+          },
+          child: Container(
+            height: height,
+            decoration: BoxDecoration(
+              border: Border(
+                top: BorderSide(
+                  color: cs.outlineVariant.withOpacity(0.3),
+                  width: 0.5,
+                ),
               ),
             ),
-          ),
-          child: StreamBuilder<NowPlaying?>(
-            stream: playback.nowPlayingStream,
-            initialData: playback.nowPlaying,
-            builder: (context, snap) {
-              final np = snap.data;
-              // Return empty when no content - parent AnimatedSize will collapse this
-              if (np == null) {
-                return const SizedBox.shrink();
-              }
+            child: StreamBuilder<NowPlaying?>(
+              stream: playback.nowPlayingStream,
+              initialData: playback.nowPlaying,
+              builder: (context, snap) {
+                final np = snap.data;
+                // Return empty when no content - parent AnimatedSize will collapse this
+                if (np == null) {
+                  return const SizedBox.shrink();
+                }
 
-              return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                child: Row(
-                  children: [
-                    // Album art with Hero (YouTube Music style - square, slightly rounded)
-                    Hero(
-                      tag: 'mini-cover-${np.libraryItemId}',
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
-                        child: _MiniCover(url: np.coverUrl, size: height - 16),
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: Row(
+                    children: [
+                      // Album art with Hero (YouTube Music style - square, slightly rounded)
+                      Hero(
+                        tag: 'mini-cover-${np.libraryItemId}',
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: _MiniCover(url: np.coverUrl, size: height - 16),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
+                      const SizedBox(width: 12),
 
-                    // Title/author (YouTube Music style - no progress bar in mini)
-                    Expanded(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            np.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          if (np.author != null && np.author!.isNotEmpty)
+                      // Title/author (YouTube Music style - no progress bar in mini)
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
                             Text(
-                              np.author!,
+                              np.title,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: cs.onSurfaceVariant,
+                              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                fontWeight: FontWeight.w500,
                               ),
                             ),
-                        ],
+                            const SizedBox(height: 2),
+                            if (np.author != null && np.author!.isNotEmpty)
+                              Text(
+                                np.author!,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: cs.onSurfaceVariant,
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
+                      const SizedBox(width: 12),
 
-                    // Waveform indicator (only visible when playing)
-                    StreamBuilder<bool>(
-                      stream: playback.playingStream,
-                      initialData: playback.player.playing,
-                      builder: (_, playSnap) {
-                        final playing = playSnap.data ?? false;
-                        return AnimatedSize(
-                          duration: const Duration(milliseconds: 300),
-                          curve: Curves.easeInOut,
-                          child: playing
-                              ? Padding(
-                                  padding: const EdgeInsets.only(right: 8),
-                                  child: MiniAudioWaveform(
-                                    isPlaying: playing,
-                                    color: cs.primary,
-                                  ),
-                                )
-                              : const SizedBox.shrink(),
-                        );
-                      },
-                    ),
+                      // Waveform indicator (only visible when playing)
+                      StreamBuilder<bool>(
+                        stream: playback.playingStream,
+                        initialData: playback.player.playing,
+                        builder: (_, playSnap) {
+                          final playing = playSnap.data ?? false;
+                          return AnimatedSize(
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeInOut,
+                            child: playing
+                                ? Padding(
+                                    padding: const EdgeInsets.only(right: 8),
+                                    child: MiniAudioWaveform(
+                                      isPlaying: playing,
+                                      color: cs.primary,
+                                    ),
+                                  )
+                                : const SizedBox.shrink(),
+                          );
+                        },
+                      ),
 
-                    // Play/Pause button only (YouTube Music style)
-                    StreamBuilder<bool>(
-                      stream: playback.playingStream,
-                      initialData: playback.player.playing,
-                      builder: (_, playSnap) {
-                        final playing = playSnap.data ?? false;
-                        // Ensure we have a valid nowPlaying item and it's actually playing
-                        final hasValidNowPlaying = np != null && playing;
-                        return IconButton(
-                          onPressed: () async {
-                            // Button pressed
-                            if (hasValidNowPlaying) {
-                              // Pausing playback
-                              await playback.pause();
-                              // Don't open full player on pause
-                            } else {
-                              // Attempting to resume/play
-                              // Try to resume first, but if that fails (no current item), 
-                              // warm load the last item and play it
-                              bool success = await playback.resume();
-                              // Resume result
-                              if (!success) {
-                                try {
-                                  // Resume failed, trying warmLoadLastItem
-                                  await playback.warmLoadLastItem(playAfterLoad: true);
-                                  success = true; // Consider warm load a success
-                                  // WarmLoadLastItem succeeded
-                                } catch (e) {
-                                  // WarmLoadLastItem failed
-                                  success = false;
+                      // Play/Pause button only (YouTube Music style)
+                      StreamBuilder<bool>(
+                        stream: playback.playingStream,
+                        initialData: playback.player.playing,
+                        builder: (_, playSnap) {
+                          final playing = playSnap.data ?? false;
+                          // Ensure we have a valid nowPlaying item and it's actually playing
+                          final hasValidNowPlaying = np != null && playing;
+                          return IconButton(
+                            onPressed: () async {
+                              // Button pressed
+                              if (hasValidNowPlaying) {
+                                // Pausing playback
+                                await playback.pause();
+                                // Don't open full player on pause
+                              } else {
+                                // Attempting to resume/play
+                                // Try to resume first, but if that fails (no current item), 
+                                // warm load the last item and play it
+                                bool success = await playback.resume();
+                                // Resume result
+                                if (!success) {
+                                  try {
+                                    // Resume failed, trying warmLoadLastItem
+                                    await playback.warmLoadLastItem(playAfterLoad: true);
+                                    success = true; // Consider warm load a success
+                                    // WarmLoadLastItem succeeded
+                                  } catch (e) {
+                                    // WarmLoadLastItem failed
+                                    success = false;
+                                  }
+                                }
+                                
+                                if (!success && context.mounted) {
+                                  // Both resume and warmLoad failed, showing error
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Cannot play: server unavailable and sync progress is required'),
+                                      duration: Duration(seconds: 4),
+                                    ),
+                                  );
+                                } else if (success && context.mounted) {
+                                  // Success, opening full player
+                                  // Open the full player page when resuming, like the book detail page does
+                                  await FullPlayerPage.openOnce(context);
                                 }
                               }
-                              
-                              if (!success && context.mounted) {
-                                // Both resume and warmLoad failed, showing error
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Cannot play: server unavailable and sync progress is required'),
-                                    duration: Duration(seconds: 4),
-                                  ),
-                                );
-                              } else if (success && context.mounted) {
-                                // Success, opening full player
-                                // Open the full player page when resuming, like the book detail page does
-                                await FullPlayerPage.openOnce(context);
-                              }
-                            }
-                          },
-                          icon: Icon(
-                            hasValidNowPlaying ? Icons.pause : Icons.play_arrow,
-                            size: 28,
-                          ),
-                          style: IconButton.styleFrom(
-                            backgroundColor: Colors.transparent,
-                            foregroundColor: cs.onSurface,
-                          ),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              );
-            },
+                            },
+                            icon: Icon(
+                              hasValidNowPlaying ? Icons.pause : Icons.play_arrow,
+                              size: 28,
+                            ),
+                            style: IconButton.styleFrom(
+                              backgroundColor: Colors.transparent,
+                              foregroundColor: cs.onSurface,
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
           ),
         ),
       ),

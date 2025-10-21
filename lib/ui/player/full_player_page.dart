@@ -10,6 +10,7 @@ import '../../core/sleep_timer_service.dart';
 import '../../core/ui_prefs.dart';
 import '../../main.dart'; // ServicesScope
 import '../../widgets/audio_waveform.dart';
+import '../../widgets/glass_widget.dart';
 
 class FullPlayerPage extends StatefulWidget {
   const FullPlayerPage({super.key});
@@ -1496,36 +1497,34 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
 
                         return Padding(
                           padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                            decoration: BoxDecoration(
-                              color: cs.surfaceContainerHighest,
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(
-                                color: cs.outlineVariant.withOpacity(0.5),
-                                width: 1,
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.bookmark_rounded,
-                                  size: 18,
-                                  color: cs.primary,
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Text(
-                                    chapterTitle,
-                                    style: text.bodyMedium?.copyWith(
-                                      color: cs.onSurface,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
+                          child: GlassWidget(
+                            blur: 15.0,
+                            opacity: 0.2,
+                            borderRadius: 14.0,
+                            borderWidth: 0.5,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.bookmark_rounded,
+                                    size: 18,
+                                    color: cs.primary,
                                   ),
-                                ),
-                              ],
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      chapterTitle,
+                                      style: text.bodyMedium?.copyWith(
+                                        color: cs.onSurface,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         );

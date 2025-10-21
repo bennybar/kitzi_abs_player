@@ -15,6 +15,7 @@ import '../../core/ui_prefs.dart';
 import '../../core/downloads_repository.dart';
 import '../../core/playback_repository.dart';
 import '../../main.dart';
+import '../../widgets/glass_widget.dart';
 
 class MainScaffold extends StatefulWidget {
   const MainScaffold({super.key, required this.downloadsRepo});
@@ -191,64 +192,52 @@ class _MainScaffoldState extends State<MainScaffold> {
   }) {
     final destinations = _buildDestinations(showAuthors, showSeries);
     
-    return Container(
-      height: height + MediaQuery.of(context).padding.bottom,
-      child: ClipRRect(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-          child: Container(
-            decoration: BoxDecoration(
-              color: colorScheme.surface.withOpacity(0.8),
-              border: Border(
-                top: BorderSide(
-                  color: colorScheme.outline.withOpacity(0.1),
-                  width: 0.5,
-                ),
-              ),
-            ),
-            child: SafeArea(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: destinations.asMap().entries.map((entry) {
-                  final index = entry.key;
-                  final destination = entry.value;
-                  final isSelected = index == selectedIndex;
-                  
-                  return Expanded(
-                    child: GestureDetector(
-                      onTap: () => onDestinationSelected(index),
-                      child: Container(
-                        height: height,
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            // Icon with subtle scale animation
-                            AnimatedScale(
-                              duration: const Duration(milliseconds: 200),
-                              scale: isSelected ? 1.05 : 1.0,
-                              child: isSelected ? destination.selectedIcon : destination.icon,
-                            ),
-                            const SizedBox(height: 2),
-                            // Label with smooth color transition
-                            AnimatedDefaultTextStyle(
-                              duration: const Duration(milliseconds: 200),
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                                color: isSelected
-                                    ? colorScheme.primary
-                                    : colorScheme.onSurface.withOpacity(0.7),
-                              ),
-                              child: Text(destination.label),
-                            ),
-                          ],
+    return GlassNavigationBar(
+      blur: 25.0,
+      opacity: 0.9,
+      child: Container(
+        height: height + MediaQuery.of(context).padding.bottom,
+        child: SafeArea(
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: destinations.asMap().entries.map((entry) {
+              final index = entry.key;
+              final destination = entry.value;
+              final isSelected = index == selectedIndex;
+              
+              return Expanded(
+                child: GestureDetector(
+                  onTap: () => onDestinationSelected(index),
+                  child: Container(
+                    height: height,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        // Icon with subtle scale animation
+                        AnimatedScale(
+                          duration: const Duration(milliseconds: 200),
+                          scale: isSelected ? 1.05 : 1.0,
+                          child: isSelected ? destination.selectedIcon : destination.icon,
                         ),
-                      ),
+                        const SizedBox(height: 2),
+                        // Label with smooth color transition
+                        AnimatedDefaultTextStyle(
+                          duration: const Duration(milliseconds: 200),
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                            color: isSelected
+                                ? colorScheme.primary
+                                : colorScheme.onSurface.withOpacity(0.7),
+                          ),
+                          child: Text(destination.label),
+                        ),
+                      ],
                     ),
-                  );
-                }).toList(),
-              ),
-            ),
+                  ),
+                ),
+              );
+            }).toList(),
           ),
         ),
       ),

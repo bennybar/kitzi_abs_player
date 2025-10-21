@@ -12,11 +12,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'auth_repository.dart';
 import 'audio_service_binding.dart';
+import 'audio_service_manager.dart';
 import 'chapter_navigation_service.dart';
 import 'sleep_timer_service.dart';
 import 'playback_speed_service.dart';
 import 'download_storage.dart';
 import 'play_history_service.dart';
+import 'dynamic_island_service.dart';
 import '../models/book.dart';
 import 'books_repository.dart';
 import 'smart_rewind_service.dart';
@@ -1111,6 +1113,9 @@ class PlaybackRepository {
     _setNowPlaying(null);
     _progressItemId = null;
     await _closeActiveSession();
+    
+    // Stop Dynamic Island Live Activity
+    AudioServiceManager.instance.stopDynamicIsland();
   }
 
   /// If the current item has fully downloaded local files, switch playback from
@@ -1215,6 +1220,9 @@ class PlaybackRepository {
       if (bigJump || isDone) {
         _sendProgressImmediate(finished: isDone);
       }
+      
+      // Update Dynamic Island with current position
+      _updateDynamicIsland();
     });
   }
 
@@ -1223,6 +1231,23 @@ class PlaybackRepository {
     _progressTimer = null;
     _playingSub?.cancel();
     _playingSub = null;
+  }
+  
+  /// Update Dynamic Island with current playback state
+  void _updateDynamicIsland() {
+    final np = _nowPlaying;
+    if (np == null) return;
+    
+    final position = Duration(milliseconds: (_computeGlobalPositionSec() ?? 0.0).round() * 1000);
+    final duration = Duration(milliseconds: (_computeTotalDurationSec() ?? 0.0).round() * 1000);
+    final isPlaying = player.playing;
+    
+    // Update Dynamic Island asynchronously
+    AudioServiceManager.instance.updateDynamicIsland(
+      isPlaying: isPlaying,
+      position: position,
+      duration: duration,
+    );
   }
 
   /// Always try to send at least `currentTime`. Include `duration/progress`
@@ -1728,6 +1753,11 @@ class PlaybackRepository {
   void _setNowPlaying(NowPlaying? np) {
     _nowPlaying = np;
     _nowPlayingCtr.add(np);
+    
+    // Start Dynamic Island Live Activity when new content starts playing
+    if (np != null && DynamicIslandService.instance.isSupported) {
+      _updateDynamicIsland();
+    }
   }
 
   // ----- Mapping / helpers -----
