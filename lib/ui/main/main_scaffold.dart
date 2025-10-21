@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
+import 'package:cupertino_native/cupertino_native.dart' as cn;
 import 'dart:ui';
 
 import '../settings/settings_page.dart';
@@ -154,9 +155,9 @@ class _MainScaffoldState extends State<MainScaffold> {
     required bool showAuthors,
     required bool showSeries,
   }) {
-    // Use iOS glass effect only on iOS
+    // Use native CNTabBar on iOS
     if (Platform.isIOS) {
-      return _buildIOSGlassNavigationBar(
+      return _buildIOSNativeNavigationBar(
         context: context,
         selectedIndex: selectedIndex,
         onDestinationSelected: onDestinationSelected,
@@ -181,7 +182,7 @@ class _MainScaffoldState extends State<MainScaffold> {
     );
   }
 
-  Widget _buildIOSGlassNavigationBar({
+  Widget _buildIOSNativeNavigationBar({
     required BuildContext context,
     required int selectedIndex,
     required ValueChanged<int> onDestinationSelected,
@@ -190,56 +191,22 @@ class _MainScaffoldState extends State<MainScaffold> {
     required bool showAuthors,
     required bool showSeries,
   }) {
-    final destinations = _buildDestinations(showAuthors, showSeries);
-    
-    return GlassNavigationBar(
-      blur: 25.0,
-      opacity: 0.9,
-      child: Container(
-        height: height + MediaQuery.of(context).padding.bottom,
-        child: SafeArea(
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: destinations.asMap().entries.map((entry) {
-              final index = entry.key;
-              final destination = entry.value;
-              final isSelected = index == selectedIndex;
-              
-              return Expanded(
-                child: GestureDetector(
-                  onTap: () => onDestinationSelected(index),
-                  child: Container(
-                    height: height,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        // Icon with subtle scale animation
-                        AnimatedScale(
-                          duration: const Duration(milliseconds: 200),
-                          scale: isSelected ? 1.05 : 1.0,
-                          child: isSelected ? destination.selectedIcon : destination.icon,
-                        ),
-                        const SizedBox(height: 2),
-                        // Label with smooth color transition
-                        AnimatedDefaultTextStyle(
-                          duration: const Duration(milliseconds: 200),
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                            color: isSelected
-                                ? colorScheme.primary
-                                : colorScheme.onSurface.withOpacity(0.7),
-                          ),
-                          child: Text(destination.label),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-        ),
+    final items = <cn.CNTabBarItem>[
+      const cn.CNTabBarItem(label: 'Books', icon: cn.CNSymbol('books.vertical')),
+      if (showAuthors)
+        const cn.CNTabBarItem(label: 'Authors', icon: cn.CNSymbol('person')), 
+      if (showSeries)
+        const cn.CNTabBarItem(label: 'Series', icon: cn.CNSymbol('rectangle.stack')),
+      const cn.CNTabBarItem(label: 'Downloads', icon: cn.CNSymbol('arrow.down.circle')),
+      const cn.CNTabBarItem(label: 'Settings', icon: cn.CNSymbol('gearshape')),
+    ];
+
+    return SafeArea(
+      top: false,
+      child: cn.CNTabBar(
+        items: items,
+        currentIndex: selectedIndex,
+        onTap: onDestinationSelected,
       ),
     );
   }
