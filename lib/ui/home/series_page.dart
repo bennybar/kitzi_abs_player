@@ -7,7 +7,6 @@ import '../../core/books_repository.dart';
 import '../../models/book.dart';
 import '../../models/series.dart';
 import '../book_detail/book_detail_page.dart';
-import '../../widgets/glass_widget.dart';
 
 enum SeriesViewType { series, collections }
 
@@ -564,52 +563,51 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
                       padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
                       child: Column(
                         children: [
-                          // Glass search bar
-                          GlassContainer(
-                            blur: 30,
-                            opacity: 0.85,
-                            borderRadius: 16,
-                            borderWidth: 0.5,
-                            child: SearchBar(
-                              controller: _searchCtrl,
-                              focusNode: _searchFocusNode,
-                              leading: Icon(
-                                Icons.search_rounded,
-                                color: cs.onSurfaceVariant,
-                              ),
-                              hintText: 'Search ${_viewType.name} or books...',
-                              hintStyle: WidgetStateProperty.all(
-                                TextStyle(color: cs.onSurfaceVariant),
-                              ),
-                              backgroundColor: WidgetStateProperty.all(Colors.transparent),
-                              elevation: WidgetStateProperty.all(0),
-                              onChanged: (val) {
-                                setState(() => _query = val);
-                                _saveSearchPref(val);
-                                _searchDebounce?.cancel();
-                                _searchDebounce = Timer(const Duration(milliseconds: 300), () {
-                                  if (!mounted) return;
-                                  setState(() {});
-                                });
-                              },
-                              trailing: [
-                                if (_query.isNotEmpty)
-                                  IconButton(
-                                    tooltip: 'Clear',
-                                    onPressed: () {
-                                      // Hide keyboard
-                                      FocusScope.of(context).unfocus();
-                                      _searchCtrl.clear();
-                                      setState(() => _query = '');
-                                      _saveSearchPref('');
-                                    },
-                                    icon: Icon(
-                                      Icons.clear_rounded,
-                                      color: cs.onSurfaceVariant,
-                                    ),
-                                  ),
-                              ],
+                          // Material search bar
+                          SearchBar(
+                            controller: _searchCtrl,
+                            focusNode: _searchFocusNode,
+                            leading: Icon(
+                              Icons.search_rounded,
+                              color: cs.onSurfaceVariant,
                             ),
+                            hintText: 'Search ${_viewType.name} or books...',
+                            hintStyle: WidgetStateProperty.all(
+                              TextStyle(color: cs.onSurfaceVariant),
+                            ),
+                            backgroundColor: WidgetStateProperty.all(cs.surfaceContainerHighest),
+                            elevation: WidgetStateProperty.all(0),
+                            shape: WidgetStateProperty.all(
+                              RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                            ),
+                            onChanged: (val) {
+                              setState(() => _query = val);
+                              _saveSearchPref(val);
+                              _searchDebounce?.cancel();
+                              _searchDebounce = Timer(const Duration(milliseconds: 300), () {
+                                if (!mounted) return;
+                                setState(() {});
+                              });
+                            },
+                            trailing: [
+                              if (_query.isNotEmpty)
+                                IconButton(
+                                  tooltip: 'Clear',
+                                  onPressed: () {
+                                    // Hide keyboard
+                                    FocusScope.of(context).unfocus();
+                                    _searchCtrl.clear();
+                                    setState(() => _query = '');
+                                    _saveSearchPref('');
+                                  },
+                                  icon: Icon(
+                                    Icons.clear_rounded,
+                                    color: cs.onSurfaceVariant,
+                                  ),
+                                ),
+                            ],
                           ),
                         ],
                       ),

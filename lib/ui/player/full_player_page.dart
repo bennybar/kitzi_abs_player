@@ -10,7 +10,6 @@ import '../../core/sleep_timer_service.dart';
 import '../../core/ui_prefs.dart';
 import '../../main.dart'; // ServicesScope
 import '../../widgets/audio_waveform.dart';
-import '../../widgets/glass_widget.dart';
 
 class FullPlayerPage extends StatefulWidget {
   const FullPlayerPage({super.key});
@@ -1497,11 +1496,15 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
 
                         return Padding(
                           padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                          child: GlassWidget(
-                            blur: 15.0,
-                            opacity: 0.2,
-                            borderRadius: 14.0,
-                            borderWidth: 0.5,
+                          child: Card(
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              side: BorderSide(
+                                color: cs.outline.withOpacity(0.1),
+                                width: 0.5,
+                              ),
+                            ),
                             child: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                               child: Row(

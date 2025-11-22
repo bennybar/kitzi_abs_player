@@ -13,7 +13,6 @@ import '../../widgets/skeleton_widgets.dart';
 import '../book_detail/book_detail_page.dart';
 import '../player/full_player_page.dart';
 import '../../main.dart';
-import '../../widgets/glass_widget.dart';
 
 // For unawaited background tasks
 void _unawaited(Future<void> future) {
@@ -606,41 +605,18 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                     ),
             ),
             actions: [
-              GlassContainer(
-                blur: 30,
-                opacity: 0.85,
-                borderRadius: 14,
-                borderWidth: 0.5,
-                child: IconButton(
-                  tooltip: 'Search',
-                  onPressed: _toggleSearch,
-                  icon: Icon(_searchVisible ? Icons.search_off_rounded : Icons.search_rounded),
-                  style: IconButton.styleFrom(
-                    backgroundColor: Colors.transparent,
-                  ),
-                ),
+              IconButton.filledTonal(
+                tooltip: 'Search',
+                onPressed: _toggleSearch,
+                icon: Icon(_searchVisible ? Icons.search_off_rounded : Icons.search_rounded),
               ),
               const SizedBox(width: 8),
-              GlassContainer(
-                blur: 30,
-                opacity: 0.85,
-                borderRadius: 14,
-                borderWidth: 0.5,
-                child: IconButton(
-                  tooltip: 'Scroll to top',
-                  onPressed: _loading ? null : _scrollToTop,
-                  icon: const Icon(Icons.vertical_align_top_rounded),
-                  style: IconButton.styleFrom(
-                    backgroundColor: Colors.transparent,
-                  ),
-                ),
+              IconButton.filledTonal(
+                tooltip: 'Scroll to top',
+                onPressed: _loading ? null : _scrollToTop,
+                icon: const Icon(Icons.vertical_align_top_rounded),
               ),
-              GlassContainer(
-                blur: 30,
-                opacity: 0.85,
-                borderRadius: 14,
-                borderWidth: 0.5,
-                child: PopupMenuButton<SortMode>(
+              PopupMenuButton<SortMode>(
                 tooltip: 'Sort',
                 initialValue: _sort,
                 onSelected: (mode) {
@@ -675,7 +651,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                     ),
                   ),
                 ],
-              )),
+              ),
               const SizedBox(width: 8),
             ],
           ),
@@ -690,54 +666,53 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                       padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
                       child: Column(
                         children: [
-                          // Glass search bar
-                          GlassContainer(
-                            blur: 30,
-                            opacity: 0.85,
-                            borderRadius: 16,
-                            borderWidth: 0.5,
-                            child: SearchBar(
-                              controller: _searchCtrl,
-                              focusNode: _searchFocusNode,
-                              leading: Icon(
-                                Icons.search_rounded,
-                                color: cs.onSurfaceVariant,
-                              ),
-                              hintText: 'Search books or authors...',
-                              hintStyle: WidgetStateProperty.all(
-                                TextStyle(color: cs.onSurfaceVariant),
-                              ),
-                              backgroundColor: WidgetStateProperty.all(Colors.transparent),
-                              elevation: WidgetStateProperty.all(0),
-                              onChanged: (val) {
-                                setState(() => _query = val);
-                                _saveSearchPref(val);
-                                _searchDebounce?.cancel();
-                                _searchDebounce = Timer(const Duration(milliseconds: 300), () {
-                                  if (!mounted) return;
-                                  _restartSearchPagination();
-                                });
-                              },
-                              trailing: [
-                                if (_query.isNotEmpty)
-                                  IconButton(
-                                    tooltip: 'Clear',
-                                    onPressed: () {
-                                      // Hide keyboard
-                                      FocusScope.of(context).unfocus();
-                                      _searchCtrl.clear();
-                                      setState(() => _query = '');
-                                      _saveSearchPref('');
-                                      // Force re-fetch first page from server and restart pagination
-                                      _restartSearchPagination();
-                                    },
-                                    icon: Icon(
-                                      Icons.clear_rounded,
-                                      color: cs.onSurfaceVariant,
-                                    ),
-                                  ),
-                              ],
+                          // Material search bar
+                          SearchBar(
+                            controller: _searchCtrl,
+                            focusNode: _searchFocusNode,
+                            leading: Icon(
+                              Icons.search_rounded,
+                              color: cs.onSurfaceVariant,
                             ),
+                            hintText: 'Search books or authors...',
+                            hintStyle: WidgetStateProperty.all(
+                              TextStyle(color: cs.onSurfaceVariant),
+                            ),
+                            backgroundColor: WidgetStateProperty.all(cs.surfaceContainerHighest),
+                            elevation: WidgetStateProperty.all(0),
+                            shape: WidgetStateProperty.all(
+                              RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                            ),
+                            onChanged: (val) {
+                              setState(() => _query = val);
+                              _saveSearchPref(val);
+                              _searchDebounce?.cancel();
+                              _searchDebounce = Timer(const Duration(milliseconds: 300), () {
+                                if (!mounted) return;
+                                _restartSearchPagination();
+                              });
+                            },
+                            trailing: [
+                              if (_query.isNotEmpty)
+                                IconButton(
+                                  tooltip: 'Clear',
+                                  onPressed: () {
+                                    // Hide keyboard
+                                    FocusScope.of(context).unfocus();
+                                    _searchCtrl.clear();
+                                    setState(() => _query = '');
+                                    _saveSearchPref('');
+                                    // Force re-fetch first page from server and restart pagination
+                                    _restartSearchPagination();
+                                  },
+                                  icon: Icon(
+                                    Icons.clear_rounded,
+                                    color: cs.onSurfaceVariant,
+                                  ),
+                                ),
+                            ],
                           ),
                           const SizedBox(height: 16),
                           // View toggle removed – list only

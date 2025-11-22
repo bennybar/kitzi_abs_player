@@ -1,7 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:io';
-import 'package:cupertino_native/cupertino_native.dart' as cn;
-import 'dart:ui';
 
 import '../settings/settings_page.dart';
 import '../home/books_page.dart';
@@ -16,7 +13,6 @@ import '../../core/ui_prefs.dart';
 import '../../core/downloads_repository.dart';
 import '../../core/playback_repository.dart';
 import '../../main.dart';
-import '../../widgets/glass_widget.dart';
 
 class MainScaffold extends StatefulWidget {
   const MainScaffold({super.key, required this.downloadsRepo});
@@ -105,7 +101,7 @@ class _MainScaffoldState extends State<MainScaffold> {
       builder: (_, snap) {
         final hideOnSettingsIndex = pages.length - 1;
         final hasMini = snap.data != null && safeIndex != hideOnSettingsIndex; // hide on Settings
-        const double navHeight = 60;
+        const double navHeight = 72;
 
         return Scaffold(
           backgroundColor: cs.surface,
@@ -155,20 +151,7 @@ class _MainScaffoldState extends State<MainScaffold> {
     required bool showAuthors,
     required bool showSeries,
   }) {
-    // Use native CNTabBar on iOS
-    if (Platform.isIOS) {
-      return _buildIOSNativeNavigationBar(
-        context: context,
-        selectedIndex: selectedIndex,
-        onDestinationSelected: onDestinationSelected,
-        colorScheme: colorScheme,
-        height: height,
-        showAuthors: showAuthors,
-        showSeries: showSeries,
-      );
-    }
-
-    // Default Material Design navigation bar for Android
+    // Material Design navigation bar for all platforms
     return NavigationBar(
       selectedIndex: selectedIndex,
       onDestinationSelected: onDestinationSelected,
@@ -179,35 +162,6 @@ class _MainScaffoldState extends State<MainScaffold> {
       indicatorColor: colorScheme.primaryContainer,
       labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
       destinations: _buildDestinations(showAuthors, showSeries),
-    );
-  }
-
-  Widget _buildIOSNativeNavigationBar({
-    required BuildContext context,
-    required int selectedIndex,
-    required ValueChanged<int> onDestinationSelected,
-    required ColorScheme colorScheme,
-    required double height,
-    required bool showAuthors,
-    required bool showSeries,
-  }) {
-    final items = <cn.CNTabBarItem>[
-      const cn.CNTabBarItem(label: 'Books', icon: cn.CNSymbol('books.vertical')),
-      if (showAuthors)
-        const cn.CNTabBarItem(label: 'Authors', icon: cn.CNSymbol('person')), 
-      if (showSeries)
-        const cn.CNTabBarItem(label: 'Series', icon: cn.CNSymbol('rectangle.stack')),
-      const cn.CNTabBarItem(label: 'Downloads', icon: cn.CNSymbol('arrow.down.circle')),
-      const cn.CNTabBarItem(label: 'Settings', icon: cn.CNSymbol('gearshape')),
-    ];
-
-    return SafeArea(
-      top: false,
-      child: cn.CNTabBar(
-        items: items,
-        currentIndex: selectedIndex,
-        onTap: onDestinationSelected,
-      ),
     );
   }
 

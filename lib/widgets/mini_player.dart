@@ -6,7 +6,6 @@ import 'dart:io';
 import '../main.dart'; // ServicesScope
 import '../ui/player/full_player_page.dart';
 import 'audio_waveform.dart';
-import 'glass_widget.dart';
 
 class MiniPlayer extends StatelessWidget {
   const MiniPlayer({super.key, this.height = 60});
@@ -18,27 +17,35 @@ class MiniPlayer extends StatelessWidget {
     final playback = ServicesScope.of(context).services.playback;
     final cs = Theme.of(context).colorScheme;
 
-    // iOS: floating rounded liquid glass
+    // iOS: floating rounded Material card
     if (Platform.isIOS) {
       return Padding(
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-        child: GlassContainer(
-          blur: 30.0,
-          opacity: 0.9,
-          borderRadius: 22,
-          borderWidth: 0.5,
-          elevation: 8,
+        child: Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(22),
+            side: BorderSide(
+              color: cs.outline.withOpacity(0.1),
+              width: 0.5,
+            ),
+          ),
           child: _buildContent(context, playback, cs, showTopBorder: false),
         ),
       );
     }
 
-    // Others: full-width, flat with top divider
-    return GlassContainer(
-      blur: 20.0,
-      opacity: 0.85,
-      borderRadius: 0,
-      borderWidth: 0.5,
+    // Others: full-width Material surface with top divider
+    return Container(
+      decoration: BoxDecoration(
+        color: cs.surface,
+        border: Border(
+          top: BorderSide(
+            color: cs.outlineVariant.withOpacity(0.3),
+            width: 0.5,
+          ),
+        ),
+      ),
       child: _buildContent(context, playback, cs, showTopBorder: true),
     );
   }
