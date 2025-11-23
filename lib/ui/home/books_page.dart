@@ -42,6 +42,9 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
   StreamSubscription<List<ConnectivityResult>>? _connSub;
   bool _isOnline = true;
   final ScrollController _scrollCtrl = ScrollController();
+  StreamSubscription<BookDbChange>? _dbChangeSub;
+  Timer? _dbReloadDebounce;
+  Future<void>? _activeSyncFuture;
   
   // Memory management
   final List<StreamSubscription> _subscriptions = [];
@@ -71,6 +74,10 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     _repoFut = BooksRepository.create();
+    _repoFut.then((repo) {
+      if (!mounted) return;
+      _dbChangeSub = repo.dbChanges.listen((_) => _scheduleDbCacheReload());
+    });
     _addController(_searchCtrl); // Track search controller
     _scrollCtrl.addListener(_onScrollChanged); // Add scroll listener for image preloading
     WidgetsBinding.instance.addObserver(this); // Observe app lifecycle
@@ -139,6 +146,9 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
     
     // Dispose scroll controller
     _scrollCtrl.dispose();
+    _dbReloadDebounce?.cancel();
+    _dbChangeSub?.cancel();
+    _repoFut.then((repo) => repo.dispose());
     
     super.dispose();
   }
@@ -337,77 +347,31 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
   }
 
   Future<void> _refresh({bool initial = false}) async {
-    setState(() {
-      if (initial) _loading = true;
-      _error = null;
-    });
+    await _loadBooksFromCache(showSpinner: initial && _books.isEmpty);
     try {
-      final repo = await _repoFut;
-      // Always read first page from local DB (fast start), then optionally refresh in background
-      final q = _query.trim();
-      final items = await repo.listBooksFromDbPaged(page: 1, limit: 50, query: q.isEmpty ? null : q);
-      // Background refresh from server only when online
       final conn = await Connectivity().checkConnectivity();
-      final online = conn.contains(ConnectivityResult.mobile) || conn.contains(ConnectivityResult.wifi) || conn.contains(ConnectivityResult.ethernet);
-      if (online) {
-        // Ensure first page is fresh from server
-        await repo.fetchBooksPage(page: 1, limit: 50, query: q.isEmpty ? null : q);
-        // Kick off background full sync for current mode (all or search)
-        Future.microtask(() async {
-          try {
-            await repo.syncAllBooksToDb(
-              pageSize: 100, 
-              query: q.isEmpty ? null : q,
-              removeDeleted: true, // Enable deletion of books removed from server
-            );
-            if (!mounted) return;
-            // Reload first page from DB after sync to update counts
-            final fresh = await repo.listBooksFromDbPaged(page: 1, limit: 50, query: q.isEmpty ? null : q);
-            if (!mounted) return;
-            setState(() {
-              _books = fresh;
-              _hasMore = fresh.length >= 50;
-            });
-          } catch (_) {}
-        });
-      } else if (initial && mounted) {
-        _showNoInternetSnack();
+      final online = conn.contains(ConnectivityResult.mobile) ||
+          conn.contains(ConnectivityResult.wifi) ||
+          conn.contains(ConnectivityResult.ethernet) ||
+          conn.contains(ConnectivityResult.vpn);
+      if (!online) {
+        if (initial && mounted) {
+          _showNoInternetSnack();
+        }
+        return;
       }
-      if (!mounted) return;
-      setState(() {
-        _books = items;
-        _loading = false;
-        _currentPage = 1;
-        _hasMore = items.length >= 50;
-      });
-      
-      // Load recent books after main library
+      await _startBackgroundSync(awaitCompletion: !initial);
       if (!initial) {
         _loadRecentBooks();
       }
     } catch (e) {
-      // Fallback to local DB if network fails (offline)
-      try {
-        final repo = await _repoFut;
-        final local = await repo.listBooks();
-        if (!mounted) return;
-        setState(() {
-          _books = local;
-          _loading = false;
-          _error = null;
-        });
-        if (mounted) _showNoInternetSnack();
-        
-        // Load recent books from local data
-        _loadRecentBooks();
-        return;
-      } catch (_) {
+      if (!initial && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Refresh failed: $e')),
+        );
+      } else if (initial && mounted) {
+        _showNoInternetSnack();
       }
-      if (!mounted) return;
-      setState(() {
-        _error = e.toString();
-        _loading = false;
-      });
     }
   }
 
@@ -416,23 +380,114 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       const SnackBar(content: Text('No internet connection')),
     );
   }
+
+  void _scheduleDbCacheReload() {
+    _dbReloadDebounce?.cancel();
+    _dbReloadDebounce = Timer(const Duration(milliseconds: 250), () {
+      _dbReloadDebounce = null;
+      if (!mounted) return;
+      _reloadBooksFromCacheIfChanged();
+    });
+  }
+
+  Future<void> _reloadBooksFromCacheIfChanged() async {
+    try {
+      final repo = await _repoFut;
+      final q = _query.trim();
+      final fresh = await repo.listBooksFromDbPaged(
+        page: 1,
+        limit: 50,
+        query: q.isEmpty ? null : q,
+      );
+      if (!mounted) return;
+      if (_bookListsMatch(_books, fresh)) return;
+      setState(() {
+        _books = fresh;
+        _hasMore = fresh.length >= 50;
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _loadBooksFromCache({bool showSpinner = false}) async {
+    if (showSpinner) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
+    try {
+      final repo = await _repoFut;
+      final q = _query.trim();
+      final items = await repo.listBooksFromDbPaged(
+        page: 1,
+        limit: 50,
+        query: q.isEmpty ? null : q,
+      );
+      if (!mounted) return;
+      setState(() {
+        _books = items;
+        _loading = false;
+        _hasMore = items.length >= 50;
+        _currentPage = 1;
+        _error = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e.toString();
+      });
+    }
+  }
+  
+  bool _bookListsMatch(List<Book> a, List<Book> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (_bookSignature(a[i]) != _bookSignature(b[i])) {
+        return false;
+      }
+    }
+    return true;
+  }
+  
+  String _bookSignature(Book book) {
+    final updated = book.updatedAt?.millisecondsSinceEpoch ?? 0;
+    final duration = book.durationMs ?? 0;
+    final size = book.sizeBytes ?? 0;
+    return '${book.id}|$updated|${book.title}|${book.author ?? ''}|$duration|$size|${book.isAudioBook ? 1 : 0}';
+  }
   
   Future<void> _loadRecentBooks() async {
+    List<Book> fallback = const [];
     try {
-      final recent = await PlayHistoryService.getLastPlayedBooks(4);
-      if (mounted) {
-        setState(() {
-          _recentBooks = recent;
-        });
-      }
-    } catch (e) {
-      // Don't fail the main UI if recent books fail to load
-      // Set empty list to prevent UI errors
-      if (mounted) {
-        setState(() {
-          _recentBooks = [];
-        });
-      }
+      fallback = await PlayHistoryService.getLastPlayedBooksLocal(6);
+    } catch (_) {}
+
+    if (mounted && fallback.isNotEmpty && !_bookListsMatch(_recentBooks, fallback)) {
+      setState(() => _recentBooks = fallback);
+    }
+
+    bool online = true;
+    try {
+      final conn = await Connectivity().checkConnectivity();
+      online = conn.contains(ConnectivityResult.mobile) ||
+          conn.contains(ConnectivityResult.wifi) ||
+          conn.contains(ConnectivityResult.ethernet) ||
+          conn.contains(ConnectivityResult.vpn);
+    } catch (_) {}
+
+    if (!online) return;
+
+    try {
+      final serverRecent = await PlayHistoryService.getLastPlayedBooks(6);
+      if (!mounted) return;
+      final next = serverRecent.isNotEmpty ? serverRecent : fallback;
+      if (_bookListsMatch(_recentBooks, next)) return;
+      setState(() {
+        _recentBooks = next;
+      });
+    } catch (_) {
+      // ignore; fallback already shown
     }
   }
 
@@ -1107,10 +1162,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       final repo = await _repoFut;
       final nextPage = _currentPage + 1;
       final q = _query.trim();
-      // Loading more books
-      // Try offset-first via full sync helper by requesting exactly one chunk
-      await repo.syncAllBooksToDb(pageSize: 50, query: q.isEmpty ? null : q, onProgress: (p, _) {});
-      // Then read the next page from DB
+      await repo.ensureServerPageIntoDb(page: nextPage, limit: 50, query: q.isEmpty ? null : q);
       final page = await repo.listBooksFromDbPaged(page: nextPage, limit: 50, query: q.isEmpty ? null : q);
       // Loaded page from database
       if (!mounted) return;
@@ -1127,24 +1179,49 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _startBackgroundSync({bool awaitCompletion = false}) async {
+    final query = _query.trim();
+    final effectiveQuery = query.isEmpty ? null : query;
+
+    Future<void> run() async {
+      try {
+        final repo = await _repoFut;
+        await repo.fetchBooksPage(page: 1, limit: 50, query: effectiveQuery);
+        await repo.syncAllBooksToDb(
+          pageSize: 100,
+          query: effectiveQuery,
+          removeDeleted: effectiveQuery == null,
+        );
+      } catch (_) {
+      } finally {
+        _activeSyncFuture = null;
+      }
+    }
+
+    if (_activeSyncFuture != null) {
+      if (awaitCompletion) {
+        await _activeSyncFuture;
+      }
+      return;
+    }
+
+    final future = run();
+    _activeSyncFuture = future;
+    if (awaitCompletion) {
+      await future;
+    } else {
+      unawaited(future);
+    }
+  }
+
   Future<void> _restartSearchPagination() async {
-    // Reset and fetch page 1 for current query
-    setState(() {
-      _loading = true;
-      _currentPage = 1;
-      _hasMore = true;
-    });
+    await _loadBooksFromCache(showSpinner: true);
     try {
       final repo = await _repoFut;
       final q = _query.trim();
       await repo.ensureServerPageIntoDb(page: 1, limit: 50, query: q.isEmpty ? null : q);
-      final first = await repo.listBooksFromDbPaged(page: 1, limit: 50, query: q.isEmpty ? null : q);
-      if (!mounted) return;
-      setState(() {
-        _books = first;
-        _loading = false;
-        _hasMore = first.length >= 50;
-      });
+      _reloadBooksFromCacheIfChanged();
+      _startBackgroundSync();
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);

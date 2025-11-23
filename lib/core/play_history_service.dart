@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'dart:async';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
+import 'package:sqflite/sqflite.dart';
+import 'package:path/path.dart' as p;
 
 import '../models/book.dart';
 import 'auth_repository.dart';
@@ -11,6 +13,26 @@ class PlayHistoryService {
   static const String _playHistoryKey = 'play_history_v1';
   static const int _maxHistorySize = 10; // Keep last 10 for potential future use
   static const String _libIdKey = 'books_library_id';
+  static Database? _recentDb;
+  static Future<Database> _ensureRecentDb() async {
+    if (_recentDb != null) return _recentDb!;
+    final dbPath = await getDatabasesPath();
+    final path = p.join(dbPath, 'kitzi_recent_books.db');
+    _recentDb = await openDatabase(
+      path,
+      version: 1,
+      onCreate: (db, version) async {
+        await db.execute('''
+          CREATE TABLE recent_books (
+            id TEXT PRIMARY KEY,
+            position INTEGER NOT NULL,
+            data TEXT NOT NULL
+          )
+        ''');
+      },
+    );
+    return _recentDb!;
+  }
 
   /// Deduplicate books by id while preserving order and optionally limiting size.
   static List<Book> _dedupeBooks(List<Book> books, {int? limit}) {
@@ -112,7 +134,9 @@ class PlayHistoryService {
           ((count * 3).clamp(count, count * 5)).toInt();
       final serverBooks =
           await _getLastPlayedBooksFromServer(requested);
-      appendUnique(_dedupeBooks(serverBooks));
+      final dedupedServer = _dedupeBooks(serverBooks);
+      appendUnique(dedupedServer);
+      unawaited(_cacheRecentBooks(dedupedServer));
     } catch (e) {
       print('PlayHistory: Server request failed: $e');
     }
@@ -120,9 +144,9 @@ class PlayHistoryService {
     if (merged.length < count) {
       print('PlayHistory: Checking local play history for additional items...');
       try {
-        final localBooks =
-            await _getLastPlayedBooksFromLocal(_maxHistorySize);
-        appendUnique(_dedupeBooks(localBooks));
+      final localBooks =
+          await getLastPlayedBooksLocal(_maxHistorySize);
+      appendUnique(localBooks);
       } catch (e) {
         print('PlayHistory: Local history fetch failed: $e');
       }
@@ -134,7 +158,16 @@ class PlayHistoryService {
       print('PlayHistory: Only ${merged.length} unique books available for resume');
     }
 
+    await _cacheRecentBooks(merged);
     return merged;
+  }
+
+  /// Quickly load recent books stored locally (no network).
+  static Future<List<Book>> getLastPlayedBooksLocal(int count) async {
+    List<Book> cached = await _getCachedRecentBooks(count);
+    if (cached.isNotEmpty) return cached;
+    final localBooks = await _getLastPlayedBooksFromLocal(count);
+    return _dedupeBooks(localBooks, limit: count);
   }
   
   /// Get recent books from server
@@ -390,6 +423,7 @@ class PlayHistoryService {
       }
 
       print('PlayHistory: Returning ${books.length} books');
+      unawaited(_cacheRecentBooks(books));
       return books;
     } catch (e) {
       print('PlayHistory: Error fetching recent books from server: $e');
@@ -464,4 +498,86 @@ class PlayHistoryService {
     
     await prefs.setStringList(_playHistoryKey, historyJson);
   }
-}
+
+  static Map<String, dynamic> _bookToCacheJson(Book b, {required int position}) {
+    return {
+      'id': b.id,
+      'title': b.title,
+      'author': b.author,
+      'coverUrl': b.coverUrl,
+      'description': b.description,
+      'durationMs': b.durationMs,
+      'sizeBytes': b.sizeBytes,
+      'updatedAt': b.updatedAt?.millisecondsSinceEpoch,
+      'isAudioBook': b.isAudioBook ? 1 : 0,
+      'libraryId': b.libraryId,
+      'position': position,
+    };
+  }
+
+  static Book _bookFromCacheJson(Map<String, dynamic> json) {
+    return Book(
+      id: json['id'] as String,
+      title: json['title'] as String,
+      author: json['author'] as String?,
+      coverUrl: json['coverUrl'] as String? ?? '',
+      description: json['description'] as String?,
+      durationMs: json['durationMs'] as int?,
+      sizeBytes: json['sizeBytes'] as int?,
+      updatedAt: json['updatedAt'] is int
+          ? DateTime.fromMillisecondsSinceEpoch(json['updatedAt'] as int, isUtc: true)
+          : null,
+      isAudioBook: (json['isAudioBook'] ?? 1) == 1,
+      libraryId: json['libraryId'] as String?,
+    );
+  }
+
+  static Future<void> _cacheRecentBooks(List<Book> books) async {
+    if (books.isEmpty) return;
+    try {
+      final db = await _ensureRecentDb();
+      await db.transaction((txn) async {
+        await txn.delete('recent_books');
+        for (int i = 0; i < books.length; i++) {
+          final data = _bookToCacheJson(books[i], position: i);
+          await txn.insert(
+            'recent_books',
+            {
+              'id': data['id'],
+              'position': data['position'],
+              'data': jsonEncode(data),
+            },
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
+        }
+      });
+    } catch (e) {
+      print('PlayHistory: failed to cache recent books: $e');
+    }
+  }
+
+  static Future<List<Book>> _getCachedRecentBooks(int count) async {
+    try {
+      final db = await _ensureRecentDb();
+      final rows = await db.query(
+        'recent_books',
+        orderBy: 'position ASC',
+        limit: count,
+      );
+      if (rows.isEmpty) return const [];
+      final books = <Book>[];
+      for (final row in rows) {
+        final dataStr = row['data'] as String?;
+        if (dataStr == null || dataStr.isEmpty) continue;
+        try {
+          final map = jsonDecode(dataStr) as Map<String, dynamic>;
+          books.add(_bookFromCacheJson(map));
+        } catch (_) {}
+      }
+      return books;
+    } catch (e) {
+      print('PlayHistory: error reading cached recent books: $e');
+      return const [];
+    }
+  }
+  }

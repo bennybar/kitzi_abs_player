@@ -1,5 +1,5 @@
+import 'dart:async';
 import 'dart:convert';
-import 'dart:async' show unawaited;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
@@ -26,6 +26,10 @@ class BooksRepository {
   // Query caching for better performance
   final Map<String, List<Book>> _queryCache = {};
   final Map<String, DateTime> _cacheTimestamps = {};
+  final StreamController<BookDbChange> _dbChangeCtrl = StreamController<BookDbChange>.broadcast();
+  bool _disposed = false;
+
+  Stream<BookDbChange> get dbChanges => _dbChangeCtrl.stream;
   static const Duration _cacheTTL = Duration(minutes: 5);
   
   /// Log debug message only if verbose logging is enabled
@@ -50,6 +54,12 @@ class BooksRepository {
     _queryCache.clear();
     _cacheTimestamps.clear();
     // Cache cleared due to memory pressure
+  }
+
+  void _notifyDbChange(BookDbChangeType type, Set<String> ids) {
+    if (ids.isEmpty) return;
+    if (_dbChangeCtrl.isClosed || !_dbChangeCtrl.hasListener) return;
+    _dbChangeCtrl.add(BookDbChange(type: type, ids: ids));
   }
 
   static const _etagKey = 'books_list_etag';
@@ -428,6 +438,9 @@ class BooksRepository {
     
     // Update cache metadata
     await _updateCacheMetadata(items.length);
+    _clearAllCache();
+    final changedIds = items.map((b) => b.id).where((id) => id.isNotEmpty).toSet();
+    _notifyDbChange(BookDbChangeType.upsert, changedIds);
   }
   
   /// Update cache metadata when books are saved
@@ -1326,6 +1339,8 @@ class BooksRepository {
         }
         await batch.commit(noResult: true);
       });
+      _clearAllCache();
+      _notifyDbChange(BookDbChangeType.delete, toDelete);
     }
   }
 
@@ -1676,6 +1691,18 @@ class BooksRepository {
 
     return authors;
   }
+
+  Future<void> dispose() async {
+    if (_disposed) return;
+    _disposed = true;
+    try {
+      await _db?.close();
+    } catch (_) {}
+    _db = null;
+    if (!_dbChangeCtrl.isClosed) {
+      await _dbChangeCtrl.close();
+    }
+  }
 }
 
 class AuthorInfo {
@@ -1687,4 +1714,12 @@ class AuthorInfo {
     required this.name,
     required this.books,
   }) : bookCount = books.length;
+}
+
+enum BookDbChangeType { upsert, delete }
+
+class BookDbChange {
+  const BookDbChange({required this.type, required this.ids});
+  final BookDbChangeType type;
+  final Set<String> ids;
 }
