@@ -29,6 +29,20 @@ class BooksRepository {
   final StreamController<BookDbChange> _dbChangeCtrl = StreamController<BookDbChange>.broadcast();
   bool _disposed = false;
 
+  String _normalizedQueryKey(String sort, String? query) {
+    final normalizedSort = sort.trim().toLowerCase().replaceAll(':', '_');
+    final normalizedQuery = (query == null || query.trim().isEmpty)
+        ? 'all'
+        : base64Url.encode(utf8.encode(query.trim().toLowerCase()));
+    return '${normalizedSort}_$normalizedQuery';
+  }
+
+  String _etagPrefsKey(String sort, String? query) =>
+      'books_etag_${_normalizedQueryKey(sort, query)}';
+
+  String _lastSyncPrefsKey(String sort, String? query) =>
+      'books_last_sync_${_normalizedQueryKey(sort, query)}';
+
   Stream<BookDbChange> get dbChanges => _dbChangeCtrl.stream;
   static const Duration _cacheTTL = Duration(minutes: 5);
   
@@ -668,6 +682,53 @@ class BooksRepository {
     } catch (_) {}
   }
 
+  Future<void> incrementalSync({
+    String sort = 'updatedAt:desc',
+    String? query,
+    int pageSize = 50,
+    int maxPages = 4,
+  }) async {
+    final lastSyncKey = _lastSyncPrefsKey(sort, query);
+    final lastSyncMs = _prefs.getInt(lastSyncKey);
+    final lastSync = lastSyncMs != null
+        ? DateTime.fromMillisecondsSinceEpoch(lastSyncMs, isUtc: true)
+        : null;
+    int page = 1;
+    int pagesFetched = 0;
+    while (pagesFetched < maxPages) {
+      final books = await fetchBooksPage(
+        page: page,
+        limit: pageSize,
+        sort: sort,
+        query: query,
+      );
+      if (books.isEmpty) break;
+      pagesFetched++;
+      if (lastSync != null) {
+        final updatedTimes = books
+            .map((b) => b.updatedAt)
+            .whereType<DateTime>()
+            .toList()
+          ..sort((a, b) => a.compareTo(b));
+        if (updatedTimes.isEmpty) {
+          break;
+        }
+        final oldest = updatedTimes.first;
+        if (!oldest.isAfter(lastSync)) {
+          break;
+        }
+      }
+      if (books.length < pageSize) {
+        break;
+      }
+      page++;
+    }
+    await _prefs.setInt(
+      lastSyncKey,
+      DateTime.now().toUtc().millisecondsSinceEpoch,
+    );
+  }
+
   /// Get a single book from local database (offline fallback). Returns null if not found.
   Future<Book?> getBookFromDb(String id) async {
     await _ensureDbForCurrentLib();
@@ -897,9 +958,24 @@ class BooksRepository {
           ? Uri.encodeQueryComponent(query.trim())
           : null;
 
-      Future<List<Book>> requestAndParse(String path) async {
+      Future<List<Book>> requestAndParse(String path, {Map<String, String>? extraHeaders}) async {
         _log('[BOOKS] fetchBooksPage: GET $path');
-        final resp = await api.request('GET', path, headers: {});
+        final headers = extraHeaders ?? const <String, String>{};
+        http.Response resp = await api.request('GET', path, headers: headers);
+        if (resp.statusCode == 304) {
+          final cachedPage = await listBooksFromDbPaged(
+            page: page,
+            limit: limit,
+            sort: sort,
+            query: query,
+          );
+          if (cachedPage.isNotEmpty) {
+            _log('[BOOKS] fetchBooksPage: cache hit via ETag for page=$page query=${query ?? 'all'}');
+            return cachedPage;
+          }
+          _log('[BOOKS] fetchBooksPage: ETag miss but DB empty, forcing refetch');
+          resp = await api.request('GET', path, headers: {});
+        }
         if (resp.statusCode != 200) {
           throw Exception('Failed to fetch: ${resp.statusCode}');
         }
@@ -910,6 +986,11 @@ class BooksRepository {
         // Keep only audiobooks
         books = books.where((b) => b.isAudioBook).toList();
         _log('[BOOKS] fetchBooksPage: page=$page limit=$limit sort=$sort query=${encodedQ != null} -> items=${books.length}');
+        final newEtag = resp.headers['etag'];
+        if (newEtag != null) {
+          final etagKey = _etagPrefsKey(sort, query);
+          await _prefs.setString(etagKey, newEtag);
+        }
         return books;
       }
 
@@ -918,7 +999,13 @@ class BooksRepository {
     final pathPage = (encodedQ != null)
         ? '$basePage&search=$encodedQ$tokenQS'
         : '$basePage$tokenQS';
-    List<Book> books = await requestAndParse(pathPage).catchError((e) async {
+    final etagKey = _etagPrefsKey(sort, query);
+    final cachedEtag = _prefs.getString(etagKey);
+    final headers = <String, String>{};
+    if (cachedEtag != null && page == 1) {
+      headers['If-None-Match'] = cachedEtag;
+    }
+    List<Book> books = await requestAndParse(pathPage, extraHeaders: headers).catchError((e) async {
       // Primary failed, trying fallback
       if (encodedQ != null) {
         final alt = '$basePage&q=$encodedQ$tokenQS';
@@ -1458,8 +1545,8 @@ class BooksRepository {
         ? Uri.encodeQueryComponent(query.trim())
         : null;
 
-    Future<List<Book>> requestAndParse(String path) async {
-      final resp = await api.request('GET', path, headers: {});
+    Future<List<Book>> requestAndParse(String path, {Map<String, String>? extraHeaders}) async {
+      final resp = await api.request('GET', path, headers: extraHeaders ?? const {});
       if (resp.statusCode != 200) {
         throw Exception('Failed to fetch: ${resp.statusCode}');
       }
@@ -1505,7 +1592,13 @@ class BooksRepository {
     final pathPage = (encodedQ != null)
         ? '$basePage&search=$encodedQ$tokenQS'
         : '$basePage$tokenQS';
-    List<Book> pageBooks = await requestAndParse(pathPage);
+    final etagKey = _etagPrefsKey(sort, query);
+    final cachedEtag = _prefs.getString(etagKey);
+    final headers = <String, String>{};
+    if (cachedEtag != null && page == 1) {
+      headers['If-None-Match'] = cachedEtag;
+    }
+    List<Book> pageBooks = await requestAndParse(pathPage, extraHeaders: headers);
     // Already filtered to audiobooks inside requestAndParse
     return pageBooks;
   }

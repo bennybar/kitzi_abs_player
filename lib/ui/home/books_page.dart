@@ -1186,11 +1186,10 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
     Future<void> run() async {
       try {
         final repo = await _repoFut;
-        await repo.fetchBooksPage(page: 1, limit: 50, query: effectiveQuery);
-        await repo.syncAllBooksToDb(
-          pageSize: 100,
+        await repo.incrementalSync(
           query: effectiveQuery,
-          removeDeleted: effectiveQuery == null,
+          pageSize: 50,
+          maxPages: effectiveQuery == null ? 4 : 2,
         );
       } catch (_) {
       } finally {
