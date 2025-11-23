@@ -119,6 +119,14 @@ class _DownloadButtonState extends State<DownloadButton> {
         episodeId: widget.episodeId,
         displayTitle: widget.titleForNotification,
       );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Download started – follow progress from Downloads tab.'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }

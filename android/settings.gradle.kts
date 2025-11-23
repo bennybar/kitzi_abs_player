@@ -35,7 +35,7 @@ plugins {
     // AGP (keep as you had it)
     id("com.android.application") version "8.7.0" apply false
     // Kotlin bumped to satisfy modern plugins
-    id("org.jetbrains.kotlin.android") version "1.9.24" apply false
+    id("org.jetbrains.kotlin.android") version "2.1.0" apply false
 }
 
 include(":app")

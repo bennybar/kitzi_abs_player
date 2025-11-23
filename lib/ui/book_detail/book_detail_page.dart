@@ -28,6 +28,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
   late final Future<BooksRepository> _repoFut;
   Future<Book>? _bookFut;
   Future<double?>? _serverProgressFut;
+  AppServices? _services;
   int? _resolvedDurationMs;
   int? _resolvedSizeBytes;
   bool _kickedResolve = false;
@@ -83,8 +84,22 @@ class _BookDetailPageState extends State<BookDetailPage> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final pb = ServicesScope.of(context).services.playback;
-    _serverProgressFut ??= pb.fetchServerProgress(widget.bookId);
+    final services = ServicesScope.of(context).services;
+    _services ??= services;
+    _serverProgressFut ??= services.playback.fetchServerProgress(widget.bookId);
+  }
+
+  @override
+  void dispose() {
+    final downloads = _services?.downloads;
+    if (downloads != null) {
+      unawaited(downloads.hasActiveOrQueued().then((hasActive) async {
+        if (hasActive) {
+          await downloads.resumeAll();
+        }
+      }));
+    }
+    super.dispose();
   }
 
   Stream<bool> _getBookCompletionStream(PlaybackRepository playback, String bookId) {

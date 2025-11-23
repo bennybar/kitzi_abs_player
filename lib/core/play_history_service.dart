@@ -12,6 +12,20 @@ class PlayHistoryService {
   static const int _maxHistorySize = 10; // Keep last 10 for potential future use
   static const String _libIdKey = 'books_library_id';
 
+  /// Deduplicate books by id while preserving order and optionally limiting size.
+  static List<Book> _dedupeBooks(List<Book> books, {int? limit}) {
+    if (books.isEmpty) return const [];
+    final seen = <String>{};
+    final deduped = <Book>[];
+    for (final book in books) {
+      if (seen.add(book.id)) {
+        deduped.add(book);
+        if (limit != null && deduped.length >= limit) break;
+      }
+    }
+    return deduped;
+  }
+
   static Future<String> _ensureLibraryId() async {
     final prefs = await SharedPreferences.getInstance();
     final cached = prefs.getString(_libIdKey);
@@ -80,26 +94,47 @@ class PlayHistoryService {
   /// Get the last N played books (most recent first)
   /// Server-priority: tries server personalized view first, then local
   static Future<List<Book>> getLastPlayedBooks(int count) async {
-    try {
-      print('PlayHistory: Trying server personalized view first...');
-      try {
-        final serverBooks = await _getLastPlayedBooksFromServer(count);
-        if (serverBooks.isNotEmpty) {
-          print('PlayHistory: Got ${serverBooks.length} recent played from server');
-          return serverBooks;
+    final merged = <Book>[];
+    final seenIds = <String>{};
+
+    void appendUnique(List<Book> books) {
+      for (final book in books) {
+        if (seenIds.add(book.id)) {
+          merged.add(book);
+          if (merged.length >= count) break;
         }
-        print('PlayHistory: Server returned no recent played; falling back to local');
-      } catch (e) {
-        print('PlayHistory: Server request failed: $e');
       }
-      print('PlayHistory: Checking local play history...');
-      final localBooks = await _getLastPlayedBooksFromLocal(count);
-      if (localBooks.isNotEmpty) return localBooks;
-      return [];
-    } catch (e) {
-      print('PlayHistory: Critical error in getLastPlayedBooks: $e');
-      return [];
     }
+
+    print('PlayHistory: Trying server personalized view first...');
+    try {
+      final requested =
+          ((count * 3).clamp(count, count * 5)).toInt();
+      final serverBooks =
+          await _getLastPlayedBooksFromServer(requested);
+      appendUnique(_dedupeBooks(serverBooks));
+    } catch (e) {
+      print('PlayHistory: Server request failed: $e');
+    }
+
+    if (merged.length < count) {
+      print('PlayHistory: Checking local play history for additional items...');
+      try {
+        final localBooks =
+            await _getLastPlayedBooksFromLocal(_maxHistorySize);
+        appendUnique(_dedupeBooks(localBooks));
+      } catch (e) {
+        print('PlayHistory: Local history fetch failed: $e');
+      }
+    }
+
+    if (merged.isEmpty) {
+      print('PlayHistory: No recent books available');
+    } else if (merged.length < count) {
+      print('PlayHistory: Only ${merged.length} unique books available for resume');
+    }
+
+    return merged;
   }
   
   /// Get recent books from server
@@ -316,21 +351,25 @@ class PlayHistoryService {
       }
 
       normalized.sort((a, b) => bestTs(b).compareTo(bestTs(a)));
-      final trimmed = normalized.take(count).toList();
 
-      print('PlayHistory: Ordered preview:');
-      for (int i = 0; i < trimmed.length; i++) {
-        final n = trimmed[i];
+      final previewLength = count.clamp(1, normalized.length);
+      print('PlayHistory: Ordered preview (first $previewLength):');
+      for (int i = 0; i < previewLength; i++) {
+        final n = normalized[i];
         final title = (n['title'] ?? n['media']?['metadata']?['title'] ?? 'Unknown').toString();
         print('PlayHistory: Ordered[$i] "$title" ts=${bestTs(n)}');
       }
 
       final books = <Book>[];
-      for (final item in trimmed) {
+      final seenIds = <String>{};
+      for (final item in normalized) {
         try {
           // Check if book is from the current library
           final bookLibraryId = (item['libraryId'] ?? '').toString();
           if (bookLibraryId != libId) continue;
+
+          final rawId = (item['id'] ?? item['_id'] ?? '').toString();
+          if (rawId.isEmpty || !seenIds.add(rawId)) continue;
           
           // Check if book is completed
           final isFinished = item['isFinished'] == true;
@@ -343,6 +382,7 @@ class PlayHistoryService {
             token: token,
           );
           books.add(book);
+          if (books.length >= count) break;
         } catch (e) {
           print('PlayHistory: Failed to parse book item: $e');
           continue;
@@ -369,7 +409,7 @@ class PlayHistoryService {
     final libId = await _ensureLibraryId();
     
     final books = <Book>[];
-    for (int i = 0; i < historyJson.length && i < count; i++) {
+    for (int i = 0; i < historyJson.length; i++) {
       try {
         final data = jsonDecode(historyJson[i]);
         final book = Book(
@@ -387,6 +427,7 @@ class PlayHistoryService {
         if (book.libraryId == null || book.libraryId == libId) {
           books.add(book);
           print('PlayHistory: Local book $i: ${book.title}');
+          if (books.length >= count) break;
         } else {
           print('PlayHistory: Skipping local book $i (${book.title}) - different library');
         }
