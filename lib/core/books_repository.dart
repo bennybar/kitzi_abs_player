@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -28,6 +29,9 @@ class BooksRepository {
   final Map<String, DateTime> _cacheTimestamps = {};
   final StreamController<BookDbChange> _dbChangeCtrl = StreamController<BookDbChange>.broadcast();
   bool _disposed = false;
+  final Queue<Book> _coverRetryQueue = Queue();
+  final Map<String, int> _coverRetryAttempts = {};
+  Timer? _coverRetryTimer;
 
   String _normalizedQueryKey(String sort, String? query) {
     final normalizedSort = sort.trim().toLowerCase().replaceAll(':', '_');
@@ -304,7 +308,7 @@ class BooksRepository {
     final path = p.join(dbPath, 'kitzi_books_$libId.db');
     _db = await openDatabase(
       path,
-      version: 2, // Increment version to trigger migration
+      version: 3, // Increment version to trigger migration
       onCreate: (db, v) async {
         await db.execute('''
           CREATE TABLE books (
@@ -313,6 +317,7 @@ class BooksRepository {
             author TEXT,
             coverUrl TEXT NOT NULL,
             coverPath TEXT,
+            coverUpdatedAt INTEGER,
             description TEXT,
             durationMs INTEGER,
             sizeBytes INTEGER,
@@ -343,9 +348,11 @@ class BooksRepository {
         await db.execute('CREATE INDEX IF NOT EXISTS idx_books_audio_updated ON books(isAudioBook, updatedAt DESC)');
       },
       onUpgrade: (db, oldVersion, newVersion) async {
-        // Only run migrations if upgrading from version 1
         if (oldVersion < 2) {
           await _migrateToVersion2(db);
+        }
+        if (oldVersion < 3) {
+          await _migrateToVersion3(db);
         }
       },
     );
@@ -383,6 +390,10 @@ class BooksRepository {
     await db.execute('CREATE INDEX IF NOT EXISTS idx_books_audio_updated ON books(isAudioBook, updatedAt DESC)');
     
     // Migration to version 2 completed
+  }
+
+  Future<void> _migrateToVersion3(Database db) async {
+    await _addColumnIfNotExists(db, 'books', 'coverUpdatedAt', 'INTEGER');
   }
   
   /// Add a column to a table only if it doesn't already exist
@@ -432,6 +443,7 @@ class BooksRepository {
             'author': b.author,
             'coverUrl': b.coverUrl,
             'coverPath': hasLocal ? coverFile.path : null,
+            'coverUpdatedAt': b.updatedAt?.millisecondsSinceEpoch,
             'description': b.description,
             'durationMs': b.durationMs,
             'sizeBytes': b.sizeBytes,
@@ -991,6 +1003,7 @@ class BooksRepository {
           final etagKey = _etagPrefsKey(sort, query);
           await _prefs.setString(etagKey, newEtag);
         }
+        unawaited(_persistCovers(books));
         return books;
       }
 
@@ -1555,6 +1568,7 @@ class BooksRepository {
       final items = _extractItems(body);
       final books = await _toBooks(items);
       await _upsertBooks(books);
+      unawaited(_persistCovers(books));
       return books;
     }
 
@@ -1617,37 +1631,178 @@ class BooksRepository {
 
   Future<File> _coverFileForId(String id) async {
     final dir = await _coversDir();
-    return File(p.join(dir.path, '$id.jpg'));
+    final primary = File(p.join(dir.path, '$id.jpg'));
+    if (await primary.exists()) return primary;
+    for (final ext in ['png', 'jpeg', 'webp', 'gif', 'img']) {
+      final candidate = File(p.join(dir.path, '$id.$ext'));
+      if (await candidate.exists()) {
+        return candidate;
+      }
+    }
+    return primary;
   }
 
   Future<void> _persistCovers(List<Book> books) async {
+    if (books.isEmpty) return;
+    final unique = {
+      for (final b in books)
+        if (b.id.isNotEmpty) b.id: b
+    };
+    if (unique.isEmpty) return;
+    final db = _db;
+    final storedUpdated = <String, int?>{};
+    final storedPaths = <String, String?>{};
+    if (db != null) {
+      final ids = unique.keys.toList();
+      final placeholders = List.filled(ids.length, '?').join(',');
+      final rows = await db.query(
+        'books',
+        columns: ['id', 'coverUpdatedAt', 'coverPath'],
+        where: 'id IN ($placeholders)',
+        whereArgs: ids,
+      );
+      for (final row in rows) {
+        final id = row['id'] as String? ?? '';
+        if (id.isEmpty) continue;
+        storedUpdated[id] = row['coverUpdatedAt'] as int?;
+        storedPaths[id] = row['coverPath'] as String?;
+      }
+    }
     final client = http.Client();
     try {
-      for (final b in books) {
-        final file = await _coverFileForId(b.id);
-        if (await file.exists()) continue;
+      final dir = await _coversDir();
+      for (final entry in unique.entries) {
+        final b = entry.value;
+        final updatedAtMs = b.updatedAt?.millisecondsSinceEpoch;
+        final storedCoverUpdatedAt = storedUpdated[b.id];
+        final storedPath = storedPaths[b.id];
+        final existingFile = storedPath != null ? File(storedPath) : null;
+        final exists = existingFile != null && await existingFile.exists();
+        final shouldRefresh = !exists ||
+            (updatedAtMs != null &&
+                (storedCoverUpdatedAt == null || updatedAtMs > storedCoverUpdatedAt));
+        if (!shouldRefresh) {
+          _coverRetryAttempts.remove(b.id);
+          continue;
+        }
+        final src = await _resolveCoverUrl(b);
+        if (src == null) continue;
         try {
-          // Always fetch from server for highest quality; strip any file:// fallback
-          var src = b.coverUrl;
-          if (src.startsWith('file://')) {
-            final baseUrl = _auth.api.baseUrl ?? '';
-            final token = await _auth.api.accessToken();
-            src = '$baseUrl/api/items/${b.id}/cover';
-            if (token != null && token.isNotEmpty) src = '$src?token=$token';
-          }
           final resp = await client.get(Uri.parse(src));
-          if (resp.statusCode == 200 && resp.bodyBytes.isNotEmpty) {
-            await file.writeAsBytes(resp.bodyBytes, flush: true);
-            // Update DB row's coverPath
-            final db = _db;
-            if (db != null) {
-              await db.update('books', {'coverPath': file.path}, where: 'id = ?', whereArgs: [b.id]);
+          if (resp.statusCode != 200 || resp.bodyBytes.isEmpty) {
+            throw Exception('cover status ${resp.statusCode}');
+          }
+          final headerExt = _extensionFromContentType(resp.headers['content-type']);
+          final urlExt = _extensionFromUrl(src);
+          final resolvedExt = (headerExt != 'img' ? headerExt : urlExt) ?? 'jpg';
+          final safeExt = (resolvedExt.isEmpty || resolvedExt == 'img') ? 'jpg' : resolvedExt;
+          final target = File(p.join(dir.path, '${b.id}.$safeExt'));
+          if (await target.exists()) {
+            await target.delete();
+          }
+          await target.writeAsBytes(resp.bodyBytes, flush: true);
+          if (storedPath != null && storedPath != target.path) {
+            final oldFile = File(storedPath);
+            if (await oldFile.exists()) {
+              await oldFile.delete();
             }
           }
-        } catch (_) {}
+          if (db != null) {
+            await db.update(
+              'books',
+              {
+                'coverPath': target.path,
+                'coverUpdatedAt': updatedAtMs,
+              },
+              where: 'id = ?',
+              whereArgs: [b.id],
+            );
+          }
+          _coverRetryAttempts.remove(b.id);
+        } catch (e) {
+          _scheduleCoverRetry(b);
+        }
       }
     } finally {
       client.close();
+      await _enforceCoverCacheLimit();
+    }
+  }
+
+  Future<String?> _resolveCoverUrl(Book book) async {
+    var src = book.coverUrl;
+    if (src.isEmpty) return null;
+    if (!src.startsWith('file://')) {
+      return src;
+    }
+    final baseUrl = _auth.api.baseUrl ?? '';
+    if (baseUrl.isEmpty) return null;
+    final token = await _auth.api.accessToken();
+    src = '$baseUrl/api/items/${book.id}/cover';
+    if (token != null && token.isNotEmpty) src = '$src?token=$token';
+    return src;
+  }
+
+  void _scheduleCoverRetry(Book book) {
+    final nextAttempt = (_coverRetryAttempts[book.id] ?? 0) + 1;
+    if (nextAttempt > 3) {
+      _coverRetryAttempts.remove(book.id);
+      return;
+    }
+    _coverRetryAttempts[book.id] = nextAttempt;
+    _coverRetryQueue.removeWhere((b) => b.id == book.id);
+    _coverRetryQueue.add(book);
+    _coverRetryTimer ??=
+        Timer(const Duration(seconds: 45), () => _flushCoverRetryQueue());
+  }
+
+  Future<void> _flushCoverRetryQueue() async {
+    _coverRetryTimer?.cancel();
+    _coverRetryTimer = null;
+    if (_coverRetryQueue.isEmpty) return;
+    final tasks = _coverRetryQueue.toList();
+    _coverRetryQueue.clear();
+    await _persistCovers(tasks);
+  }
+
+  Future<void> _enforceCoverCacheLimit({
+    int maxBytes = 200 * 1024 * 1024,
+    int maxFiles = 2000,
+  }) async {
+    final dir = await _coversDir();
+    if (!await dir.exists()) return;
+    final files = <File>[];
+    await for (final entity in dir.list()) {
+      if (entity is File) {
+        files.add(entity);
+      }
+    }
+    if (files.isEmpty) return;
+    files.sort((a, b) => a.statSync().modified.compareTo(b.statSync().modified));
+    final lengths = <File, int>{};
+    var totalBytes = 0;
+    for (final file in files) {
+      final len = await file.length();
+      lengths[file] = len;
+      totalBytes += len;
+    }
+    var remainingFiles = files.length;
+    if (totalBytes <= maxBytes && remainingFiles <= maxFiles) return;
+    for (final file in files) {
+      if (totalBytes <= maxBytes && remainingFiles <= maxFiles) break;
+      final length = lengths[file] ?? await file.length();
+      await file.delete();
+      totalBytes -= length;
+      remainingFiles -= 1;
+      final baseName = p.basenameWithoutExtension(file.path);
+      if (_db != null) {
+        await _db!.update(
+          'books',
+          {'coverPath': null},
+          where: 'id = ? AND coverPath = ?',
+          whereArgs: [baseName, file.path],
+        );
+      }
     }
   }
 
@@ -1788,6 +1943,9 @@ class BooksRepository {
   Future<void> dispose() async {
     if (_disposed) return;
     _disposed = true;
+    _coverRetryTimer?.cancel();
+    _coverRetryQueue.clear();
+    _coverRetryAttempts.clear();
     try {
       await _db?.close();
     } catch (_) {}
