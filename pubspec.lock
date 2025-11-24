@@ -104,7 +104,7 @@ packages:
       sha256: f71061c654a3380576a52b451dd5532377954cf9dbd272a78fc8479606670803
       url: "https://pub.dev"
     source: hosted
-    version: "1.4.1"
+    version: "1.4.0"
   checked_yaml:
     dependency: transitive
     description:
@@ -599,7 +599,7 @@ packages:
       sha256: "59adad729136f01ea9e35a48f5d1395e25cba6cea552249ddbe9cf950f5d7849"
       url: "https://pub.dev"
     source: hosted
-    version: "11.4.1"
+    version: "11.4.0"
   permission_handler_android:
     dependency: transitive
     description:
@@ -868,7 +868,7 @@ packages:
       sha256: f9049c039ebfeb4cf7a7104a675823cd72dba8297f264b6637062516699fa006
       url: "https://pub.dev"
     source: hosted
-    version: "1.4.1"
+    version: "1.4.0"
   uuid:
     dependency: transitive
     description:
