@@ -308,7 +308,7 @@ class BooksRepository {
     final path = p.join(dbPath, 'kitzi_books_$libId.db');
     _db = await openDatabase(
       path,
-      version: 3, // Increment version to trigger migration
+      version: 4, // Increment version to trigger migration
       onCreate: (db, v) async {
         await db.execute('''
           CREATE TABLE books (
@@ -328,7 +328,12 @@ class BooksRepository {
             collectionSequence REAL,
             isAudioBook INTEGER NOT NULL DEFAULT 1,
             mediaKind TEXT,
-            libraryId TEXT
+            libraryId TEXT,
+            authors TEXT,
+            narrators TEXT,
+            publisher TEXT,
+            publishYear INTEGER,
+            genres TEXT
           )
         ''');
         
@@ -353,6 +358,9 @@ class BooksRepository {
         }
         if (oldVersion < 3) {
           await _migrateToVersion3(db);
+        }
+        if (oldVersion < 4) {
+          await _migrateToVersion4(db);
         }
       },
     );
@@ -394,6 +402,14 @@ class BooksRepository {
 
   Future<void> _migrateToVersion3(Database db) async {
     await _addColumnIfNotExists(db, 'books', 'coverUpdatedAt', 'INTEGER');
+  }
+
+  Future<void> _migrateToVersion4(Database db) async {
+    await _addColumnIfNotExists(db, 'books', 'authors', 'TEXT');
+    await _addColumnIfNotExists(db, 'books', 'narrators', 'TEXT');
+    await _addColumnIfNotExists(db, 'books', 'publisher', 'TEXT');
+    await _addColumnIfNotExists(db, 'books', 'publishYear', 'INTEGER');
+    await _addColumnIfNotExists(db, 'books', 'genres', 'TEXT');
   }
   
   /// Add a column to a table only if it doesn't already exist
@@ -455,6 +471,11 @@ class BooksRepository {
             'isAudioBook': b.isAudioBook ? 1 : 0,
             'mediaKind': b.mediaKind,
             'libraryId': b.libraryId ?? libId,
+            'authors': b.authors != null ? jsonEncode(b.authors) : null,
+            'narrators': b.narrators != null ? jsonEncode(b.narrators) : null,
+            'publisher': b.publisher,
+            'publishYear': b.publishYear,
+            'genres': b.genres != null ? jsonEncode(b.genres) : null,
           },
           conflictAlgorithm: ConflictAlgorithm.replace,
         );
@@ -757,6 +778,40 @@ class BooksRepository {
     if (localPath != null && File(localPath).existsSync()) {
       coverUrl = 'file://$localPath';
     }
+    // Parse JSON fields for lists
+    List<String>? authorsList;
+    try {
+      final authorsStr = m['authors'] as String?;
+      if (authorsStr != null && authorsStr.isNotEmpty) {
+        final decoded = jsonDecode(authorsStr);
+        if (decoded is List) {
+          authorsList = decoded.cast<String>();
+        }
+      }
+    } catch (_) {}
+    
+    List<String>? narratorsList;
+    try {
+      final narratorsStr = m['narrators'] as String?;
+      if (narratorsStr != null && narratorsStr.isNotEmpty) {
+        final decoded = jsonDecode(narratorsStr);
+        if (decoded is List) {
+          narratorsList = decoded.cast<String>();
+        }
+      }
+    } catch (_) {}
+    
+    List<String>? genresList;
+    try {
+      final genresStr = m['genres'] as String?;
+      if (genresStr != null && genresStr.isNotEmpty) {
+        final decoded = jsonDecode(genresStr);
+        if (decoded is List) {
+          genresList = decoded.cast<String>();
+        }
+      }
+    } catch (_) {}
+    
     return Book(
       id: id,
       title: (m['title'] as String),
@@ -781,6 +836,11 @@ class BooksRepository {
           ? (((m['isAudioBook'] as int?) ?? 0) != 0)
           : (((m['durationMs'] as int?) ?? 0) > 0),
       libraryId: m['libraryId'] as String?,
+      authors: authorsList,
+      narrators: narratorsList,
+      publisher: m['publisher'] as String?,
+      publishYear: m['publishYear'] as int?,
+      genres: genresList,
     );
   }
 
