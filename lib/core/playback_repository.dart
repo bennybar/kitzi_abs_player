@@ -9,7 +9,6 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:just_audio/just_audio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:connectivity_plus/connectivity_plus.dart';
 
 import 'auth_repository.dart';
 import 'audio_service_binding.dart';
@@ -468,35 +467,7 @@ class PlaybackRepository {
   Future<bool> _checkSyncRequirement({BuildContext? context}) async {
     final shouldSync = await _shouldSyncProgressBeforePlay();
     if (!shouldSync) return true; // Sync not required, proceed
-    
-    // Check connectivity first
-    bool isOnline = false;
-    try {
-      final connectivity = await Connectivity().checkConnectivity().timeout(
-        const Duration(seconds: 2),
-        onTimeout: () => <ConnectivityResult>[], // Timeout = assume offline
-      );
-      isOnline = connectivity.contains(ConnectivityResult.mobile) ||
-          connectivity.contains(ConnectivityResult.wifi) ||
-          connectivity.contains(ConnectivityResult.ethernet) ||
-          connectivity.contains(ConnectivityResult.vpn);
-    } catch (_) {
-      // Connectivity check failed (e.g., airplane mode) - assume offline
-      isOnline = false;
-    }
-    
-    // If offline (or connectivity check failed), show dialog if context is available
-    if (!isOnline) {
-      if (context != null && context.mounted) {
-        final proceed = await _showOfflineSyncDialog(context);
-        return proceed; // User chose to proceed or cancel
-      }
-      // Offline but no context - can't show dialog, so block
-      _log('Cannot play: offline and no context for dialog');
-      return false;
-    }
-    
-    // If online, try to verify server is available with short timeout
+
     try {
       final api = _auth.api;
       await api.request('GET', '/api/me', auth: true).timeout(
@@ -507,14 +478,11 @@ class PlaybackRepository {
       );
       return true; // Server is available
     } catch (e) {
-      _log('Server unavailable for sync: $e');
-      // Server might be down even though we're online
-      // If context is available, show dialog
+      _log('Sync preflight failed: $e');
       if (context != null && context.mounted) {
-        final proceed = await _showOfflineSyncDialog(context);
-        return proceed;
+        return await _showOfflineSyncDialog(context);
       }
-      return false; // Server is unavailable and no context for dialog
+      return false;
     }
   }
 
