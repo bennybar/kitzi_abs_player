@@ -1,6 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:convert';
-import 'dart:async' show unawaited;
+import 'dart:async' show unawaited, StreamSubscription;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:rxdart/rxdart.dart';
@@ -26,7 +26,8 @@ class BookDetailPage extends StatefulWidget {
 
 class _BookDetailPageState extends State<BookDetailPage> {
   late final Future<BooksRepository> _repoFut;
-  Future<Book>? _bookFut;
+  Book? _cachedBook;
+  StreamSubscription<BookDbChange>? _dbChangeSub;
   Future<double?>? _serverProgressFut;
   AppServices? _services;
   int? _resolvedDurationMs;
@@ -34,6 +35,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
   bool _kickedResolve = false;
   bool _isResolvingDuration = false; // Prevent concurrent duration resolution
   bool _isResolvingSize = false; // Prevent concurrent size resolution
+  bool _backgroundUpdateInProgress = false;
 
   Future<void> _resolveDurationIfNeeded(Book b, PlaybackRepository playbackRepo) async {
     final current = _resolvedDurationMs ?? b.durationMs ?? 0;
@@ -58,7 +60,59 @@ class _BookDetailPageState extends State<BookDetailPage> {
   void initState() {
     super.initState();
     _repoFut = BooksRepository.create();
-    _bookFut = _loadBook();
+    _loadBookFromCache();
+    _startBackgroundUpdate();
+    _setupDbChangeListener();
+  }
+
+  /// Load book from cache immediately (no loading spinner)
+  Future<void> _loadBookFromCache() async {
+    try {
+      final repo = await _repoFut;
+      final cached = await repo.getBookFromDb(widget.bookId);
+      if (cached != null && mounted) {
+        setState(() {
+          _cachedBook = cached;
+        });
+      }
+    } catch (_) {
+      // Cache miss - will be handled by background update
+    }
+  }
+
+  /// Start background update without blocking UI
+  Future<void> _startBackgroundUpdate() async {
+    if (_backgroundUpdateInProgress) return;
+    _backgroundUpdateInProgress = true;
+    
+    try {
+      final repo = await _repoFut;
+      // Fetch from server in background - this will update the DB
+      await repo.getBook(widget.bookId);
+      
+      // Reload from DB after update
+      final updated = await repo.getBookFromDb(widget.bookId);
+      if (updated != null && mounted) {
+        setState(() {
+          _cachedBook = updated;
+        });
+      }
+    } catch (_) {
+      // Background update failed - keep showing cached data
+    } finally {
+      _backgroundUpdateInProgress = false;
+    }
+  }
+
+  /// Listen to database changes for this book and update UI silently
+  Future<void> _setupDbChangeListener() async {
+    final repo = await _repoFut;
+    _dbChangeSub = repo.dbChanges.listen((change) {
+      if (change.ids.contains(widget.bookId) && mounted) {
+        // Book was updated in DB - reload silently
+        _loadBookFromCache();
+      }
+    });
   }
 
   Future<Book> _tryLoadFromDb(BooksRepository r) async {
@@ -68,17 +122,12 @@ class _BookDetailPageState extends State<BookDetailPage> {
   }
 
   Future<Book> _loadBook() async {
+    // This method is kept for compatibility but should not be used
+    // Use _cachedBook instead
     final repo = await _repoFut;
-    try {
-      // Try network first; on success, repo persists it
-      return await repo.getBook(widget.bookId);
-    } catch (_) {
-      // On failure (e.g., offline), try local DB
-      final cached = await repo.getBookFromDb(widget.bookId);
-      if (cached != null) return cached;
-      // still failing: surface a meaningful error
-      throw Exception('offline_not_cached');
-    }
+    final cached = await repo.getBookFromDb(widget.bookId);
+    if (cached != null) return cached;
+    throw Exception('offline_not_cached');
   }
 
   @override
@@ -91,6 +140,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
 
   @override
   void dispose() {
+    _dbChangeSub?.cancel();
     final downloads = _services?.downloads;
     if (downloads != null) {
       unawaited(downloads.hasActiveOrQueued().then((hasActive) async {
@@ -472,87 +522,73 @@ class _BookDetailPageState extends State<BookDetailPage> {
                   ),
                 ),
                 // Mark as finished button - only show for audio books
-                FutureBuilder<Book>(
-                  future: _bookFut,
-                  builder: (context, bookSnap) {
-                    if (bookSnap.connectionState != ConnectionState.done || !bookSnap.hasData) {
-                      return const SizedBox.shrink();
-                    }
-                    
-                    final book = bookSnap.data!;
-                    if (!book.isAudioBook) {
-                      return const SizedBox.shrink();
-                    }
-                    
-                    return StreamBuilder<bool>(
-                      stream: _getBookCompletionStream(playbackRepo, book.id),
-                      initialData: false,
-                      builder: (_, completionSnap) {
-                        final isCompleted = completionSnap.data ?? false;
-                        final label = isCompleted ? 'Mark as Unfinished' : 'Mark as Finished';
-                        return FilledButton.tonal(
-                          onPressed: () => _toggleBookCompletion(context, book, isCompleted),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: isCompleted 
-                                ? cs.errorContainer 
-                                : cs.surfaceContainerHighest,
-                            foregroundColor: isCompleted 
-                                ? cs.onErrorContainer 
-                                : cs.onSurface,
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                          ),
-                          child: Text(label),
-                        );
-                      },
-                    );
-                  },
-                ),
+                if (_cachedBook != null && _cachedBook!.isAudioBook)
+                  StreamBuilder<bool>(
+                    stream: _getBookCompletionStream(playbackRepo, _cachedBook!.id),
+                    initialData: false,
+                    builder: (_, completionSnap) {
+                      final isCompleted = completionSnap.data ?? false;
+                      final label = isCompleted ? 'Mark as Unfinished' : 'Mark as Finished';
+                      return FilledButton.tonal(
+                        onPressed: () => _toggleBookCompletion(context, _cachedBook!, isCompleted),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: isCompleted 
+                              ? cs.errorContainer 
+                              : cs.surfaceContainerHighest,
+                          foregroundColor: isCompleted 
+                              ? cs.onErrorContainer 
+                              : cs.onSurface,
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        ),
+                        child: Text(label),
+                      );
+                    },
+                  ),
               ],
             ),
           ),
           // Content
           Expanded(
-            child: FutureBuilder<Book>(
-              future: _bookFut,
-              builder: (context, snap) {
-                if (snap.connectionState != ConnectionState.done) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snap.hasError || !snap.hasData) {
-                  return Center(
+            child: _cachedBook == null
+                ? Center(
                     child: Padding(
                       padding: const EdgeInsets.all(16),
-                      child: Text(
-                        snap.error.toString().contains('offline_not_cached')
-                            ? 'This book has not been opened before. Connect to the internet once to cache details for offline access.'
-                            : 'Failed to load book.',
-                        style: TextStyle(color: cs.error),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const CircularProgressIndicator(),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Loading book details...',
+                            style: TextStyle(color: cs.onSurfaceVariant),
+                          ),
+                        ],
                       ),
                     ),
-                  );
-                }
+                  )
+                : Builder(
+                    builder: (context) {
+                      final b = _cachedBook!;
+                      // No verbose logging in production
 
-                final b = snap.data!;
-              // No verbose logging in production
+                      String fmtDuration() {
+                        final ms = _resolvedDurationMs ?? b.durationMs;
+                        if (ms == null || ms == 0) return 'Unknown';
+                        final d = Duration(milliseconds: ms);
+                        final h = d.inHours;
+                        final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+                        return h > 0 ? '$h h $m m' : '$m m';
+                      }
 
-                String fmtDuration() {
-                  final ms = _resolvedDurationMs ?? b.durationMs;
-                  if (ms == null || ms == 0) return 'Unknown';
-                  final d = Duration(milliseconds: ms);
-                  final h = d.inHours;
-                  final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
-                  return h > 0 ? '$h h $m m' : '$m m';
-                }
+                      String fmtSize() {
+                        final sz = _resolvedSizeBytes ?? b.sizeBytes;
+                        if (sz == null || sz == 0) return '—';
+                        final mb = (sz / (1024 * 1024));
+                        return '${mb.toStringAsFixed(1)} MB';
+                      }
 
-                String fmtSize() {
-                  final sz = _resolvedSizeBytes ?? b.sizeBytes;
-                  if (sz == null || sz == 0) return '—';
-                  final mb = (sz / (1024 * 1024));
-                  return '${mb.toStringAsFixed(1)} MB';
-                }
-
-                // Layout: header and actions stay static; description area scrolls independently.
-                return Column(
+                      // Layout: header and actions stay static; description area scrolls independently.
+                      return Column(
                   children: [
                     if (!_kickedResolve) ...[
                       // Kick best-effort resolves once when page builds with data
@@ -956,10 +992,10 @@ class _BookDetailPageState extends State<BookDetailPage> {
                           ),
                         ),
                       ),
-                  ],
-                );
-              },
-            ),
+                      ],
+                    );
+                    },
+                  ),
           ),
         ],
       ),

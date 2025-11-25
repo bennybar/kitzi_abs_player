@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:just_audio/just_audio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 import 'auth_repository.dart';
 import 'audio_service_binding.dart';
@@ -463,19 +464,122 @@ class PlaybackRepository {
   /// Check if sync is required and server is available
   /// Returns true if sync is not required or if server is available
   /// Returns false if sync is required but server is unavailable
-  Future<bool> _checkSyncRequirement() async {
+  /// Shows a dialog if offline and sync is required, allowing user to proceed
+  Future<bool> _checkSyncRequirement({BuildContext? context}) async {
     final shouldSync = await _shouldSyncProgressBeforePlay();
     if (!shouldSync) return true; // Sync not required, proceed
     
+    // Check connectivity first
+    bool isOnline = false;
     try {
-      // Try to make a simple API call to check server availability
-      final api = _auth.api;
-      await api.request('GET', '/api/me', auth: true);
-      return true; // Server is available
-    } catch (e) {
-      _log('Server unavailable for sync: $e');
-      return false; // Server is unavailable
+      final connectivity = await Connectivity().checkConnectivity();
+      isOnline = connectivity.contains(ConnectivityResult.mobile) ||
+          connectivity.contains(ConnectivityResult.wifi) ||
+          connectivity.contains(ConnectivityResult.ethernet) ||
+          connectivity.contains(ConnectivityResult.vpn);
+    } catch (_) {
+      // If connectivity check fails, try API call
     }
+    
+    // If offline, show dialog if context is available
+    if (!isOnline && context != null && context.mounted) {
+      final proceed = await _showOfflineSyncDialog(context);
+      return proceed; // User chose to proceed or cancel
+    }
+    
+    // If online, try to verify server is available
+    if (isOnline) {
+      try {
+        // Try to make a simple API call to check server availability
+        final api = _auth.api;
+        await api.request('GET', '/api/me', auth: true);
+        return true; // Server is available
+      } catch (e) {
+        _log('Server unavailable for sync: $e');
+        // Server might be down even though we're online
+        // If context is available, show dialog
+        if (context != null && context.mounted) {
+          final proceed = await _showOfflineSyncDialog(context);
+          return proceed;
+        }
+        return false; // Server is unavailable and no context for dialog
+      }
+    }
+    
+    // Offline and no context - can't show dialog, so block
+    return false;
+  }
+
+  /// Show dialog when offline and sync is required
+  /// Returns true if user chooses to proceed, false if they cancel
+  Future<bool> _showOfflineSyncDialog(BuildContext context) async {
+    final cs = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          'No Internet Connection',
+          style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'You are currently offline. "Sync progress before play" is enabled, but progress cannot be synced right now.',
+              style: text.bodyMedium,
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: cs.primaryContainer,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: cs.primary.withOpacity(0.3),
+                  width: 1,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.info_outline_rounded,
+                    size: 20,
+                    color: cs.onPrimaryContainer,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Your progress will sync automatically when you come back online.',
+                      style: text.bodyMedium?.copyWith(
+                        color: cs.onPrimaryContainer,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: cs.onSurfaceVariant),
+            ),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Play Anyway'),
+          ),
+        ],
+      ),
+    );
+    
+    return result ?? false;
   }
 
   /// Clear all playback state (called on logout)
@@ -519,9 +623,9 @@ class PlaybackRepository {
     } catch (_) {}
 
     // Check if sync is required and server is available
-    final canProceed = await _checkSyncRequirement();
+    final canProceed = await _checkSyncRequirement(context: context);
     if (!canProceed) {
-      _log('Cannot play: server unavailable and sync progress is required');
+      _log('Cannot play: server unavailable and sync progress is required, or user cancelled');
       return false;
     }
 
@@ -669,7 +773,7 @@ class PlaybackRepository {
     
     // Check if sync is required and server is available (unless skipSync is true)
     if (!skipSync) {
-      final canProceed = await _checkSyncRequirement();
+      final canProceed = await _checkSyncRequirement(context: null);
       if (!canProceed) {
         _log('Cannot resume: server unavailable and sync progress is required');
         return false;
