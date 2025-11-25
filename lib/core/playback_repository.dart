@@ -472,42 +472,50 @@ class PlaybackRepository {
     // Check connectivity first
     bool isOnline = false;
     try {
-      final connectivity = await Connectivity().checkConnectivity();
+      final connectivity = await Connectivity().checkConnectivity().timeout(
+        const Duration(seconds: 2),
+        onTimeout: () => <ConnectivityResult>[], // Timeout = assume offline
+      );
       isOnline = connectivity.contains(ConnectivityResult.mobile) ||
           connectivity.contains(ConnectivityResult.wifi) ||
           connectivity.contains(ConnectivityResult.ethernet) ||
           connectivity.contains(ConnectivityResult.vpn);
     } catch (_) {
-      // If connectivity check fails, try API call
+      // Connectivity check failed (e.g., airplane mode) - assume offline
+      isOnline = false;
     }
     
-    // If offline, show dialog if context is available
-    if (!isOnline && context != null && context.mounted) {
-      final proceed = await _showOfflineSyncDialog(context);
-      return proceed; // User chose to proceed or cancel
-    }
-    
-    // If online, try to verify server is available
-    if (isOnline) {
-      try {
-        // Try to make a simple API call to check server availability
-        final api = _auth.api;
-        await api.request('GET', '/api/me', auth: true);
-        return true; // Server is available
-      } catch (e) {
-        _log('Server unavailable for sync: $e');
-        // Server might be down even though we're online
-        // If context is available, show dialog
-        if (context != null && context.mounted) {
-          final proceed = await _showOfflineSyncDialog(context);
-          return proceed;
-        }
-        return false; // Server is unavailable and no context for dialog
+    // If offline (or connectivity check failed), show dialog if context is available
+    if (!isOnline) {
+      if (context != null && context.mounted) {
+        final proceed = await _showOfflineSyncDialog(context);
+        return proceed; // User chose to proceed or cancel
       }
+      // Offline but no context - can't show dialog, so block
+      _log('Cannot play: offline and no context for dialog');
+      return false;
     }
     
-    // Offline and no context - can't show dialog, so block
-    return false;
+    // If online, try to verify server is available with short timeout
+    try {
+      final api = _auth.api;
+      await api.request('GET', '/api/me', auth: true).timeout(
+        const Duration(seconds: 3),
+        onTimeout: () {
+          throw TimeoutException('Request timeout', const Duration(seconds: 3));
+        },
+      );
+      return true; // Server is available
+    } catch (e) {
+      _log('Server unavailable for sync: $e');
+      // Server might be down even though we're online
+      // If context is available, show dialog
+      if (context != null && context.mounted) {
+        final proceed = await _showOfflineSyncDialog(context);
+        return proceed;
+      }
+      return false; // Server is unavailable and no context for dialog
+    }
   }
 
   /// Show dialog when offline and sync is required
