@@ -660,19 +660,13 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
                         final series = filteredSeries[i];
                         return _NewSeriesCard(
                           series: series,
-                          onTapBook: (b) {
-                            showModalBottomSheet(
-                              context: context,
-                              isScrollControlled: true,
-                              useSafeArea: true,
-                              backgroundColor: Colors.transparent,
-                              builder: (context) => Container(
-                                height: MediaQuery.of(context).size.height * 0.95,
-                                decoration: BoxDecoration(
-                                  color: Theme.of(context).colorScheme.surface,
-                                  borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                          onTap: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) => SeriesBooksPage(
+                                  series: series,
+                                  getBooksForSeries: _getBooksForSeries,
                                 ),
-                                child: BookDetailPage(bookId: b.id),
                               ),
                             );
                           },
@@ -758,12 +752,12 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
 class _NewSeriesCard extends StatefulWidget {
   const _NewSeriesCard({
     required this.series,
-    required this.onTapBook,
+    required this.onTap,
     required this.getBooksForSeries,
   });
   
   final Series series;
-  final void Function(Book) onTapBook;
+  final VoidCallback onTap;
   final Future<List<Book>> Function(Series) getBooksForSeries;
 
   @override
@@ -810,77 +804,100 @@ class _NewSeriesCardState extends State<_NewSeriesCard> {
         side: BorderSide(color: cs.outline.withOpacity(0.1), width: 1),
       ),
       margin: const EdgeInsets.symmetric(vertical: 6),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.collections_bookmark_rounded, size: 20, color: cs.primary),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    widget.series.name, 
-                    maxLines: 1, 
-                    overflow: TextOverflow.ellipsis, 
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)
+      child: InkWell(
+        onTap: widget.onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.collections_bookmark_rounded, size: 20, color: cs.primary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            widget.series.name, 
+                            maxLines: 1, 
+                            overflow: TextOverflow.ellipsis, 
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '(${widget.series.numBooks})',
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w400,
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(color: cs.surfaceContainerHighest, borderRadius: BorderRadius.circular(12)),
-                  child: Text(
-                    '${widget.series.numBooks}', 
-                    style: Theme.of(context).textTheme.labelMedium?.copyWith(color: cs.onSurfaceVariant)
-                  ),
-                )
-              ],
-            ),
-            const SizedBox(height: 8),
-            SizedBox(
-              height: 140,
-              child: _loading
-                  ? const Center(child: CircularProgressIndicator())
+                ],
+              ),
+              const SizedBox(height: 12),
+              // Show first 3 covers in a grid
+              _loading
+                  ? const SizedBox(
+                      height: 180,
+                      child: Center(child: CircularProgressIndicator()),
+                    )
                   : _books == null || _books!.isEmpty
-                      ? Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.book_outlined, color: cs.onSurfaceVariant),
-                              const SizedBox(height: 4),
-                              Text(
-                                'No books loaded',
-                                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
-                              ),
-                            ],
+                      ? SizedBox(
+                          height: 180,
+                          child: Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.book_outlined, color: cs.onSurfaceVariant),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'No books loaded',
+                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                                ),
+                              ],
+                            ),
                           ),
                         )
-                      : ListView.separated(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: _books!.length,
-                          separatorBuilder: (_, __) => const SizedBox(width: 8),
-                          itemBuilder: (context, i) {
-                            final b = _books![i];
-                            return SizedBox(
-                              width: 120,
-                              child: AspectRatio(
-                              aspectRatio: 2/3,
-                              child: InkWell(
-                                onTap: () => widget.onTapBook(b),
-                                borderRadius: BorderRadius.circular(12),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: _CoverThumb(url: b.coverUrl),
-                                  ),
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-            ),
-          ],
+                      : _buildCoverGrid(_books!.take(4).toList()),
+            ],
+          ),
         ),
+      ),
+    );
+  }
+  
+  Widget _buildCoverGrid(List<Book> books) {
+    if (books.isEmpty) return const SizedBox.shrink();
+    
+    // Show up to 4 covers in a single scrollable row, left-aligned
+    final displayBooks = books.take(4).toList();
+    
+    return SizedBox(
+      height: 180,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        itemCount: displayBooks.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, i) {
+          final book = displayBooks[i];
+          return SizedBox(
+            width: 120,
+            child: AspectRatio(
+              aspectRatio: 2/3,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: _CoverThumb(url: book.coverUrl),
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -1036,6 +1053,354 @@ class _CoverThumb extends StatelessWidget {
       }
     }
     return Image.network(url, fit: BoxFit.cover);
+  }
+}
+
+/// Page that displays all books in a series, similar to the books list page
+class SeriesBooksPage extends StatefulWidget {
+  const SeriesBooksPage({
+    super.key,
+    required this.series,
+    required this.getBooksForSeries,
+  });
+  
+  final Series series;
+  final Future<List<Book>> Function(Series) getBooksForSeries;
+
+  @override
+  State<SeriesBooksPage> createState() => _SeriesBooksPageState();
+}
+
+class _SeriesBooksPageState extends State<SeriesBooksPage> {
+  List<Book> _books = [];
+  bool _loading = true;
+  bool _loadingMore = false;
+  String? _error;
+  int _currentPage = 1;
+  bool _hasMore = true;
+  final ScrollController _scrollCtrl = ScrollController();
+  static const int _pageSize = 50;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollCtrl.addListener(_onScrollChanged);
+    _loadBooks();
+  }
+
+  @override
+  void dispose() {
+    _scrollCtrl.removeListener(_onScrollChanged);
+    _scrollCtrl.dispose();
+    super.dispose();
+  }
+
+  void _onScrollChanged() {
+    if (!_scrollCtrl.hasClients) return;
+    final position = _scrollCtrl.position;
+    // Trigger load more when user scrolls to 80% of the content
+    if (position.pixels >= position.maxScrollExtent * 0.8) {
+      _loadMore();
+    }
+  }
+
+  Future<void> _loadBooks() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+      _books = [];
+      _currentPage = 1;
+      _hasMore = true;
+    });
+    
+    try {
+      final allBooks = await widget.getBooksForSeries(widget.series);
+      if (mounted) {
+        // Load first page
+        final firstPage = allBooks.take(_pageSize).toList();
+        setState(() {
+          _books = firstPage;
+          _loading = false;
+          _currentPage = 1;
+          _hasMore = allBooks.length > _pageSize;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+          _loading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadMore() async {
+    if (_loadingMore || !_hasMore) return;
+    
+    setState(() => _loadingMore = true);
+    
+    try {
+      // Get all books (they're already cached from initial load)
+      final allBooks = await widget.getBooksForSeries(widget.series);
+      final nextPage = _currentPage + 1;
+      final startIndex = (nextPage - 1) * _pageSize;
+      final endIndex = startIndex + _pageSize;
+      
+      if (startIndex < allBooks.length) {
+        final page = allBooks.sublist(
+          startIndex,
+          endIndex > allBooks.length ? allBooks.length : endIndex,
+        );
+        
+        if (mounted) {
+          setState(() {
+            _books.addAll(page);
+            _currentPage = nextPage;
+            _hasMore = endIndex < allBooks.length;
+          });
+        }
+      } else {
+        if (mounted) {
+          setState(() {
+            _hasMore = false;
+          });
+        }
+      }
+    } catch (e) {
+      // Error loading more - just stop trying
+      if (mounted) {
+        setState(() {
+          _hasMore = false;
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _loadingMore = false);
+      }
+    }
+  }
+
+  void _openDetails(Book book) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        height: MediaQuery.of(context).size.height * 0.95,
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        child: BookDetailPage(bookId: book.id),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    return Scaffold(
+      backgroundColor: cs.surface,
+      body: CustomScrollView(
+        controller: _scrollCtrl,
+        physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+        slivers: [
+          SliverAppBar.large(
+            floating: false,
+            pinned: true,
+            backgroundColor: cs.surface,
+            surfaceTintColor: cs.surfaceTint,
+            elevation: 0,
+            title: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.series.name,
+                  style: textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  '${widget.series.numBooks} ${widget.series.numBooks == 1 ? 'book' : 'books'}',
+                  style: textTheme.labelMedium?.copyWith(
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back_rounded),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+          ),
+          if (_loading)
+            const SliverFillRemaining(
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (_error != null)
+            SliverFillRemaining(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.error_outline_rounded, size: 48, color: cs.error),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Failed to load books',
+                        style: textTheme.titleMedium?.copyWith(color: cs.error),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _error!,
+                        textAlign: TextAlign.center,
+                        style: textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+                      ),
+                      const SizedBox(height: 12),
+                      FilledButton.icon(
+                        onPressed: _loadBooks,
+                        icon: const Icon(Icons.refresh_rounded),
+                        label: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            )
+          else if (_books.isEmpty)
+            SliverFillRemaining(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.book_outlined, size: 64, color: cs.onSurfaceVariant),
+                      const SizedBox(height: 16),
+                      Text(
+                        'No books in this series',
+                        style: textTheme.titleLarge,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            )
+          else ...[
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+              sliver: SliverList.separated(
+                itemCount: _books.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                itemBuilder: (context, i) {
+                  final book = _books[i];
+                  return _SeriesBookCard(
+                    book: book,
+                    onTap: () => _openDetails(book),
+                  );
+                },
+              ),
+            ),
+            _buildLoadMore(),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLoadMore() {
+    if (!_hasMore) return const SliverToBoxAdapter(child: SizedBox.shrink());
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Center(
+          child: _loadingMore
+              ? const CircularProgressIndicator()
+              : const SizedBox.shrink(),
+        ),
+      ),
+    );
+  }
+}
+
+class _SeriesBookCard extends StatelessWidget {
+  const _SeriesBookCard({
+    required this.book,
+    required this.onTap,
+  });
+  
+  final Book book;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: cs.outline.withOpacity(0.1), width: 1),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              // Cover
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: SizedBox(
+                  width: 80,
+                  height: 120,
+                  child: _CoverThumb(url: book.coverUrl),
+                ),
+              ),
+              const SizedBox(width: 12),
+              // Title and author
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      book.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    if (book.author != null && book.author!.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        book.author!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: textTheme.bodyMedium?.copyWith(
+                          color: cs.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: cs.onSurfaceVariant,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
