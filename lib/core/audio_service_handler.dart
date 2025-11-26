@@ -186,7 +186,7 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
     
     // If we already have an active item, just resume
     if (_playback.nowPlaying != null) {
-      await _playback.resume();
+      await _playback.resume(context: null);
       return;
     }
     // Offline-friendly: warm load last item and start playback from cached position
@@ -445,7 +445,7 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
       if (mediaId == 'kitzi_resume_current') {
         // If we have a current item, resume; else warm-load last cached and play
         if (_playback.nowPlaying != null) {
-          await _playback.resume();
+          await _playback.resume(context: null);
         } else {
           await _playback.warmLoadLastItem(playAfterLoad: true);
         }

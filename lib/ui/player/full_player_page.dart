@@ -269,7 +269,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
             // Resume playback if it was playing before
             if (wasPlaying) {
               // Temporarily disable sync to avoid overriding our preserved position
-              await playback.resume(skipSync: true);
+              await playback.resume(skipSync: true, context: context);
               // Resumed playback at saved position
             }
 
@@ -1601,7 +1601,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                                     } else {
                                                       // Try to resume first, but if that fails (no current item), 
                                                       // warm load the last item and play it
-                                                      bool success = await playback.resume();
+                                                      bool success = await playback.resume(context: context);
                                                       if (!success) {
                                                         try {
                                                           await playback.warmLoadLastItem(playAfterLoad: true);

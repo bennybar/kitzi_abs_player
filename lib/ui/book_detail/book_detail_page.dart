@@ -213,7 +213,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
           // Resume playback if it was playing before
           if (wasPlaying) {
             // Temporarily disable sync to avoid overriding our preserved position
-            await playback.resume(skipSync: true);
+            await playback.resume(skipSync: true, context: context);
           }
 
           // Push the position to server after a delay to ensure it's preserved
@@ -1726,7 +1726,7 @@ class _PlayPrimaryButton extends StatelessWidget {
                     onPressed: () async {
                       // Try to resume first, but if that fails (no current item), 
                       // warm load the last item and play it
-                      bool success = await playback.resume();
+                      bool success = await playback.resume(context: context);
                       if (!success) {
                         try {
                           await playback.warmLoadLastItem(playAfterLoad: true);

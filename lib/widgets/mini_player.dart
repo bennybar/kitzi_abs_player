@@ -163,7 +163,7 @@ class MiniPlayer extends StatelessWidget {
                                 // Attempting to resume/play
                                 // Try to resume first, but if that fails (no current item), 
                                 // warm load the last item and play it
-                                bool success = await playback.resume();
+                                bool success = await playback.resume(context: context);
                                 // Resume result
                                 if (!success) {
                                   try {

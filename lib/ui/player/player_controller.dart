@@ -23,7 +23,7 @@ class PlayerController {
 
   /// Pause/resume helpers, if needed by callers.
   Future<void> pause() => playbackRepo.pause();
-  Future<bool> resume({BuildContext? context}) => playbackRepo.resume();
+  Future<bool> resume({BuildContext? context}) => playbackRepo.resume(context: context);
 
   /// Optional cleanup hook — the shared player lives in PlaybackRepository,
   /// so there is nothing to dispose here.

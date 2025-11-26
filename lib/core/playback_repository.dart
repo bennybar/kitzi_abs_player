@@ -743,13 +743,13 @@ class PlaybackRepository {
   }
 
   /// UPDATED: Check server position and sync before resuming
-  Future<bool> resume({bool skipSync = false}) async {
+  Future<bool> resume({bool skipSync = false, BuildContext? context}) async {
     final itemId = _progressItemId;
     final np = _nowPlaying;
     
     // Check if sync is required and server is available (unless skipSync is true)
     if (!skipSync) {
-      final canProceed = await _checkSyncRequirement(context: null);
+      final canProceed = await _checkSyncRequirement(context: context);
       if (!canProceed) {
         _log('Cannot resume: server unavailable and sync progress is required');
         return false;
