@@ -862,14 +862,17 @@ class _NewSeriesCardState extends State<_NewSeriesCard> {
                           separatorBuilder: (_, __) => const SizedBox(width: 8),
                           itemBuilder: (context, i) {
                             final b = _books![i];
-                            return AspectRatio(
-                              aspectRatio: 2/3,
-                              child: InkWell(
-                                onTap: () => widget.onTapBook(b),
-                                borderRadius: BorderRadius.circular(12),
-                                child: ClipRRect(
+                            return SizedBox(
+                              width: 120,
+                              child: AspectRatio(
+                                aspectRatio: 2/3,
+                                child: InkWell(
+                                  onTap: () => widget.onTapBook(b),
                                   borderRadius: BorderRadius.circular(12),
-                                  child: _CoverThumb(url: b.coverUrl),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: _CoverThumb(url: b.coverUrl),
+                                  ),
                                 ),
                               ),
                             );
@@ -927,14 +930,17 @@ class _SeriesCard extends StatelessWidget {
                 separatorBuilder: (_, __) => const SizedBox(width: 8),
                 itemBuilder: (context, i) {
                   final b = books[i];
-                  return AspectRatio(
-                    aspectRatio: 2/3,
-                    child: InkWell(
-                      onTap: () => onTapBook(b),
-                      borderRadius: BorderRadius.circular(12),
-                      child: ClipRRect(
+                  return SizedBox(
+                    width: 120,
+                    child: AspectRatio(
+                      aspectRatio: 2/3,
+                      child: InkWell(
+                        onTap: () => onTapBook(b),
                         borderRadius: BorderRadius.circular(12),
-                        child: _CoverThumb(url: b.coverUrl),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: _CoverThumb(url: b.coverUrl),
+                        ),
                       ),
                     ),
                   );
@@ -992,14 +998,17 @@ class _CollectionCard extends StatelessWidget {
                 separatorBuilder: (_, __) => const SizedBox(width: 8),
                 itemBuilder: (context, i) {
                   final b = books[i];
-                  return AspectRatio(
-                    aspectRatio: 2/3,
-                    child: InkWell(
-                      onTap: () => onTapBook(b),
-                      borderRadius: BorderRadius.circular(12),
-                      child: ClipRRect(
+                  return SizedBox(
+                    width: 120,
+                    child: AspectRatio(
+                      aspectRatio: 2/3,
+                      child: InkWell(
+                        onTap: () => onTapBook(b),
                         borderRadius: BorderRadius.circular(12),
-                        child: _CoverThumb(url: b.coverUrl),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: _CoverThumb(url: b.coverUrl),
+                        ),
                       ),
                     ),
                   );

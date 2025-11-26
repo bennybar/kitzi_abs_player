@@ -633,7 +633,19 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
             backgroundColor: cs.surface,
             surfaceTintColor: cs.surfaceTint,
             elevation: 0,
-            title: const Text('Library'),
+            title: _query.trim().isEmpty 
+                ? Row(
+                    children: [
+                      Icon(
+                        Icons.library_music_rounded,
+                        color: cs.primary,
+                        size: 24,
+                      ),
+                      const SizedBox(width: 8),
+                      const Text('Audiobooks'),
+                    ],
+                  )
+                : const Text('Library'),
             bottom: PreferredSize(
               preferredSize: const Size.fromHeight(28),
               child: _isOnline
@@ -875,31 +887,6 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
           else ...[
             // Resume Playing Section - hide when searching
             if (_recentBooks.isNotEmpty && _query.trim().isEmpty) _buildResumePlayingSection(),
-            // Audiobooks section title
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.library_music_rounded,
-                      color: Theme.of(context).colorScheme.primary,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Audiobooks',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        height: 0.95,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            // Add small space from the Audiobooks title to the list
-            SliverToBoxAdapter(child: SizedBox(height: 4)),
             _buildList(visible),
             _buildLoadMore(),
           ],
@@ -975,7 +962,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                     physics: const BouncingScrollPhysics(),
                     padding: const EdgeInsets.only(right: 4),
                     itemCount: visible.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 12),
+                    separatorBuilder: (_, __) => const SizedBox(width: 8),
                     itemBuilder: (context, index) {
                       final book = visible[index];
                       return SizedBox(
@@ -1000,7 +987,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
 
   Widget _buildList(List<Book> list) {
     return SliverPadding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
       sliver: SliverList.separated(
         itemCount: list.length,
         separatorBuilder: (_, __) => const SizedBox(height: 8),

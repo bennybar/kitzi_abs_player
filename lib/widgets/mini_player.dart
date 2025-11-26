@@ -93,11 +93,12 @@ class MiniPlayer extends StatelessWidget {
                       ),
                       const SizedBox(width: 12),
 
-                      // Title/author (YouTube Music style - no progress bar in mini)
+                      // Title/author with progress (YouTube Music style)
                       Expanded(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
                               np.title,
@@ -108,40 +109,92 @@ class MiniPlayer extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(height: 2),
-                            if (np.author != null && np.author!.isNotEmpty)
-                              Text(
-                                np.author!,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color: cs.onSurfaceVariant,
+                            Row(
+                              children: [
+                                if (np.author != null && np.author!.isNotEmpty)
+                                  Expanded(
+                                    child: Text(
+                                      np.author!,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                        color: cs.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ),
+                                StreamBuilder<Duration>(
+                                  stream: playback.positionStream,
+                                  initialData: playback.player.position,
+                                  builder: (_, posSnap) {
+                                    // Use total book progress instead of current track
+                                    final globalTotal = playback.totalBookDuration;
+                                    final globalPos = playback.globalBookPosition;
+                                    
+                                    // Prefer global book progress if available, otherwise use current track
+                                    final position = globalPos ?? (posSnap.data ?? Duration.zero);
+                                    final duration = globalTotal;
+                                    
+                                    if (duration == null || duration == Duration.zero) {
+                                      // Fallback to current track duration if global not available
+                                      final trackDuration = playback.player.duration;
+                                      if (trackDuration == null || trackDuration == Duration.zero) {
+                                        return const SizedBox.shrink();
+                                      }
+                                      final posStr = _formatTime(posSnap.data ?? Duration.zero);
+                                      final durStr = _formatTime(trackDuration);
+                                      return Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          if (np.author != null && np.author!.isNotEmpty)
+                                            const SizedBox(width: 8),
+                                          Text(
+                                            '$posStr / $durStr',
+                                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                              color: cs.onSurfaceVariant,
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                          ),
+                                        ],
+                                      );
+                                    }
+                                    
+                                    final posStr = _formatTime(position);
+                                    final durStr = _formatTime(duration);
+                                    
+                                    return Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        if (np.author != null && np.author!.isNotEmpty)
+                                          const SizedBox(width: 8),
+                                        Text(
+                                          '$posStr / $durStr',
+                                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                            color: cs.onSurfaceVariant,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ],
+                                    );
+                                  },
                                 ),
-                              ),
+                              ],
+                            ),
                           ],
                         ),
                       ),
                       const SizedBox(width: 12),
 
-                      // Waveform indicator (only visible when playing)
-                      StreamBuilder<bool>(
-                        stream: playback.playingStream,
-                        initialData: playback.player.playing,
-                        builder: (_, playSnap) {
-                          final playing = playSnap.data ?? false;
-                          return AnimatedSize(
-                            duration: const Duration(milliseconds: 300),
-                            curve: Curves.easeInOut,
-                            child: playing
-                                ? Padding(
-                                    padding: const EdgeInsets.only(right: 8),
-                                    child: MiniAudioWaveform(
-                                      isPlaying: playing,
-                                      color: cs.primary,
-                                    ),
-                                  )
-                                : const SizedBox.shrink(),
-                          );
+                      // 10 seconds rewind button
+                      IconButton(
+                        onPressed: () async {
+                          await playback.nudgeSeconds(-10);
                         },
+                        icon: const Icon(Icons.replay_10),
+                        tooltip: 'Rewind 10 seconds',
+                        style: IconButton.styleFrom(
+                          backgroundColor: Colors.transparent,
+                          foregroundColor: cs.onSurface,
+                        ),
                       ),
 
                       // Play/Pause button only (YouTube Music style)
@@ -211,6 +264,18 @@ class MiniPlayer extends StatelessWidget {
           ),
         ),
       );
+  }
+}
+
+String _formatTime(Duration duration) {
+  final hours = duration.inHours;
+  final minutes = duration.inMinutes.remainder(60);
+  final seconds = duration.inSeconds.remainder(60);
+  
+  if (hours > 0) {
+    return '${hours}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  } else {
+    return '${minutes}:${seconds.toString().padLeft(2, '0')}';
   }
 }
 

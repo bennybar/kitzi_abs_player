@@ -60,32 +60,23 @@ class _DownloadsPageState extends State<DownloadsPage> {
               builder: (context, tilesSnap) {
                 final tiles = tilesSnap.data ?? const <Widget>[];
                 final cs = Theme.of(context).colorScheme;
-                return SafeArea(
-                  top: true,
-                  bottom: false,
-                  left: false,
-                  right: false,
-                  child: Column(
-                  children: [
-                    // Page header
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                      child: Row(
-                        children: [
-                          Icon(Icons.download_rounded, color: cs.primary),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Downloads',
-                            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                ),
-                          ),
-                          const Spacer(),
-                          if (tiles.isEmpty)
-                            Text('No downloads', style: Theme.of(context).textTheme.labelLarge?.copyWith(color: cs.onSurfaceVariant)),
-                        ],
-                      ),
+                return Scaffold(
+                  appBar: AppBar(
+                    title: Row(
+                      children: [
+                        Icon(Icons.download_rounded, color: cs.primary),
+                        const SizedBox(width: 8),
+                        const Text('Downloads'),
+                      ],
                     ),
+                  ),
+                  body: SafeArea(
+                    top: true,
+                    bottom: false,
+                    left: false,
+                    right: false,
+                    child: Column(
+                    children: [
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
                       child: Align(
@@ -107,6 +98,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
                             ),
                     ),
                   ],
+                  ),
                   ),
                 );
               },
@@ -311,24 +303,27 @@ class _BookDownloadTileState extends State<_BookDownloadTile> {
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SizedBox(height: 6),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: LinearProgressIndicator(
-              value: isComplete ? 1.0 : overallPct,
-              minHeight: 6,
+          if (!isComplete) ...[
+            const SizedBox(height: 6),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: LinearProgressIndicator(
+                value: overallPct,
+                minHeight: 6,
+              ),
             ),
-          ),
-          const SizedBox(height: 4),
-          if (!isComplete && total > 0)
-            Text(
-              'Overall ${(overallPct * 100).toStringAsFixed(0)}% • File ${fileIndex.clamp(1, total)} of $total',
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    color: cs.onSurfaceVariant,
-                  ),
-            )
-          else
+            const SizedBox(height: 4),
+            if (total > 0)
+              Text(
+                'Overall ${(overallPct * 100).toStringAsFixed(0)}% • File ${fileIndex.clamp(1, total)} of $total',
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: cs.onSurfaceVariant,
+                    ),
+              ),
+          ] else ...[
+            const SizedBox(height: 4),
             Text(_metaLine(), style: Theme.of(context).textTheme.labelLarge?.copyWith(color: cs.onSurfaceVariant)),
+          ],
         ],
       ),
       // No trailing actions; swipe-to-delete only
