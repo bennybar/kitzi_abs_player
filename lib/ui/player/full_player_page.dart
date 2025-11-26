@@ -1775,6 +1775,20 @@ class _ChaptersDownloadButtonState extends State<_ChaptersDownloadButton> {
       _sub = _downloads!
           .watchItemProgress(widget.libraryItemId)
           .listen((p) => setState(() => _snap = p));
+      
+      // Force immediate refresh of download status when button is initialized
+      _refreshDownloadStatus();
+    }
+  }
+  
+  /// Force refresh download status
+  Future<void> _refreshDownloadStatus() async {
+    if (_downloads == null) return;
+    try {
+      // Force a refresh which will update the stream
+      await _downloads!.refreshItemStatus(widget.libraryItemId);
+    } catch (_) {
+      // Best effort - if it fails, the stream will update eventually
     }
   }
 
