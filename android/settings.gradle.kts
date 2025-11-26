@@ -33,7 +33,7 @@ dependencyResolutionManagement {
 plugins {
     id("dev.flutter.flutter-plugin-loader") version "1.0.0"
     // AGP (keep as you had it)
-    id("com.android.application") version "8.7.0" apply false
+    id("com.android.application") version "8.9.1" apply false
     // Kotlin bumped to satisfy modern plugins
     id("org.jetbrains.kotlin.android") version "2.1.0" apply false
 }

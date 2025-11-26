@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/books_repository.dart';
 import '../../core/auth_repository.dart';
@@ -676,6 +677,17 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                 tooltip: 'Search',
                 onPressed: _toggleSearch,
                 icon: Icon(_searchVisible ? Icons.search_off_rounded : Icons.search_rounded),
+              ),
+              const SizedBox(width: 8),
+              IconButton.filledTonal(
+                tooltip: 'Support',
+                onPressed: () async {
+                  final url = Uri.parse('https://github.com/bennybar/kitzi_abs_player/issues');
+                  if (await canLaunchUrl(url)) {
+                    await launchUrl(url, mode: LaunchMode.externalApplication);
+                  }
+                },
+                icon: const Icon(Icons.help_outline_rounded),
               ),
               const SizedBox(width: 8),
               IconButton.filledTonal(
