@@ -31,6 +31,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool? _authorViewEnabled;
   bool? _bluetoothAutoPlay;
   bool? _waveformAnimationEnabled;
+  bool? _letterScrollEnabled;
   bool? _smartRewindEnabled;
   String? _activeLibraryId;
   List<Map<String, String>> _libraries = const [];
@@ -59,6 +60,7 @@ class _SettingsPageState extends State<SettingsPage> {
         
         // Load waveform animation setting (default already set above)
         _waveformAnimationEnabled = prefs.getBool('ui_waveform_animation_enabled') ?? true;
+        _letterScrollEnabled = prefs.getBool('ui_letter_scroll_enabled') ?? false;
         
         _activeLibraryId = prefs.getString('books_library_id');
       });
@@ -403,6 +405,15 @@ class _SettingsPageState extends State<SettingsPage> {
             onChanged: (v) async {
               await UiPrefs.setWaveformAnimationEnabled(v, pinToSettingsOnChange: true);
               if (mounted) setState(() { _waveformAnimationEnabled = v; });
+            },
+          ),
+          SwitchListTile(
+            title: const Text('Add Letter Scrolling'),
+            subtitle: const Text('Show an alphabetical scrollbar in long lists'),
+            value: _letterScrollEnabled ?? false,
+            onChanged: (v) async {
+              await UiPrefs.setLetterScrollEnabled(v, pinToSettingsOnChange: true);
+              if (mounted) setState(() { _letterScrollEnabled = v; });
             },
           ),
           // Live-bind to ThemeService.mode

@@ -8,10 +8,12 @@ class UiPrefs {
   static final ValueNotifier<bool> authorViewEnabled = ValueNotifier<bool>(true);
   static final ValueNotifier<bool> pinSettings = ValueNotifier<bool>(false);
   static final ValueNotifier<bool> waveformAnimationEnabled = ValueNotifier<bool>(false); // Default to false, will be set based on device size
+  static final ValueNotifier<bool> letterScrollEnabled = ValueNotifier<bool>(false);
 
   static const String _kSeries = 'ui_show_series_tab';
   static const String _kAuthorView = 'ui_author_view_enabled';
   static const String _kWaveformAnimation = 'ui_waveform_animation_enabled';
+  static const String _kLetterScroll = 'ui_letter_scroll_enabled';
 
   /// Calculate screen diagonal size in inches
   static double getScreenDiagonalInches(BuildContext context) {
@@ -64,6 +66,7 @@ class UiPrefs {
         await prefs.setBool(_kWaveformAnimation, defaultValue);
         // Waveform animation default initialized
       }
+      letterScrollEnabled.value = prefs.getBool(_kLetterScroll) ?? false;
     } catch (_) {}
   }
 
@@ -92,6 +95,15 @@ class UiPrefs {
       await prefs.setBool(_kWaveformAnimation, value);
     } catch (_) {}
     waveformAnimationEnabled.value = value;
+    if (pinToSettingsOnChange) pinSettings.value = true;
+  }
+
+  static Future<void> setLetterScrollEnabled(bool value, {bool pinToSettingsOnChange = false}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_kLetterScroll, value);
+    } catch (_) {}
+    letterScrollEnabled.value = value;
     if (pinToSettingsOnChange) pinSettings.value = true;
   }
 }

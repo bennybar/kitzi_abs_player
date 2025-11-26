@@ -5,8 +5,11 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import '../../core/books_repository.dart';
+import '../../core/ui_prefs.dart';
 import '../../models/book.dart';
 import '../../models/series.dart';
+import '../../utils/alphabet_utils.dart';
+import '../../widgets/letter_scrollbar.dart';
 import '../book_detail/book_detail_page.dart';
 import '../../main.dart';
 
@@ -47,6 +50,8 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
   StreamSubscription<List<ConnectivityResult>>? _connSub;
   bool _isOnline = true;
   StreamSubscription<Map<String, bool>>? _completionSub;
+  Map<String, GlobalKey> _seriesLetterKeys = <String, GlobalKey>{};
+  List<String> _seriesLetterOrder = const <String>[];
   
   static const String _viewTypeKey = 'series_view_type_pref';
   static const String _searchKey = 'series_search_pref';
@@ -236,6 +241,27 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
       final description = (series.description ?? '').toLowerCase();
       return name.contains(query) || description.contains(query);
     }).toList();
+  }
+
+  void _prepareSeriesLetterAnchors(List<Series> seriesList) {
+    final merged = <String, GlobalKey>{};
+    for (final series in seriesList) {
+      final bucket = alphabetBucketFor(series.name);
+      merged[bucket] = _seriesLetterKeys[bucket] ?? GlobalKey();
+    }
+    _seriesLetterKeys = merged;
+    _seriesLetterOrder = sortAlphabetBuckets(merged.keys);
+  }
+
+  void _scrollSeriesToLetter(String letter) {
+    final context = _seriesLetterKeys[letter]?.currentContext;
+    if (context == null) return;
+    Scrollable.ensureVisible(
+      context,
+      duration: const Duration(milliseconds: 250),
+      alignment: 0.1,
+      curve: Curves.easeOutCubic,
+    );
   }
 
   Map<String, List<Book>> _filterCollectionsData(Map<String, List<Book>> data) {
@@ -475,18 +501,27 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
     final filteredSeries = _viewType == SeriesViewType.series ? _filterSeriesData(_series) : <Series>[];
     final filteredCollections = _viewType == SeriesViewType.collections ? _filterCollectionsData(_collections) : <String, List<Book>>{};
     
+    if (_viewType == SeriesViewType.series) {
+      _prepareSeriesLetterAnchors(filteredSeries);
+    } else {
+      _seriesLetterKeys = <String, GlobalKey>{};
+      _seriesLetterOrder = const <String>[];
+    }
+    
     // Calculate total count for display
     final totalCount = _viewType == SeriesViewType.series ? _series.length : _collections.length;
     final filteredCount = _viewType == SeriesViewType.series ? filteredSeries.length : filteredCollections.length;
 
-    return RefreshIndicator(
-      onRefresh: () => _refresh(),
-      edgeOffset: 100,
-      color: cs.primary,
-      backgroundColor: cs.surface,
-      child: CustomScrollView(
-        physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
-        slivers: [
+    return Stack(
+      children: [
+        RefreshIndicator(
+          onRefresh: () => _refresh(),
+          edgeOffset: 100,
+          color: cs.primary,
+          backgroundColor: cs.surface,
+          child: CustomScrollView(
+            physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+            slivers: [
           SliverAppBar.medium(
             title: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -670,11 +705,13 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
               sliver: _viewType == SeriesViewType.series
-                  ? SliverList.builder(
+                  ? () {
+                      final assignedBuckets = <String>{};
+                      return SliverList.builder(
                       itemCount: filteredSeries.length,
                       itemBuilder: (context, i) {
                         final series = filteredSeries[i];
-                        return _NewSeriesCard(
+                        Widget card = _NewSeriesCard(
                           series: series,
                           onTap: () {
                             Navigator.of(context).push(
@@ -688,8 +725,18 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
                           },
                           getBooksForSeries: _getBooksForSeries,
                         );
+                        final bucket = alphabetBucketFor(series.name);
+                        final anchor = _seriesLetterKeys[bucket];
+                        if (anchor != null && assignedBuckets.add(bucket)) {
+                            card = KeyedSubtree(
+                              key: anchor,
+                              child: card,
+                            );
+                        }
+                        return card;
                       },
-                    )
+                    );
+                    }()
                   : SliverList.builder(
                       itemCount: filteredCollections.length,
                       itemBuilder: (context, i) {
@@ -719,11 +766,39 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
                       },
                     ),
             ),
-        ],
-      ),
+            ],
+          ),
+        ),
+        _buildSeriesLetterScrollbar(context),
+      ],
     );
   }
   
+  Widget _buildSeriesLetterScrollbar(BuildContext context) {
+    if (_viewType != SeriesViewType.series) return const SizedBox.shrink();
+    final media = MediaQuery.of(context);
+    return Positioned(
+      right: 4,
+      top: media.padding.top + 96,
+      bottom: 32,
+      child: ValueListenableBuilder<bool>(
+        valueListenable: UiPrefs.letterScrollEnabled,
+        builder: (_, enabled, __) {
+          final visible = enabled && _seriesLetterOrder.length > 1 && !_loading;
+          if (!visible) return const SizedBox.shrink();
+          return SizedBox(
+            width: 40,
+            child: LetterScrollbar(
+              letters: _seriesLetterOrder,
+              visible: visible,
+              onLetterSelected: _scrollSeriesToLetter,
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   Widget _buildToggleButton(BuildContext context, String label, SeriesViewType type, IconData icon) {
     final cs = Theme.of(context).colorScheme;
     final isSelected = _viewType == type;

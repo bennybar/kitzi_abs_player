@@ -1,7 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../core/books_repository.dart';
+import '../../core/ui_prefs.dart';
+import '../../utils/alphabet_utils.dart';
 import '../../widgets/author_card.dart';
+import '../../widgets/letter_scrollbar.dart';
 
 class AuthorsPage extends StatefulWidget {
   const AuthorsPage({super.key});
@@ -18,6 +21,9 @@ class _AuthorsPageState extends State<AuthorsPage> {
   String? _error;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
+  final ScrollController _scrollCtrl = ScrollController();
+  Map<String, GlobalKey> _authorLetterKeys = <String, GlobalKey>{};
+  List<String> _authorLetterOrder = const <String>[];
 
   @override
   void initState() {
@@ -30,6 +36,7 @@ class _AuthorsPageState extends State<AuthorsPage> {
   @override
   void dispose() {
     _searchController.dispose();
+    _scrollCtrl.dispose();
     super.dispose();
   }
 
@@ -48,6 +55,28 @@ class _AuthorsPageState extends State<AuthorsPage> {
         return author.name.toLowerCase().contains(_searchQuery);
       }).toList();
     }
+    _prepareAuthorLetterAnchors(_filteredAuthors);
+  }
+
+  void _prepareAuthorLetterAnchors(List<AuthorInfo> list) {
+    final merged = <String, GlobalKey>{};
+    for (final author in list) {
+      final bucket = alphabetBucketFor(author.name);
+      merged[bucket] = _authorLetterKeys[bucket] ?? GlobalKey();
+    }
+    _authorLetterKeys = merged;
+    _authorLetterOrder = sortAlphabetBuckets(merged.keys);
+  }
+
+  void _scrollAuthorsToLetter(String letter) {
+    final context = _authorLetterKeys[letter]?.currentContext;
+    if (context == null) return;
+    Scrollable.ensureVisible(
+      context,
+      duration: const Duration(milliseconds: 250),
+      alignment: 0.1,
+      curve: Curves.easeOutCubic,
+    );
   }
 
   Future<void> _loadAuthors() async {
@@ -60,6 +89,7 @@ class _AuthorsPageState extends State<AuthorsPage> {
           _filteredAuthors = List.from(authors);
           _loading = false;
         });
+        _prepareAuthorLetterAnchors(_filteredAuthors);
       }
     } catch (e) {
       if (mounted) {
@@ -126,94 +156,12 @@ class _AuthorsPageState extends State<AuthorsPage> {
           ),
         ),
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.error_outline_rounded,
-                          size: 64,
-                          color: cs.error,
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Failed to load authors',
-                          style: theme.textTheme.titleLarge?.copyWith(
-                            color: cs.onSurface,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          _error!,
-                          textAlign: TextAlign.center,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: cs.onSurfaceVariant,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        FilledButton.icon(
-                          onPressed: _refresh,
-                          icon: const Icon(Icons.refresh_rounded),
-                          label: const Text('Try Again'),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-              : _filteredAuthors.isEmpty
-                  ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(20),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.person_outline_rounded,
-                              size: 64,
-                              color: cs.onSurfaceVariant.withOpacity(0.5),
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              _searchQuery.isNotEmpty
-                                  ? 'No authors found matching "$_searchQuery"'
-                                  : 'No authors found',
-                              style: theme.textTheme.titleLarge?.copyWith(
-                                color: cs.onSurface,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              _searchQuery.isNotEmpty
-                                  ? 'Try adjusting your search terms'
-                                  : 'Authors will appear here once you have books in your library',
-                              textAlign: TextAlign.center,
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: cs.onSurfaceVariant,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    )
-                  : RefreshIndicator(
-                      onRefresh: _refresh,
-                      child: ListView.builder(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: _filteredAuthors.length,
-                        itemBuilder: (context, index) {
-                          final author = _filteredAuthors[index];
-                          return _AuthorTile(
-                            author: author,
-                            onTap: () => _showAuthorBooks(context, author),
-                          );
-                        },
-                      ),
-                    ),
+      body: Stack(
+        children: [
+          _buildAuthorsBody(theme, cs),
+          _buildAuthorLetterScrollbar(context),
+        ],
+      ),
     );
   }
 
@@ -222,6 +170,138 @@ class _AuthorsPageState extends State<AuthorsPage> {
       context: context,
       authorName: author.name,
       books: author.books,
+    );
+  }
+
+  Widget _buildAuthorsBody(ThemeData theme, ColorScheme cs) {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.error_outline_rounded,
+                size: 64,
+                color: cs.error,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Failed to load authors',
+                style: theme.textTheme.titleLarge?.copyWith(
+                  color: cs.onSurface,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _error!,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: cs.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                onPressed: _refresh,
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('Try Again'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    if (_filteredAuthors.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.person_outline_rounded,
+                size: 64,
+                color: cs.onSurfaceVariant.withOpacity(0.5),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                _searchQuery.isNotEmpty
+                    ? 'No authors found matching "$_searchQuery"'
+                    : 'No authors found',
+                style: theme.textTheme.titleLarge?.copyWith(
+                  color: cs.onSurface,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _searchQuery.isNotEmpty
+                    ? 'Try adjusting your search terms'
+                    : 'Authors will appear here once you have books in your library',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: cs.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    final assigned = <String>{};
+    return RefreshIndicator(
+      onRefresh: _refresh,
+      child: ListView.builder(
+        controller: _scrollCtrl,
+        padding: const EdgeInsets.all(16),
+        itemCount: _filteredAuthors.length,
+        itemBuilder: (context, index) {
+          final author = _filteredAuthors[index];
+          final bucket = alphabetBucketFor(author.name);
+          Widget tile = _AuthorTile(
+            author: author,
+            onTap: () => _showAuthorBooks(context, author),
+          );
+          final anchor = _authorLetterKeys[bucket];
+          if (anchor != null && assigned.add(bucket)) {
+            tile = KeyedSubtree(
+              key: anchor,
+              child: tile,
+            );
+          }
+          return tile;
+        },
+      ),
+    );
+  }
+
+  Widget _buildAuthorLetterScrollbar(BuildContext context) {
+    if (_loading || _error != null || _filteredAuthors.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final media = MediaQuery.of(context);
+    return Positioned(
+      right: 4,
+      top: media.padding.top + 96,
+      bottom: 32,
+      child: ValueListenableBuilder<bool>(
+        valueListenable: UiPrefs.letterScrollEnabled,
+        builder: (_, enabled, __) {
+          final visible = enabled && _authorLetterOrder.length > 1;
+          if (!visible) return const SizedBox.shrink();
+          return SizedBox(
+            width: 40,
+            child: LetterScrollbar(
+              letters: _authorLetterOrder,
+              visible: visible,
+              onLetterSelected: _scrollAuthorsToLetter,
+            ),
+          );
+        },
+      ),
     );
   }
 }

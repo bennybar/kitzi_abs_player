@@ -9,8 +9,11 @@ import '../../core/books_repository.dart';
 import '../../core/auth_repository.dart';
 import '../../core/play_history_service.dart';
 import '../../core/image_cache_manager.dart';
+import '../../core/ui_prefs.dart';
 import '../../models/book.dart';
 import '../../widgets/skeleton_widgets.dart';
+import '../../widgets/letter_scrollbar.dart';
+import '../../utils/alphabet_utils.dart';
 import '../book_detail/book_detail_page.dart';
 import '../player/full_player_page.dart';
 import '../../main.dart';
@@ -46,6 +49,8 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
   StreamSubscription<BookDbChange>? _dbChangeSub;
   Timer? _dbReloadDebounce;
   Future<void>? _activeSyncFuture;
+  Map<String, GlobalKey> _bookLetterKeys = <String, GlobalKey>{};
+  List<String> _bookLetterOrder = const <String>[];
   
   // Memory management
   final List<StreamSubscription> _subscriptions = [];
@@ -610,23 +615,48 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
     }
   }
 
+  void _prepareBookLetterAnchors(List<Book> books) {
+    final merged = <String, GlobalKey>{};
+    for (final book in books) {
+      final bucket = alphabetBucketFor(book.title);
+      merged[bucket] = _bookLetterKeys[bucket] ?? GlobalKey();
+    }
+    _bookLetterKeys = merged;
+    _bookLetterOrder = sortAlphabetBuckets(merged.keys);
+  }
+
+  void _scrollToBookLetter(String letter) {
+    final key = _bookLetterKeys[letter];
+    final context = key?.currentContext;
+    if (context == null) return;
+    Scrollable.ensureVisible(
+      context,
+      duration: const Duration(milliseconds: 250),
+      alignment: 0.1,
+      curve: Curves.easeOutCubic,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final visible = _visibleBooks();
+    _prepareBookLetterAnchors(visible);
 
     return Scaffold(
       backgroundColor: cs.surface,
-      body: RefreshIndicator(
-        onRefresh: () => _refresh(),
-        edgeOffset: 120,
-        color: cs.primary,
-        backgroundColor: cs.surface,
-        child: CustomScrollView(
-          controller: _scrollCtrl,
-          physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
-          cacheExtent: 800,
-          slivers: [
+      body: Stack(
+        children: [
+          RefreshIndicator(
+            onRefresh: () => _refresh(),
+            edgeOffset: 120,
+            color: cs.primary,
+            backgroundColor: cs.surface,
+            child: CustomScrollView(
+              controller: _scrollCtrl,
+              physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+              cacheExtent: 800,
+              slivers: [
           // Material 3 large app bar style
           SliverAppBar.medium(
             floating: false,
@@ -897,42 +927,44 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
               ),
             )
           else ...[
-            // Resume Playing Section - hide when searching
             if (_recentBooks.isNotEmpty && _query.trim().isEmpty) _buildResumePlayingSection(),
-            // Audiobooks section title
             if (_query.trim().isEmpty)
-            SliverToBoxAdapter(
-              child: Padding(
+              SliverToBoxAdapter(
+                child: Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 11),
-                child: Row(
-                  children: [
-                    Icon(
+                  child: Row(
+                    children: [
+                      Icon(
                         Icons.library_books_rounded,
-                      color: Theme.of(context).colorScheme.primary,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Audiobooks',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w600,
-                          height: 0.8,
+                        color: Theme.of(context).colorScheme.primary,
+                        size: 20,
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 8),
+                      Text(
+                        'Audiobooks',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w600,
+                              height: 0.8,
+                            ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
             _buildList(visible),
             _buildLoadMore(),
-          ],
+              ],
+              ],
+            ),
+          ),
+          _buildLetterScrollbarOverlay(context),
         ],
-        ),
       ),
     );
   }
 
   Widget _buildGrid(List<Book> list) {
+    final assigned = <String>{};
     return SliverPadding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
       sliver: SliverGrid(
@@ -945,11 +977,20 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
         delegate: SliverChildBuilderDelegate(
           (context, i) {
             final b = list[i];
-          return _BookCard(
-            key: ValueKey(b.id),
-            book: b,
-            onTap: b.isAudioBook ? () => _openDetails(b) : null,
-          );
+            Widget card = _BookCard(
+              key: ValueKey(b.id),
+              book: b,
+              onTap: b.isAudioBook ? () => _openDetails(b) : null,
+            );
+            final bucket = alphabetBucketFor(b.title);
+            final anchor = _bookLetterKeys[bucket];
+            if (anchor != null && assigned.add(bucket)) {
+              card = KeyedSubtree(
+                key: anchor,
+                child: card,
+              );
+            }
+            return card;
           },
           childCount: list.length,
         ),
@@ -1023,6 +1064,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
   }
 
   Widget _buildList(List<Book> list) {
+    final assigned = <String>{};
     return SliverPadding(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
       sliver: SliverList.separated(
@@ -1040,7 +1082,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
             });
           }
           
-          return Dismissible(
+          Widget tile = Dismissible(
             key: ValueKey(b.id),
             direction: DismissDirection.startToEnd, // Only allow swipe right (download)
             dismissThresholds: const {
@@ -1128,6 +1170,15 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
               checkIfCompleted: _checkIfCompleted,
             ),
           );
+          final bucket = alphabetBucketFor(b.title);
+          final anchor = _bookLetterKeys[bucket];
+          if (anchor != null && assigned.add(bucket)) {
+            tile = KeyedSubtree(
+              key: anchor,
+              child: tile,
+            );
+          }
+          return tile;
         },
       ),
     );
@@ -1205,6 +1256,30 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
     } else {
       unawaited(future);
     }
+  }
+
+  Widget _buildLetterScrollbarOverlay(BuildContext context) {
+    final media = MediaQuery.of(context);
+    return Positioned(
+      right: 4,
+      top: media.padding.top + 96,
+      bottom: 32,
+      child: ValueListenableBuilder<bool>(
+        valueListenable: UiPrefs.letterScrollEnabled,
+        builder: (_, enabled, __) {
+          final visible = enabled && _bookLetterOrder.length > 1 && !_loading;
+          if (!visible) return const SizedBox.shrink();
+          return SizedBox(
+            width: 40,
+            child: LetterScrollbar(
+              letters: _bookLetterOrder,
+              visible: visible,
+              onLetterSelected: _scrollToBookLetter,
+            ),
+          );
+        },
+      ),
+    );
   }
 
   Future<void> _restartSearchPagination() async {
