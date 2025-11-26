@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
 import 'dart:async';
+import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import '../../core/books_repository.dart';
 import '../../models/book.dart';
 import '../../models/series.dart';
 import '../book_detail/book_detail_page.dart';
+import '../../main.dart';
 
 enum SeriesViewType { series, collections }
 
@@ -44,6 +46,7 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
   // Connectivity tracking
   StreamSubscription<List<ConnectivityResult>>? _connSub;
   bool _isOnline = true;
+  StreamSubscription<Map<String, bool>>? _completionSub;
   
   static const String _viewTypeKey = 'series_view_type_pref';
   static const String _searchKey = 'series_search_pref';
@@ -55,6 +58,18 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this); // Observe app lifecycle
     _startConnectivityWatch();
     _loadViewTypePref().then((_) => _loadSearchPref().then((_) => _refresh(initial: true)));
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _completionSub ??= ServicesScope.of(context).services.playback.completionStatusStream.listen((event) {
+      if (event.isEmpty) return;
+      _SeriesBookStatusResolver.invalidate(event.keys);
+      if (mounted) {
+        setState(() {});
+      }
+    });
   }
 
   @override
@@ -77,6 +92,7 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this); // Remove lifecycle observer
     _searchDebounce?.cancel();
     _connSub?.cancel();
+    _completionSub?.cancel();
     _searchCtrl.dispose();
     _searchFocusNode.dispose();
     super.dispose();
@@ -893,7 +909,20 @@ class _NewSeriesCardState extends State<_NewSeriesCard> {
               aspectRatio: 2/3,
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12),
-                child: _CoverThumb(url: book.coverUrl),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    _CoverThumb(url: book.coverUrl),
+                    Positioned(
+                      top: 8,
+                      left: 8,
+                      child: _BookStatusIndicator(
+                        book: book,
+                        compact: true,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           );
@@ -956,8 +985,18 @@ class _SeriesCard extends StatelessWidget {
                       borderRadius: BorderRadius.circular(12),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(12),
-                        child: _CoverThumb(url: b.coverUrl),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            _CoverThumb(url: b.coverUrl),
+                            Positioned(
+                              top: 8,
+                              left: 8,
+                              child: _BookStatusIndicator(book: b, compact: true),
+                            ),
+                          ],
                         ),
+                      ),
                       ),
                     ),
                   );
@@ -1024,8 +1063,18 @@ class _CollectionCard extends StatelessWidget {
                       borderRadius: BorderRadius.circular(12),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(12),
-                        child: _CoverThumb(url: b.coverUrl),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            _CoverThumb(url: b.coverUrl),
+                            Positioned(
+                              top: 8,
+                              left: 8,
+                              child: _BookStatusIndicator(book: b, compact: true),
+                            ),
+                          ],
                         ),
+                      ),
                       ),
                     ),
                   );
@@ -1080,6 +1129,7 @@ class _SeriesBooksPageState extends State<SeriesBooksPage> {
   bool _hasMore = true;
   final ScrollController _scrollCtrl = ScrollController();
   static const int _pageSize = 50;
+  StreamSubscription<Map<String, bool>>? _completionSub;
 
   @override
   void initState() {
@@ -1089,9 +1139,22 @@ class _SeriesBooksPageState extends State<SeriesBooksPage> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _completionSub ??= ServicesScope.of(context).services.playback.completionStatusStream.listen((event) {
+      if (event.isEmpty) return;
+      _SeriesBookStatusResolver.invalidate(event.keys);
+      if (mounted) {
+        setState(() {});
+      }
+    });
+  }
+
+  @override
   void dispose() {
     _scrollCtrl.removeListener(_onScrollChanged);
     _scrollCtrl.dispose();
+    _completionSub?.cancel();
     super.dispose();
   }
 
@@ -1389,6 +1452,8 @@ class _SeriesBookCard extends StatelessWidget {
                         ),
                       ),
                     ],
+                    const SizedBox(height: 8),
+                    _BookStatusIndicator(book: book),
                   ],
                 ),
               ),
@@ -1402,6 +1467,306 @@ class _SeriesBookCard extends StatelessWidget {
       ),
     );
   }
+}
+
+enum _SeriesBookStatus { notStarted, inProgress, completed }
+
+class _BookStatusIndicator extends StatelessWidget {
+  const _BookStatusIndicator({
+    required this.book,
+    this.compact = false,
+  });
+
+  final Book book;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final services = ServicesScope.of(context).services;
+    return FutureBuilder<_SeriesBookStatus>(
+      future: _SeriesBookStatusResolver.resolve(services, book),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return compact ? const SizedBox.shrink() : const SizedBox.shrink();
+        }
+        return _BookStatusBadge(
+          status: snapshot.data!,
+          compact: compact,
+        );
+      },
+    );
+  }
+}
+
+class _BookStatusBadge extends StatelessWidget {
+  const _BookStatusBadge({
+    required this.status,
+    required this.compact,
+  });
+
+  final _SeriesBookStatus status;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    late final Color bg;
+    late final Color fg;
+    late final IconData icon;
+    late final String label;
+
+    switch (status) {
+      case _SeriesBookStatus.completed:
+        bg = cs.primaryContainer.withOpacity(0.95);
+        fg = cs.onPrimaryContainer;
+        icon = Icons.check_rounded;
+        label = 'Completed';
+        break;
+      case _SeriesBookStatus.inProgress:
+        bg = cs.tertiaryContainer.withOpacity(0.95);
+        fg = cs.onTertiaryContainer;
+        icon = Icons.play_arrow_rounded;
+        label = 'In progress';
+        break;
+      case _SeriesBookStatus.notStarted:
+        bg = cs.surfaceContainerHighest.withOpacity(0.9);
+        fg = cs.onSurface;
+        icon = Icons.circle_outlined;
+        label = 'Not started';
+        break;
+    }
+
+    if (compact) {
+      return Tooltip(
+        message: label,
+        child: Container(
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(999),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.18),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Icon(icon, size: 14, color: fg),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(999),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: fg),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: fg,
+                  fontWeight: FontWeight.w600,
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SeriesBookStatusResolver {
+  static final Map<String, _CachedBookStatus> _cache = <String, _CachedBookStatus>{};
+  static final Map<String, Future<_SeriesBookStatus>> _inFlight = <String, Future<_SeriesBookStatus>>{};
+  static const Duration _ttl = Duration(minutes: 5);
+
+  static Future<_SeriesBookStatus> resolve(AppServices services, Book book) {
+    final id = book.id;
+    final now = DateTime.now();
+    final cached = _cache[id];
+    if (cached != null) {
+      if (now.difference(cached.timestamp) < _ttl) {
+        return cached.future;
+      }
+      _cache.remove(id);
+    }
+
+    final pending = _inFlight[id];
+    if (pending != null) return pending;
+
+    final future = _fetchStatus(services, book).then((status) {
+      final resolved = Future<_SeriesBookStatus>.value(status);
+      _cache[id] = _CachedBookStatus(
+        status: status,
+        timestamp: DateTime.now(),
+        future: resolved,
+      );
+      _inFlight.remove(id);
+      return status;
+    }).catchError((error) {
+      _inFlight.remove(id);
+      throw error;
+    });
+
+    _inFlight[id] = future;
+    return future;
+  }
+
+  static void invalidate(Iterable<String> ids) {
+    for (final id in ids) {
+      _cache.remove(id);
+      _inFlight.remove(id);
+    }
+  }
+
+  static Future<_SeriesBookStatus> _fetchStatus(AppServices services, Book book) async {
+    final snapshot = await _fetchProgressSnapshot(services, book.id);
+    final playback = services.playback;
+
+    if (snapshot.isFinished) {
+      playback.completionCache[book.id] = true;
+      return _SeriesBookStatus.completed;
+    }
+
+    double? durationSeconds = snapshot.duration;
+    if ((durationSeconds == null || durationSeconds <= 0) && book.durationMs != null && book.durationMs! > 0) {
+      durationSeconds = book.durationMs! / 1000;
+    }
+
+    double? ratio = snapshot.progress;
+    if (ratio == null && snapshot.currentTime != null && durationSeconds != null && durationSeconds > 0) {
+      ratio = (snapshot.currentTime! / durationSeconds).clamp(0.0, 1.0);
+    }
+
+    if (ratio != null) {
+      if (ratio >= 0.99) {
+        playback.completionCache[book.id] = true;
+        return _SeriesBookStatus.completed;
+      }
+      if (ratio >= 0.01) {
+        return _SeriesBookStatus.inProgress;
+      }
+      return _SeriesBookStatus.notStarted;
+    }
+
+    final seconds = snapshot.currentTime;
+    if (seconds != null) {
+      if (durationSeconds != null && durationSeconds > 0) {
+        final approx = (seconds / durationSeconds).clamp(0.0, 1.0);
+        if (approx >= 0.99) {
+          playback.completionCache[book.id] = true;
+          return _SeriesBookStatus.completed;
+        }
+        if (approx >= 0.01) {
+          return _SeriesBookStatus.inProgress;
+        }
+        return _SeriesBookStatus.notStarted;
+      }
+      if (seconds >= 60) return _SeriesBookStatus.inProgress;
+      if (seconds <= 5) return _SeriesBookStatus.notStarted;
+      return _SeriesBookStatus.inProgress;
+    }
+
+    if (playback.completionCache[book.id] == true) {
+      return _SeriesBookStatus.completed;
+    }
+
+    return _SeriesBookStatus.notStarted;
+  }
+
+  static Future<_ProgressSnapshot> _fetchProgressSnapshot(AppServices services, String bookId) async {
+    try {
+      final resp = await services.auth.api.request('GET', '/api/me/progress/$bookId');
+      if (resp.statusCode != 200) return const _ProgressSnapshot();
+      if (resp.body.isEmpty) return const _ProgressSnapshot();
+      final decoded = jsonDecode(resp.body);
+      final payload = _extractProgressMap(decoded);
+      if (payload == null) return const _ProgressSnapshot();
+
+      final currentTime = _asDouble(payload['currentTime']);
+      final duration = _asDouble(payload['duration']);
+      var progress = _asDouble(payload['progress']);
+      final isFinished = payload['isFinished'] == true;
+
+      if (progress == null && currentTime != null && duration != null && duration > 0) {
+        progress = (currentTime / duration).clamp(0.0, 1.0);
+      }
+
+      return _ProgressSnapshot(
+        currentTime: currentTime,
+        duration: duration,
+        progress: progress,
+        isFinished: isFinished,
+      );
+    } catch (_) {
+      return const _ProgressSnapshot();
+    }
+  }
+}
+
+class _CachedBookStatus {
+  final _SeriesBookStatus status;
+  final DateTime timestamp;
+  final Future<_SeriesBookStatus> future;
+
+  const _CachedBookStatus({
+    required this.status,
+    required this.timestamp,
+    required this.future,
+  });
+}
+
+class _ProgressSnapshot {
+  final double? currentTime;
+  final double? duration;
+  final double? progress;
+  final bool isFinished;
+
+  const _ProgressSnapshot({
+    this.currentTime,
+    this.duration,
+    this.progress,
+    this.isFinished = false,
+  });
+}
+
+Map<String, dynamic>? _extractProgressMap(dynamic raw) {
+  if (raw is Map<String, dynamic>) {
+    if (raw.containsKey('currentTime') ||
+        raw.containsKey('progress') ||
+        raw.containsKey('isFinished')) {
+      return raw;
+    }
+    for (final value in raw.values) {
+      final nested = _extractProgressMap(value);
+      if (nested != null) return nested;
+    }
+  } else if (raw is Iterable) {
+    for (final item in raw) {
+      final nested = _extractProgressMap(item);
+      if (nested != null) return nested;
+    }
+  }
+  return null;
+}
+
+double? _asDouble(dynamic value) {
+  if (value is num) return value.toDouble();
+  if (value is String) return double.tryParse(value);
+  return null;
 }
 
 
