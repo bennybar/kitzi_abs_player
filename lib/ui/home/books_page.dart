@@ -980,7 +980,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                     .toList(growable: false);
                 if (visible.isEmpty) return const SizedBox.shrink();
                 return SizedBox(
-                  height: 200,
+                  height: 240,
                   child: ListView.separated(
                     scrollDirection: Axis.horizontal,
                     physics: const BouncingScrollPhysics(),
