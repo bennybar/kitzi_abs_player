@@ -628,7 +628,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
           cacheExtent: 800,
           slivers: [
           // Material 3 large app bar style
-          SliverAppBar.large(
+          SliverAppBar.medium(
             floating: false,
             pinned: true,
             backgroundColor: cs.surface,

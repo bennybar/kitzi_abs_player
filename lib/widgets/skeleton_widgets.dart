@@ -389,7 +389,7 @@ class BooksPageSkeleton extends StatelessWidget {
     return CustomScrollView(
       slivers: [
         // App bar skeleton
-        SliverAppBar.large(
+        SliverAppBar.medium(
           floating: false,
           pinned: true,
           backgroundColor: cs.surface,
