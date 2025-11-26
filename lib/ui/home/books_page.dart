@@ -887,6 +887,30 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
           else ...[
             // Resume Playing Section - hide when searching
             if (_recentBooks.isNotEmpty && _query.trim().isEmpty) _buildResumePlayingSection(),
+            // Audiobooks section title
+            if (_query.trim().isEmpty)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 11),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.library_books_rounded,
+                        color: Theme.of(context).colorScheme.primary,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Audiobooks',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          height: 0.8,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             _buildList(visible),
             _buildLoadMore(),
           ],
@@ -956,7 +980,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                     .toList(growable: false);
                 if (visible.isEmpty) return const SizedBox.shrink();
                 return SizedBox(
-                  height: 260,
+                  height: 200,
                   child: ListView.separated(
                     scrollDirection: Axis.horizontal,
                     physics: const BouncingScrollPhysics(),
