@@ -991,6 +991,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                       final book = visible[index];
                       return SizedBox(
                         width: 168,
+                        height: 240,
                         child: _ResumeBookCard(
                           key: ValueKey(book.id),
                           book: book,
@@ -1376,84 +1377,87 @@ class _ResumeBookCard extends StatelessWidget {
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Square cover on top
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: AspectRatio(
-                  aspectRatio: 1.0,
-                  child: Stack(
-                    children: [
-                      Positioned.fill(
-                        child: EnhancedCoverImage(url: book.coverUrl),
-                      ),
-                      // Material 3 progress indicator overlay
-                      Positioned(
-                        left: 4,
-                        right: 4,
-                        bottom: 4,
-                        child: FutureBuilder<Map<String, dynamic>>(
-                          future: _getBookProgress(context, book.id),
-                          builder: (context, snapshot) {
-                            if (!snapshot.hasData) return const SizedBox.shrink();
-                            final progressInfo = snapshot.data!;
-                            final raw = progressInfo['progress'] as double?;
-                            final isCompleted = progressInfo['isCompleted'] as bool? ?? false;
-                            
-                            // Don't show progress for completed books
-                            if (isCompleted) return const SizedBox.shrink();
-                            
-                            if (raw == null || raw <= 0) return const SizedBox.shrink();
-                            final progress = raw.clamp(0.0, 0.99);
-                            
-                            return Container(
-                              height: 3,
-                              decoration: BoxDecoration(
-                                color: Colors.black.withOpacity(0.3),
-                                borderRadius: BorderRadius.circular(1.5),
-                              ),
-                              child: FractionallySizedBox(
-                                alignment: Alignment.centerLeft,
-                                widthFactor: progress,
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: Theme.of(context).colorScheme.primary,
-                                    borderRadius: BorderRadius.circular(1.5),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Square cover on top
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: AspectRatio(
+                    aspectRatio: 1.0,
+                    child: Stack(
+                      children: [
+                        Positioned.fill(
+                          child: EnhancedCoverImage(url: book.coverUrl),
+                        ),
+                        // Material 3 progress indicator overlay
+                        Positioned(
+                          left: 4,
+                          right: 4,
+                          bottom: 4,
+                          child: FutureBuilder<Map<String, dynamic>>(
+                            future: _getBookProgress(context, book.id),
+                            builder: (context, snapshot) {
+                              if (!snapshot.hasData) return const SizedBox.shrink();
+                              final progressInfo = snapshot.data!;
+                              final raw = progressInfo['progress'] as double?;
+                              final isCompleted = progressInfo['isCompleted'] as bool? ?? false;
+                              
+                              // Don't show progress for completed books
+                              if (isCompleted) return const SizedBox.shrink();
+                              
+                              if (raw == null || raw <= 0) return const SizedBox.shrink();
+                              final progress = raw.clamp(0.0, 0.99);
+                              
+                              return Container(
+                                height: 3,
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withOpacity(0.3),
+                                  borderRadius: BorderRadius.circular(1.5),
+                                ),
+                                child: FractionallySizedBox(
+                                  alignment: Alignment.centerLeft,
+                                  widthFactor: progress,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: Theme.of(context).colorScheme.primary,
+                                      borderRadius: BorderRadius.circular(1.5),
+                                    ),
                                   ),
                                 ),
-                              ),
-                            );
-                          },
+                              );
+                            },
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 10),
-              // Title and author below the cover
-              Text(
-                book.title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              if (book.author != null && book.author!.isNotEmpty) ...[
-                const SizedBox(height: 2),
+                const SizedBox(height: 10),
+                // Title and author below the cover
                 Text(
-                  book.author!,
-                  maxLines: 1,
+                  book.title,
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
+                if (book.author != null && book.author!.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    book.author!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
