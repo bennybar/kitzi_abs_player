@@ -12,6 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/play_history_service.dart';
 import '../../core/ui_prefs.dart';
 import '../../core/theme_service.dart';
+import '../../core/downloads_repository.dart';
 import '../profile/profile_page.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -224,6 +225,84 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  Future<void> _showCleanupLog() async {
+    final logs = await DownloadsRepository.getCleanupLog();
+    
+    if (!mounted) return;
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Cleanup Log'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: logs.isEmpty
+              ? const Text('No cleanup activity yet.')
+              : ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: logs.length,
+                  itemBuilder: (context, index) {
+                    final log = logs[index];
+                    final timestamp = log['timestamp'] as String?;
+                    final message = log['message'] as String? ?? 'Unknown';
+                    final deletedCount = log['deletedCount'] as int? ?? 0;
+                    final checkedCount = log['checkedCount'] as int? ?? 0;
+                    
+                    DateTime? dateTime;
+                    if (timestamp != null) {
+                      try {
+                        dateTime = DateTime.parse(timestamp);
+                      } catch (_) {}
+                    }
+                    
+                    final dateStr = dateTime != null
+                        ? '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')} ${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}'
+                        : 'Unknown date';
+                    
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            dateStr,
+                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            message,
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                          if (checkedCount > 0)
+                            Text(
+                              'Checked $checkedCount directories',
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          if (index < logs.length - 1)
+                            Divider(
+                              height: 24,
+                              color: Theme.of(context).colorScheme.outlineVariant,
+                            ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final services = ServicesScope.of(context).services;
@@ -285,6 +364,13 @@ class _SettingsPageState extends State<SettingsPage> {
             subtitle: const Text('Check each cached book against server and remove deleted ones'),
             trailing: const Icon(Icons.arrow_forward_ios_rounded),
             onTap: () => _showCleanupDialog(),
+          ),
+          ListTile(
+            leading: const Icon(Icons.history_rounded),
+            title: const Text('Cleanup log'),
+            subtitle: const Text('View recent download cleanup activity'),
+            trailing: const Icon(Icons.arrow_forward_ios_rounded),
+            onTap: () => _showCleanupLog(),
           ),
           const Divider(height: 32),
           const ListTile(

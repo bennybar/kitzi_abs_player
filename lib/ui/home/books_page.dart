@@ -889,28 +889,28 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
             if (_recentBooks.isNotEmpty && _query.trim().isEmpty) _buildResumePlayingSection(),
             // Audiobooks section title
             if (_query.trim().isEmpty)
-              SliverToBoxAdapter(
-                child: Padding(
+            SliverToBoxAdapter(
+              child: Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 11),
-                  child: Row(
-                    children: [
-                      Icon(
+                child: Row(
+                  children: [
+                    Icon(
                         Icons.library_books_rounded,
-                        color: Theme.of(context).colorScheme.primary,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Audiobooks',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w600,
+                      color: Theme.of(context).colorScheme.primary,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Audiobooks',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w600,
                           height: 0.8,
-                        ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
+            ),
             _buildList(visible),
             _buildLoadMore(),
           ],
@@ -1030,34 +1030,13 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
           
           return Dismissible(
             key: ValueKey(b.id),
-            direction: DismissDirection.horizontal,
+            direction: DismissDirection.startToEnd, // Only allow swipe right (download)
             dismissThresholds: const {
-              DismissDirection.endToStart: 0.4,
               DismissDirection.startToEnd: 0.4,
             },
             confirmDismiss: (direction) async {
               // Execute actions in background and bounce back immediately
-              if (direction == DismissDirection.endToStart) {
-                // Swipe left → Play (background)
-                if (b.isAudioBook) {
-                  final playback = ServicesScope.of(context).services.playback;
-                  final ctx = context;
-                  // Fire and forget - bounce back immediately
-                  unawaited(playback.playItem(b.id, context: ctx).then((success) async {
-                    if (ctx.mounted && success) {
-                      // Open the full player page when starting playback
-                      await FullPlayerPage.openOnce(ctx);
-                      
-                      ScaffoldMessenger.of(ctx).showSnackBar(
-                        SnackBar(
-                          content: Text('Playing: ${b.title}'),
-                          duration: const Duration(seconds: 2),
-                        ),
-                      );
-                    }
-                  }));
-                }
-              } else if (direction == DismissDirection.startToEnd) {
+              if (direction == DismissDirection.startToEnd) {
                 // Swipe right → Download/Delete (with confirmation)
                 if (b.isAudioBook) {
                   final downloads = ServicesScope.of(context).services.downloads;
@@ -1129,15 +1108,6 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                 borderRadius: BorderRadius.circular(16),
               ),
               child: const Icon(Icons.download_rounded, color: Colors.white, size: 28),
-            ),
-            secondaryBackground: Container(
-              alignment: Alignment.centerRight,
-              padding: const EdgeInsets.only(right: 20),
-              decoration: BoxDecoration(
-                color: Colors.blue,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 32),
             ),
             child: _BookListTile(
               key: ValueKey('tile-${b.id}'),
@@ -1378,85 +1348,85 @@ class _ResumeBookCard extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
-              children: [
-                // Square cover on top
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: AspectRatio(
-                    aspectRatio: 1.0,
-                    child: Stack(
-                      children: [
-                        Positioned.fill(
-                          child: EnhancedCoverImage(url: book.coverUrl),
-                        ),
-                        // Material 3 progress indicator overlay
-                        Positioned(
-                          left: 4,
-                          right: 4,
-                          bottom: 4,
-                          child: FutureBuilder<Map<String, dynamic>>(
-                            future: _getBookProgress(context, book.id),
-                            builder: (context, snapshot) {
-                              if (!snapshot.hasData) return const SizedBox.shrink();
-                              final progressInfo = snapshot.data!;
-                              final raw = progressInfo['progress'] as double?;
-                              final isCompleted = progressInfo['isCompleted'] as bool? ?? false;
-                              
-                              // Don't show progress for completed books
-                              if (isCompleted) return const SizedBox.shrink();
-                              
-                              if (raw == null || raw <= 0) return const SizedBox.shrink();
-                              final progress = raw.clamp(0.0, 0.99);
-                              
-                              return Container(
-                                height: 3,
-                                decoration: BoxDecoration(
-                                  color: Colors.black.withOpacity(0.3),
-                                  borderRadius: BorderRadius.circular(1.5),
-                                ),
-                                child: FractionallySizedBox(
-                                  alignment: Alignment.centerLeft,
-                                  widthFactor: progress,
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      color: Theme.of(context).colorScheme.primary,
-                                      borderRadius: BorderRadius.circular(1.5),
-                                    ),
+            children: [
+              // Square cover on top
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: AspectRatio(
+                  aspectRatio: 1.0,
+                  child: Stack(
+                    children: [
+                      Positioned.fill(
+                        child: EnhancedCoverImage(url: book.coverUrl),
+                      ),
+                      // Material 3 progress indicator overlay
+                      Positioned(
+                        left: 4,
+                        right: 4,
+                        bottom: 4,
+                        child: FutureBuilder<Map<String, dynamic>>(
+                          future: _getBookProgress(context, book.id),
+                          builder: (context, snapshot) {
+                            if (!snapshot.hasData) return const SizedBox.shrink();
+                            final progressInfo = snapshot.data!;
+                            final raw = progressInfo['progress'] as double?;
+                            final isCompleted = progressInfo['isCompleted'] as bool? ?? false;
+                            
+                            // Don't show progress for completed books
+                            if (isCompleted) return const SizedBox.shrink();
+                            
+                            if (raw == null || raw <= 0) return const SizedBox.shrink();
+                            final progress = raw.clamp(0.0, 0.99);
+                            
+                            return Container(
+                              height: 3,
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.3),
+                                borderRadius: BorderRadius.circular(1.5),
+                              ),
+                              child: FractionallySizedBox(
+                                alignment: Alignment.centerLeft,
+                                widthFactor: progress,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context).colorScheme.primary,
+                                    borderRadius: BorderRadius.circular(1.5),
                                   ),
                                 ),
-                              );
-                            },
-                          ),
+                              ),
+                            );
+                          },
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 10),
-                // Title and author below the cover
+              ),
+              const SizedBox(height: 10),
+              // Title and author below the cover
+              Text(
+                book.title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              if (book.author != null && book.author!.isNotEmpty) ...[
+                const SizedBox(height: 2),
                 Text(
-                  book.title,
-                  maxLines: 2,
+                  book.author!,
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),
-                if (book.author != null && book.author!.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    book.author!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
               ],
+            ],
             ),
           ),
         ),

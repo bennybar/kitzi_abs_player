@@ -111,15 +111,15 @@ class MiniPlayer extends StatelessWidget {
                             const SizedBox(height: 2),
                             Row(
                               children: [
-                                if (np.author != null && np.author!.isNotEmpty)
+                            if (np.author != null && np.author!.isNotEmpty)
                                   Expanded(
                                     child: Text(
-                                      np.author!,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                        color: cs.onSurfaceVariant,
-                                      ),
+                                np.author!,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: cs.onSurfaceVariant,
+                                ),
                                     ),
                                   ),
                                 StreamBuilder<Duration>(
@@ -178,7 +178,7 @@ class MiniPlayer extends StatelessWidget {
                                   },
                                 ),
                               ],
-                            ),
+                              ),
                           ],
                         ),
                       ),

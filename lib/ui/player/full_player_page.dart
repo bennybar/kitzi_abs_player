@@ -8,8 +8,11 @@ import '../../core/playback_repository.dart';
 import '../../core/playback_speed_service.dart';
 import '../../core/sleep_timer_service.dart';
 import '../../core/ui_prefs.dart';
+import '../../core/downloads_repository.dart';
 import '../../main.dart'; // ServicesScope
 import '../../widgets/audio_waveform.dart';
+import '../../widgets/download_button.dart';
+import 'dart:async';
 
 class FullPlayerPage extends StatefulWidget {
   const FullPlayerPage({super.key});
@@ -548,15 +551,21 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     }
 
     // Determine the current chapter index once when opening
-    final pos = playback.player.position;
+    final globalTotal = playback.totalBookDuration;
+    final useGlobal = _dualProgressEnabled && globalTotal != null && globalTotal > Duration.zero;
+    final globalPos = useGlobal ? (playback.globalBookPosition ?? Duration.zero) : playback.player.position;
+    
     int currentIdx = 0;
     for (int i = 0; i < chapters.length; i++) {
-      if (pos >= chapters[i].start) {
+      if (globalPos >= chapters[i].start) {
         currentIdx = i;
       } else {
         break;
       }
     }
+
+    // Create a ScrollController to auto-scroll to current chapter
+    final scrollController = ScrollController();
 
     await showModalBottomSheet<void>(
       context: context,
@@ -565,122 +574,141 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
       isScrollControlled: true,
       backgroundColor: Theme.of(context).colorScheme.surface,
       builder: (ctx) {
+        // Auto-scroll to current chapter after the sheet is built
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (scrollController.hasClients) {
+            // Estimate item height (approximately 72px per item including separator)
+            final estimatedItemHeight = 72.0;
+            final targetOffset = currentIdx * estimatedItemHeight;
+            scrollController.animateTo(
+              targetOffset.clamp(0.0, scrollController.position.maxScrollExtent),
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOut,
+            );
+          }
+        });
+
         return Container(
-          decoration: BoxDecoration(
-            color: Theme.of(ctx).colorScheme.surface,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.list_alt_rounded,
-                      color: Theme.of(ctx).colorScheme.primary,
-                    ),
-                    const SizedBox(width: 12),
-                    Text(
-                      'Chapters',
-                      style: Theme.of(ctx).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
+              decoration: BoxDecoration(
+                color: Theme.of(ctx).colorScheme.surface,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
               ),
-              Flexible(
-                child: StreamBuilder<Duration>(
-                  stream: ServicesScope.of(context).services.playback.positionStream,
-                  initialData: ServicesScope.of(context).services.playback.player.position,
-                  builder: (_, posSnap) {
-                    final pos = posSnap.data ?? Duration.zero;
-                    int liveIdx = 0;
-                    for (int i = 0; i < chapters.length; i++) {
-                      if (pos >= chapters[i].start) {
-                        liveIdx = i;
-                      } else {
-                        break;
-                      }
-                    }
-                    return ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-                      itemCount: chapters.length,
-                      separatorBuilder: (_, __) => Divider(
-                        height: 1,
-                        color: Theme.of(ctx).colorScheme.outline.withOpacity(0.2),
-                      ),
-                      itemBuilder: (_, i) {
-                        final c = chapters[i];
-                        final isCurrent = i == liveIdx;
-                        return ListTile(
-                          dense: false,
-                          contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                          title: Text(
-                            c.title.isEmpty ? 'Chapter ${i + 1}' : c.title,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(ctx).textTheme.bodyLarge?.copyWith(
-                              fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w500,
-                              color: isCurrent
-                                  ? Theme.of(ctx).colorScheme.primary
-                                  : Theme.of(ctx).colorScheme.onSurface,
-                            ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.list_alt_rounded,
+                          color: Theme.of(ctx).colorScheme.primary,
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          'Chapters',
+                          style: Theme.of(ctx).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w600,
                           ),
-                          // Show raw time for debugging when long-pressing a row
-                          onLongPress: () {
-                            // Chapter tap
-                          },
-                          subtitle: Text(
-                            _fmt(c.start),
-                            style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
-                              color: isCurrent
-                                  ? Theme.of(ctx).colorScheme.primary
-                                  : Theme.of(ctx).colorScheme.onSurfaceVariant,
-                            ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Flexible(
+                    child: StreamBuilder<Duration>(
+                      stream: ServicesScope.of(context).services.playback.positionStream,
+                      initialData: ServicesScope.of(context).services.playback.player.position,
+                      builder: (_, posSnap) {
+                        final pos = posSnap.data ?? Duration.zero;
+                        final currentGlobalPos = useGlobal ? (playback.globalBookPosition ?? Duration.zero) : pos;
+                        int liveIdx = 0;
+                        for (int i = 0; i < chapters.length; i++) {
+                          if (currentGlobalPos >= chapters[i].start) {
+                            liveIdx = i;
+                          } else {
+                            break;
+                          }
+                        }
+                        return ListView.separated(
+                          controller: scrollController,
+                          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                          itemCount: chapters.length,
+                          separatorBuilder: (_, __) => Divider(
+                            height: 1,
+                            color: Theme.of(ctx).colorScheme.outline.withOpacity(0.2),
                           ),
-                          leading: Container(
-                            width: 40,
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color: isCurrent
-                                  ? Theme.of(ctx).colorScheme.primary
-                                  : Theme.of(ctx).colorScheme.primaryContainer,
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Center(
-                              child: Text(
-                                '${i + 1}',
-                                style: Theme.of(ctx).textTheme.labelLarge?.copyWith(
+                          itemBuilder: (_, i) {
+                            final c = chapters[i];
+                            final isCurrent = i == liveIdx;
+                            return ListTile(
+                              dense: false,
+                              contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                              title: Text(
+                                c.title.isEmpty ? 'Chapter ${i + 1}' : c.title,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(ctx).textTheme.bodyLarge?.copyWith(
+                                  fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w500,
                                   color: isCurrent
-                                      ? Theme.of(ctx).colorScheme.onPrimary
-                                      : Theme.of(ctx).colorScheme.onPrimaryContainer,
-                                  fontWeight: isCurrent ? FontWeight.w800 : FontWeight.w600,
+                                      ? Theme.of(ctx).colorScheme.primary
+                                      : Theme.of(ctx).colorScheme.onSurface,
                                 ),
                               ),
-                            ),
-                          ),
-                          trailing: isCurrent
-                              ? Icon(Icons.play_arrow_rounded,
-                                  color: Theme.of(ctx).colorScheme.primary)
-                              : null,
-                          onTap: () async {
-                            Navigator.of(ctx).pop();
-                            await ServicesScope.of(context).services.playback.seek(c.start, reportNow: true);
+                              // Show raw time for debugging when long-pressing a row
+                              onLongPress: () {
+                                // Chapter tap
+                              },
+                              subtitle: Text(
+                                _fmt(c.start),
+                                style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
+                                  color: isCurrent
+                                      ? Theme.of(ctx).colorScheme.primary
+                                      : Theme.of(ctx).colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                              leading: Container(
+                                width: 40,
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  color: isCurrent
+                                      ? Theme.of(ctx).colorScheme.primary
+                                      : Theme.of(ctx).colorScheme.primaryContainer,
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    '${i + 1}',
+                                    style: Theme.of(ctx).textTheme.labelLarge?.copyWith(
+                                      color: isCurrent
+                                          ? Theme.of(ctx).colorScheme.onPrimary
+                                          : Theme.of(ctx).colorScheme.onPrimaryContainer,
+                                      fontWeight: isCurrent ? FontWeight.w800 : FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              trailing: isCurrent
+                                  ? Icon(Icons.play_arrow_rounded,
+                                      color: Theme.of(ctx).colorScheme.primary)
+                                  : null,
+                              onTap: () async {
+                                Navigator.of(ctx).pop();
+                                await ServicesScope.of(context).services.playback.seek(c.start, reportNow: true);
+                              },
+                            );
                           },
                         );
                       },
-                    );
-                  },
-                ),
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
-        );
+            );
       },
-    );
+    ).then((_) {
+      // Dispose scroll controller when sheet is closed
+      scrollController.dispose();
+    });
   }
 
   Future<void> _showSleepTimerSheet(BuildContext context, NowPlaying np) async {
@@ -1505,28 +1533,32 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                 width: 0.5,
                               ),
                             ),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.bookmark_rounded,
-                                    size: 18,
-                                    color: cs.primary,
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Text(
-                                      chapterTitle,
-                                      style: text.bodyMedium?.copyWith(
-                                        color: cs.onSurface,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
+                            child: InkWell(
+                              onTap: () => _showChaptersSheet(context, playback, np),
+                              borderRadius: BorderRadius.circular(14),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.bookmark_rounded,
+                                      size: 18,
+                                      color: cs.primary,
                                     ),
-                                  ),
-                                ],
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(
+                                        chapterTitle,
+                                        style: text.bodyMedium?.copyWith(
+                                          color: cs.onSurface,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ),
@@ -1647,25 +1679,14 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
 
                                     const SizedBox(height: 24),
 
-                                    // Chapters + Sleep controls - compact design
+                                    // Download/Chapters + Sleep controls - compact design
                                     Row(
                                       children: [
                                         Expanded(
-                                          child: FilledButton.tonalIcon(
-                                            icon: const Icon(Icons.list_alt_rounded, size: 20),
-                                            label: const Text('Chapters'),
-                                            onPressed: () => _showChaptersSheet(context, playback, np),
-                                            style: FilledButton.styleFrom(
-                                              padding: const EdgeInsets.symmetric(vertical: 14),
-                                              elevation: 1,
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius: BorderRadius.circular(16),
-                                              ),
-                                              textStyle: text.labelMedium?.copyWith(
-                                                fontWeight: FontWeight.w600,
-                                                letterSpacing: 0.3,
-                                              ),
-                                            ),
+                                          child: _ChaptersDownloadButton(
+                                            libraryItemId: np.libraryItemId,
+                                            episodeId: np.episodeId,
+                                            title: np.title,
                                           ),
                                         ),
                                         const SizedBox(width: 12),
@@ -1716,6 +1737,263 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
               },
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Button that shows download status for the entire book
+class _ChaptersDownloadButton extends StatefulWidget {
+  const _ChaptersDownloadButton({
+    required this.libraryItemId,
+    this.episodeId,
+    this.title,
+  });
+
+  final String libraryItemId;
+  final String? episodeId;
+  final String? title;
+
+  @override
+  State<_ChaptersDownloadButton> createState() => _ChaptersDownloadButtonState();
+}
+
+class _ChaptersDownloadButtonState extends State<_ChaptersDownloadButton> {
+  DownloadsRepository? _downloads;
+  StreamSubscription<ItemProgress>? _sub;
+  ItemProgress? _snap;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final repo = ServicesScope.of(context).services.downloads;
+
+    if (!identical(repo, _downloads)) {
+      _sub?.cancel();
+      _downloads = repo;
+      _sub = _downloads!
+          .watchItemProgress(widget.libraryItemId)
+          .listen((p) => setState(() => _snap = p));
+    }
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _enqueue() async {
+    if (_downloads == null) return;
+    try {
+      // If this item is already active, ignore duplicate enqueue taps
+      if (_snap != null && (_snap!.status == 'running' || _snap!.status == 'queued')) {
+        return;
+      }
+
+      // Check whether other items are active/queued
+      final othersActive = await _downloads!.hasActiveOrQueued();
+      bool requireCancelOthers = false;
+      if (othersActive) {
+        // If only this item is tracked or active, allow enqueue directly
+        try {
+          final tracked = await _downloads!.listTrackedItemIds();
+          final onlyThis = tracked.isNotEmpty && tracked.every((id) => id == widget.libraryItemId);
+          if (!onlyThis) requireCancelOthers = true;
+        } catch (_) {
+          requireCancelOthers = true; // be conservative if unknown
+        }
+      }
+
+      bool proceed = true;
+      bool cancelOthers = false;
+      if (requireCancelOthers) {
+        final ans = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Single download at a time'),
+            content: const Text(
+                'Another book is downloading. Cancel it and download this book now?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('No'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Yes, switch downloads'),
+              ),
+            ],
+          ),
+        );
+        proceed = ans == true;
+        cancelOthers = ans == true;
+      }
+
+      if (!proceed) return;
+
+      if (cancelOthers) {
+        await _downloads!.cancelAll();
+      }
+
+      // Proceed to enqueue this item
+      await _downloads!.enqueueItemDownloads(
+        widget.libraryItemId,
+        episodeId: widget.episodeId,
+        displayTitle: widget.title,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Download started – follow progress from Downloads tab.'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to start download: $e'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _cancelCurrent() async {
+    if (_downloads == null) return;
+    try {
+      await _downloads!.cancelForItem(widget.libraryItemId);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to cancel download: $e'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _removeLocal() async {
+    if (_downloads == null) return;
+    try {
+      await _downloads!.deleteLocal(widget.libraryItemId);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Couldn't remove local download")),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final snap = _snap;
+
+    // Determine button state and content
+    IconData icon;
+    String label;
+    Color? backgroundColor;
+    Color? foregroundColor;
+    VoidCallback? onPressed;
+
+    if (snap?.status == 'complete') {
+      icon = Icons.check_circle_outline;
+      label = 'Downloaded';
+      backgroundColor = cs.secondaryContainer;
+      foregroundColor = cs.onSecondaryContainer;
+      // When downloaded, tap shows confirmation dialog before removing
+      onPressed = () async {
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) {
+            final dialogCs = Theme.of(dialogContext).colorScheme;
+            return AlertDialog(
+              title: const Text('Remove Download'),
+              content: const Text('Are you sure you want to remove this downloaded book? You will need to download it again to listen offline.'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(false),
+                  child: Text(
+                    'Cancel',
+                    style: TextStyle(color: dialogCs.onSurfaceVariant),
+                  ),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(true),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: dialogCs.error,
+                    foregroundColor: dialogCs.onError,
+                  ),
+                  child: const Text('Remove'),
+                ),
+              ],
+            );
+          },
+        );
+        if (confirmed == true && mounted) {
+          _removeLocal();
+        }
+      };
+    } else if (snap != null && (snap.status == 'running' || snap.status == 'queued')) {
+      icon = Icons.download;
+      final pct = (snap.progress * 100).clamp(0, 100).toStringAsFixed(0);
+      label = '$pct%';
+      backgroundColor = cs.primary;
+      foregroundColor = cs.onPrimary;
+      // When downloading, tap cancels
+      onPressed = _cancelCurrent;
+    } else {
+      icon = Icons.download_outlined;
+      label = 'Download';
+      backgroundColor = null; // Use default tonal
+      foregroundColor = null;
+      // When not downloaded, tap starts download
+      onPressed = _enqueue;
+    }
+
+    return FilledButton.tonalIcon(
+      icon: snap != null && (snap.status == 'running' || snap.status == 'queued')
+          ? SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                value: snap.status == 'running' ? snap.progress : null,
+                color: foregroundColor,
+              ),
+            )
+          : snap?.status == 'complete'
+              ? Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(icon, size: 20),
+                    const SizedBox(width: 4),
+                    Icon(Icons.delete_outline, size: 16, color: cs.error),
+                  ],
+                )
+              : Icon(icon, size: 20),
+      label: Text(label),
+      onPressed: onPressed,
+      style: FilledButton.styleFrom(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        elevation: 1,
+        backgroundColor: backgroundColor,
+        foregroundColor: foregroundColor,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        textStyle: textTheme.labelMedium?.copyWith(
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.3,
         ),
       ),
     );

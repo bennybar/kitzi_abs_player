@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:background_downloader/background_downloader.dart';
 import 'dart:io';
@@ -41,11 +42,40 @@ class _DownloadsPageState extends State<DownloadsPage> {
     super.dispose();
   }
 
+  /// Get all item IDs that have downloads (tracked or in-progress)
+  Future<List<String>> _getAllDownloadItemIds() async {
+    final tracked = await widget.repo.listTrackedItemIds();
+    final trackedSet = tracked.toSet();
+    
+    // Also check for items with active download tasks that might not be tracked yet
+    try {
+      final allRecords = await widget.repo.listAll();
+      for (final record in allRecords) {
+        final meta = record.task.metaData ?? '';
+        if (meta.isNotEmpty) {
+          try {
+            final decoded = jsonDecode(meta);
+            if (decoded is Map && decoded['libraryItemId'] is String) {
+              final itemId = decoded['libraryItemId'] as String;
+              // Include if it has active tasks (running or enqueued)
+              if ((record.status == TaskStatus.running || record.status == TaskStatus.enqueued) &&
+                  !trackedSet.contains(itemId)) {
+                trackedSet.add(itemId);
+              }
+            }
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
+    
+    return trackedSet.toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     // We rebuild on each stream event via setState above.
     return FutureBuilder<List<String>>(
-      future: widget.repo.listTrackedItemIds(),
+      future: _getAllDownloadItemIds(),
       builder: (context, idsSnap) {
         final allIds = idsSnap.data ?? const [];
         return FutureBuilder<BooksRepository>(
@@ -110,9 +140,9 @@ class _DownloadsPageState extends State<DownloadsPage> {
   }
 
   Future<List<Widget>> _buildTiles(BooksRepository repo, List<String> ids) async {
-    final tiles = <Widget>[];
+    final tileInfos = <_DownloadTileInfo>[];
     for (final itemId in ids) {
-      final recs = await FileDownloader().database.allRecords();
+      final recs = await widget.repo.listAll();
       final records = recs.where((r) => (r.task.metaData ?? '').contains(itemId)).toList()
         ..sort((a, b) => (a.task.filename ?? '').compareTo(b.task.filename ?? ''));
       final total = records.length;
@@ -154,12 +184,40 @@ class _DownloadsPageState extends State<DownloadsPage> {
       // Show tiles:
       final hasActive = records.any((r) => r.status == TaskStatus.running || r.status == TaskStatus.enqueued);
       final isComplete = hasLocal || (total > 0 && done == total);
-      if (isComplete || hasActive || (done > 0 && done < total)) {
-        tiles.add(w);
+      final isInProgress = hasActive || (done > 0 && done < total);
+      
+      if (isComplete || isInProgress) {
+        tileInfos.add(_DownloadTileInfo(
+          widget: w,
+          hasActive: hasActive,
+          isComplete: isComplete,
+        ));
       }
     }
-    return tiles;
+    
+    // Sort: active downloads first, then in-progress, then completed
+    tileInfos.sort((a, b) {
+      if (a.hasActive && !b.hasActive) return -1;
+      if (!a.hasActive && b.hasActive) return 1;
+      if (!a.isComplete && b.isComplete) return -1;
+      if (a.isComplete && !b.isComplete) return 1;
+      return 0;
+    });
+    
+    return tileInfos.map((info) => info.widget).toList();
   }
+}
+
+class _DownloadTileInfo {
+  final Widget widget;
+  final bool hasActive;
+  final bool isComplete;
+  
+  _DownloadTileInfo({
+    required this.widget,
+    required this.hasActive,
+    required this.isComplete,
+  });
 }
 
 class _BookDownloadTile extends StatefulWidget {
@@ -200,7 +258,7 @@ class _BookDownloadTileState extends State<_BookDownloadTile> {
   }
 
   Future<void> _load() async {
-    final all = await FileDownloader().database.allRecords();
+    final all = await widget.repo.listAll();
     setState(() {
       _records = all.where((r) {
         final id = (r.task.metaData ?? '').contains(widget.itemId);

@@ -12,6 +12,7 @@ import 'auth_repository.dart';
 import 'playback_repository.dart';
 import 'download_storage.dart';
 import 'notification_service.dart';
+import 'books_repository.dart';
 
 class ItemProgress {
   final String libraryItemId;
@@ -37,9 +38,16 @@ class _DlTrack {
 }
 
 class DownloadsRepository {
-  DownloadsRepository(this._auth, this._playback);
+  DownloadsRepository(this._auth, this._playback, {BooksRepository? booksRepo})
+      : _booksRepo = booksRepo;
   final AuthRepository _auth;
   final PlaybackRepository _playback;
+  final BooksRepository? _booksRepo;
+  
+  static const String _lastCleanupKey = 'downloads_last_orphan_cleanup';
+  static const String _cleanupLogKey = 'downloads_cleanup_log';
+  static const Duration _cleanupInterval = Duration(hours: 24);
+  static const int _maxLogEntries = 50; // Keep last 50 cleanup log entries
 
   static const _wifiOnlyKey = 'downloads_wifi_only';
 
@@ -120,18 +128,181 @@ class DownloadsRepository {
     // Do not auto-resume pending downloads on startup; user can resume explicitly from UI
     // Additionally, cancel any persisted tasks from previous sessions to avoid battery/storage drain
     try {
-      final all = await FileDownloader().database.allRecords();
+      final all = await _getAllRecordsCached(forceRefresh: true);
       final ids = all.map((r) => r.taskId).toList();
       if (ids.isNotEmpty) {
         await FileDownloader().cancelTasksWithIds(ids);
       }
+      // Batch deletions with delays
       for (final r in all) {
-        try { await FileDownloader().database.deleteRecordWithId(r.taskId); } catch (_) {}
+        try { 
+          await FileDownloader().database.deleteRecordWithId(r.taskId);
+          if (all.length > 1) {
+            await Future.delayed(const Duration(milliseconds: 10));
+          }
+        } catch (_) {}
       }
+      // Invalidate cache after bulk deletion
+      _cachedAllRecords = null;
+      _cacheTimestamp = null;
     } catch (_) {}
 
     // Ensure global listener is active so chaining continues even when UI is closed
     _ensureChainListener();
+    
+    // Check for orphaned downloads (daily or on first run after 24h)
+    unawaited(_checkAndCleanupOrphanedDownloads());
+  }
+  
+  /// Cleanup orphaned download directories that are not linked to any book in the database.
+  /// Runs daily or when app opens after 24 hours without cleanup.
+  Future<void> _checkAndCleanupOrphanedDownloads() async {
+    if (_booksRepo == null) return; // Skip if BooksRepository not available
+    
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final lastCleanupStr = prefs.getString(_lastCleanupKey);
+      final now = DateTime.now();
+      
+      // Check if cleanup is needed (24 hours have passed or never run)
+      bool shouldCleanup = false;
+      if (lastCleanupStr == null) {
+        shouldCleanup = true; // First run
+      } else {
+        try {
+          final lastCleanup = DateTime.parse(lastCleanupStr);
+          if (now.difference(lastCleanup) >= _cleanupInterval) {
+            shouldCleanup = true;
+          }
+        } catch (_) {
+          shouldCleanup = true; // Invalid date, run cleanup
+        }
+      }
+      
+      if (!shouldCleanup) return;
+      
+      _d('Starting orphaned downloads cleanup...');
+      
+      // Get all directories in the download base directory
+      final baseDir = await DownloadStorage.baseDir();
+      if (!await baseDir.exists()) {
+        await prefs.setString(_lastCleanupKey, now.toIso8601String());
+        return;
+      }
+      
+      final entries = await baseDir.list(followLinks: false).toList();
+      final orphanedDirs = <Directory>[];
+      
+      // Check each directory (which should be a libraryItemId)
+      for (final entry in entries) {
+        if (entry is! Directory) continue;
+        
+        final libraryItemId = entry.path.split(Platform.pathSeparator).last;
+        
+        // Check if this book exists in the database
+        try {
+          final book = await _booksRepo!.getBookFromDb(libraryItemId);
+          if (book == null) {
+            // Book not found in database - this is an orphaned download
+            orphanedDirs.add(entry);
+            _d('Found orphaned download directory: $libraryItemId');
+          }
+        } catch (e) {
+          // Error checking book - skip this directory to be safe
+          _d('Error checking book $libraryItemId: $e');
+        }
+      }
+      
+      // Delete orphaned directories
+      int deletedCount = 0;
+      for (final dir in orphanedDirs) {
+        try {
+          if (await dir.exists()) {
+            await dir.delete(recursive: true);
+            deletedCount++;
+            _d('Deleted orphaned download directory: ${dir.path}');
+          }
+        } catch (e) {
+          _d('Error deleting orphaned directory ${dir.path}: $e');
+        }
+      }
+      
+      // Update last cleanup time
+      await prefs.setString(_lastCleanupKey, now.toIso8601String());
+      
+      // Log cleanup result
+      final logEntry = {
+        'timestamp': now.toIso8601String(),
+        'deletedCount': deletedCount,
+        'checkedCount': entries.whereType<Directory>().length,
+        'message': deletedCount > 0 
+            ? 'Deleted $deletedCount orphaned download directories'
+            : 'No orphaned files found',
+      };
+      await _addCleanupLogEntry(logEntry);
+      
+      if (deletedCount > 0) {
+        _d('Orphaned downloads cleanup complete: deleted $deletedCount directories');
+      } else {
+        _d('Orphaned downloads cleanup complete: no orphaned files found');
+      }
+    } catch (e) {
+      _d('Error during orphaned downloads cleanup: $e');
+      // Log error
+      final logEntry = {
+        'timestamp': DateTime.now().toIso8601String(),
+        'deletedCount': 0,
+        'checkedCount': 0,
+        'message': 'Error during cleanup: $e',
+      };
+      await _addCleanupLogEntry(logEntry);
+    }
+  }
+  
+  /// Add a log entry to the cleanup log
+  Future<void> _addCleanupLogEntry(Map<String, dynamic> entry) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final logJson = prefs.getString(_cleanupLogKey);
+      List<Map<String, dynamic>> logs = [];
+      
+      if (logJson != null && logJson.isNotEmpty) {
+        try {
+          final decoded = jsonDecode(logJson) as List;
+          logs = decoded.cast<Map<String, dynamic>>().toList();
+        } catch (_) {
+          logs = [];
+        }
+      }
+      
+      logs.insert(0, entry); // Add to beginning
+      
+      // Keep only last N entries
+      if (logs.length > _maxLogEntries) {
+        logs = logs.take(_maxLogEntries).toList();
+      }
+      
+      await prefs.setString(_cleanupLogKey, jsonEncode(logs));
+    } catch (_) {
+      // Best effort - if logging fails, continue
+    }
+  }
+  
+  /// Get cleanup log entries
+  static Future<List<Map<String, dynamic>>> getCleanupLog() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final logJson = prefs.getString(_cleanupLogKey);
+      
+      if (logJson == null || logJson.isEmpty) {
+        return [];
+      }
+      
+      final decoded = jsonDecode(logJson) as List;
+      return decoded.cast<Map<String, dynamic>>().toList();
+    } catch (_) {
+      return [];
+    }
   }
 
   // === Download plan (no sessions) ===
@@ -455,7 +626,7 @@ class DownloadsRepository {
       if (liveIds.isNotEmpty) {
         await FileDownloader().cancelTasksWithIds(liveIds);
       }
-      final all = await FileDownloader().database.allRecords();
+      final all = await _getAllRecordsCached();
       final groupIds = all
           .where((r) => (r.task.group ?? '').trim() == 'book-$libraryItemId' ||
               _extractItemId(r.task.metaData ?? '') == libraryItemId)
@@ -464,10 +635,19 @@ class DownloadsRepository {
       if (groupIds.isNotEmpty) {
         await FileDownloader().cancelTasksWithIds(groupIds);
       }
-      // Clean DB records for this item
-      for (final r in all.where((r) => _extractItemId(r.task.metaData ?? '') == libraryItemId)) {
-        try { await FileDownloader().database.deleteRecordWithId(r.taskId); } catch (_) {}
+      // Clean DB records for this item with delays
+      final itemRecords = all.where((r) => _extractItemId(r.task.metaData ?? '') == libraryItemId).toList();
+      for (final r in itemRecords) {
+        try { 
+          await FileDownloader().database.deleteRecordWithId(r.taskId);
+          if (itemRecords.length > 1) {
+            await Future.delayed(const Duration(milliseconds: 10));
+          }
+        } catch (_) {}
       }
+      // Invalidate cache after deletion
+      _cachedAllRecords = null;
+      _cacheTimestamp = null;
       // Best-effort: remove partially written current track
       try {
         final last = _lastItemUpdate[libraryItemId];
@@ -518,39 +698,128 @@ class DownloadsRepository {
     // Stop progress notifications
     _stopProgressNotifications(libraryItemId);
     // Close any open download session for this item
+    // CRITICAL: Only close if it's NOT the active playback session to preserve play position
     try {
       final sid = _downloadSessionByItem.remove(libraryItemId);
       if (sid != null && sid.isNotEmpty) {
-        unawaited(_playback.closeSessionById(sid));
+        // Check if this is the currently playing item - if so, don't close the session
+        final np = _playback.nowPlaying;
+        final isCurrentlyPlaying = np != null && np.libraryItemId == libraryItemId;
+        if (!isCurrentlyPlaying) {
+          unawaited(_playback.closeSessionById(sid));
+        }
       }
     } catch (_) {}
   }
 
   /// Remove local files for a book (and cancel tasks just in case).
+  /// CRITICAL: Preserves play position if the item is currently playing.
   Future<void> deleteLocal(String libraryItemId) async {
+    // CRITICAL: Check if this item is currently playing - if so, pause first
+    final np = _playback.nowPlaying;
+    final isCurrentlyPlaying = np != null && np.libraryItemId == libraryItemId;
+    Duration? savedPosition;
+    bool wasPlaying = false;
+    int? savedTrackIndex;
+    
+    if (isCurrentlyPlaying) {
+      // PAUSE playback first to prevent jumping around during deletion
+      wasPlaying = _playback.player.playing;
+      if (wasPlaying) {
+        await _playback.pause();
+      }
+      // Save current playback state
+      savedPosition = _playback.player.position;
+      savedTrackIndex = np.currentIndex;
+      
+      // Show notification
+      try {
+        await NotificationService.instance.showDownloadComplete('Switching to streaming...');
+      } catch (_) {}
+    }
+    
+    // Wait a moment for pause to settle
+    await Future.delayed(const Duration(milliseconds: 200));
+    
+    // Do all deletions at once
     await cancelForItem(libraryItemId);
     final dir = await _itemDir(libraryItemId);
     if (await dir.exists()) {
       await dir.delete(recursive: true);
     }
-    // Also remove task records for this item from plugin database
+    
+    // Remove all task records in one batch
     try {
       final recs = await _recordsForItem(libraryItemId);
-      for (final r in recs) {
-        await FileDownloader().database.deleteRecordWithId(r.taskId);
+      // Collect all task IDs first
+      final taskIds = recs.map((r) => r.taskId).toList();
+      // Delete all at once (no delays between - we're paused)
+      for (final taskId in taskIds) {
+        try {
+          await FileDownloader().database.deleteRecordWithId(taskId);
+        } catch (_) {}
       }
+      // Invalidate cache after deletion
+      _cachedAllRecords = null;
+      _cacheTimestamp = null;
     } catch (_) {}
+    
     _pendingQueuedUntil.remove(libraryItemId);
     _blockedItems.add(libraryItemId);
     _lastRunningProgress.remove(libraryItemId);
     _lastItemUpdate.remove(libraryItemId);
     _lastUpdateAt.remove(libraryItemId);
     _notifyItem(libraryItemId);
+    
+    // CRITICAL: If this was the playing item, switch back to streaming and restore position
+    if (isCurrentlyPlaying && savedPosition != null && savedTrackIndex != null) {
+      // Wait a moment for DB operations to complete
+      await Future.delayed(const Duration(milliseconds: 300));
+      
+      try {
+        final currentNp = _playback.nowPlaying;
+        if (currentNp != null && currentNp.libraryItemId == libraryItemId) {
+          // Check if tracks are still local (stale after deletion)
+          final hasLocalTracks = currentNp.tracks.any((t) => t.isLocal);
+          
+          if (hasLocalTracks) {
+            // Need to switch back to streaming tracks
+            try {
+              // Re-open streaming session to get fresh streaming tracks
+              final open = await _playback.openSessionAndGetTracks(libraryItemId, episodeId: currentNp.episodeId);
+              // Update tracks to streaming - seekGlobal will handle this
+              await _playback.seekGlobal(savedPosition!, reportNow: false);
+            } catch (e) {
+              // If session open fails, try to reload the item
+              try {
+                await _playback.playItem(libraryItemId, episodeId: currentNp.episodeId, context: null);
+                await Future.delayed(const Duration(milliseconds: 200));
+                await _playback.seekGlobal(savedPosition!, reportNow: false);
+              } catch (_) {
+                // Last resort: just try to seek on current tracks
+                await _playback.seekGlobal(savedPosition!, reportNow: false);
+              }
+            }
+          } else {
+            // Already on streaming tracks, just restore position
+            await _playback.seekGlobal(savedPosition!, reportNow: false);
+          }
+          
+          // RESUME playback if it was playing before
+          if (wasPlaying) {
+            await Future.delayed(const Duration(milliseconds: 200));
+            await _playback.player.play();
+          }
+        }
+      } catch (_) {
+        // Best effort - if restore fails, at least we tried
+      }
+    }
   }
 
   Future<void> cancelAll() async {
     // Cancel all active downloads
-    final records = await FileDownloader().database.allRecords();
+    final records = await _getAllRecordsCached(forceRefresh: true);
     final ids = records.map((r) => r.taskId).toList();
     if (ids.isNotEmpty) {
       await FileDownloader().cancelTasksWithIds(ids);
@@ -592,8 +861,9 @@ class DownloadsRepository {
     } catch (_) {}
   }
 
-  Future<List<TaskRecord>> listAll() =>
-      FileDownloader().database.allRecords();
+  Future<List<TaskRecord>> listAll() async {
+    return await _getAllRecordsCached();
+  }
 
   /// Best-effort total bytes estimate for an item. Tries /files endpoint first,
   /// then falls back to HEAD (or ranged GET) on each download URL.
@@ -715,7 +985,7 @@ class DownloadsRepository {
   /// Returns true if there are any active or queued downloads
   Future<bool> hasActiveOrQueued() async {
     try {
-      final recs = await FileDownloader().database.allRecords();
+      final recs = await _getAllRecordsCached();
       final hasDbActive = recs.any((r) => r.status == TaskStatus.running || r.status == TaskStatus.enqueued);
       if (hasDbActive) return true;
     } catch (_) {}
@@ -729,7 +999,7 @@ class DownloadsRepository {
   Future<List<String>> listTrackedItemIds() async {
     final ids = <String>{};
     // From task records
-    final all = await FileDownloader().database.allRecords();
+    final all = await _getAllRecordsCached();
     for (final r in all) {
       final meta = r.task.metaData ?? '';
       final id = _extractItemId(meta);
@@ -807,6 +1077,8 @@ class DownloadsRepository {
   // === Internal aggregation ===
 
   Future<ItemProgress> _computeItemProgress(String libraryItemId) async {
+    // First check if local files exist - this is the most reliable indicator
+    final hasLocal = await hasLocalDownloads(libraryItemId);
     final recs = await _recordsForItem(libraryItemId);
     int totalTracks = await _getTotalTracksWithoutSession(libraryItemId);
     if (totalTracks == 0) {
@@ -820,23 +1092,28 @@ class DownloadsRepository {
     final denom = totalTracks == 0 ? 1 : totalTracks;
     double value = ((completedLocal.toDouble()) + runningProgress) / denom;
     // If item is blocked/canceled, force 0 to avoid stale '2%'
-    if (_blockedItems.contains(libraryItemId)) {
+    if (_blockedItems.contains(libraryItemId) && !hasLocal) {
       value = 0.0;
     } else if (value > 0.0 && value < 0.01) {
       value = 0.01;
     }
 
     String status = 'none';
-    if (completedLocal >= totalTracks && totalTracks > 0) {
+    // Check local files first - if they exist and match total, it's complete
+    if (hasLocal && completedLocal >= totalTracks && totalTracks > 0) {
       status = 'complete';
     } else if (recs.any((r) => r.status == TaskStatus.failed)) status = 'failed';
     else if (recs.any((r) => r.status == TaskStatus.running)) status = 'running';
     else if (recs.any((r) => r.status == TaskStatus.enqueued)) status = 'queued';
     else if (_pendingQueuedUntil[libraryItemId]?.isAfter(DateTime.now()) == true) status = 'queued';
     else if (_itemsInGlobalQueue.contains(libraryItemId) || _activeItems.contains(libraryItemId)) status = 'queued';
-    else if (_blockedItems.contains(libraryItemId)) status = 'none';
+    else if (_blockedItems.contains(libraryItemId) && !hasLocal) status = 'none';
     else if (_uiActive[libraryItemId] == true) status = 'running';
     else if (completedLocal > 0 && completedLocal < totalTracks) status = 'running';
+    else if (hasLocal && completedLocal > 0) {
+      // Has some local files but not complete - treat as in progress or complete based on count
+      status = completedLocal >= totalTracks ? 'complete' : 'running';
+    }
 
     return ItemProgress(
       libraryItemId: libraryItemId,
@@ -847,13 +1124,67 @@ class DownloadsRepository {
     );
   }
 
+  // Cache for database records to reduce locking
+  List<TaskRecord>? _cachedAllRecords;
+  DateTime? _cacheTimestamp;
+  static const _cacheDuration = Duration(seconds: 3);
+  bool _isQuerying = false;
+
   Future<List<TaskRecord>> _recordsForItem(String libraryItemId) async {
-    final all = await FileDownloader().database.allRecords();
+    final all = await _getAllRecordsCached();
     return all.where((r) {
       final meta = r.task.metaData ?? '';
       final id = _extractItemId(meta);
       return id == libraryItemId;
     }).toList();
+  }
+
+  Future<List<TaskRecord>> _queryAllRecordsWithRetry({int maxRetries = 3}) async {
+    for (int i = 0; i < maxRetries; i++) {
+      try {
+        return await FileDownloader().database.allRecords();
+      } catch (e) {
+        if (i < maxRetries - 1) {
+          // Wait before retry, with exponential backoff
+          await Future.delayed(Duration(milliseconds: 50 * (i + 1)));
+        } else {
+          // Last retry failed, return empty list
+          return [];
+        }
+      }
+    }
+    return [];
+  }
+
+  /// Get all records with caching to reduce database locking
+  Future<List<TaskRecord>> _getAllRecordsCached({bool forceRefresh = false}) async {
+    final now = DateTime.now();
+    if (!forceRefresh && 
+        _cachedAllRecords != null && 
+        _cacheTimestamp != null && 
+        now.difference(_cacheTimestamp!) < _cacheDuration &&
+        !_isQuerying) {
+      return _cachedAllRecords!;
+    }
+
+    // Prevent concurrent queries
+    if (_isQuerying) {
+      // Wait a bit and retry with cache
+      await Future.delayed(const Duration(milliseconds: 100));
+      if (_cachedAllRecords != null) {
+        return _cachedAllRecords!;
+      }
+    }
+
+    _isQuerying = true;
+    try {
+      final all = await _queryAllRecordsWithRetry();
+      _cachedAllRecords = all;
+      _cacheTimestamp = now;
+      return all;
+    } finally {
+      _isQuerying = false;
+    }
   }
 
   Future<void> _persistBlockedItems() async {
@@ -940,7 +1271,7 @@ class DownloadsRepository {
           break;
         }
         // Check if there's already a download running
-        final allRecords = await FileDownloader().database.allRecords();
+        final allRecords = await _getAllRecordsCached();
         final hasRunning = allRecords.any((r) => 
           r.status == TaskStatus.running || r.status == TaskStatus.enqueued);
         
@@ -1174,10 +1505,61 @@ class DownloadsRepository {
             _stopProgressNotifications(id);
           } catch (_) {}
           // If the completed item is currently playing from stream, switch to local seamlessly
+          // PAUSE first to prevent position jumping
           try {
-            await _playback.switchToLocalIfAvailableFor(id);
+            final np = _playback.nowPlaying;
+            final isCurrentlyPlaying = np != null && np.libraryItemId == id;
+            bool wasPlaying = false;
+            Duration? savedGlobalPosition;
+            
+            if (isCurrentlyPlaying) {
+              // CRITICAL: Save global position BEFORE pausing
+              savedGlobalPosition = _playback.globalBookPosition;
+              wasPlaying = _playback.player.playing;
+              
+              if (wasPlaying) {
+                await _playback.pause();
+              }
+              
+              // Show notification
+              try {
+                await NotificationService.instance.showDownloadComplete('Switching to downloaded files...');
+              } catch (_) {}
+              
+              // Wait a moment for pause to settle
+              await Future.delayed(const Duration(milliseconds: 200));
+              
+              // Switch to local files
+              await _playback.switchToLocalIfAvailableFor(id);
+              
+              // CRITICAL: Restore the exact saved position after switching
+              if (savedGlobalPosition != null && savedGlobalPosition > Duration.zero) {
+                await Future.delayed(const Duration(milliseconds: 100));
+                await _playback.seekGlobal(savedGlobalPosition, reportNow: false);
+                await Future.delayed(const Duration(milliseconds: 100));
+                
+                // Verify position was restored correctly
+                final actualPos = _playback.globalBookPosition;
+                if (actualPos != null) {
+                  final diff = (actualPos.inMilliseconds - savedGlobalPosition.inMilliseconds).abs();
+                  if (diff > 2000) {
+                    // Position is off by more than 2 seconds, try again
+                    await Future.delayed(const Duration(milliseconds: 200));
+                    await _playback.seekGlobal(savedGlobalPosition, reportNow: false);
+                  }
+                }
+              }
+              
+              // RESUME playback if it was playing before
+              if (wasPlaying) {
+                await Future.delayed(const Duration(milliseconds: 200));
+                await _playback.player.play();
+              }
+            } else {
+              // Not currently playing, just switch silently
+              await _playback.switchToLocalIfAvailableFor(id);
+            }
           } catch (_) {}
-          // Optional: toast/snackbar via notification channel could be added here
         }
       }
 
@@ -1204,10 +1586,19 @@ class DownloadsRepository {
       }
     } catch (_) {}
     try {
-      final all = await FileDownloader().database.allRecords();
+      final all = await _getAllRecordsCached(forceRefresh: true);
+      // Batch deletions with delays
       for (final r in all) {
-        await FileDownloader().database.deleteRecordWithId(r.taskId);
+        try {
+          await FileDownloader().database.deleteRecordWithId(r.taskId);
+          if (all.length > 1) {
+            await Future.delayed(const Duration(milliseconds: 10));
+          }
+        } catch (_) {}
       }
+      // Invalidate cache
+      _cachedAllRecords = null;
+      _cacheTimestamp = null;
     } catch (_) {}
   }
 }

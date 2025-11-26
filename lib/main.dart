@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/auth_repository.dart';
 import 'package:flutter/foundation.dart';
 import 'core/playback_repository.dart';
 import 'core/downloads_repository.dart';
+import 'core/books_repository.dart';
 import 'core/theme_service.dart';
 import 'core/audio_service_binding.dart';
 import 'core/notification_service.dart';
@@ -67,8 +69,10 @@ Future<void> main() async {
 
   // Construct singletons (Auth -> Playback -> Downloads)
   final auth = await AuthRepository.ensure();
+  final prefs = await SharedPreferences.getInstance();
+  final booksRepo = await BooksRepository.create();
   final playback = PlaybackRepository(auth);
-  final downloads = DownloadsRepository(auth, playback);
+  final downloads = DownloadsRepository(auth, playback, booksRepo: booksRepo);
   final theme = ThemeService();
   await downloads.init();
 

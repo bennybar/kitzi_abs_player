@@ -865,13 +865,13 @@ class _NewSeriesCardState extends State<_NewSeriesCard> {
                             return SizedBox(
                               width: 120,
                               child: AspectRatio(
-                                aspectRatio: 2/3,
-                                child: InkWell(
-                                  onTap: () => widget.onTapBook(b),
+                              aspectRatio: 2/3,
+                              child: InkWell(
+                                onTap: () => widget.onTapBook(b),
+                                borderRadius: BorderRadius.circular(12),
+                                child: ClipRRect(
                                   borderRadius: BorderRadius.circular(12),
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(12),
-                                    child: _CoverThumb(url: b.coverUrl),
+                                  child: _CoverThumb(url: b.coverUrl),
                                   ),
                                 ),
                               ),
@@ -933,13 +933,13 @@ class _SeriesCard extends StatelessWidget {
                   return SizedBox(
                     width: 120,
                     child: AspectRatio(
-                      aspectRatio: 2/3,
-                      child: InkWell(
-                        onTap: () => onTapBook(b),
+                    aspectRatio: 2/3,
+                    child: InkWell(
+                      onTap: () => onTapBook(b),
+                      borderRadius: BorderRadius.circular(12),
+                      child: ClipRRect(
                         borderRadius: BorderRadius.circular(12),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: _CoverThumb(url: b.coverUrl),
+                        child: _CoverThumb(url: b.coverUrl),
                         ),
                       ),
                     ),
@@ -1001,13 +1001,13 @@ class _CollectionCard extends StatelessWidget {
                   return SizedBox(
                     width: 120,
                     child: AspectRatio(
-                      aspectRatio: 2/3,
-                      child: InkWell(
-                        onTap: () => onTapBook(b),
+                    aspectRatio: 2/3,
+                    child: InkWell(
+                      onTap: () => onTapBook(b),
+                      borderRadius: BorderRadius.circular(12),
+                      child: ClipRRect(
                         borderRadius: BorderRadius.circular(12),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: _CoverThumb(url: b.coverUrl),
+                        child: _CoverThumb(url: b.coverUrl),
                         ),
                       ),
                     ),

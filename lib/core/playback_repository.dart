@@ -467,7 +467,7 @@ class PlaybackRepository {
   Future<bool> _checkSyncRequirement({BuildContext? context}) async {
     final shouldSync = await _shouldSyncProgressBeforePlay();
     if (!shouldSync) return true; // Sync not required, proceed
-
+    
     try {
       final api = _auth.api;
       await api.request('GET', '/api/me', auth: true).timeout(
@@ -1039,10 +1039,24 @@ class PlaybackRepository {
     if (totalSec != null && targetSec > totalSec) targetSec = totalSec;
 
     final map = _mapGlobalSecondsToTrack(targetSec, np.tracks);
+    final targetOffset = Duration(milliseconds: (map.offsetSec * 1000).round());
+    
+    // If switching tracks, preserve playback state
+    final wasPlaying = player.playing;
     if (map.index != np.currentIndex) {
       await _setTrackAt(map.index, preload: true);
+      // Small delay to ensure track is loaded before seeking
+      await Future.delayed(const Duration(milliseconds: 50));
     }
-    await player.seek(Duration(milliseconds: (map.offsetSec * 1000).round()));
+    
+    // Seek to the target position
+    await player.seek(targetOffset);
+    
+    // Restore playback state if it was playing
+    if (wasPlaying && !player.playing) {
+      await player.play();
+    }
+    
     if (reportNow) {
       await _sendProgressImmediate(overrideTrackPosSec: map.offsetSec);
     }
@@ -1213,18 +1227,22 @@ class PlaybackRepository {
     if (np.currentIndex >= local.length) return false;
 
     final wasPlaying = player.playing;
-    final curPos = player.position;
+    // CRITICAL: Use global position to preserve position across tracks - calculate BEFORE updating tracks
+    final globalPosSec = _computeGlobalPositionSec();
     final curIndex = np.currentIndex;
+    final curTrackPos = player.position; // Also save current track position as backup
 
     // Merge known durations from current tracks to local tracks by index
+    // CRITICAL: Preserve all durations from current tracks to ensure accurate position mapping
     try {
       final merged = <PlaybackTrack>[];
       for (final lt in local) {
         double dur = lt.duration;
         try {
+          // Find matching track by index to preserve duration
           final match = np.tracks.firstWhere((t) => t.index == lt.index, orElse: () => lt);
           if (match.duration > 0) {
-            dur = match.duration;
+            dur = match.duration; // Use existing duration from streaming track
           }
         } catch (_) {}
         merged.add(PlaybackTrack(
@@ -1244,10 +1262,79 @@ class PlaybackRepository {
       _setNowPlaying(updated);
     }
 
-    // Load corresponding local track and seek to the same position
-    await _setTrackAt(curIndex, preload: true);
-    if (curPos > Duration.zero) {
-      await player.seek(curPos);
+    // CRITICAL: Restore position using global position - this ensures accuracy across tracks
+    if (globalPosSec != null && globalPosSec > 0) {
+      // Map global position to track index and offset using UPDATED tracks (with local URLs but preserved durations)
+      final updatedNp = _nowPlaying; // Get the updated nowPlaying after track switch
+      if (updatedNp != null && updatedNp.tracks.isNotEmpty) {
+        // Calculate target track and offset BEFORE loading the track
+        final map = _mapGlobalSecondsToTrack(globalPosSec, updatedNp.tracks);
+        final targetIndex = map.index.clamp(0, updatedNp.tracks.length - 1);
+        final targetOffsetSec = map.offsetSec;
+        final targetOffsetMs = (targetOffsetSec * 1000).round();
+        
+        // CRITICAL: Load the target track first
+        final needsTrackSwitch = targetIndex != updatedNp.currentIndex;
+        if (needsTrackSwitch) {
+          await _setTrackAt(targetIndex, preload: true);
+        }
+        
+        // Wait for track to be fully loaded and ready
+        int retries = 0;
+        while (retries < 20) {
+          await Future.delayed(const Duration(milliseconds: 50));
+          final currentDuration = player.duration;
+          final currentPosition = player.position;
+          // Track is ready when we have a duration and can get position
+          if (currentDuration != null && currentDuration > Duration.zero) {
+            // Additional check: ensure player is ready
+            if (currentPosition != null) {
+              break;
+            }
+          }
+          retries++;
+        }
+        
+        // Get actual track duration from player (may differ from track metadata)
+        final actualTrackDuration = player.duration;
+        final maxOffsetMs = actualTrackDuration != null 
+            ? actualTrackDuration.inMilliseconds 
+            : (updatedNp.tracks[targetIndex].duration > 0 
+                ? (updatedNp.tracks[targetIndex].duration * 1000).round() 
+                : targetOffsetMs);
+        
+        // Clamp offset to valid range
+        final clampedOffsetMs = targetOffsetMs.clamp(0, maxOffsetMs);
+        final clampedOffset = Duration(milliseconds: clampedOffsetMs);
+        
+        // CRITICAL: Seek to the exact position
+        await player.seek(clampedOffset);
+        
+        // Verify position was set correctly
+        await Future.delayed(const Duration(milliseconds: 150));
+        final actualPos = player.position;
+        final posDiff = (actualPos.inMilliseconds - clampedOffsetMs).abs();
+        if (posDiff > 1000) {
+          // Position is significantly off, try seeking again with a longer wait
+          await Future.delayed(const Duration(milliseconds: 200));
+          await player.seek(clampedOffset);
+        }
+      } else {
+        // Fallback: use seekGlobal
+        await seekGlobal(Duration(milliseconds: (globalPosSec * 1000).round()), reportNow: false);
+      }
+    } else {
+      // Fallback: if global position not available, use current track position
+      final updatedNp = _nowPlaying;
+      if (updatedNp != null && curIndex < updatedNp.tracks.length) {
+        if (curIndex != updatedNp.currentIndex) {
+          await _setTrackAt(curIndex, preload: true);
+          await Future.delayed(const Duration(milliseconds: 100));
+        }
+        if (curTrackPos > Duration.zero) {
+          await player.seek(curTrackPos);
+        }
+      }
     }
     if (wasPlaying) {
       await player.play();

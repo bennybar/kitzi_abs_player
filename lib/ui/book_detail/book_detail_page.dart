@@ -125,9 +125,9 @@ class _BookDetailPageState extends State<BookDetailPage> {
     // This method is kept for compatibility but should not be used
     // Use _cachedBook instead
     final repo = await _repoFut;
-    final cached = await repo.getBookFromDb(widget.bookId);
-    if (cached != null) return cached;
-    throw Exception('offline_not_cached');
+      final cached = await repo.getBookFromDb(widget.bookId);
+      if (cached != null) return cached;
+      throw Exception('offline_not_cached');
   }
 
   @override
@@ -525,25 +525,25 @@ class _BookDetailPageState extends State<BookDetailPage> {
                 if (_cachedBook != null && _cachedBook!.isAudioBook)
                   StreamBuilder<bool>(
                     stream: _getBookCompletionStream(playbackRepo, _cachedBook!.id),
-                    initialData: false,
-                    builder: (_, completionSnap) {
-                      final isCompleted = completionSnap.data ?? false;
-                      final label = isCompleted ? 'Mark as Unfinished' : 'Mark as Finished';
-                      return FilledButton.tonal(
+                      initialData: false,
+                      builder: (_, completionSnap) {
+                        final isCompleted = completionSnap.data ?? false;
+                        final label = isCompleted ? 'Mark as Unfinished' : 'Mark as Finished';
+                        return FilledButton.tonal(
                         onPressed: () => _toggleBookCompletion(context, _cachedBook!, isCompleted),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: isCompleted 
-                              ? cs.errorContainer 
-                              : cs.surfaceContainerHighest,
-                          foregroundColor: isCompleted 
-                              ? cs.onErrorContainer 
-                              : cs.onSurface,
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                        ),
-                        child: Text(label),
-                      );
-                    },
-                  ),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: isCompleted 
+                                ? cs.errorContainer 
+                                : cs.surfaceContainerHighest,
+                            foregroundColor: isCompleted 
+                                ? cs.onErrorContainer 
+                                : cs.onSurface,
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          ),
+                          child: Text(label),
+                    );
+                  },
+                ),
               ],
             ),
           ),
@@ -561,34 +561,34 @@ class _BookDetailPageState extends State<BookDetailPage> {
                           Text(
                             'Loading book details...',
                             style: TextStyle(color: cs.onSurfaceVariant),
-                          ),
-                        ],
                       ),
+                        ],
+                    ),
                     ),
                   )
                 : Builder(
                     builder: (context) {
                       final b = _cachedBook!;
-                      // No verbose logging in production
+              // No verbose logging in production
 
-                      String fmtDuration() {
-                        final ms = _resolvedDurationMs ?? b.durationMs;
-                        if (ms == null || ms == 0) return 'Unknown';
-                        final d = Duration(milliseconds: ms);
-                        final h = d.inHours;
-                        final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
-                        return h > 0 ? '$h h $m m' : '$m m';
-                      }
+                String fmtDuration() {
+                  final ms = _resolvedDurationMs ?? b.durationMs;
+                  if (ms == null || ms == 0) return 'Unknown';
+                  final d = Duration(milliseconds: ms);
+                  final h = d.inHours;
+                  final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+                  return h > 0 ? '$h h $m m' : '$m m';
+                }
 
-                      String fmtSize() {
-                        final sz = _resolvedSizeBytes ?? b.sizeBytes;
-                        if (sz == null || sz == 0) return '—';
-                        final mb = (sz / (1024 * 1024));
-                        return '${mb.toStringAsFixed(1)} MB';
-                      }
+                String fmtSize() {
+                  final sz = _resolvedSizeBytes ?? b.sizeBytes;
+                  if (sz == null || sz == 0) return '—';
+                  final mb = (sz / (1024 * 1024));
+                  return '${mb.toStringAsFixed(1)} MB';
+                }
 
-                      // Layout: header and actions stay static; description area scrolls independently.
-                      return Column(
+                // Layout: header and actions stay static; description area scrolls independently.
+                return Column(
                   children: [
                     if (!_kickedResolve) ...[
                       // Kick best-effort resolves once when page builds with data
@@ -992,10 +992,10 @@ class _BookDetailPageState extends State<BookDetailPage> {
                           ),
                         ),
                       ),
-                      ],
-                    );
-                    },
-                  ),
+                  ],
+                );
+              },
+            ),
           ),
         ],
       ),
