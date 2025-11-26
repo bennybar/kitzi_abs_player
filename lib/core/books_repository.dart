@@ -1273,15 +1273,35 @@ class BooksRepository {
       }
     }
     
-    // Sort books by series sequence if available
+    // Sort books primarily by explicit series sequence, then fall back to
+    // the order provided by the series.bookIds array (matches ABS web UI),
+    // and finally by title to keep results stable for any remaining ties.
+    final idOrder = <String, int>{};
+    for (var i = 0; i < series.bookIds.length; i++) {
+      idOrder[series.bookIds[i]] = i;
+    }
+    
     books.sort((a, b) {
-      final sa = a.seriesSequence ?? double.nan;
-      final sb = b.seriesSequence ?? double.nan;
-      final aNum = !sa.isNaN;
-      final bNum = !sb.isNaN;
-      if (aNum && bNum) return sa.compareTo(sb);
-      if (aNum && !bNum) return -1;
-      if (!aNum && bNum) return 1;
+      final sa = a.seriesSequence;
+      final sb = b.seriesSequence;
+      final aHasSeq = sa != null && !sa.isNaN;
+      final bHasSeq = sb != null && !sb.isNaN;
+      
+      if (aHasSeq && bHasSeq) {
+        final cmp = sa!.compareTo(sb!);
+        if (cmp != 0) return cmp;
+      } else if (aHasSeq && !bHasSeq) {
+        return -1;
+      } else if (!aHasSeq && bHasSeq) {
+        return 1;
+      }
+      
+      final ai = idOrder[a.id];
+      final bi = idOrder[b.id];
+      if (ai != null && bi != null && ai != bi) {
+        return ai.compareTo(bi);
+      }
+      
       return a.title.toLowerCase().compareTo(b.title.toLowerCase());
     });
     
