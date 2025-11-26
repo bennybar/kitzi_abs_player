@@ -32,6 +32,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool? _bluetoothAutoPlay;
   bool? _waveformAnimationEnabled;
   bool? _letterScrollEnabled;
+  bool? _letterScrollBooksAlpha;
   bool? _smartRewindEnabled;
   String? _activeLibraryId;
   List<Map<String, String>> _libraries = const [];
@@ -61,6 +62,7 @@ class _SettingsPageState extends State<SettingsPage> {
         // Load waveform animation setting (default already set above)
         _waveformAnimationEnabled = prefs.getBool('ui_waveform_animation_enabled') ?? true;
         _letterScrollEnabled = prefs.getBool('ui_letter_scroll_enabled') ?? false;
+        _letterScrollBooksAlpha = prefs.getBool('ui_letter_scroll_books_alpha') ?? false;
         
         _activeLibraryId = prefs.getString('books_library_id');
       });
@@ -415,6 +417,20 @@ class _SettingsPageState extends State<SettingsPage> {
               await UiPrefs.setLetterScrollEnabled(v, pinToSettingsOnChange: true);
               if (mounted) setState(() { _letterScrollEnabled = v; });
             },
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 24),
+            child: SwitchListTile(
+              title: const Text('Books tab alphabetical order'),
+              subtitle: const Text('Required for letter scrolling in the Books tab'),
+              value: _letterScrollBooksAlpha ?? false,
+              onChanged: (_letterScrollEnabled ?? false)
+                  ? (v) async {
+                      await UiPrefs.setLetterScrollBooksAlpha(v, pinToSettingsOnChange: true);
+                      if (mounted) setState(() { _letterScrollBooksAlpha = v; });
+                    }
+                  : null,
+            ),
           ),
           // Live-bind to ThemeService.mode
           ValueListenableBuilder<ThemeMode>(

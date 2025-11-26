@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../core/books_repository.dart';
 import '../../core/ui_prefs.dart';
@@ -22,8 +23,9 @@ class _AuthorsPageState extends State<AuthorsPage> {
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
   final ScrollController _scrollCtrl = ScrollController();
-  Map<String, GlobalKey> _authorLetterKeys = <String, GlobalKey>{};
+  Map<String, int> _authorLetterIndex = <String, int>{};
   List<String> _authorLetterOrder = const <String>[];
+  int _authorLetterDenominator = 1;
 
   @override
   void initState() {
@@ -59,22 +61,28 @@ class _AuthorsPageState extends State<AuthorsPage> {
   }
 
   void _prepareAuthorLetterAnchors(List<AuthorInfo> list) {
-    final merged = <String, GlobalKey>{};
-    for (final author in list) {
-      final bucket = alphabetBucketFor(author.name);
-      merged[bucket] = _authorLetterKeys[bucket] ?? GlobalKey();
+    final indices = <String, int>{};
+    for (var i = 0; i < list.length; i++) {
+      final bucket = alphabetBucketFor(list[i].name);
+      indices.putIfAbsent(bucket, () => i);
     }
-    _authorLetterKeys = merged;
-    _authorLetterOrder = sortAlphabetBuckets(merged.keys);
+    _authorLetterIndex = indices;
+    _authorLetterOrder = sortAlphabetBuckets(indices.keys);
+    _authorLetterDenominator = math.max(1, list.length - 1);
   }
 
   void _scrollAuthorsToLetter(String letter) {
-    final context = _authorLetterKeys[letter]?.currentContext;
-    if (context == null) return;
-    Scrollable.ensureVisible(
-      context,
+    final index = _authorLetterIndex[letter];
+    if (index == null || !_scrollCtrl.hasClients) return;
+    final maxScroll = _scrollCtrl.position.maxScrollExtent;
+    if (maxScroll <= 0) {
+      _scrollCtrl.animateTo(0, duration: const Duration(milliseconds: 200), curve: Curves.easeOutCubic);
+      return;
+    }
+    final ratio = (index / _authorLetterDenominator).clamp(0.0, 1.0);
+    _scrollCtrl.animateTo(
+      ratio * maxScroll,
       duration: const Duration(milliseconds: 250),
-      alignment: 0.1,
       curve: Curves.easeOutCubic,
     );
   }
@@ -251,7 +259,6 @@ class _AuthorsPageState extends State<AuthorsPage> {
         ),
       );
     }
-    final assigned = <String>{};
     return RefreshIndicator(
       onRefresh: _refresh,
       child: ListView.builder(
@@ -260,19 +267,10 @@ class _AuthorsPageState extends State<AuthorsPage> {
         itemCount: _filteredAuthors.length,
         itemBuilder: (context, index) {
           final author = _filteredAuthors[index];
-          final bucket = alphabetBucketFor(author.name);
-          Widget tile = _AuthorTile(
+          return _AuthorTile(
             author: author,
             onTap: () => _showAuthorBooks(context, author),
           );
-          final anchor = _authorLetterKeys[bucket];
-          if (anchor != null && assigned.add(bucket)) {
-            tile = KeyedSubtree(
-              key: anchor,
-              child: tile,
-            );
-          }
-          return tile;
         },
       ),
     );

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import '../../core/books_repository.dart';
@@ -50,8 +51,10 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
   StreamSubscription<List<ConnectivityResult>>? _connSub;
   bool _isOnline = true;
   StreamSubscription<Map<String, bool>>? _completionSub;
-  Map<String, GlobalKey> _seriesLetterKeys = <String, GlobalKey>{};
+  Map<String, int> _seriesLetterIndex = <String, int>{};
   List<String> _seriesLetterOrder = const <String>[];
+  int _seriesLetterDenominator = 1;
+  final ScrollController _scrollCtrl = ScrollController();
   
   static const String _viewTypeKey = 'series_view_type_pref';
   static const String _searchKey = 'series_search_pref';
@@ -98,6 +101,7 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
     _searchDebounce?.cancel();
     _connSub?.cancel();
     _completionSub?.cancel();
+    _scrollCtrl.dispose();
     _searchCtrl.dispose();
     _searchFocusNode.dispose();
     super.dispose();
@@ -244,22 +248,28 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
   }
 
   void _prepareSeriesLetterAnchors(List<Series> seriesList) {
-    final merged = <String, GlobalKey>{};
-    for (final series in seriesList) {
-      final bucket = alphabetBucketFor(series.name);
-      merged[bucket] = _seriesLetterKeys[bucket] ?? GlobalKey();
+    final indices = <String, int>{};
+    for (var i = 0; i < seriesList.length; i++) {
+      final bucket = alphabetBucketFor(seriesList[i].name);
+      indices.putIfAbsent(bucket, () => i);
     }
-    _seriesLetterKeys = merged;
-    _seriesLetterOrder = sortAlphabetBuckets(merged.keys);
+    _seriesLetterIndex = indices;
+    _seriesLetterOrder = sortAlphabetBuckets(indices.keys);
+    _seriesLetterDenominator = math.max(1, seriesList.length - 1);
   }
 
   void _scrollSeriesToLetter(String letter) {
-    final context = _seriesLetterKeys[letter]?.currentContext;
-    if (context == null) return;
-    Scrollable.ensureVisible(
-      context,
+    final index = _seriesLetterIndex[letter];
+    if (index == null || !_scrollCtrl.hasClients) return;
+    final maxScroll = _scrollCtrl.position.maxScrollExtent;
+    if (maxScroll <= 0) {
+      _scrollCtrl.animateTo(0, duration: const Duration(milliseconds: 200), curve: Curves.easeOutCubic);
+      return;
+    }
+    final ratio = (index / _seriesLetterDenominator).clamp(0.0, 1.0);
+    _scrollCtrl.animateTo(
+      ratio * maxScroll,
       duration: const Duration(milliseconds: 250),
-      alignment: 0.1,
       curve: Curves.easeOutCubic,
     );
   }
@@ -504,8 +514,9 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
     if (_viewType == SeriesViewType.series) {
       _prepareSeriesLetterAnchors(filteredSeries);
     } else {
-      _seriesLetterKeys = <String, GlobalKey>{};
+      _seriesLetterIndex = <String, int>{};
       _seriesLetterOrder = const <String>[];
+      _seriesLetterDenominator = 1;
     }
     
     // Calculate total count for display
@@ -520,6 +531,7 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
           color: cs.primary,
           backgroundColor: cs.surface,
           child: CustomScrollView(
+            controller: _scrollCtrl,
             physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
             slivers: [
           SliverAppBar.medium(
@@ -705,13 +717,11 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
               sliver: _viewType == SeriesViewType.series
-                  ? () {
-                      final assignedBuckets = <String>{};
-                      return SliverList.builder(
+                  ? SliverList.builder(
                       itemCount: filteredSeries.length,
                       itemBuilder: (context, i) {
                         final series = filteredSeries[i];
-                        Widget card = _NewSeriesCard(
+                        return _NewSeriesCard(
                           series: series,
                           onTap: () {
                             Navigator.of(context).push(
@@ -725,18 +735,8 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
                           },
                           getBooksForSeries: _getBooksForSeries,
                         );
-                        final bucket = alphabetBucketFor(series.name);
-                        final anchor = _seriesLetterKeys[bucket];
-                        if (anchor != null && assignedBuckets.add(bucket)) {
-                            card = KeyedSubtree(
-                              key: anchor,
-                              child: card,
-                            );
-                        }
-                        return card;
                       },
-                    );
-                    }()
+                    )
                   : SliverList.builder(
                       itemCount: filteredCollections.length,
                       itemBuilder: (context, i) {

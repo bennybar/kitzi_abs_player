@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -49,8 +50,15 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
   StreamSubscription<BookDbChange>? _dbChangeSub;
   Timer? _dbReloadDebounce;
   Future<void>? _activeSyncFuture;
-  Map<String, GlobalKey> _bookLetterKeys = <String, GlobalKey>{};
+  Map<String, int> _bookLetterIndex = <String, int>{};
   List<String> _bookLetterOrder = const <String>[];
+  int _bookLetterDenominator = 1;
+  VoidCallback? _letterScrollListener;
+  VoidCallback? _letterScrollAlphaListener;
+
+  bool get _letterScrollEnabled => UiPrefs.letterScrollEnabled.value;
+  bool get _booksLetterAlphaEnabled => UiPrefs.letterScrollBooksAlpha.value;
+  bool get _forceAlphaSort => _letterScrollEnabled && _booksLetterAlphaEnabled;
   
   // Memory management
   final List<StreamSubscription> _subscriptions = [];
@@ -95,6 +103,14 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       _refresh(initial: true);
       _setupAutoRefresh();
     });
+    _letterScrollListener = () {
+      if (mounted) setState(() {});
+    };
+    _letterScrollAlphaListener = () {
+      if (mounted) setState(() {});
+    };
+    UiPrefs.letterScrollEnabled.addListener(_letterScrollListener!);
+    UiPrefs.letterScrollBooksAlpha.addListener(_letterScrollAlphaListener!);
   }
 
   @override
@@ -137,6 +153,12 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
     
     // Cancel all stream subscriptions
     _connSub?.cancel();
+    if (_letterScrollListener != null) {
+      UiPrefs.letterScrollEnabled.removeListener(_letterScrollListener!);
+    }
+    if (_letterScrollAlphaListener != null) {
+      UiPrefs.letterScrollBooksAlpha.removeListener(_letterScrollAlphaListener!);
+    }
     for (final subscription in _subscriptions) {
       subscription.cancel();
     }
@@ -563,7 +585,8 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
     // Show only audiobooks
     list = list.where((b) => b.isAudioBook && (b.libraryId == null || !_isEbookLibrary)).toList();
     
-    switch (_sort) {
+    final sortMode = _forceAlphaSort ? SortMode.nameAsc : _sort;
+    switch (sortMode) {
       case SortMode.nameAsc:
         list.sort(
                 (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
@@ -616,23 +639,34 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
   }
 
   void _prepareBookLetterAnchors(List<Book> books) {
-    final merged = <String, GlobalKey>{};
-    for (final book in books) {
-      final bucket = alphabetBucketFor(book.title);
-      merged[bucket] = _bookLetterKeys[bucket] ?? GlobalKey();
+    final indices = <String, int>{};
+    for (var i = 0; i < books.length; i++) {
+      final bucket = alphabetBucketFor(books[i].title);
+      indices.putIfAbsent(bucket, () => i);
     }
-    _bookLetterKeys = merged;
-    _bookLetterOrder = sortAlphabetBuckets(merged.keys);
+    _bookLetterIndex = indices;
+    _bookLetterOrder = sortAlphabetBuckets(indices.keys);
+    _bookLetterDenominator = math.max(1, books.length - 1);
   }
 
   void _scrollToBookLetter(String letter) {
-    final key = _bookLetterKeys[letter];
-    final context = key?.currentContext;
-    if (context == null) return;
-    Scrollable.ensureVisible(
-      context,
+    final index = _bookLetterIndex[letter];
+    if (index == null) return;
+    if (!_scrollCtrl.hasClients) return;
+    final maxScroll = _scrollCtrl.position.maxScrollExtent;
+    if (maxScroll <= 0) {
+      _scrollCtrl.animateTo(
+        0,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOutCubic,
+      );
+      return;
+    }
+    final ratio = (index / _bookLetterDenominator).clamp(0.0, 1.0);
+    final target = ratio * maxScroll;
+    _scrollCtrl.animateTo(
+      target,
       duration: const Duration(milliseconds: 250),
-      alignment: 0.1,
       curve: Curves.easeOutCubic,
     );
   }
@@ -727,11 +761,14 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
               ),
               PopupMenuButton<SortMode>(
                 tooltip: 'Sort',
-                initialValue: _sort,
-                onSelected: (mode) {
-                  setState(() => _sort = mode);
-                  _saveSortPref(mode);
-                },
+                enabled: !_forceAlphaSort,
+                initialValue: _forceAlphaSort ? SortMode.nameAsc : _sort,
+                onSelected: !_forceAlphaSort
+                    ? (mode) {
+                        setState(() => _sort = mode);
+                        _saveSortPref(mode);
+                      }
+                    : null,
                 icon: Icon(
                   Icons.sort_rounded,
                   color: cs.onSurfaceVariant,
@@ -964,7 +1001,6 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
   }
 
   Widget _buildGrid(List<Book> list) {
-    final assigned = <String>{};
     return SliverPadding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
       sliver: SliverGrid(
@@ -977,20 +1013,11 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
         delegate: SliverChildBuilderDelegate(
           (context, i) {
             final b = list[i];
-            Widget card = _BookCard(
+            return _BookCard(
               key: ValueKey(b.id),
               book: b,
               onTap: b.isAudioBook ? () => _openDetails(b) : null,
             );
-            final bucket = alphabetBucketFor(b.title);
-            final anchor = _bookLetterKeys[bucket];
-            if (anchor != null && assigned.add(bucket)) {
-              card = KeyedSubtree(
-                key: anchor,
-                child: card,
-              );
-            }
-            return card;
           },
           childCount: list.length,
         ),
@@ -1064,7 +1091,6 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
   }
 
   Widget _buildList(List<Book> list) {
-    final assigned = <String>{};
     return SliverPadding(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
       sliver: SliverList.separated(
@@ -1082,7 +1108,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
             });
           }
           
-          Widget tile = Dismissible(
+          return Dismissible(
             key: ValueKey(b.id),
             direction: DismissDirection.startToEnd, // Only allow swipe right (download)
             dismissThresholds: const {
@@ -1170,15 +1196,6 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
               checkIfCompleted: _checkIfCompleted,
             ),
           );
-          final bucket = alphabetBucketFor(b.title);
-          final anchor = _bookLetterKeys[bucket];
-          if (anchor != null && assigned.add(bucket)) {
-            tile = KeyedSubtree(
-              key: anchor,
-              child: tile,
-            );
-          }
-          return tile;
         },
       ),
     );
@@ -1267,7 +1284,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       child: ValueListenableBuilder<bool>(
         valueListenable: UiPrefs.letterScrollEnabled,
         builder: (_, enabled, __) {
-          final visible = enabled && _bookLetterOrder.length > 1 && !_loading;
+          final visible = _forceAlphaSort && enabled && _bookLetterOrder.length > 1 && !_loading;
           if (!visible) return const SizedBox.shrink();
           return SizedBox(
             width: 40,
