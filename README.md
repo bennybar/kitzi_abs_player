@@ -1,6 +1,6 @@
 # Kitzi ABS Player
 
-A comprehensive Android client for Audiobookshelf servers, designed for audiobook enthusiasts who want full control over their listening experience.
+An open source Android client for Audiobookshelf servers, designed for audiobook enthusiasts who want full control over their listening experience.
 
 <div align="center">
 
@@ -16,7 +16,7 @@ A comprehensive Android client for Audiobookshelf servers, designed for audioboo
 
 ## Overview
 
-Kitzi ABS Player transforms your audiobook listening experience by providing seamless access to your entire Audiobookshelf library. Whether you're commuting, exercising, or relaxing at home, enjoy professional-grade features with a clean, intuitive interface.
+Kitzi ABS Player is an open source Android client that transforms your audiobook listening experience by providing seamless access to your entire Audiobookshelf library. Built with Material Design 3 expressive principles, the app offers professional-grade features with a clean, intuitive interface. Whether you're commuting, exercising, or relaxing at home, enjoy a polished listening experience.
 
 ## Features
 
@@ -45,7 +45,7 @@ Kitzi ABS Player transforms your audiobook listening experience by providing sea
 - Automatic cleanup of orphaned downloads
 
 ### Intuitive User Interface
-- Clean, modern Material Design 3 interface
+- Clean, modern Material Design 3 expressive interface
 - Easy library browsing with search functionality
 - Multiple view modes: Books, Series, Authors
 - Alphabetical letter scrolling for quick navigation
@@ -156,7 +156,7 @@ Kitzi ABS Player respects your privacy:
 
 ## License
 
-This project is open source. See the repository for license details.
+Kitzi ABS Player is open source software. See the repository for license details.
 
 ## Acknowledgments
 
