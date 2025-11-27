@@ -462,9 +462,6 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
   }) {
     final duration = metrics.duration;
     final elapsed = metrics.elapsed;
-    final titlePart = (metrics.title != null && metrics.title!.isNotEmpty)
-        ? ' • ${metrics.title}'
-        : '';
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -472,7 +469,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
       children: [
         Expanded(
           child: Text(
-            'Chapter ${metrics.index + 1} of ${metrics.totalChapters}$titlePart',
+            'Chapter ${metrics.index + 1} of ${metrics.totalChapters}',
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: text.bodyMedium?.copyWith(
