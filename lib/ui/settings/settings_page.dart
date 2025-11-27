@@ -34,6 +34,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool? _letterScrollEnabled;
   bool? _letterScrollBooksAlpha;
   bool? _smartRewindEnabled;
+  ProgressPrimary? _progressPrimary;
   String? _activeLibraryId;
   List<Map<String, String>> _libraries = const [];
   Map<String, String> _customHeaders = const <String, String>{};
@@ -66,6 +67,7 @@ class _SettingsPageState extends State<SettingsPage> {
         _waveformAnimationEnabled = prefs.getBool('ui_waveform_animation_enabled') ?? true;
         _letterScrollEnabled = prefs.getBool('ui_letter_scroll_enabled') ?? false;
         _letterScrollBooksAlpha = prefs.getBool('ui_letter_scroll_books_alpha') ?? false;
+        _progressPrimary = UiPrefs.progressPrimary.value;
         
         _activeLibraryId = prefs.getString('books_library_id');
         _customHeaders = headerMap;
@@ -662,6 +664,29 @@ class _SettingsPageState extends State<SettingsPage> {
               if (!mounted) return;
               setState(() { _dualProgressEnabled = v; });
             },
+          ),
+          ListTile(
+            title: const Text('Primary progress display'),
+            subtitle: const Text('Choose which progress bar is front and center (full player + notification)'),
+            trailing: DropdownButton<ProgressPrimary>(
+              value: _progressPrimary ?? ProgressPrimary.book,
+              onChanged: (value) async {
+                if (value == null) return;
+                await UiPrefs.setProgressPrimary(value, pinToSettingsOnChange: true);
+                if (!mounted) return;
+                setState(() { _progressPrimary = value; });
+              },
+              items: const [
+                DropdownMenuItem(
+                  value: ProgressPrimary.book,
+                  child: Text('Full book'),
+                ),
+                DropdownMenuItem(
+                  value: ProgressPrimary.chapter,
+                  child: Text('Current chapter'),
+                ),
+              ],
+            ),
           ),
           SwitchListTile(
             title: const Text('Auto-play on Bluetooth connection'),

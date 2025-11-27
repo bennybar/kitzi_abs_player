@@ -62,6 +62,26 @@ class Chapter {
   Chapter({required this.title, required this.start});
 }
 
+class ChapterProgressMetrics {
+  final int index;
+  final int totalChapters;
+  final Duration start;
+  final Duration end;
+  final Duration elapsed;
+  final String? title;
+
+  ChapterProgressMetrics({
+    required this.index,
+    required this.totalChapters,
+    required this.start,
+    required this.end,
+    required this.elapsed,
+    this.title,
+  });
+
+  Duration get duration => end - start;
+}
+
 class NowPlaying {
   final String libraryItemId;
   final String title;
@@ -1060,6 +1080,41 @@ class PlaybackRepository {
     if (reportNow) {
       await _sendProgressImmediate(overrideTrackPosSec: map.offsetSec);
     }
+  }
+
+  ChapterProgressMetrics? get currentChapterProgress {
+    final np = _nowPlaying;
+    if (np == null || np.chapters.isEmpty) return null;
+    final total = totalBookDuration;
+    final globalPos = globalBookPosition;
+    if (total == null || globalPos == null) return null;
+
+    int chapterIdx = 0;
+    for (int i = 0; i < np.chapters.length; i++) {
+      if (globalPos >= np.chapters[i].start) {
+        chapterIdx = i;
+      } else {
+        break;
+      }
+    }
+
+    final chapter = np.chapters[chapterIdx];
+    final start = chapter.start;
+    final end = (chapterIdx + 1 < np.chapters.length) ? np.chapters[chapterIdx + 1].start : total;
+    if (end <= start) return null;
+    final duration = end - start;
+    var elapsed = globalPos - start;
+    if (elapsed.isNegative) elapsed = Duration.zero;
+    if (elapsed > duration) elapsed = duration;
+
+    return ChapterProgressMetrics(
+      index: chapterIdx,
+      totalChapters: np.chapters.length,
+      start: start,
+      end: end,
+      elapsed: elapsed,
+      title: chapter.title.isEmpty ? null : chapter.title,
+    );
   }
 
   Future<void> reportProgressNow() => _sendProgressImmediate();

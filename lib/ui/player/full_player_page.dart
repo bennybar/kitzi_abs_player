@@ -65,6 +65,8 @@ class FullPlayerPage extends StatefulWidget {
 class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStateMixin {
   double _dragY = 0.0;
   bool _dualProgressEnabled = true;
+  ProgressPrimary _progressPrimary = UiPrefs.progressPrimary.value;
+  VoidCallback? _progressPrefListener;
   late AnimationController _contentAnimationController;
   late Animation<double> _coverAnimation;
   late Animation<double> _titleAnimation;
@@ -74,6 +76,15 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
   void initState() {
     super.initState();
     _loadDualProgressPref();
+    _progressPrimary = UiPrefs.progressPrimary.value;
+    _progressPrefListener = () {
+      if (mounted) {
+        setState(() {
+          _progressPrimary = UiPrefs.progressPrimary.value;
+        });
+      }
+    };
+    UiPrefs.progressPrimary.addListener(_progressPrefListener!);
     _setupContentAnimations();
   }
 
@@ -118,6 +129,9 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
   @override
   void dispose() {
     _contentAnimationController.dispose();
+    if (_progressPrefListener != null) {
+      UiPrefs.progressPrimary.removeListener(_progressPrefListener!);
+    }
     super.dispose();
   }
 
@@ -173,6 +187,474 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
           fontWeight: FontWeight.w700,
           letterSpacing: 0.3,
         ),
+      ),
+    );
+  }
+
+  Widget _buildBookProgressSection({
+    required BuildContext context,
+    required TextTheme text,
+    required ColorScheme cs,
+    required PlaybackRepository playback,
+    required Duration position,
+    required Duration total,
+    required bool isPrimary,
+  }) {
+    final max = total.inMilliseconds.toDouble();
+    final sliderMax = max > 0 ? max : 1.0;
+    final value = position.inMilliseconds.toDouble().clamp(0.0, sliderMax);
+    final percent = max > 0 ? (value / max * 100).clamp(0.0, 100.0) : 0.0;
+    final remaining = (total - position).isNegative ? Duration.zero : total - position;
+
+    final header = isPrimary
+        ? Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: cs.primaryContainer,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.auto_stories_rounded, size: 14, color: cs.onPrimaryContainer),
+                      const SizedBox(width: 6),
+                      Text(
+                        '${percent.toStringAsFixed(1)}% Complete',
+                        style: text.labelMedium?.copyWith(
+                          color: cs.onPrimaryContainer,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          )
+        : Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Text(
+              'Full book progress • ${percent.toStringAsFixed(1)}%',
+              style: text.bodyMedium?.copyWith(
+                color: cs.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          );
+
+    final sliderTheme = SliderTheme.of(context).copyWith(
+      trackHeight: isPrimary ? 6 : 4,
+      thumbShape: RoundSliderThumbShape(enabledThumbRadius: isPrimary ? 12 : 9),
+      overlayShape: const RoundSliderOverlayShape(overlayRadius: 24),
+      activeTrackColor: cs.primary,
+      inactiveTrackColor: cs.surfaceContainerHighest,
+      thumbColor: cs.primary,
+      overlayColor: cs.primary.withOpacity(isPrimary ? 0.16 : 0.12),
+      trackShape: const RoundedRectSliderTrackShape(),
+      valueIndicatorShape: const PaddleSliderValueIndicatorShape(),
+      valueIndicatorColor: cs.primary,
+      valueIndicatorTextStyle: text.labelMedium?.copyWith(
+        color: cs.onPrimary,
+        fontWeight: FontWeight.w600,
+      ),
+      showValueIndicator: isPrimary ? ShowValueIndicator.onlyForDiscrete : ShowValueIndicator.never,
+    );
+
+    return RepaintBoundary(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          header,
+          SliderTheme(
+            data: sliderTheme,
+            child: Slider(
+              min: 0.0,
+              max: sliderMax,
+              value: value,
+              onChanged: (v) async {
+                await playback.seekGlobal(Duration(milliseconds: v.round()), reportNow: false);
+              },
+              onChangeEnd: (v) async {
+                await playback.seekGlobal(Duration(milliseconds: v.round()), reportNow: true);
+              },
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  _fmt(position),
+                  style: (isPrimary ? text.labelLarge : text.bodyMedium)?.copyWith(
+                    color: cs.onSurface,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                StreamBuilder<double>(
+                  stream: playback.player.speedStream,
+                  initialData: playback.player.speed,
+                  builder: (_, speedSnap) {
+                    final speed = speedSnap.data ?? 1.0;
+                    final adjustedRemaining = speed != 1.0
+                        ? Duration(milliseconds: (remaining.inMilliseconds / speed).round())
+                        : remaining;
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          '-${_fmt(adjustedRemaining)}',
+                          style: (isPrimary ? text.labelLarge : text.bodyMedium)?.copyWith(
+                            color: cs.onSurface,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        if (speed != 1.0 && isPrimary) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            'at ${speed.toStringAsFixed(2)}× speed',
+                            style: text.labelSmall?.copyWith(
+                              color: cs.onSurfaceVariant.withOpacity(0.7),
+                              fontWeight: FontWeight.w400,
+                            ),
+                          ),
+                        ],
+                      ],
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChapterProgressPrimary({
+    required BuildContext context,
+    required TextTheme text,
+    required ColorScheme cs,
+    required PlaybackRepository playback,
+    required ChapterProgressMetrics metrics,
+  }) {
+    final duration = metrics.duration;
+    if (duration <= Duration.zero) return const SizedBox.shrink();
+    final max = duration.inMilliseconds.toDouble();
+    final value = metrics.elapsed.inMilliseconds.toDouble().clamp(0.0, max);
+    final percent = (max > 0 ? (value / max * 100) : 0.0).clamp(0.0, 100.0);
+    final remaining = duration - metrics.elapsed;
+
+    return RepaintBoundary(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Text(
+              'Chapter progress • ${percent.toStringAsFixed(1)}%',
+              style: text.bodyMedium?.copyWith(
+                color: cs.onSurfaceVariant,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              trackHeight: 6,
+              thumbShape: const RoundSliderThumbShape(
+                enabledThumbRadius: 12,
+                elevation: 6,
+                pressedElevation: 8,
+              ),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 24),
+              activeTrackColor: cs.primary,
+              inactiveTrackColor: cs.surfaceContainerHighest,
+              thumbColor: cs.primary,
+              overlayColor: cs.primary.withOpacity(0.16),
+              trackShape: const RoundedRectSliderTrackShape(),
+            ),
+            child: Slider(
+              min: 0.0,
+              max: max > 0 ? max : 1.0,
+              value: value,
+              onChanged: (v) async {
+                await playback.seekGlobal(
+                  metrics.start + Duration(milliseconds: v.round()),
+                  reportNow: false,
+                );
+              },
+              onChangeEnd: (v) async {
+                await playback.seekGlobal(
+                  metrics.start + Duration(milliseconds: v.round()),
+                  reportNow: true,
+                );
+              },
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  _fmt(metrics.elapsed),
+                  style: text.labelLarge?.copyWith(
+                    color: cs.onSurface,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  '-${_fmt(remaining)}',
+                  style: text.labelLarge?.copyWith(
+                    color: cs.onSurface,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Chapter ${metrics.index + 1} of ${metrics.totalChapters}',
+                        style: text.labelMedium?.copyWith(
+                          color: cs.onSurfaceVariant,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  '${_fmt(metrics.elapsed)} / ${_fmt(duration)}',
+                  style: text.labelMedium?.copyWith(
+                    color: cs.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChapterSummaryRow({
+    required TextTheme text,
+    required ColorScheme cs,
+    required ChapterProgressMetrics metrics,
+  }) {
+    final duration = metrics.duration;
+    final elapsed = metrics.elapsed;
+    final titlePart = (metrics.title != null && metrics.title!.isNotEmpty)
+        ? ' • ${metrics.title}'
+        : '';
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Text(
+            'Chapter ${metrics.index + 1} of ${metrics.totalChapters}$titlePart',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: text.bodyMedium?.copyWith(
+              color: cs.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Text(
+          '${_fmt(elapsed)} / ${_fmt(duration)}',
+          style: text.bodyMedium?.copyWith(
+            color: cs.onSurfaceVariant,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBookSummaryRow({
+    required TextTheme text,
+    required ColorScheme cs,
+    required Duration position,
+    required Duration total,
+  }) {
+    final max = total.inMilliseconds.toDouble();
+    final percent = max > 0 ? (position.inMilliseconds / max * 100).clamp(0.0, 100.0) : 0.0;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Text(
+            'Full book progress • ${percent.toStringAsFixed(1)}%',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: text.bodyMedium?.copyWith(
+              color: cs.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Text(
+          '${_fmt(position)} / ${_fmt(total)}',
+          style: text.bodyMedium?.copyWith(
+            color: cs.onSurfaceVariant,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTrackProgressFallback({
+    required BuildContext context,
+    required ColorScheme cs,
+    required TextTheme text,
+    required PlaybackRepository playback,
+    required Duration total,
+    required Duration position,
+  }) {
+    final max = total.inMilliseconds.toDouble().clamp(0.0, double.infinity);
+    final value = position.inMilliseconds.toDouble().clamp(0.0, max > 0 ? max : 1.0);
+    final percent = max > 0 ? (value / max * 100).clamp(0.0, 100.0) : 0.0;
+
+    return RepaintBoundary(
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: cs.primaryContainer,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.auto_stories_rounded, size: 14, color: cs.onPrimaryContainer),
+                      const SizedBox(width: 6),
+                      Text(
+                        '${percent.toStringAsFixed(1)}% Complete',
+                        style: text.labelMedium?.copyWith(
+                          color: cs.onPrimaryContainer,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              trackHeight: 6,
+              thumbShape: const RoundSliderThumbShape(
+                enabledThumbRadius: 12,
+                elevation: 6,
+                pressedElevation: 8,
+              ),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 24),
+              activeTrackColor: cs.primary,
+              inactiveTrackColor: cs.surfaceContainerHighest,
+              thumbColor: cs.primary,
+              overlayColor: cs.primary.withOpacity(0.16),
+              trackShape: const RoundedRectSliderTrackShape(),
+            ),
+            child: Slider(
+              min: 0.0,
+              max: max > 0 ? max : 1.0,
+              value: value,
+              onChanged: (v) async {
+                await playback.seek(
+                  Duration(milliseconds: v.round()),
+                  reportNow: false,
+                );
+              },
+              onChangeEnd: (v) async {
+                await playback.seek(
+                  Duration(milliseconds: v.round()),
+                  reportNow: true,
+                );
+              },
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  _fmt(position),
+                  style: text.labelLarge?.copyWith(
+                    color: cs.onSurface,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                StreamBuilder<double>(
+                  stream: playback.player.speedStream,
+                  initialData: playback.player.speed,
+                  builder: (_, speedSnap) {
+                    final speed = speedSnap.data ?? 1.0;
+                    final remaining = total - position;
+                    if (total == Duration.zero) return const SizedBox.shrink();
+                    final adjustedRemaining = speed != 1.0
+                        ? Duration(milliseconds: (remaining.inMilliseconds / speed).round())
+                        : remaining;
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          '-${_fmt(adjustedRemaining)}',
+                          style: text.labelLarge?.copyWith(
+                            color: cs.onSurface,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        if (speed != 1.0) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            'at ${speed.toStringAsFixed(2)}× speed',
+                            style: text.labelSmall?.copyWith(
+                              color: cs.onSurfaceVariant.withOpacity(0.7),
+                              fontWeight: FontWeight.w400,
+                            ),
+                          ),
+                        ],
+                      ],
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1147,345 +1629,73 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                         stream: playback.positionStream,
                         initialData: playback.player.position,
                         builder: (_, posSnap) {
-                          // Prefer global book progress when enabled and available; otherwise fall back to per-track
                           final globalTotal = playback.totalBookDuration;
-                          final useGlobal = _dualProgressEnabled && globalTotal != null && globalTotal > Duration.zero;
+                          final hasGlobal = _dualProgressEnabled && globalTotal != null && globalTotal > Duration.zero;
+                          final chapterMetrics = hasGlobal ? playback.currentChapterProgress : null;
+                          final preferChapter =
+                              hasGlobal && chapterMetrics != null && _progressPrimary == ProgressPrimary.chapter;
 
-                          if (useGlobal) {
+                          if (preferChapter) {
                             final globalPos = playback.globalBookPosition ?? Duration.zero;
-                            final max = globalTotal.inMilliseconds.toDouble();
-                            final value = globalPos.inMilliseconds.toDouble().clamp(0.0, max > 0 ? max : 1.0);
-                            final progressPercent = max > 0 ? (value / max * 100).clamp(0.0, 100.0) : 0.0;
-
-                            // Determine chapter info for display
-                            final np = playback.nowPlaying;
-                            int chapterIdx = 0;
-                            Duration? chapterStart;
-                            Duration? chapterEnd;
-                            String? currentChapterTitle;
-                            if (np != null && np.chapters.isNotEmpty) {
-                              for (int i = 0; i < np.chapters.length; i++) {
-                                if (globalPos >= np.chapters[i].start) {
-                                  chapterIdx = i;
-                                } else {
-                                  break;
-                                }
-                              }
-                              final chapter = np.chapters[chapterIdx];
-                              currentChapterTitle = chapter.title.isEmpty ? null : chapter.title;
-                              chapterStart = chapter.start;
-                              if (chapterIdx + 1 < np.chapters.length) {
-                                chapterEnd = np.chapters[chapterIdx + 1].start;
-                              } else {
-                                chapterEnd = globalTotal;
-                              }
-                            
-                            }
-
-                            final chapterElapsed = (chapterStart != null)
-                                ? globalPos - chapterStart
-                                : null;
-                            final chapterDuration = (chapterStart != null && chapterEnd != null)
-                                ? (chapterEnd - chapterStart)
-                                : null;
-
-                            return RepaintBoundary(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  // Material Design 3 progress indicator - balanced size
+                            return Column(
+                              children: [
+                                _buildChapterProgressPrimary(
+                                  context: context,
+                                  text: text,
+                                  cs: cs,
+                                  playback: playback,
+                                  metrics: chapterMetrics!,
+                                ),
+                                if (globalTotal != null)
                                   Padding(
-                                    padding: const EdgeInsets.only(bottom: 6),
-                                    child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                          decoration: BoxDecoration(
-                                            color: cs.primaryContainer,
-                                            borderRadius: BorderRadius.circular(12),
-                                          ),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Icon(
-                                                Icons.auto_stories_rounded,
-                                                size: 14,
-                                                color: cs.onPrimaryContainer,
-                                              ),
-                                              const SizedBox(width: 6),
-                                              Text(
-                                                '${progressPercent.toStringAsFixed(1)}% Complete',
-                                                style: text.labelMedium?.copyWith(
-                                                  color: cs.onPrimaryContainer,
-                                                  fontWeight: FontWeight.w600,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
+                                    padding: const EdgeInsets.only(top: 12),
+                                    child: _buildBookSummaryRow(
+                                      text: text,
+                                      cs: cs,
+                                      position: globalPos,
+                                      total: globalTotal,
                                     ),
                                   ),
-                                  // Slider with enhanced Material Design 3 styling
-                                  SliderTheme(
-                                    data: SliderTheme.of(context).copyWith(
-                                      trackHeight: 6,
-                                      thumbShape: const RoundSliderThumbShape(
-                                        enabledThumbRadius: 12,
-                                        elevation: 6,
-                                        pressedElevation: 8,
-                                      ),
-                                      overlayShape: const RoundSliderOverlayShape(overlayRadius: 24),
-                                      activeTrackColor: cs.primary,
-                                      inactiveTrackColor: cs.surfaceContainerHighest,
-                                      thumbColor: cs.primary,
-                                      overlayColor: cs.primary.withOpacity(0.16),
-                                      trackShape: const RoundedRectSliderTrackShape(),
-                                      valueIndicatorShape: const PaddleSliderValueIndicatorShape(),
-                                      valueIndicatorColor: cs.primary,
-                                      valueIndicatorTextStyle: text.labelMedium?.copyWith(
-                                        color: cs.onPrimary,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                      showValueIndicator: ShowValueIndicator.onlyForDiscrete,
-                                    ),
-                                    child: Slider(
-                                      min: 0.0,
-                                      max: max > 0 ? max : 1.0,
-                                      value: value,
-                                      onChanged: (v) async {
-                                        await playback.seekGlobal(
-                                          Duration(milliseconds: v.round()),
-                                          reportNow: false,
-                                        );
-                                      },
-                                      onChangeEnd: (v) async {
-                                        await playback.seekGlobal(
-                                          Duration(milliseconds: v.round()),
-                                          reportNow: true,
-                                        );
-                                      },
-                                    ),
-                                  ),
-                                  // Global time indicators
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                                    child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Text(
-                                          _fmt(globalPos),
-                                          style: text.labelLarge?.copyWith(
-                                            color: cs.onSurface,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                        StreamBuilder<double>(
-                                          stream: playback.player.speedStream,
-                                          initialData: playback.player.speed,
-                                          builder: (_, speedSnap) {
-                                            final speed = speedSnap.data ?? 1.0;
-                                            final remaining = globalTotal - globalPos;
-                                            
-                                            // Calculate speed-adjusted time remaining
-                                            final adjustedRemaining = speed != 1.0 
-                                                ? Duration(milliseconds: (remaining.inMilliseconds / speed).round())
-                                                : remaining;
-                                            
-                                            return Column(
-                                              crossAxisAlignment: CrossAxisAlignment.end,
-                                              children: [
-                                                Text(
-                                                  '-${_fmt(adjustedRemaining)}',
-                                                  style: text.labelLarge?.copyWith(
-                                                    color: cs.onSurface,
-                                                    fontWeight: FontWeight.w600,
-                                                  ),
-                                                ),
-                                                if (speed != 1.0) ...[
-                                                  const SizedBox(height: 2),
-                                                  Text(
-                                                    'at ${speed.toStringAsFixed(2)}× speed',
-                                                    style: text.labelSmall?.copyWith(
-                                                      color: cs.onSurfaceVariant.withOpacity(0.7),
-                                                      fontWeight: FontWeight.w400,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ],
-                                            );
-                                          },
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                // Chapter index + chapter time
-                                if (np != null && np.chapters.isNotEmpty) ...[
-                                  const SizedBox(height: 6),
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                                    child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Text(
-                                          'Chapter ${chapterIdx + 1} of ${np.chapters.length}',
-                                          style: text.labelMedium?.copyWith(
-                                            color: cs.onSurfaceVariant,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                        if (chapterElapsed != null && chapterDuration != null)
-                                          Text(
-                                            '${_fmt(chapterElapsed)} of ${_fmt(chapterDuration)}',
-                                            style: text.labelMedium?.copyWith(
-                                              color: cs.onSurfaceVariant,
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                                ],
-                              ),
+                              ],
                             );
                           }
 
-                          // Fallback: per-track slider (existing behavior)
+                          if (hasGlobal) {
+                            final globalPos = playback.globalBookPosition ?? Duration.zero;
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                _buildBookProgressSection(
+                                  context: context,
+                                  text: text,
+                                  cs: cs,
+                                  playback: playback,
+                                  position: globalPos,
+                                  total: globalTotal!,
+                                  isPrimary: true,
+                                ),
+                                if (chapterMetrics != null)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 8),
+                                    child: _buildChapterSummaryRow(
+                                      text: text,
+                                      cs: cs,
+                                      metrics: chapterMetrics,
+                                    ),
+                                  ),
+                              ],
+                            );
+                          }
+
                           final total = playback.player.duration ?? Duration.zero;
                           final pos = posSnap.data ?? Duration.zero;
-                          final max = total.inMilliseconds.toDouble().clamp(0.0, double.infinity);
-                          final value = pos.inMilliseconds.toDouble().clamp(0.0, max);
-                          final progressPercent = max > 0 ? (value / max * 100).clamp(0.0, 100.0) : 0.0;
-
-                          return RepaintBoundary(
-                            child: Column(
-                              children: [
-                                // Material Design 3 progress indicator - balanced size
-                                Padding(
-                                  padding: const EdgeInsets.only(bottom: 6),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                        decoration: BoxDecoration(
-                                          color: cs.primaryContainer,
-                                          borderRadius: BorderRadius.circular(12),
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(
-                                              Icons.auto_stories_rounded,
-                                              size: 14,
-                                              color: cs.onPrimaryContainer,
-                                            ),
-                                            const SizedBox(width: 6),
-                                            Text(
-                                              '${progressPercent.toStringAsFixed(1)}% Complete',
-                                              style: text.labelMedium?.copyWith(
-                                                color: cs.onPrimaryContainer,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                SliderTheme(
-                                  data: SliderTheme.of(context).copyWith(
-                                    trackHeight: 6,
-                                    thumbShape: const RoundSliderThumbShape(
-                                      enabledThumbRadius: 12,
-                                      elevation: 6,
-                                      pressedElevation: 8,
-                                    ),
-                                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 24),
-                                    activeTrackColor: cs.primary,
-                                    inactiveTrackColor: cs.surfaceContainerHighest,
-                                    thumbColor: cs.primary,
-                                    overlayColor: cs.primary.withOpacity(0.16),
-                                    trackShape: const RoundedRectSliderTrackShape(),
-                                  ),
-                                  child: Slider(
-                                    min: 0.0,
-                                    max: max > 0 ? max : 1.0,
-                                    value: value,
-                                    onChanged: (v) async {
-                                      await playback.seek(
-                                        Duration(milliseconds: v.round()),
-                                        reportNow: false,
-                                      );
-                                    },
-                                    onChangeEnd: (v) async {
-                                      await playback.seek(
-                                        Duration(milliseconds: v.round()),
-                                        reportNow: true,
-                                      );
-                                    },
-                                  ),
-                                ),
-                              Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 4),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                      _fmt(pos),
-                                      style: text.labelLarge?.copyWith(
-                                        color: cs.onSurface,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                    StreamBuilder<double>(
-                                      stream: playback.player.speedStream,
-                                      initialData: playback.player.speed,
-                                      builder: (_, speedSnap) {
-                                        final speed = speedSnap.data ?? 1.0;
-                                        final remaining = total - pos;
-                                        
-                                        if (total == Duration.zero) {
-                                          return const SizedBox.shrink();
-                                        }
-                                        
-                                        // Calculate speed-adjusted time remaining
-                                        final adjustedRemaining = speed != 1.0 
-                                            ? Duration(milliseconds: (remaining.inMilliseconds / speed).round())
-                                            : remaining;
-                                        
-                                        return Column(
-                                          crossAxisAlignment: CrossAxisAlignment.end,
-                                          children: [
-                                            Text(
-                                              '-${_fmt(adjustedRemaining)}',
-                                              style: text.labelLarge?.copyWith(
-                                                color: cs.onSurface,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
-                                            if (speed != 1.0) ...[
-                                              const SizedBox(height: 2),
-                                              Text(
-                                                'at ${speed.toStringAsFixed(2)}× speed',
-                                                style: text.labelSmall?.copyWith(
-                                                  color: cs.onSurfaceVariant.withOpacity(0.7),
-                                                  fontWeight: FontWeight.w400,
-                                                ),
-                                              ),
-                                            ],
-                                          ],
-                                        );
-                                      },
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                            ),
+                          return _buildTrackProgressFallback(
+                            context: context,
+                            cs: cs,
+                            text: text,
+                            playback: playback,
+                            total: total,
+                            position: pos,
                           );
                         },
                       ),

@@ -3,6 +3,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+enum ProgressPrimary {
+  book,
+  chapter,
+}
+
 class UiPrefs {
   static final ValueNotifier<bool> seriesTabVisible = ValueNotifier<bool>(false);
   static final ValueNotifier<bool> authorViewEnabled = ValueNotifier<bool>(true);
@@ -10,12 +15,14 @@ class UiPrefs {
   static final ValueNotifier<bool> waveformAnimationEnabled = ValueNotifier<bool>(false); // Default to false, will be set based on device size
   static final ValueNotifier<bool> letterScrollEnabled = ValueNotifier<bool>(false);
   static final ValueNotifier<bool> letterScrollBooksAlpha = ValueNotifier<bool>(false);
+  static final ValueNotifier<ProgressPrimary> progressPrimary = ValueNotifier<ProgressPrimary>(ProgressPrimary.book);
 
   static const String _kSeries = 'ui_show_series_tab';
   static const String _kAuthorView = 'ui_author_view_enabled';
   static const String _kWaveformAnimation = 'ui_waveform_animation_enabled';
   static const String _kLetterScroll = 'ui_letter_scroll_enabled';
   static const String _kLetterScrollBooksAlpha = 'ui_letter_scroll_books_alpha';
+  static const String _kProgressPrimary = 'ui_progress_primary';
 
   /// Calculate screen diagonal size in inches
   static double getScreenDiagonalInches(BuildContext context) {
@@ -54,6 +61,7 @@ class UiPrefs {
         // Waveform animation default set
       }
       // If context not available and key doesn't exist, keep current value (default is true from initialization)
+      progressPrimary.value = _parseProgressPrimary(prefs.getString(_kProgressPrimary));
     } catch (_) {}
   }
   
@@ -70,6 +78,7 @@ class UiPrefs {
       }
       letterScrollEnabled.value = prefs.getBool(_kLetterScroll) ?? false;
       letterScrollBooksAlpha.value = prefs.getBool(_kLetterScrollBooksAlpha) ?? false;
+      progressPrimary.value = _parseProgressPrimary(prefs.getString(_kProgressPrimary));
     } catch (_) {}
   }
 
@@ -117,6 +126,20 @@ class UiPrefs {
     } catch (_) {}
     letterScrollBooksAlpha.value = value;
     if (pinToSettingsOnChange) pinSettings.value = true;
+  }
+
+  static Future<void> setProgressPrimary(ProgressPrimary value, {bool pinToSettingsOnChange = false}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kProgressPrimary, value.name);
+    } catch (_) {}
+    progressPrimary.value = value;
+    if (pinToSettingsOnChange) pinSettings.value = true;
+  }
+
+  static ProgressPrimary _parseProgressPrimary(String? raw) {
+    if (raw == ProgressPrimary.chapter.name) return ProgressPrimary.chapter;
+    return ProgressPrimary.book;
   }
 }
 

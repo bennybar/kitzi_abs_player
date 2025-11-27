@@ -5,10 +5,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'playback_repository.dart';
 import 'books_repository.dart';
+import 'ui_prefs.dart';
 
 class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   final PlaybackRepository _playback;
   final AudioPlayer _player;
+  VoidCallback? _progressPrefListener;
   
   KitziAudioHandler(this._playback, this._player) {
     _loadEmptyPlaylist();
@@ -38,48 +40,9 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
   }
 
   void _notifyAudioHandlerAboutPlaybackEvents() {
-    _player.playbackEventStream.listen((PlaybackEvent event) {
-      final playing = _player.playing;
-      final currentIndex = _player.currentIndex ?? 0;
-      
-      // Update playback state
-      playbackState.add(playbackState.value.copyWith(
-        controls: [
-          MediaControl.skipToPrevious,
-          MediaControl.rewind,
-          if (playing) MediaControl.pause else MediaControl.play,
-          MediaControl.fastForward,
-          MediaControl.skipToNext,
-          MediaControl.stop,
-        ],
-        systemActions: {
-          MediaAction.seek,
-          MediaAction.seekForward,
-          MediaAction.seekBackward,
-        },
-        androidCompactActionIndices: const [0, 2, 4],
-        processingState: {
-          ProcessingState.idle: AudioProcessingState.idle,
-          ProcessingState.loading: AudioProcessingState.loading,
-          ProcessingState.buffering: AudioProcessingState.buffering,
-          ProcessingState.ready: AudioProcessingState.ready,
-          ProcessingState.completed: AudioProcessingState.completed,
-        }[_player.processingState]!,
-        playing: playing,
-        updatePosition: _player.position,
-        bufferedPosition: _player.bufferedPosition,
-        speed: _player.speed,
-        queueIndex: currentIndex,
-      ));
-      
-      // Update current media item for lock screen
-      final q = queue.value;
-      if (currentIndex >= 0 && currentIndex < q.length) {
-        final currentItem = q[currentIndex];
-        mediaItem.add(currentItem);
-        // Current media item changed; AA will refresh on next browse request
-            }
-    });
+    _player.playbackEventStream.listen(_updateStateFromEvent);
+    _progressPrefListener = () => _updateStateFromEvent(_player.playbackEvent);
+    UiPrefs.progressPrimary.addListener(_progressPrefListener!);
   }
 
   void _listenForDurationChanges() {
@@ -114,31 +77,19 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
     // Push frequent position/buffer updates so Android notification/lock screen
     // show a moving progress bar between playback events.
     _player.positionStream.listen((pos) {
+      final progress = _resolveNotificationProgress();
       playbackState.add(playbackState.value.copyWith(
-        updatePosition: pos,
-        bufferedPosition: _player.bufferedPosition,
+        updatePosition: progress.position,
+        bufferedPosition: progress.buffered,
         speed: _player.speed,
       ));
 
       // If the current mediaItem has no duration yet but the player knows it
       // (common with local files), update it so system UIs can render progress.
       try {
-        final d = _player.duration;
-        if (d != null) {
-          final q = queue.value;
-          int? idx = playbackState.value.queueIndex;
-          idx ??= _player.currentIndex;
-          idx ??= q.isNotEmpty ? 0 : null;
-          if (idx != null && idx >= 0 && idx < q.length) {
-            final current = q[idx];
-            if (current.duration == null || current.duration == Duration.zero) {
-              final updated = current.copyWith(duration: d);
-              final newQ = List<MediaItem>.from(q);
-              newQ[idx] = updated;
-              queue.add(newQ);
-              mediaItem.add(updated);
-            }
-          }
+        final d = progress.duration == Duration.zero ? _player.duration : progress.duration;
+        if (d != null && d > Duration.zero) {
+          _updateActiveMediaItemDuration(d);
         }
       } catch (_) {}
     });
@@ -179,6 +130,98 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
     });
   }
 
+  void _updateStateFromEvent(PlaybackEvent event) {
+    final playing = _player.playing;
+    final currentIndex = _player.currentIndex ?? 0;
+    final progress = _resolveNotificationProgress();
+
+    playbackState.add(playbackState.value.copyWith(
+      controls: [
+        MediaControl.skipToPrevious,
+        MediaControl.rewind,
+        if (playing) MediaControl.pause else MediaControl.play,
+        MediaControl.fastForward,
+        MediaControl.skipToNext,
+        MediaControl.stop,
+      ],
+      systemActions: const {
+        MediaAction.seek,
+        MediaAction.seekForward,
+        MediaAction.seekBackward,
+      },
+      androidCompactActionIndices: const [0, 2, 4],
+      processingState: {
+        ProcessingState.idle: AudioProcessingState.idle,
+        ProcessingState.loading: AudioProcessingState.loading,
+        ProcessingState.buffering: AudioProcessingState.buffering,
+        ProcessingState.ready: AudioProcessingState.ready,
+        ProcessingState.completed: AudioProcessingState.completed,
+      }[_player.processingState]!,
+      playing: playing,
+      updatePosition: progress.position,
+      bufferedPosition: progress.buffered,
+      speed: _player.speed,
+      queueIndex: currentIndex,
+    ));
+
+    _updateActiveMediaItemDuration(progress.duration);
+  }
+
+  _NotificationProgress _resolveNotificationProgress() {
+    final pref = UiPrefs.progressPrimary.value;
+    final globalTotal = _playback.totalBookDuration;
+    final globalPos = _playback.globalBookPosition;
+    final chapterMetrics = _playback.currentChapterProgress;
+
+    if (pref == ProgressPrimary.book && globalTotal != null && globalPos != null) {
+      return _NotificationProgress(
+        position: globalPos,
+        duration: globalTotal,
+        buffered: globalPos,
+      );
+    }
+
+    if (pref == ProgressPrimary.chapter && chapterMetrics != null) {
+      return _NotificationProgress(
+        position: chapterMetrics.elapsed,
+        duration: chapterMetrics.duration,
+        buffered: chapterMetrics.elapsed,
+      );
+    }
+
+    final trackDuration = _player.duration ?? Duration.zero;
+    final trackPosition = _player.position;
+    final buffered = _player.bufferedPosition;
+    final duration = trackDuration > Duration.zero
+        ? trackDuration
+        : (trackPosition > Duration.zero ? trackPosition : const Duration(milliseconds: 1));
+
+    return _NotificationProgress(
+      position: trackPosition,
+      duration: duration,
+      buffered: buffered,
+    );
+  }
+
+  void _updateActiveMediaItemDuration(Duration duration) {
+    if (duration <= Duration.zero) return;
+    final currentQueue = queue.value;
+    int? index = _player.currentIndex ?? playbackState.value.queueIndex;
+    index ??= currentQueue.isNotEmpty ? 0 : null;
+    if (index == null || index < 0 || index >= currentQueue.length) return;
+    final currentItem = currentQueue[index];
+    if (currentItem.duration != null &&
+        currentItem.duration!.inMilliseconds == duration.inMilliseconds) {
+      mediaItem.add(currentItem);
+      return;
+    }
+    final updatedItem = currentItem.copyWith(duration: duration);
+    final newQueue = List<MediaItem>.from(currentQueue);
+    newQueue[index] = updatedItem;
+    queue.add(newQueue);
+    mediaItem.add(updatedItem);
+  }
+
   @override
   Future<void> play() async {
     // Always allow manual play commands - this method is called for user-initiated play
@@ -217,10 +260,31 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
   Future<void> pause() => _playback.pause();
 
   @override
-  Future<void> stop() => _playback.stop();
+  Future<void> stop() async {
+    if (_progressPrefListener != null) {
+      UiPrefs.progressPrimary.removeListener(_progressPrefListener!);
+      _progressPrefListener = null;
+    }
+    await _playback.stop();
+  }
 
   @override
-  Future<void> seek(Duration position) => _playback.seek(position, reportNow: true);
+  Future<void> seek(Duration position) async {
+    final pref = UiPrefs.progressPrimary.value;
+    if (pref == ProgressPrimary.book) {
+      await _playback.seekGlobal(position, reportNow: true);
+      return;
+    }
+    if (pref == ProgressPrimary.chapter) {
+      final chapter = _playback.currentChapterProgress;
+      if (chapter != null) {
+        final target = chapter.start + position;
+        await _playback.seekGlobal(target, reportNow: true);
+        return;
+      }
+    }
+    await _playback.seek(position, reportNow: true);
+  }
 
   @override
   Future<void> fastForward() => _playback.nudgeSeconds(30);
@@ -462,6 +526,18 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
       // playFromMediaId failed
     }
   }
+}
+
+class _NotificationProgress {
+  final Duration position;
+  final Duration duration;
+  final Duration buffered;
+
+  const _NotificationProgress({
+    required this.position,
+    required this.duration,
+    required this.buffered,
+  });
 }
 
 // No headless factory required for current setup
