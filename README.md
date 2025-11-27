@@ -2,8 +2,17 @@
 
 A comprehensive Android client for Audiobookshelf servers, designed for audiobook enthusiasts who want full control over their listening experience.
 
-[![Play Store](https://img.shields.io/badge/Get%20it%20on-Google%20Play-414141?style=flat-square&logo=google-play)](https://play.google.com/store/apps/details?id=com.bennybar.kitzi)
-[![GitHub Releases](https://img.shields.io/badge/GitHub-Releases-181717?style=flat-square&logo=github)](https://github.com/bennybar/kitzi_abs_player/releases)
+<div align="center">
+
+<a href="https://play.google.com/store/apps/details?id=com.bennybar.kitzi">
+  <img src="https://img.shields.io/badge/Google_Play-414141?style=for-the-badge&logo=google-play&logoColor=white" alt="Get it on Google Play" height="60">
+</a>
+&nbsp;&nbsp;
+<a href="https://github.com/bennybar/kitzi_abs_player/releases">
+  <img src="https://img.shields.io/badge/GitHub-Releases-181717?style=for-the-badge&logo=github&logoColor=white" alt="GitHub Releases" height="60">
+</a>
+
+</div>
 
 ## Overview
 
@@ -53,17 +62,28 @@ Kitzi ABS Player transforms your audiobook listening experience by providing sea
 
 ## Screenshots
 
-![Library View](docs/screenshots/Screenshot_20251127_150054.jpg)
-*Main library view with books and series*
-
-![Player View](docs/screenshots/Screenshot_20251127_150105.jpg)
-*Full-screen player with progress controls*
-
-![Series View](docs/screenshots/Screenshot_20251127_150111.jpg)
-*Series browsing with book covers*
-
-![Settings](docs/screenshots/Screenshot_20251127_150126.jpg)
-*Comprehensive settings and preferences*
+<table>
+<tr>
+<td width="50%">
+  <img src="docs/screenshots/Screenshot_20251127_150054.jpg" alt="Library View" width="100%">
+  <p align="center"><em>Main library view with books and series</em></p>
+</td>
+<td width="50%">
+  <img src="docs/screenshots/Screenshot_20251127_150105.jpg" alt="Player View" width="100%">
+  <p align="center"><em>Full-screen player with progress controls</em></p>
+</td>
+</tr>
+<tr>
+<td width="50%">
+  <img src="docs/screenshots/Screenshot_20251127_150111.jpg" alt="Series View" width="100%">
+  <p align="center"><em>Series browsing with book covers</em></p>
+</td>
+<td width="50%">
+  <img src="docs/screenshots/Screenshot_20251127_150126.jpg" alt="Settings" width="100%">
+  <p align="center"><em>Comprehensive settings and preferences</em></p>
+</td>
+</tr>
+</table>
 
 ## Installation
 
@@ -141,7 +161,3 @@ This project is open source. See the repository for license details.
 ## Acknowledgments
 
 Built for the Audiobookshelf community. Special thanks to contributors and the Audiobookshelf project.
-
----
-
-**Download**: [Google Play Store](https://play.google.com/store/apps/details?id=com.bennybar.kitzi) | [GitHub Releases](https://github.com/bennybar/kitzi_abs_player/releases)
