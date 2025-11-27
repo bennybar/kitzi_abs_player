@@ -8,6 +8,8 @@ class ApiClient {
 
   final SharedPreferences _prefs;
   final FlutterSecureStorage _secure;
+  static const String _customHeadersKey = 'abs_custom_headers';
+  Map<String, String>? _customHeadersCache;
 
   String? get baseUrl => _prefs.getString('abs_base_url');
 
@@ -20,6 +22,55 @@ class ApiClient {
     url = url.replaceAll(RegExp(r'/+$'), '');
     // '[API] setBaseUrl: input="$original" -> stored="$url"');
     await _prefs.setString('abs_base_url', url);
+  }
+
+  /// Custom header management (used for Zero-Trust tunnels/service tokens)
+  Map<String, String> get customHeaders =>
+      Map<String, String>.from(_currentCustomHeaders());
+
+  Future<void> setCustomHeaders(Map<String, String> headers) async {
+    final sanitized = <String, String>{};
+    headers.forEach((key, value) {
+      final k = key.trim();
+      final v = value.trim();
+      if (k.isEmpty || v.isEmpty) return;
+      sanitized[k] = v;
+    });
+
+    if (sanitized.isEmpty) {
+      await _prefs.remove(_customHeadersKey);
+      _customHeadersCache = const <String, String>{};
+    } else {
+      await _prefs.setString(_customHeadersKey, jsonEncode(sanitized));
+      _customHeadersCache = Map<String, String>.unmodifiable(sanitized);
+    }
+  }
+
+  Map<String, String> _currentCustomHeaders() {
+    final cache = _customHeadersCache;
+    if (cache != null) return cache;
+    final decoded = _decodeCustomHeaders(_prefs.getString(_customHeadersKey));
+    final frozen = Map<String, String>.unmodifiable(decoded);
+    _customHeadersCache = frozen;
+    return frozen;
+  }
+
+  Map<String, String> _decodeCustomHeaders(String? raw) {
+    if (raw == null || raw.isEmpty) return const <String, String>{};
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) {
+        final result = <String, String>{};
+        decoded.forEach((key, value) {
+          final k = key.toString().trim();
+          final v = value == null ? '' : value.toString().trim();
+          if (k.isEmpty || v.isEmpty) return;
+          result[k] = v;
+        });
+        return result;
+      }
+    } catch (_) {}
+    return const <String, String>{};
   }
 
   // === Access/Refresh storage ===
@@ -70,6 +121,7 @@ class ApiClient {
     final uri = Uri.parse('$base$path');
     final reqHeaders = <String, String>{
       'Content-Type': 'application/json',
+      ..._currentCustomHeaders(),
       ...?headers,
     };
 
@@ -127,12 +179,14 @@ class ApiClient {
     }
 
     try {
+      final refreshHeaders = <String, String>{
+        'Content-Type': 'application/json',
+        ..._currentCustomHeaders(),
+      };
+      refreshHeaders['x-refresh-token'] = refresh;
       final resp = await http.post(
         Uri.parse('$base/auth/refresh'),
-        headers: {
-          'Content-Type': 'application/json',
-          'x-refresh-token': refresh,
-        },
+        headers: refreshHeaders,
       );
       
       if (resp.statusCode != 200) {
@@ -176,12 +230,14 @@ class ApiClient {
     // '[API] login: url="$loginUrl" user="$username" hasPassword=${password.isNotEmpty}');
     http.Response resp;
     try {
+      final loginHeaders = <String, String>{
+        'Content-Type': 'application/json',
+        ..._currentCustomHeaders(),
+      };
+      loginHeaders['x-return-tokens'] = 'true';
       resp = await http.post(
         Uri.parse(loginUrl),
-        headers: const {
-          'Content-Type': 'application/json',
-          'x-return-tokens': 'true',
-        },
+        headers: loginHeaders,
         body: jsonEncode({'username': username, 'password': password}),
       );
       // '[API] login: status=${resp.statusCode} len=${resp.body.length}');
@@ -231,6 +287,7 @@ class ApiClient {
           Uri.parse('$base/logout'),
           headers: {
             'Content-Type': 'application/json',
+            ..._currentCustomHeaders(),
             'x-refresh-token': refresh,
           },
         );

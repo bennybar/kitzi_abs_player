@@ -36,6 +36,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool? _smartRewindEnabled;
   String? _activeLibraryId;
   List<Map<String, String>> _libraries = const [];
+  Map<String, String> _customHeaders = const <String, String>{};
 
   @override
   void initState() {
@@ -47,6 +48,8 @@ class _SettingsPageState extends State<SettingsPage> {
     try {
       // Ensure waveform default is set based on device size
       await UiPrefs.ensureWaveformDefault(context);
+      final services = ServicesScope.of(context).services;
+      final headerMap = services.auth.api.customHeaders;
       
       final prefs = await SharedPreferences.getInstance();
       setState(() {
@@ -65,6 +68,7 @@ class _SettingsPageState extends State<SettingsPage> {
         _letterScrollBooksAlpha = prefs.getBool('ui_letter_scroll_books_alpha') ?? false;
         
         _activeLibraryId = prefs.getString('books_library_id');
+        _customHeaders = headerMap;
       });
       await _loadLibraries();
     } catch (_) {
@@ -102,6 +106,50 @@ class _SettingsPageState extends State<SettingsPage> {
       }
       if (mounted) setState(() { _libraries = libs; });
     } catch (_) {}
+  }
+
+  String _customHeadersSubtitle() {
+    if (_customHeaders.isEmpty) {
+      return 'Attach service-token headers (e.g. CF-Access-Client-Id). Tap to configure.';
+    }
+    final count = _customHeaders.length;
+    return '$count header${count == 1 ? '' : 's'} applied to every request';
+  }
+
+  Future<void> _openCustomHeadersSheet() async {
+    final result = await showModalBottomSheet<Map<String, String>>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => _CustomHeadersSheet(
+        initial: Map<String, String>.from(_customHeaders),
+      ),
+    );
+    if (!mounted || result == null) return;
+    try {
+      final services = ServicesScope.of(context).services;
+      await services.auth.api.setCustomHeaders(result);
+      if (!mounted) return;
+      setState(() {
+        _customHeaders = result;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result.isEmpty
+                ? 'Custom headers cleared'
+                : 'Custom headers updated',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to save headers: $e'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
+    }
   }
 
   Future<void> _switchLibrary(String newId) async {
@@ -375,6 +423,22 @@ class _SettingsPageState extends State<SettingsPage> {
             subtitle: const Text('View recent download cleanup activity'),
             trailing: const Icon(Icons.arrow_forward_ios_rounded),
             onTap: () => _showCleanupLog(),
+          ),
+          const Divider(height: 32),
+          const ListTile(
+            title: Text('Server access'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.vpn_key_rounded),
+            title: const Text('Custom HTTP headers'),
+            subtitle: Text(_customHeadersSubtitle()),
+            trailing: Text(
+              _customHeaders.isEmpty
+                  ? 'Off'
+                  : '${_customHeaders.length} active',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            onTap: _openCustomHeadersSheet,
           ),
           const Divider(height: 32),
           const ListTile(
@@ -831,6 +895,260 @@ class _CleanupProgressDialogState extends State<_CleanupProgressDialog> {
         TextButton(
           onPressed: widget.onCancel,
           child: const Text('Cancel'),
+        ),
+      ],
+    );
+  }
+}
+
+class _CustomHeadersSheet extends StatefulWidget {
+  const _CustomHeadersSheet({required this.initial});
+
+  final Map<String, String> initial;
+
+  @override
+  State<_CustomHeadersSheet> createState() => _CustomHeadersSheetState();
+}
+
+class _CustomHeadersSheetState extends State<_CustomHeadersSheet> {
+  final List<_HeaderRow> _rows = [];
+  bool _showValidationError = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initial.isEmpty) {
+      _rows.add(_HeaderRow());
+    } else {
+      widget.initial.forEach((key, value) {
+        _rows.add(_HeaderRow(key: key, value: value));
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final row in _rows) {
+      row.dispose();
+    }
+    super.dispose();
+  }
+
+  void _addRow() {
+    setState(() {
+      _rows.add(_HeaderRow());
+    });
+  }
+
+  void _removeRow(int index) {
+    if (index < 0 || index >= _rows.length) return;
+    if (_rows.length == 1) {
+      _rows.first.keyController.clear();
+      _rows.first.valueController.clear();
+      setState(() {});
+      return;
+    }
+    final row = _rows.removeAt(index);
+    row.dispose();
+    setState(() {});
+  }
+
+  void _clearAllRows() {
+    for (final row in _rows) {
+      row.dispose();
+    }
+    _rows
+      ..clear()
+      ..add(_HeaderRow());
+    setState(() {
+      _showValidationError = false;
+    });
+  }
+
+  void _save() {
+    final result = <String, String>{};
+    bool invalid = false;
+    for (final row in _rows) {
+      final key = row.keyController.text.trim();
+      final value = row.valueController.text.trim();
+      if (key.isEmpty && value.isEmpty) continue;
+      if (key.isEmpty || value.isEmpty) {
+        invalid = true;
+        break;
+      }
+      result[key] = value;
+    }
+    if (invalid) {
+      setState(() {
+        _showValidationError = true;
+      });
+      return;
+    }
+    Navigator.of(context).pop(result);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final media = MediaQuery.of(context);
+
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: EdgeInsets.only(
+          left: 20,
+          right: 20,
+          top: 16,
+          bottom: 16 + media.viewInsets.bottom,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Custom HTTP headers',
+                    style: theme.textTheme.titleLarge,
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Close',
+                  icon: const Icon(Icons.close_rounded),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Add the header key/value pairs required by your Zero-Trust proxy '
+              '(e.g. Cloudflare Access service tokens). These values are stored on-device '
+              'and sent with every request, including login.',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 16),
+            for (int i = 0; i < _rows.length; i++) ...[
+              _HeaderRowWidget(
+                row: _rows[i],
+                index: i,
+                onRemove: () => _removeRow(i),
+                onChanged: () {
+                  if (_showValidationError) {
+                    setState(() => _showValidationError = false);
+                  }
+                },
+              ),
+              const SizedBox(height: 12),
+            ],
+            Row(
+              children: [
+                TextButton.icon(
+                  onPressed: _addRow,
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add header'),
+                ),
+                const SizedBox(width: 12),
+                TextButton(
+                  onPressed: _clearAllRows,
+                  child: const Text('Clear all'),
+                ),
+              ],
+            ),
+            if (_showValidationError)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  'Fill in both the name and value for each header.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.error,
+                  ),
+                ),
+              ),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancel'),
+                ),
+                const SizedBox(width: 12),
+                FilledButton(
+                  onPressed: _save,
+                  child: const Text('Save'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HeaderRow {
+  _HeaderRow({String key = '', String value = ''})
+      : keyController = TextEditingController(text: key),
+        valueController = TextEditingController(text: value);
+
+  final TextEditingController keyController;
+  final TextEditingController valueController;
+
+  void dispose() {
+    keyController.dispose();
+    valueController.dispose();
+  }
+}
+
+class _HeaderRowWidget extends StatelessWidget {
+  const _HeaderRowWidget({
+    required this.row,
+    required this.index,
+    required this.onRemove,
+    required this.onChanged,
+  });
+
+  final _HeaderRow row;
+  final int index;
+  final VoidCallback onRemove;
+  final VoidCallback onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: TextField(
+            controller: row.keyController,
+            decoration: InputDecoration(
+              labelText: 'Header name',
+              hintText: index == 0 ? 'CF-Access-Client-Id' : null,
+            ),
+            textInputAction: TextInputAction.next,
+            autocorrect: false,
+            onChanged: (_) => onChanged(),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: TextField(
+            controller: row.valueController,
+            decoration: const InputDecoration(
+              labelText: 'Value',
+            ),
+            autocorrect: false,
+            onChanged: (_) => onChanged(),
+          ),
+        ),
+        IconButton(
+          tooltip: 'Remove header',
+          icon: const Icon(Icons.delete_outline_rounded),
+          color: theme.colorScheme.error,
+          onPressed: onRemove,
         ),
       ],
     );
