@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 
 import 'playback_repository.dart';
 
+enum SleepTimerMode { none, duration, chapterEnd }
+
 class SleepTimerService {
   static SleepTimerService? _instance;
   static SleepTimerService get instance => _instance ??= SleepTimerService._();
@@ -14,8 +16,14 @@ class SleepTimerService {
   bool _isActive = false;
   PlaybackRepository? _playbackRepository;
   final StreamController<Duration?> _remainingCtr = StreamController.broadcast();
+  SleepTimerMode _mode = SleepTimerMode.none;
+  Duration? _targetChapterEnd;
+  String? _targetItemId;
+  StreamSubscription<Duration>? _chapterPositionSub;
   
   Stream<Duration?> get remainingTimeStream => _remainingCtr.stream;
+  SleepTimerMode get mode => _mode;
+  bool get isChapterMode => _mode == SleepTimerMode.chapterEnd;
 
   void initialize(PlaybackRepository playbackRepository) {
     _playbackRepository = playbackRepository;
@@ -25,6 +33,7 @@ class SleepTimerService {
   void startTimer(Duration duration) {
     _stopTimer(); // Stop any existing timer
     
+    _mode = SleepTimerMode.duration;
     _remainingTime = duration;
     _isActive = true;
     _remainingCtr.add(_remainingTime);
@@ -48,8 +57,42 @@ class SleepTimerService {
     _stopTimer();
   }
 
+  /// Start sleep timer that stops at the end of the current chapter
+  bool startSleepUntilChapterEnd() {
+    final playback = _playbackRepository;
+    final np = playback?.nowPlaying;
+    if (playback == null || np == null) return false;
+    if (np.chapters.length < 2) return false;
+    final metrics = playback.currentChapterProgress;
+    if (metrics == null) return false;
+
+    _stopTimer();
+
+    _mode = SleepTimerMode.chapterEnd;
+    _isActive = true;
+    _targetChapterEnd = metrics.end;
+    _targetItemId = np.libraryItemId;
+    _remainingTime = metrics.duration - metrics.elapsed;
+    if (_remainingTime != null && _remainingTime!.isNegative) {
+      _remainingTime = Duration.zero;
+    }
+    _remainingCtr.add(_remainingTime);
+
+    _chapterPositionSub = playback.positionStream.listen((_) => _handleChapterModeTick());
+    _handleChapterModeTick();
+    return true;
+  }
+
+  /// Cancel chapter-end sleep mode without pausing playback
+  void cancelChapterSleepIfActive() {
+    if (_mode == SleepTimerMode.chapterEnd) {
+      _stopTimer();
+    }
+  }
+
   /// Pause sleep timer (keeps remaining time)
   void pauseTimer() {
+    if (_mode != SleepTimerMode.duration) return;
     if (_sleepTimer != null) {
       _sleepTimer!.cancel();
       _sleepTimer = null;
@@ -60,6 +103,7 @@ class SleepTimerService {
 
   /// Resume sleep timer
   void resumeTimer() {
+    if (_mode != SleepTimerMode.duration) return;
     if (_remainingTime != null && !_isActive) {
       _isActive = true;
       _sleepTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -102,32 +146,78 @@ class SleepTimerService {
 
   /// Add time to existing timer
   void addTime(Duration additionalTime) {
-    if (_remainingTime != null) {
-      _remainingTime = _remainingTime! + additionalTime;
-      _remainingCtr.add(_remainingTime);
-      // 'Added ${additionalTime.inMinutes} minutes to sleep timer');
-    }
+    if (_mode != SleepTimerMode.duration || _remainingTime == null) return;
+    _remainingTime = _remainingTime! + additionalTime;
+    _remainingCtr.add(_remainingTime);
+    // 'Added ${additionalTime.inMinutes} minutes to sleep timer');
   }
 
   /// Subtract time from existing timer
   void subtractTime(Duration timeToSubtract) {
-    if (_remainingTime != null) {
-      _remainingTime = _remainingTime! - timeToSubtract;
-      if (_remainingTime!.isNegative) {
-        _remainingTime = Duration.zero;
-      }
-      _remainingCtr.add(_remainingTime);
-      // 'Subtracted ${timeToSubtract.inMinutes} minutes from sleep timer');
+    if (_mode != SleepTimerMode.duration || _remainingTime == null) return;
+    _remainingTime = _remainingTime! - timeToSubtract;
+    if (_remainingTime!.isNegative) {
+      _remainingTime = Duration.zero;
     }
+    _remainingCtr.add(_remainingTime);
+    // 'Subtracted ${timeToSubtract.inMinutes} minutes from sleep timer');
   }
 
   void _stopTimer() {
     _sleepTimer?.cancel();
+    _chapterPositionSub?.cancel();
+    _chapterPositionSub = null;
     _sleepTimer = null;
     _isActive = false;
     _remainingTime = null;
+    _targetChapterEnd = null;
+    _targetItemId = null;
+    _mode = SleepTimerMode.none;
     _remainingCtr.add(null);
     // 'Sleep timer stopped');
+  }
+
+  void _handleChapterModeTick() {
+    if (_mode != SleepTimerMode.chapterEnd || !_isActive) {
+      return;
+    }
+
+    final playback = _playbackRepository;
+    final targetEnd = _targetChapterEnd;
+    final targetItem = _targetItemId;
+
+    if (playback == null || targetEnd == null || targetItem == null) {
+      _stopTimer();
+      return;
+    }
+
+    final np = playback.nowPlaying;
+    if (np == null || np.libraryItemId != targetItem) {
+      _stopTimer();
+      return;
+    }
+
+    final globalPos = playback.globalBookPosition;
+    if (globalPos == null) {
+      return;
+    }
+
+    var remaining = targetEnd - globalPos;
+    if (remaining.isNegative) {
+      remaining = Duration.zero;
+    }
+
+    if (_remainingTime == null || (_remainingTime! - remaining).abs() >= const Duration(milliseconds: 500)) {
+      _remainingTime = remaining;
+      _remainingCtr.add(_remainingTime);
+    } else {
+      _remainingTime = remaining;
+    }
+
+    if (remaining <= const Duration(milliseconds: 500)) {
+      _stopTimer();
+      _pausePlayback();
+    }
   }
 
   void _pausePlayback() {

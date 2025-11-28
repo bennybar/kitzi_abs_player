@@ -1166,6 +1166,7 @@ class PlaybackRepository {
   }
 
   Future<void> prevTrack() async {
+    SleepTimerService.instance.cancelChapterSleepIfActive();
     if (!hasPrev) return;
     final idx = _nowPlaying!.currentIndex - 1;
     await _setTrackAt(idx, preload: true);
@@ -1185,6 +1186,7 @@ class PlaybackRepository {
   Future<void> smartPrev() async {
     final np = _nowPlaying;
     if (np == null) return;
+    SleepTimerService.instance.cancelChapterSleepIfActive();
     
     // If we have multiple tracks, use track-based navigation
     if (np.tracks.length > 1 && hasPrev) {
@@ -1210,6 +1212,7 @@ class PlaybackRepository {
   }
 
   Future<void> nextTrack() async {
+    SleepTimerService.instance.cancelChapterSleepIfActive();
     if (!hasNext) return;
     final idx = _nowPlaying!.currentIndex + 1;
     await _setTrackAt(idx, preload: true);
@@ -1229,6 +1232,7 @@ class PlaybackRepository {
   Future<void> smartNext() async {
     final np = _nowPlaying;
     if (np == null) return;
+    SleepTimerService.instance.cancelChapterSleepIfActive();
     
     // If we have multiple tracks, use track-based navigation
     if (np.tracks.length > 1 && hasNext) {

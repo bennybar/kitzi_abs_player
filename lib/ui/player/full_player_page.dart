@@ -1171,6 +1171,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                       color: Theme.of(ctx).colorScheme.primary)
                                   : null,
                               onTap: () async {
+                                SleepTimerService.instance.cancelChapterSleepIfActive();
                                 Navigator.of(ctx).pop();
                                 await ServicesScope.of(context).services.playback.seek(c.start, reportNow: true);
                               },
@@ -1195,9 +1196,10 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     final text = Theme.of(context).textTheme;
 
     final timer = SleepTimerService.instance;
+    final supportsChapterSleep = np.chapters.length > 1;
 
     Duration? selected;
-    bool eoc = false;
+    bool eoc = timer.isChapterMode && supportsChapterSleep;
 
     String fmt(Duration d) {
       final h = d.inHours;
@@ -1228,6 +1230,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                 onSelected: (_) {
                   setState(() {
                     selected = d;
+                    eoc = false;
                   });
                 },
               );
@@ -1265,9 +1268,33 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                       chip('45', const Duration(minutes: 45)),
                       chip('60', const Duration(minutes: 60)),
                       chip('90', const Duration(minutes: 90)),
+                      if (supportsChapterSleep)
+                        ChoiceChip(
+                          label: Text(
+                            'Chapter end',
+                            style: text.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+                          ),
+                          labelPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          selected: eoc,
+                          onSelected: (_) {
+                            setState(() {
+                              eoc = true;
+                              selected = null;
+                            });
+                          },
+                        ),
                     ],
                   ),
-                  // End-of-chapter option removed
+                  if (supportsChapterSleep)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(
+                        'Stops playback when the current chapter ends. '
+                        'Changing chapters will cancel the sleep timer, but quick seek buttons will not.',
+                        style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                      ),
+                    ),
                   const SizedBox(height: 8),
                   StreamBuilder<Duration?>(
                     stream: timer.remainingTimeStream,
@@ -1275,7 +1302,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                     builder: (ctx, snap) {
                       final rem = snap.data;
                       if (!timer.isActive || rem == null) return const SizedBox.shrink();
-                      const modeLabel = 'Time remaining';
+                      final modeLabel = timer.isChapterMode ? 'Until chapter ends' : 'Time remaining';
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 8),
                         child: Row(
@@ -1293,12 +1320,24 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                     children: [
                       Expanded(
                         child: FilledButton(
-                          onPressed: () {
-                            if (selected != null) {
-                              timer.startTimer(selected!);
-                            }
-                            Navigator.of(ctx).pop();
-                          },
+                          onPressed: (selected == null && !eoc)
+                              ? null
+                              : () async {
+                                  var started = true;
+                                  if (eoc) {
+                                    started = timer.startSleepUntilChapterEnd();
+                                    if (!started) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(content: Text('Unable to start chapter sleep. Try again later.')),
+                                      );
+                                    }
+                                  } else if (selected != null) {
+                                    timer.startTimer(selected!);
+                                  }
+                                  if (started) {
+                                    Navigator.of(ctx).pop();
+                                  }
+                                },
                           child: const Text('Start'),
                         ),
                       ),
@@ -1902,10 +1941,19 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                             stream: SleepTimerService.instance.remainingTimeStream,
                                             initialData: SleepTimerService.instance.remainingTime,
                                             builder: (ctx, snap) {
-                                              final active = SleepTimerService.instance.isActive;
-                                              final label = active && snap.data != null
-                                                  ? 'Sleep · ${SleepTimerService.instance.formattedRemainingTime}'
-                                                  : 'Sleep';
+                                              final timer = SleepTimerService.instance;
+                                              final active = timer.isActive;
+                                              String label = 'Sleep';
+                                              if (active) {
+                                                final remain = timer.formattedRemainingTime;
+                                                if (timer.isChapterMode) {
+                                                  label = remain.isNotEmpty
+                                                      ? 'Sleep · Chapter end ($remain)'
+                                                      : 'Sleep · Chapter end';
+                                                } else if (snap.data != null && remain.isNotEmpty) {
+                                                  label = 'Sleep · $remain';
+                                                }
+                                              }
                                               return FilledButton.tonalIcon(
                                                 icon: Icon(
                                                   active ? Icons.nightlight : Icons.nightlight_round,
