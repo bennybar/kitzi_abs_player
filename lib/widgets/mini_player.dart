@@ -104,12 +104,9 @@ class _MiniPlayerState extends State<MiniPlayer> {
                   child: Row(
                     children: [
                       // Album art with Hero (YouTube Music style - square, slightly rounded)
-                      Hero(
-                        tag: 'mini-cover-${np.libraryItemId}',
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(4),
-                          child: _MiniCover(url: np.coverUrl, size: widget.height - 16),
-                        ),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: _MiniCover(url: np.coverUrl, size: widget.height - 16),
                       ),
                       const SizedBox(width: 12),
 

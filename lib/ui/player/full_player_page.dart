@@ -1749,42 +1749,39 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                     child: Center(
                                       child: SizedBox(
                                         width: MediaQuery.of(context).size.width * 0.7, // larger cover for stronger focus
-                                        child: Hero(
-                                          tag: 'mini-cover-${np.libraryItemId}',
-                                          child: Container(
-                                            decoration: BoxDecoration(
-                                              borderRadius: BorderRadius.circular(24),
-                                              boxShadow: [
-                                                BoxShadow(
-                                                  color: cs.shadow.withOpacity(0.25),
-                                                  blurRadius: 24,
-                                                  spreadRadius: 2,
-                                                  offset: const Offset(0, 8),
-                                                ),
-                                                BoxShadow(
-                                                  color: cs.primary.withOpacity(0.1),
-                                                  blurRadius: 40,
-                                                  spreadRadius: -4,
-                                                  offset: const Offset(0, 12),
-                                                ),
-                                              ],
-                                            ),
-                                            child: ClipRRect(
-                                              borderRadius: BorderRadius.circular(24),
-                                              child: AspectRatio(
-                                                aspectRatio: 1,
-                                                child: Image.network(
-                                                  np.coverUrl ?? '',
-                                                  fit: BoxFit.cover,
-                                                  gaplessPlayback: true,
-                                                  filterQuality: FilterQuality.low,
-                                                  errorBuilder: (_, __, ___) => Container(
-                                                    color: cs.surfaceContainerHighest,
-                                                    child: Icon(
-                                                      Icons.menu_book_outlined,
-                                                      size: 88,
-                                                      color: cs.onSurfaceVariant,
-                                                    ),
+                                        child: Container(
+                                          decoration: BoxDecoration(
+                                            borderRadius: BorderRadius.circular(24),
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: cs.shadow.withOpacity(0.25),
+                                                blurRadius: 24,
+                                                spreadRadius: 2,
+                                                offset: const Offset(0, 8),
+                                              ),
+                                              BoxShadow(
+                                                color: cs.primary.withOpacity(0.1),
+                                                blurRadius: 40,
+                                                spreadRadius: -4,
+                                                offset: const Offset(0, 12),
+                                              ),
+                                            ],
+                                          ),
+                                          child: ClipRRect(
+                                            borderRadius: BorderRadius.circular(24),
+                                            child: AspectRatio(
+                                              aspectRatio: 1,
+                                              child: Image.network(
+                                                np.coverUrl ?? '',
+                                                fit: BoxFit.cover,
+                                                gaplessPlayback: true,
+                                                filterQuality: FilterQuality.low,
+                                                errorBuilder: (_, __, ___) => Container(
+                                                  color: cs.surfaceContainerHighest,
+                                                  child: Icon(
+                                                    Icons.menu_book_outlined,
+                                                    size: 88,
+                                                    color: cs.onSurfaceVariant,
                                                   ),
                                                 ),
                                               ),
