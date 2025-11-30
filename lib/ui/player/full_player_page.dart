@@ -1687,16 +1687,6 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                           ],
                                         ),
                                       ),
-                                      PopupMenuItem(
-                                        value: _TopMenuAction.cast,
-                                        child: Row(
-                                          children: [
-                                            Icon(Icons.cast_rounded, size: 18, color: cs.primary),
-                                            const SizedBox(width: 12),
-                                            const Expanded(child: Text('Cast device')),
-                                          ],
-                                        ),
-                                      ),
                                     ],
                                   );
                                 },
