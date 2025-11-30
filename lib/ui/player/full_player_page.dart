@@ -54,30 +54,36 @@ class FullPlayerPage extends StatefulWidget {
       await Navigator.of(context).push(PageRouteBuilder(
         pageBuilder: (_, __, ___) => const FullPlayerPage(),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          // Material Design 3 emphasized easing - optimized for 120Hz displays
-          const emphasizedDecelerate = Cubic(0.05, 0.7, 0.1, 1.0);
-          const emphasizedAccelerate = Cubic(0.3, 0.0, 0.8, 0.15);
-          
-          final curve = CurvedAnimation(
-            parent: animation,
-            curve: emphasizedDecelerate,
-            reverseCurve: emphasizedAccelerate,
-          );
-
-          // Calculate mini player position (128px from bottom: 60px nav + 68px mini)
           final screenHeight = MediaQuery.of(context).size.height;
           final miniPlayerOffset = 128 / screenHeight;
 
-          return SlideTransition(
-            position: Tween<Offset>(
-              begin: Offset(0, 1.0 - miniPlayerOffset), // Start from mini player position
-              end: Offset.zero,
-            ).animate(curve),
-            child: child,
+          final entranceCurve = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+            reverseCurve: Curves.easeInCubic,
+          );
+
+          final slideAnimation = Tween<Offset>(
+            begin: Offset(0, 1.0 - miniPlayerOffset),
+            end: Offset.zero,
+          ).animate(entranceCurve);
+
+          final fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(entranceCurve);
+          final scaleAnimation = Tween<double>(begin: 0.94, end: 1.0).animate(entranceCurve);
+
+          return FadeTransition(
+            opacity: fadeAnimation,
+            child: SlideTransition(
+              position: slideAnimation,
+              child: ScaleTransition(
+                scale: scaleAnimation,
+                child: child,
+              ),
+            ),
           );
         },
-        transitionDuration: const Duration(milliseconds: 350),
-        reverseTransitionDuration: const Duration(milliseconds: 250),
+        transitionDuration: const Duration(milliseconds: 420),
+        reverseTransitionDuration: const Duration(milliseconds: 320),
         opaque: true,
         fullscreenDialog: false,
       ));
@@ -2082,7 +2088,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                       },
                                     ),
 
-                                    const SizedBox(height: 56),
+                                    const SizedBox(height: 40),
 
                                     // Quick access controls - four rounded buttons
                                     Row(
