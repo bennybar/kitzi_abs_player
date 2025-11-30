@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
@@ -215,6 +216,29 @@ class PlaybackJournalService {
           LIMIT ?
         )
     ''', [libraryItemId, libraryItemId, _bookmarksPerItem]);
+  }
+
+  /// Clear all playback history and bookmarks (used on logout)
+  static Future<void> clearAll() async {
+    try {
+      final instance = PlaybackJournalService.instance;
+      if (instance._db != null) {
+        final db = instance._db!;
+        await db.delete(_historyTable);
+        await db.delete(_bookmarkTable);
+        await db.close();
+        instance._db = null;
+      }
+      // Also delete the database file
+      try {
+        final dbPath = await getDatabasesPath();
+        final path = p.join(dbPath, _dbName);
+        final file = File(path);
+        if (await file.exists()) {
+          await file.delete();
+        }
+      } catch (_) {}
+    } catch (_) {}
   }
 }
 

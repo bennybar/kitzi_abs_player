@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../core/auth_repository.dart';
@@ -93,8 +94,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
       // Perform initial library sync with a blocking Material dialog (with timeout)
       try {
+        final syncCompleter = Completer<void>();
+        final dialogContext = context;
         await showDialog<void>(
-          context: context,
+          context: dialogContext,
           barrierDismissible: false,
           builder: (context) {
             // Kick off the async sync after the first frame
@@ -105,6 +108,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     .syncAllBooksToDb(pageSize: 100)
                     .timeout(const Duration(seconds: 25));
               } catch (_) {}
+              if (!syncCompleter.isCompleted) {
+                syncCompleter.complete();
+              }
               if (Navigator.of(context).canPop()) {
                 Navigator.of(context).pop();
               }
@@ -112,6 +118,14 @@ class _LoginScreenState extends State<LoginScreen> {
             return const _InitialLibraryDialog();
           },
         );
+        // Wait for sync to actually complete before navigating (with timeout as fallback)
+        try {
+          await syncCompleter.future.timeout(const Duration(seconds: 30));
+        } catch (_) {
+          // Timeout or error - proceed anyway, BooksPage will load what's available
+        }
+        // Small delay to ensure DB writes are flushed
+        await Future.delayed(const Duration(milliseconds: 300));
       } catch (_) {}
 
       final services = ServicesScope.of(context).services;

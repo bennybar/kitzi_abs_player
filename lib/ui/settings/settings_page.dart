@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'dart:async' show unawaited;
-import 'dart:io' show exit;
+import 'dart:io';
 import 'package:flutter/services.dart' show SystemNavigator;
+import 'package:sqflite/sqflite.dart';
 import '../../main.dart'; // ServicesScope
 import '../../core/audio_service_binding.dart';
 import '../../core/books_repository.dart';
 import '../../ui/login/login_screen.dart';
 import '../../core/download_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../core/play_history_service.dart';
+import '../../core/playback_journal_service.dart';
 import '../../core/ui_prefs.dart';
 import '../../core/theme_service.dart';
 import '../../core/downloads_repository.dart';
@@ -873,6 +876,11 @@ class _SettingsPageState extends State<SettingsPage> {
                   await prefs.clear();
                 } catch (_) {}
                 try {
+                  // Clear all secure storage (comprehensive cleanup)
+                  final secure = FlutterSecureStorage();
+                  await secure.deleteAll();
+                } catch (_) {}
+                try {
                   // Stop and unbind audio service
                   await AudioServiceBinding.instance.unbind();
                 } catch (_) {}
@@ -898,6 +906,44 @@ class _SettingsPageState extends State<SettingsPage> {
                 try {
                   // Clear play history
                   await PlayHistoryService.clearHistory();
+                } catch (_) {}
+                try {
+                  // Clear playback journal (history and bookmarks)
+                  await PlaybackJournalService.clearAll();
+                } catch (_) {}
+                try {
+                  // Clear streaming cache
+                  await StreamingCacheService.instance.clear();
+                } catch (_) {}
+                try {
+                  // Delete all database files in the databases directory (comprehensive cleanup)
+                  final dbPath = await getDatabasesPath();
+                  final dbDir = Directory(dbPath);
+                  if (await dbDir.exists()) {
+                    final entries = await dbDir.list().toList();
+                    for (final entry in entries) {
+                      if (entry is File && entry.path.endsWith('.db')) {
+                        try {
+                          await entry.delete();
+                        } catch (_) {}
+                      }
+                    }
+                  }
+                } catch (_) {}
+                try {
+                  // Delete all directories under databases path (covers, desc_images, etc.)
+                  final dbPath = await getDatabasesPath();
+                  final dbDir = Directory(dbPath);
+                  if (await dbDir.exists()) {
+                    final entries = await dbDir.list().toList();
+                    for (final entry in entries) {
+                      if (entry is Directory) {
+                        try {
+                          await entry.delete(recursive: true);
+                        } catch (_) {}
+                      }
+                    }
+                  }
                 } catch (_) {}
                 if (!context.mounted) return;
                 Navigator.of(context).pushAndRemoveUntil(

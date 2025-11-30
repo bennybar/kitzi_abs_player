@@ -165,10 +165,16 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
     _subscriptions.clear();
     
     // Dispose all controllers
+    // Remove _searchCtrl from _controllers list first to avoid double-dispose
+    _controllers.remove(_searchCtrl);
     _searchCtrl.dispose();
     _searchFocusNode.dispose();
     for (final controller in _controllers) {
-      controller.dispose();
+      try {
+        controller.dispose();
+      } catch (_) {
+        // Controller may already be disposed, ignore
+      }
     }
     _controllers.clear();
     

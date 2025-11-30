@@ -1067,15 +1067,16 @@ class BooksRepository {
         return books;
       }
 
-    // 1) Try page-based
-    final basePage = '/api/libraries/$libId/items?limit=$limit&page=$page&sort=$sort';
+    // 1) Try page-based (API uses 0-based page indexing)
+    final pageIndex = page > 0 ? page - 1 : 0;
+    final basePage = '/api/libraries/$libId/items?limit=$limit&page=$pageIndex&sort=$sort';
     final pathPage = (encodedQ != null)
-        ? '$basePage&search=$encodedQ$tokenQS'
+        ? '$basePage&q=$encodedQ$tokenQS'
         : '$basePage$tokenQS';
     final etagKey = _etagPrefsKey(sort, query);
     final cachedEtag = _prefs.getString(etagKey);
     final headers = <String, String>{};
-    if (cachedEtag != null && page == 1) {
+    if (cachedEtag != null && pageIndex == 0) {
       headers['If-None-Match'] = cachedEtag;
     }
     List<Book> books = await requestAndParse(pathPage, extraHeaders: headers).catchError((e) async {
@@ -1093,7 +1094,7 @@ class BooksRepository {
       final offset = (page - 1) * limit;
       final baseOffset = '/api/libraries/$libId/items?limit=$limit&offset=$offset&sort=$sort';
       final pathOffset = (encodedQ != null)
-          ? '$baseOffset&search=$encodedQ$tokenQS'
+          ? '$baseOffset&q=$encodedQ$tokenQS'
           : '$baseOffset$tokenQS';
       try {
         final altBooks = await requestAndParse(pathOffset);
@@ -1105,7 +1106,7 @@ class BooksRepository {
         // Offset failed, trying skip
         final baseSkip = '/api/libraries/$libId/items?limit=$limit&skip=$offset&sort=$sort';
         final pathSkip = (encodedQ != null)
-            ? '$baseSkip&search=$encodedQ$tokenQS'
+            ? '$baseSkip&q=$encodedQ$tokenQS'
             : '$baseSkip$tokenQS';
         try {
           final altBooks2 = await requestAndParse(pathSkip);
@@ -1655,7 +1656,7 @@ class BooksRepository {
     // Try offset
     final baseOffset = '/api/libraries/$libId/items?limit=$limit&offset=$offset&sort=$sort';
     final pathOffset = (encodedQ != null)
-        ? '$baseOffset&search=$encodedQ$tokenQS'
+        ? '$baseOffset&q=$encodedQ$tokenQS'
         : '$baseOffset$tokenQS';
     try {
       final books = await requestAndParse(pathOffset);
@@ -1669,7 +1670,7 @@ class BooksRepository {
     // Try skip
     final baseSkip = '/api/libraries/$libId/items?limit=$limit&skip=$offset&sort=$sort';
     final pathSkip = (encodedQ != null)
-        ? '$baseSkip&search=$encodedQ$tokenQS'
+        ? '$baseSkip&q=$encodedQ$tokenQS'
         : '$baseSkip$tokenQS';
     try {
       final books = await requestAndParse(pathSkip);
@@ -1680,16 +1681,17 @@ class BooksRepository {
       }
     } catch (_) {}
 
-    // Fall back to page-based
+    // Fall back to page-based (API uses 0-based page indexing)
     final page = (offset ~/ limit) + 1;
-    final basePage = '/api/libraries/$libId/items?limit=$limit&page=$page&sort=$sort';
+    final pageIndex = page > 0 ? page - 1 : 0;
+    final basePage = '/api/libraries/$libId/items?limit=$limit&page=$pageIndex&sort=$sort';
     final pathPage = (encodedQ != null)
-        ? '$basePage&search=$encodedQ$tokenQS'
+        ? '$basePage&q=$encodedQ$tokenQS'
         : '$basePage$tokenQS';
     final etagKey = _etagPrefsKey(sort, query);
     final cachedEtag = _prefs.getString(etagKey);
     final headers = <String, String>{};
-    if (cachedEtag != null && page == 1) {
+    if (cachedEtag != null && pageIndex == 0) {
       headers['If-None-Match'] = cachedEtag;
     }
     List<Book> pageBooks = await requestAndParse(pathPage, extraHeaders: headers);

@@ -1,6 +1,7 @@
 // lib/core/play_history_service.dart
 import 'dart:convert';
 import 'dart:async';
+import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'package:sqflite/sqflite.dart';
@@ -480,6 +481,19 @@ class PlayHistoryService {
   static Future<void> clearHistory() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_playHistoryKey);
+    // Also close and delete the database file
+    try {
+      if (_recentDb != null) {
+        await _recentDb!.close();
+        _recentDb = null;
+      }
+      final dbPath = await getDatabasesPath();
+      final path = p.join(dbPath, 'kitzi_recent_books.db');
+      final file = File(path);
+      if (await file.exists()) {
+        await file.delete();
+      }
+    } catch (_) {}
   }
   
   /// Remove a specific book from history
