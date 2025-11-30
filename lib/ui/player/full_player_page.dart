@@ -18,6 +18,30 @@ import 'dart:async';
 
 enum _TopMenuAction { toggleCompletion, toggleGradient, cast }
 
+/// Custom slider track shape that allows tighter horizontal padding than the
+/// default Material slider track.
+class _EdgeToEdgeSliderTrackShape extends RoundedRectSliderTrackShape {
+  const _EdgeToEdgeSliderTrackShape({this.horizontalInset = 0});
+
+  final double horizontalInset;
+
+  @override
+  Rect getPreferredRect({
+    required RenderBox parentBox,
+    Offset offset = Offset.zero,
+    required SliderThemeData sliderTheme,
+    bool isEnabled = false,
+    bool isDiscrete = false,
+  }) {
+    final trackHeight = sliderTheme.trackHeight ?? 2.0;
+    final inset = horizontalInset.clamp(0.0, parentBox.size.width / 2);
+    final trackLeft = offset.dx;
+    final trackTop = offset.dy + (parentBox.size.height - trackHeight) / 2;
+    final trackWidth = parentBox.size.width - inset * 2;
+    return Rect.fromLTWH(trackLeft + inset, trackTop, trackWidth, trackHeight);
+  }
+}
+
 class FullPlayerPage extends StatefulWidget {
   const FullPlayerPage({super.key});
 
@@ -260,14 +284,14 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
 
 
     final sliderTheme = SliderTheme.of(context).copyWith(
-      trackHeight: isPrimary ? 6 : 4,
-      thumbShape: RoundSliderThumbShape(enabledThumbRadius: isPrimary ? 12 : 9),
-      overlayShape: const RoundSliderOverlayShape(overlayRadius: 24),
+      trackHeight: isPrimary ? 14 : 10,
+      thumbShape: RoundSliderThumbShape(enabledThumbRadius: isPrimary ? 15 : 12),
+      overlayShape: RoundSliderOverlayShape(overlayRadius: isPrimary ? 30 : 26),
       activeTrackColor: cs.primary,
       inactiveTrackColor: cs.surfaceContainerHighest,
       thumbColor: cs.primary,
       overlayColor: cs.primary.withOpacity(isPrimary ? 0.16 : 0.12),
-      trackShape: const RoundedRectSliderTrackShape(),
+      trackShape: const _EdgeToEdgeSliderTrackShape(horizontalInset: 6),
       valueIndicatorShape: const PaddleSliderValueIndicatorShape(),
       valueIndicatorColor: cs.primary,
       valueIndicatorTextStyle: text.labelMedium?.copyWith(
@@ -376,18 +400,18 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
           ),
           SliderTheme(
             data: SliderTheme.of(context).copyWith(
-              trackHeight: 6,
+              trackHeight: 14,
               thumbShape: const RoundSliderThumbShape(
-                enabledThumbRadius: 12,
+                enabledThumbRadius: 15,
                 elevation: 6,
                 pressedElevation: 8,
               ),
-              overlayShape: const RoundSliderOverlayShape(overlayRadius: 24),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 30),
               activeTrackColor: cs.primary,
               inactiveTrackColor: cs.surfaceContainerHighest,
               thumbColor: cs.primary,
               overlayColor: cs.primary.withOpacity(0.16),
-              trackShape: const RoundedRectSliderTrackShape(),
+              trackShape: const _EdgeToEdgeSliderTrackShape(horizontalInset: 6),
             ),
             child: Slider(
               min: 0.0,
@@ -550,18 +574,18 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
         children: [
           SliderTheme(
             data: SliderTheme.of(context).copyWith(
-              trackHeight: 6,
+              trackHeight: 14,
               thumbShape: const RoundSliderThumbShape(
-                enabledThumbRadius: 12,
+                enabledThumbRadius: 15,
                 elevation: 6,
                 pressedElevation: 8,
               ),
-              overlayShape: const RoundSliderOverlayShape(overlayRadius: 24),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 30),
               activeTrackColor: cs.primary,
               inactiveTrackColor: cs.surfaceContainerHighest,
               thumbColor: cs.primary,
               overlayColor: cs.primary.withOpacity(0.16),
-              trackShape: const RoundedRectSliderTrackShape(),
+              trackShape: const _EdgeToEdgeSliderTrackShape(horizontalInset: 6),
             ),
             child: Slider(
               min: 0.0,
@@ -1702,7 +1726,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                       child: RepaintBoundary(
                         child: SingleChildScrollView(
                           physics: const BouncingScrollPhysics(),
-                          padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                          padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
                           child: Column(
                             children: [
                             // Cover with enhanced shadow and border - compact size
