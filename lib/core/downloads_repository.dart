@@ -1102,6 +1102,11 @@ class DownloadsRepository {
     // CRITICAL: Check local files first - if they exist and we have files, consider download status
     // This ensures downloaded books show "Downloaded" even if track count doesn't match exactly
     if (hasLocal && completedLocal > 0) {
+      final bool hasActiveTasks =
+          recs.any((r) => r.status == TaskStatus.running || r.status == TaskStatus.enqueued) ||
+          _uiActive[libraryItemId] == true ||
+          _itemsInGlobalQueue.contains(libraryItemId) ||
+          _activeItems.contains(libraryItemId);
       // If we have local files, check if we have enough files OR if total tracks is unknown
       // This handles cases where track count might be slightly off or unknown
       if (totalTracks > 0) {
@@ -1109,16 +1114,8 @@ class DownloadsRepository {
         if (completedLocal >= totalTracks) {
           status = 'complete';
         } else {
-          // Partially downloaded - check if there are active downloads
-          if (recs.any((r) => r.status == TaskStatus.running || r.status == TaskStatus.enqueued) ||
-              _uiActive[libraryItemId] == true ||
-              _itemsInGlobalQueue.contains(libraryItemId)) {
-            status = 'running';
-          } else {
-            // If no active downloads but we have substantial files, consider it complete
-            // This handles edge cases where file count might be slightly off
-            status = 'complete';
-          }
+          // Partially downloaded - remain in running/queued state until all files are done
+          status = hasActiveTasks ? 'running' : 'queued';
         }
       } else {
         // Total tracks unknown but we have local files - consider complete

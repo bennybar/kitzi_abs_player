@@ -430,7 +430,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        _chapterDescriptor(metrics),
+                        'Chapter ${metrics.index + 1} of ${metrics.totalChapters}',
                         style: text.labelMedium?.copyWith(
                           color: cs.onSurfaceVariant,
                           fontWeight: FontWeight.w700,
@@ -469,7 +469,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
       children: [
         Expanded(
           child: Text(
-            _chapterDescriptor(metrics),
+            'Chapter ${metrics.index + 1} of ${metrics.totalChapters}',
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: text.bodyMedium?.copyWith(
@@ -661,76 +661,6 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
     final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
     return h > 0 ? '$h:$m:$s' : '$m:$s';
-  }
-
-  Widget _buildPercentCompleteLabel({
-    required PlaybackRepository playback,
-    required TextTheme text,
-    required ColorScheme cs,
-  }) {
-    return StreamBuilder<Duration>(
-      stream: playback.positionStream,
-      initialData: playback.player.position,
-      builder: (_, __) {
-        final total = playback.totalBookDuration;
-        final global = playback.globalBookPosition;
-        String label;
-        if (total != null && total > Duration.zero && global != null) {
-          final percent = (global.inMilliseconds / total.inMilliseconds * 100).clamp(0.0, 100.0);
-          label = '${percent.toStringAsFixed(1)}% Complete';
-        } else {
-          label = 'Syncing progress…';
-        }
-        return Text(
-          label,
-          textAlign: TextAlign.center,
-          style: text.titleMedium?.copyWith(
-            fontWeight: FontWeight.w700,
-            color: cs.onSurface,
-          ),
-        );
-      },
-    );
-  }
-
-  BoxDecoration _playerBackgroundDecoration(bool gradientEnabled, ColorScheme cs, Brightness brightness) {
-    if (!gradientEnabled) {
-      return BoxDecoration(color: cs.surface);
-    }
-    final colors = brightness == Brightness.dark
-        ? [
-            cs.surface.withOpacity(0.9),
-            cs.surfaceContainerHighest,
-            Colors.black,
-          ]
-        : [
-            cs.surface,
-            cs.surfaceContainerHighest,
-            Colors.white,
-          ];
-    return BoxDecoration(
-      gradient: LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: colors,
-      ),
-    );
-  }
-
-  void _showCastingComingSoon(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Casting support is coming soon.'),
-        duration: Duration(seconds: 2),
-      ),
-    );
-  }
-
-  String _chapterDescriptor(ChapterProgressMetrics metrics) {
-    final base = 'Chapter ${metrics.index + 1} of ${metrics.totalChapters}';
-    final title = metrics.title;
-    if (title == null || title.isEmpty) return base;
-    return '$base • $title';
   }
 
   Stream<bool> _getBookCompletionStream() {
@@ -1435,19 +1365,12 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
   @override
   Widget build(BuildContext context) {
     final playback = ServicesScope.of(context).services.playback;
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-    final text = theme.textTheme;
-    final brightness = theme.brightness;
+    final cs = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
 
-    return ValueListenableBuilder<bool>(
-      valueListenable: UiPrefs.playerGradientBackground,
-      builder: (_, gradientEnabled, __) {
-        return DecoratedBox(
-          decoration: _playerBackgroundDecoration(gradientEnabled, cs, brightness),
-          child: Scaffold(
-            backgroundColor: Colors.transparent,
-            body: GestureDetector(
+    return Scaffold(
+      backgroundColor: cs.surface,
+      body: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onVerticalDragUpdate: (details) {
           final dy = details.delta.dy;
@@ -1503,7 +1426,6 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                       child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           IconButton.filledTonal(
                             onPressed: () => Navigator.of(context).pop(),
@@ -1512,85 +1434,56 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                               backgroundColor: cs.surfaceContainerHighest,
                             ),
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _buildPercentCompleteLabel(
-                              playback: playback,
-                              text: text,
-                              cs: cs,
+                          const Spacer(),
+                          Text(
+                            'Now Playing',
+                            style: text.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
-                          const SizedBox(width: 12),
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              SizedBox(
-                                height: 44,
-                                child: StreamBuilder<double>(
-                                  stream: playback.player.speedStream,
-                                  initialData: playback.player.speed,
-                                  builder: (_, speedSnap) {
-                                    final cur = speedSnap.data ?? 1.0;
-                                    final speeds = PlaybackSpeedService.instance.availableSpeeds;
-                                    return PopupMenuButton<double>(
-                                      tooltip: 'Playback speed',
-                                      icon: _speedIndicator(cur, cs, text),
-                                      onSelected: (v) async {
-                                        await PlaybackSpeedService.instance.setSpeed(v);
-                                      },
-                                      itemBuilder: (context) => [
-                                        for (final s in speeds) _speedItem(context, cur, s),
-                                      ],
-                                    );
-                                  },
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              StreamBuilder<bool>(
-                                stream: _getBookCompletionStream(),
-                                initialData: false,
-                                builder: (_, completionSnap) {
-                                  final isCompleted = completionSnap.data ?? false;
-                                  return IconButton.filledTonal(
-                                    onPressed: () => _toggleBookCompletion(context, isCompleted),
-                                    icon: Icon(
-                                      isCompleted
-                                          ? Icons.undo_rounded
-                                          : Icons.check_circle_outline_rounded,
-                                    ),
-                                    tooltip: isCompleted ? 'Mark as unfinished' : 'Mark as finished',
-                                    style: IconButton.styleFrom(
-                                      backgroundColor: isCompleted
-                                          ? cs.errorContainer
-                                          : cs.surfaceContainerHighest,
-                                      foregroundColor: isCompleted
-                                          ? cs.onErrorContainer
-                                          : cs.onSurface,
-                                    ),
-                                  );
-                                },
-                              ),
-                              const SizedBox(width: 8),
-                              IconButton.filledTonal(
-                                onPressed: () {
-                                  UiPrefs.setPlayerGradientBackground(!gradientEnabled);
-                                },
-                                tooltip: gradientEnabled
-                                    ? 'Disable gradient background'
-                                    : 'Enable gradient background',
-                                icon: Icon(
-                                  gradientEnabled ? Icons.gradient : Icons.gradient_outlined,
-                                ),
+                          const Spacer(),
+                          // Mark as finished/unfinished button
+                          StreamBuilder<bool>(
+                            stream: _getBookCompletionStream(),
+                            initialData: false,
+                            builder: (_, completionSnap) {
+                              final isCompleted = completionSnap.data ?? false;
+                              
+                              return IconButton.filledTonal(
+                                onPressed: () => _toggleBookCompletion(context, isCompleted),
+                                icon: Icon(isCompleted 
+                                    ? Icons.undo_rounded 
+                                    : Icons.check_circle_outline_rounded),
+                                tooltip: isCompleted ? 'Mark as unfinished' : 'Mark as finished',
                                 style: IconButton.styleFrom(
-                                  backgroundColor: gradientEnabled
-                                      ? cs.primaryContainer
+                                  backgroundColor: isCompleted 
+                                      ? cs.errorContainer 
                                       : cs.surfaceContainerHighest,
-                                  foregroundColor: gradientEnabled
-                                      ? cs.onPrimaryContainer
+                                  foregroundColor: isCompleted 
+                                      ? cs.onErrorContainer 
                                       : cs.onSurface,
                                 ),
-                              ),
-                            ],
+                              );
+                            },
+                          ),
+                          const SizedBox(width: 8),
+                          StreamBuilder<double>(
+                            stream: ServicesScope.of(context).services.playback.player.speedStream,
+                            initialData: ServicesScope.of(context).services.playback.player.speed,
+                            builder: (_, speedSnap) {
+                              final cur = speedSnap.data ?? 1.0;
+                              final speeds = PlaybackSpeedService.instance.availableSpeeds;
+                              return PopupMenuButton<double>(
+                                tooltip: 'Playback speed',
+                                icon: _speedIndicator(cur, cs, text),
+                                onSelected: (v) async {
+                                  await PlaybackSpeedService.instance.setSpeed(v);
+                                },
+                                itemBuilder: (context) => [
+                                  for (final s in speeds) _speedItem(context, cur, s),
+                                ],
+                              );
+                            },
                           ),
                         ],
                       ),
@@ -1846,6 +1739,79 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
 
                     const SizedBox(height: 12),
 
+                    // Material Design 3 Chapter Name (if available)
+                    StreamBuilder<Duration>(
+                      stream: playback.positionStream,
+                      initialData: playback.player.position,
+                      builder: (_, posSnap) {
+                        final globalTotal = playback.totalBookDuration;
+                        final useGlobal = _dualProgressEnabled && globalTotal != null && globalTotal > Duration.zero;
+                        final globalPos = useGlobal ? (playback.globalBookPosition ?? Duration.zero) : (posSnap.data ?? Duration.zero);
+                        
+                        final np = playback.nowPlaying;
+                        if (np == null || np.chapters.isEmpty) {
+                          return const SizedBox.shrink();
+                        }
+
+                        // Find current chapter
+                        int chapterIdx = 0;
+                        for (int i = 0; i < np.chapters.length; i++) {
+                          if (globalPos >= np.chapters[i].start) {
+                            chapterIdx = i;
+                          } else {
+                            break;
+                          }
+                        }
+                        
+                        final currentChapter = np.chapters[chapterIdx];
+                        final chapterTitle = currentChapter.title.isEmpty 
+                            ? 'Chapter ${chapterIdx + 1}' 
+                            : currentChapter.title;
+
+                        return Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                          child: Card(
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              side: BorderSide(
+                                color: cs.outline.withOpacity(0.1),
+                                width: 0.5,
+                              ),
+                            ),
+                            child: InkWell(
+                              onTap: () => _showChaptersSheet(context, playback, np),
+                              borderRadius: BorderRadius.circular(14),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.bookmark_rounded,
+                                      size: 18,
+                                      color: cs.primary,
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(
+                                        chapterTitle,
+                                        style: text.bodyMedium?.copyWith(
+                                          color: cs.onSurface,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+
                     // CONTROLS + CHAPTERS
                     AnimatedBuilder(
                       animation: _controlsAnimation,
@@ -1959,30 +1925,9 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
 
                                     const SizedBox(height: 24),
 
-                                    // Quick access controls: chapters, download, sleep, cast
+                                    // Download/Chapters + Sleep controls - compact design
                                     Row(
                                       children: [
-                                        Expanded(
-                                          child: _PlayerActionTile(
-                                            icon: const Icon(Icons.library_books_rounded),
-                                            label: 'Chapters',
-                                            onTap: np.chapters.isEmpty
-                                                ? null
-                                                : () {
-                                                    _showChaptersSheet(context, playback, np);
-                                                  },
-                                            tooltip: np.chapters.isEmpty
-                                                ? 'No chapters available'
-                                                : 'Open chapters',
-                                            enabled: np.chapters.isNotEmpty,
-                                            foregroundColor: np.chapters.isNotEmpty
-                                                ? null
-                                                : Theme.of(context)
-                                                    .colorScheme
-                                                    .onSurfaceVariant,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 12),
                                         Expanded(
                                           child: _ChaptersDownloadButton(
                                             libraryItemId: np.libraryItemId,
@@ -1992,19 +1937,43 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                         ),
                                         const SizedBox(width: 12),
                                         Expanded(
-                                          child: _SleepQuickAction(
-                                            onTap: () {
-                                              _showSleepTimerSheet(context, np);
+                                          child: StreamBuilder<Duration?>(
+                                            stream: SleepTimerService.instance.remainingTimeStream,
+                                            initialData: SleepTimerService.instance.remainingTime,
+                                            builder: (ctx, snap) {
+                                              final timer = SleepTimerService.instance;
+                                              final active = timer.isActive;
+                                              String label = 'Sleep';
+                                              if (active) {
+                                                final remain = timer.formattedRemainingTime;
+                                                if (timer.isChapterMode) {
+                                                  label = remain.isNotEmpty
+                                                      ? 'Sleep · Chapter end ($remain)'
+                                                      : 'Sleep · Chapter end';
+                                                } else if (snap.data != null && remain.isNotEmpty) {
+                                                  label = 'Sleep · $remain';
+                                                }
+                                              }
+                                              return FilledButton.tonalIcon(
+                                                icon: Icon(
+                                                  active ? Icons.nightlight : Icons.nightlight_round,
+                                                  size: 20,
+                                                ),
+                                                label: Text(label),
+                                                onPressed: () => _showSleepTimerSheet(context, np),
+                                                style: FilledButton.styleFrom(
+                                                  padding: const EdgeInsets.symmetric(vertical: 14),
+                                                  elevation: 1,
+                                                  shape: RoundedRectangleBorder(
+                                                    borderRadius: BorderRadius.circular(16),
+                                                  ),
+                                                  textStyle: text.labelMedium?.copyWith(
+                                                    fontWeight: FontWeight.w600,
+                                                    letterSpacing: 0.3,
+                                                  ),
+                                                ),
+                                              );
                                             },
-                                          ),
-                                        ),
-                                        const SizedBox(width: 12),
-                                        Expanded(
-                                          child: _PlayerActionTile(
-                                            icon: const Icon(Icons.cast_rounded),
-                                            label: 'Cast',
-                                            onTap: () => _showCastingComingSoon(context),
-                                            tooltip: 'Casting',
                                           ),
                                         ),
                                       ],
@@ -2024,119 +1993,12 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
             ),
           ),
         ),
-            ),
-          ),
-        );
-      },
+      ),
     );
   }
 }
 
 /// Button that shows download status for the entire book
-class _PlayerActionTile extends StatelessWidget {
-  const _PlayerActionTile({
-    required this.icon,
-    required this.label,
-    this.onTap,
-    this.tooltip,
-    this.enabled = true,
-    this.backgroundColor,
-    this.foregroundColor,
-  });
-
-  final Widget icon;
-  final String label;
-  final VoidCallback? onTap;
-  final String? tooltip;
-  final bool enabled;
-  final Color? backgroundColor;
-  final Color? foregroundColor;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final text = Theme.of(context).textTheme;
-    final bg = backgroundColor ?? cs.surfaceContainerHighest;
-    final fg = foregroundColor ?? cs.onSurface;
-
-    final button = Material(
-      color: enabled ? bg : bg.withOpacity(0.5),
-      shape: const CircleBorder(),
-      child: InkWell(
-        onTap: enabled ? onTap : null,
-        customBorder: const CircleBorder(),
-        child: SizedBox(
-          width: 64,
-          height: 64,
-          child: Center(
-            child: IconTheme(
-              data: IconThemeData(color: fg, size: 28),
-              child: icon,
-            ),
-          ),
-        ),
-      ),
-    );
-
-    final decoratedButton =
-        tooltip != null ? Tooltip(message: tooltip!, child: button) : button;
-
-    return Opacity(
-      opacity: enabled ? 1.0 : 0.6,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          decoratedButton,
-          const SizedBox(height: 8),
-          Text(
-            label,
-            textAlign: TextAlign.center,
-            style: text.labelSmall?.copyWith(
-              color: enabled ? cs.onSurface : cs.onSurfaceVariant,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SleepQuickAction extends StatelessWidget {
-  const _SleepQuickAction({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return StreamBuilder<Duration?>(
-      stream: SleepTimerService.instance.remainingTimeStream,
-      initialData: SleepTimerService.instance.remainingTime,
-      builder: (ctx, snap) {
-        final timer = SleepTimerService.instance;
-        final active = timer.isActive;
-        final isChapterMode = timer.isChapterMode;
-        final remaining = timer.formattedRemainingTime;
-        var label = 'Sleep';
-        if (active) {
-          label = isChapterMode
-              ? 'Sleep (Chapter)'
-              : (remaining.isNotEmpty ? 'Sleep ($remaining)' : 'Sleep');
-        }
-        return _PlayerActionTile(
-          icon: Icon(isChapterMode ? Icons.menu_book_rounded : Icons.nights_stay_rounded),
-          label: label,
-          onTap: onTap,
-          tooltip: active ? 'Adjust sleep timer' : 'Set sleep timer',
-          backgroundColor: active ? cs.primary : cs.surfaceContainerHighest,
-          foregroundColor: active ? cs.onPrimary : cs.onSurface,
-        );
-      },
-    );
-  }
-}
-
 class _ChaptersDownloadButton extends StatefulWidget {
   const _ChaptersDownloadButton({
     required this.libraryItemId,
@@ -2302,22 +2164,23 @@ class _ChaptersDownloadButtonState extends State<_ChaptersDownloadButton> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
     final snap = _snap;
 
-    Widget iconWidget;
+    // Determine button state and content
+    IconData icon;
     String label;
-    String tooltip;
-    Color backgroundColor;
-    Color foregroundColor;
-    VoidCallback? action;
+    Color? backgroundColor;
+    Color? foregroundColor;
+    VoidCallback? onPressed;
 
     if (snap?.status == 'complete') {
-      iconWidget = const Icon(Icons.delete_outline);
-      label = 'Remove';
-      tooltip = 'Remove download';
+      icon = Icons.check_circle_outline;
+      label = 'Downloaded';
       backgroundColor = cs.secondaryContainer;
       foregroundColor = cs.onSecondaryContainer;
-      action = () async {
+      // When downloaded, tap shows confirmation dialog before removing
+      onPressed = () async {
         final confirmed = await showDialog<bool>(
           context: context,
           builder: (dialogContext) {
@@ -2350,37 +2213,58 @@ class _ChaptersDownloadButtonState extends State<_ChaptersDownloadButton> {
         }
       };
     } else if (snap != null && (snap.status == 'running' || snap.status == 'queued')) {
-      iconWidget = SizedBox(
-        width: 28,
-        height: 28,
-        child: CircularProgressIndicator(
-          strokeWidth: 2.5,
-          value: snap.status == 'running' ? snap.progress : null,
-          valueColor: AlwaysStoppedAnimation<Color>(cs.onPrimary),
-          backgroundColor: cs.onPrimary.withOpacity(0.2),
-        ),
-      );
-      label = snap.status == 'queued' ? 'Queued' : 'Cancel';
-      tooltip = snap.status == 'queued' ? 'Download queued' : 'Cancel download';
+      icon = Icons.download;
+      final pct = (snap.progress * 100).clamp(0, 100).toStringAsFixed(0);
+      label = '$pct%';
       backgroundColor = cs.primary;
       foregroundColor = cs.onPrimary;
-      action = _cancelCurrent;
+      // When downloading, tap cancels
+      onPressed = _cancelCurrent;
     } else {
-      iconWidget = const Icon(Icons.download_rounded);
+      icon = Icons.download_outlined;
       label = 'Download';
-      tooltip = 'Download for offline';
-      backgroundColor = cs.surfaceContainerHighest;
-      foregroundColor = cs.onSurface;
-      action = _enqueue;
+      backgroundColor = null; // Use default tonal
+      foregroundColor = null;
+      // When not downloaded, tap starts download
+      onPressed = _enqueue;
     }
 
-    return _PlayerActionTile(
-      icon: iconWidget,
-      label: label,
-      onTap: action,
-      tooltip: tooltip,
-      backgroundColor: backgroundColor,
-      foregroundColor: foregroundColor,
+    return FilledButton.tonalIcon(
+      icon: snap != null && (snap.status == 'running' || snap.status == 'queued')
+          ? SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                value: snap.status == 'running' ? snap.progress : null,
+                color: foregroundColor,
+              ),
+            )
+          : snap?.status == 'complete'
+              ? Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(icon, size: 20),
+                    const SizedBox(width: 4),
+                    Icon(Icons.delete_outline, size: 16, color: cs.error),
+                  ],
+                )
+              : Icon(icon, size: 20),
+      label: Text(label),
+      onPressed: onPressed,
+      style: FilledButton.styleFrom(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        elevation: 1,
+        backgroundColor: backgroundColor,
+        foregroundColor: foregroundColor,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        textStyle: textTheme.labelMedium?.copyWith(
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.3,
+        ),
+      ),
     );
   }
 }
