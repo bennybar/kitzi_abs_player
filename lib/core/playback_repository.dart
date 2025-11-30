@@ -22,6 +22,7 @@ import 'dynamic_island_service.dart';
 import '../models/book.dart';
 import 'books_repository.dart';
 import 'smart_rewind_service.dart';
+import 'streaming_cache_service.dart';
 
 enum ProgressResetChoice {
   useServer,
@@ -729,6 +730,7 @@ class PlaybackRepository {
           // Completed last track; mark finished and close session to stop transcodes
           await _sendProgressImmediate(finished: true);
           await _closeActiveSession();
+          unawaited(StreamingCacheService.instance.evictForItem(cur.libraryItemId));
         }
       }
     });
@@ -1284,6 +1286,7 @@ class PlaybackRepository {
     if (local.isEmpty) return false;
     // Require that the current index is valid within local tracks
     if (np.currentIndex >= local.length) return false;
+    unawaited(StreamingCacheService.instance.evictForItem(libraryItemId));
 
     final wasPlaying = player.playing;
     // CRITICAL: Use global position to preserve position across tracks - calculate BEFORE updating tracks
@@ -1635,10 +1638,23 @@ class PlaybackRepository {
           headers['Authorization'] = 'Bearer $access';
         }
       } catch (_) {}
+      final uri = Uri.parse(track.url);
+      AudioSource source;
+      try {
+        source = await StreamingCacheService.instance.createCachingSource(
+          uri: uri,
+          libraryItemId: cur.libraryItemId,
+          trackIndex: track.index,
+          headers: headers.isEmpty ? null : headers,
+        );
+      } catch (_) {
+        source = AudioSource.uri(uri, headers: headers);
+      }
       loadedDuration = await player.setAudioSource(
-        AudioSource.uri(Uri.parse(track.url), headers: headers),
+        source,
         preload: preload,
       );
+      unawaited(StreamingCacheService.instance.trimToLimit());
     }
     // If we obtained the track's duration upon loading, update the nowPlaying track list
     List<PlaybackTrack>? maybeUpdatedTracks;

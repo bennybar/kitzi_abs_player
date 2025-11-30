@@ -13,6 +13,7 @@ import '../../core/play_history_service.dart';
 import '../../core/ui_prefs.dart';
 import '../../core/theme_service.dart';
 import '../../core/downloads_repository.dart';
+import '../../core/streaming_cache_service.dart';
 import '../profile/profile_page.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -38,6 +39,13 @@ class _SettingsPageState extends State<SettingsPage> {
   String? _activeLibraryId;
   List<Map<String, String>> _libraries = const [];
   Map<String, String> _customHeaders = const <String, String>{};
+  static const int _mb = 1024 * 1024;
+  static const double _minCacheMb = 200;
+  static const double _maxCacheMb = 2000;
+  static const double _cacheStepMb = 50;
+  double? _streamingCacheLimitMb;
+  int? _streamingCacheUsageBytes;
+  bool _clearingStreamingCache = false;
 
   @override
   void initState() {
@@ -72,6 +80,14 @@ class _SettingsPageState extends State<SettingsPage> {
         _activeLibraryId = prefs.getString('books_library_id');
         _customHeaders = headerMap;
       });
+      await StreamingCacheService.instance.init();
+      if (mounted) {
+        setState(() {
+          _streamingCacheLimitMb =
+              StreamingCacheService.instance.maxCacheBytes.value / _mb;
+        });
+      }
+      await _refreshStreamingCacheUsage();
       await _loadLibraries();
     } catch (_) {
       setState(() { 
@@ -176,6 +192,113 @@ class _SettingsPageState extends State<SettingsPage> {
         );
       }
     } catch (_) {}
+  }
+
+  double _normalizeCacheMb(double raw) {
+    final steps = ((raw - _minCacheMb) / _cacheStepMb).round();
+    final normalized = _minCacheMb + steps * _cacheStepMb;
+    return normalized.clamp(_minCacheMb, _maxCacheMb);
+  }
+
+  Future<void> _refreshStreamingCacheUsage() async {
+    try {
+      final usage = await StreamingCacheService.instance.currentUsageBytes();
+      if (!mounted) return;
+      setState(() {
+        _streamingCacheUsageBytes = usage;
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _updateStreamingCacheLimit(double valueMb) async {
+    final normalized = _normalizeCacheMb(valueMb);
+    if (!mounted) return;
+    setState(() {
+      _streamingCacheLimitMb = normalized;
+    });
+    await StreamingCacheService.instance.setMaxBytes((normalized.round()) * _mb);
+    await _refreshStreamingCacheUsage();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Streaming cache capped at ${_formatMbLabel(normalized)}')),
+    );
+  }
+
+  Future<void> _clearStreamingCache() async {
+    if (_clearingStreamingCache) return;
+    setState(() {
+      _clearingStreamingCache = true;
+    });
+    await StreamingCacheService.instance.clear();
+    await _refreshStreamingCacheUsage();
+    if (mounted) {
+      setState(() {
+        _clearingStreamingCache = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Streaming cache cleared')),
+      );
+    }
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes >= 1024 * 1024 * 1024) {
+      return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+    }
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(0)} MB';
+  }
+
+  String _formatMbLabel(double mb) {
+    if (mb >= 1000) {
+      return '${(mb / 1024).toStringAsFixed(1)} GB';
+    }
+    return '${mb.round()} MB';
+  }
+
+  Widget _buildStreamingCacheSubtitle(BuildContext context) {
+    if (_streamingCacheLimitMb == null) {
+      return const Padding(
+        padding: EdgeInsets.only(top: 12),
+        child: LinearProgressIndicator(minHeight: 4),
+      );
+    }
+    final usage = _streamingCacheUsageBytes;
+    final usageLabel = usage == null ? 'Calculating usage…' : 'Currently using ${_formatBytes(usage)}';
+    final sliderValue = _streamingCacheLimitMb!.clamp(_minCacheMb, _maxCacheMb);
+    final divisions = ((_maxCacheMb - _minCacheMb) / _cacheStepMb).round();
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Cache streamed audio for smoother replays without downloading the full book. '
+            'Older sessions are cleaned automatically when the limit is reached.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          Slider(
+            min: _minCacheMb,
+            max: _maxCacheMb,
+            divisions: divisions > 0 ? divisions : null,
+            label: _formatMbLabel(sliderValue),
+            value: sliderValue,
+            onChanged: (value) {
+              setState(() {
+                _streamingCacheLimitMb = value;
+              });
+            },
+            onChangeEnd: (value) => _updateStreamingCacheLimit(value),
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Max ${_formatMbLabel(sliderValue)}'),
+              Text(usageLabel),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _showCleanupDialog() async {
@@ -578,6 +701,23 @@ class _SettingsPageState extends State<SettingsPage> {
               if (!mounted) return;
               setState(() { _wifiOnly = v; });
             },
+          ),
+          ListTile(
+            leading: const Icon(Icons.cached_rounded),
+            title: const Text('Streaming cache'),
+            subtitle: _buildStreamingCacheSubtitle(context),
+            trailing: (_streamingCacheLimitMb == null)
+                ? null
+                : TextButton(
+                    onPressed: _clearingStreamingCache ? null : _clearStreamingCache,
+                    child: _clearingStreamingCache
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Clear'),
+                  ),
           ),
           // FutureBuilder<String>(
           //   future: DownloadStorage.getBaseSubfolder(),

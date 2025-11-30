@@ -16,6 +16,7 @@ import 'ui/login/login_screen.dart';
 import 'ui/main/main_scaffold.dart';
 import 'core/app_warmup_service.dart';
 import 'core/background_sync_service.dart';
+import 'core/streaming_cache_service.dart';
 
 /// Simple app-wide service container
 class AppServices {
@@ -83,6 +84,7 @@ Future<void> main() async {
     theme: theme,
   );
 
+  await StreamingCacheService.instance.init();
   // Ensure AudioService is initialized early so Android Auto can discover the
   // MediaBrowserService without requiring the UI to build first.
   await AudioServiceBinding.instance.bindAudioService(services.playback);

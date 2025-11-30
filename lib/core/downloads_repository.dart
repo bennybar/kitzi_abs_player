@@ -13,6 +13,7 @@ import 'playback_repository.dart';
 import 'download_storage.dart';
 import 'notification_service.dart';
 import 'books_repository.dart';
+import 'streaming_cache_service.dart';
 
 class ItemProgress {
   final String libraryItemId;
@@ -1528,6 +1529,7 @@ class DownloadsRepository {
             // Stop progress notifications for this item
             _stopProgressNotifications(id);
           } catch (_) {}
+          unawaited(StreamingCacheService.instance.evictForItem(id));
           // If the completed item is currently playing from stream, switch to local seamlessly
           // PAUSE first to prevent position jumping
           try {
