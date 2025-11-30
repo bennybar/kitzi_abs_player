@@ -203,7 +203,6 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     final max = total.inMilliseconds.toDouble();
     final sliderMax = max > 0 ? max : 1.0;
     final value = position.inMilliseconds.toDouble().clamp(0.0, sliderMax);
-    final percent = max > 0 ? (value / max * 100).clamp(0.0, 100.0) : 0.0;
     final remaining = (total - position).isNegative ? Duration.zero : total - position;
 
     final header = isPrimary
@@ -224,7 +223,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                       Icon(Icons.auto_stories_rounded, size: 14, color: cs.onPrimaryContainer),
                       const SizedBox(width: 6),
                       Text(
-                        '${percent.toStringAsFixed(1)}% Complete',
+                        'Book progress',
                         style: text.labelMedium?.copyWith(
                           color: cs.onPrimaryContainer,
                           fontWeight: FontWeight.w600,
@@ -239,7 +238,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
         : Padding(
             padding: const EdgeInsets.only(bottom: 4),
             child: Text(
-              'Full book progress • ${percent.toStringAsFixed(1)}%',
+              'Full book progress',
               style: text.bodyMedium?.copyWith(
                 color: cs.onSurfaceVariant,
                 fontWeight: FontWeight.w600,
@@ -347,7 +346,6 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     if (duration <= Duration.zero) return const SizedBox.shrink();
     final max = duration.inMilliseconds.toDouble();
     final value = metrics.elapsed.inMilliseconds.toDouble().clamp(0.0, max);
-    final percent = (max > 0 ? (value / max * 100) : 0.0).clamp(0.0, 100.0);
     final remaining = duration - metrics.elapsed;
 
     return RepaintBoundary(
@@ -357,7 +355,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
           Padding(
             padding: const EdgeInsets.only(bottom: 6),
             child: Text(
-              'Chapter progress • ${percent.toStringAsFixed(1)}%',
+              'Chapter progress',
               style: text.bodyMedium?.copyWith(
                 color: cs.onSurfaceVariant,
                 fontWeight: FontWeight.w700,
@@ -497,14 +495,13 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     required Duration total,
   }) {
     final max = total.inMilliseconds.toDouble();
-    final percent = max > 0 ? (position.inMilliseconds / max * 100).clamp(0.0, 100.0) : 0.0;
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(
           child: Text(
-            'Full book progress • ${percent.toStringAsFixed(1)}%',
+            'Full book progress',
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: text.bodyMedium?.copyWith(
@@ -535,7 +532,6 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
   }) {
     final max = total.inMilliseconds.toDouble().clamp(0.0, double.infinity);
     final value = position.inMilliseconds.toDouble().clamp(0.0, max > 0 ? max : 1.0);
-    final percent = max > 0 ? (value / max * 100).clamp(0.0, 100.0) : 0.0;
 
     return RepaintBoundary(
       child: Column(
@@ -557,7 +553,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                       Icon(Icons.auto_stories_rounded, size: 14, color: cs.onPrimaryContainer),
                       const SizedBox(width: 6),
                       Text(
-                        '${percent.toStringAsFixed(1)}% Complete',
+                        'Book progress',
                         style: text.labelMedium?.copyWith(
                           color: cs.onPrimaryContainer,
                           fontWeight: FontWeight.w600,
@@ -674,19 +670,56 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
       builder: (_, __) {
         final total = playback.totalBookDuration;
         final global = playback.globalBookPosition;
-        String label;
+        String headline;
+        String subtitle;
         if (total != null && total > Duration.zero && global != null) {
           final percent = (global.inMilliseconds / total.inMilliseconds * 100).clamp(0.0, 100.0);
-          label = '${percent.toStringAsFixed(1)}% Complete';
+          headline = '${percent.toStringAsFixed(1)}%';
+          subtitle = 'Complete';
         } else {
-          label = 'Syncing progress…';
+          headline = 'Syncing…';
+          subtitle = 'Calculating progress';
         }
-        return Text(
-          label,
-          textAlign: TextAlign.center,
-          style: text.titleMedium?.copyWith(
-            fontWeight: FontWeight.w700,
-            color: cs.onSurface,
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest.withOpacity(0.8),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: cs.outline.withOpacity(0.08)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: cs.primary.withOpacity(0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.auto_graph_rounded, size: 18, color: cs.primary),
+              ),
+              const SizedBox(width: 10),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    headline,
+                    style: text.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: cs.onSurface,
+                    ),
+                  ),
+                  Text(
+                    subtitle,
+                    style: text.bodySmall?.copyWith(
+                      color: cs.onSurfaceVariant,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
         );
       },
@@ -1614,7 +1647,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                     opacity: _coverAnimation.value,
                                     child: Center(
                                       child: SizedBox(
-                                        width: MediaQuery.of(context).size.width * 0.56, // 56% of screen width - balanced size
+                                        width: MediaQuery.of(context).size.width * 0.62, // slightly larger cover for visual emphasis
                                         child: Hero(
                                           tag: 'mini-cover-${np.libraryItemId}',
                                           child: Container(
@@ -1957,7 +1990,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                       },
                                     ),
 
-                                    const SizedBox(height: 24),
+                                    const SizedBox(height: 32),
 
                                     // Quick access controls: chapters, download, sleep, cast
                                     Row(
@@ -2058,47 +2091,44 @@ class _PlayerActionTile extends StatelessWidget {
     final text = Theme.of(context).textTheme;
     final bg = backgroundColor ?? cs.surfaceContainerHighest;
     final fg = foregroundColor ?? cs.onSurface;
+    final radius = BorderRadius.circular(22);
 
-    final button = Material(
-      color: enabled ? bg : bg.withOpacity(0.5),
-      shape: const CircleBorder(),
+    final tile = Material(
+      color: enabled ? bg : bg.withOpacity(0.6),
+      borderRadius: radius,
+      elevation: 0,
       child: InkWell(
+        borderRadius: radius,
         onTap: enabled ? onTap : null,
-        customBorder: const CircleBorder(),
-        child: SizedBox(
-          width: 64,
-          height: 64,
-          child: Center(
-            child: IconTheme(
-              data: IconThemeData(color: fg, size: 28),
-              child: icon,
-            ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconTheme(
+                data: IconThemeData(
+                  color: enabled ? fg : cs.onSurfaceVariant,
+                  size: 28,
+                ),
+                child: icon,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                style: text.labelSmall?.copyWith(
+                  color: enabled ? fg : cs.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
         ),
       ),
     );
 
-    final decoratedButton =
-        tooltip != null ? Tooltip(message: tooltip!, child: button) : button;
-
-    return Opacity(
-      opacity: enabled ? 1.0 : 0.6,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          decoratedButton,
-          const SizedBox(height: 8),
-          Text(
-            label,
-            textAlign: TextAlign.center,
-            style: text.labelSmall?.copyWith(
-              color: enabled ? cs.onSurface : cs.onSurfaceVariant,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
+    final wrapped = tooltip != null ? Tooltip(message: tooltip!, child: tile) : tile;
+    return Opacity(opacity: enabled ? 1.0 : 0.6, child: wrapped);
   }
 }
 
