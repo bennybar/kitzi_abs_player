@@ -1911,18 +1911,16 @@ class _BookmarksPreviewState extends State<_BookmarksPreview> {
                       onPressed: entries.isEmpty
                           ? null
                           : () async {
-                              final selected = await showModalBottomSheet<BookmarkEntry>(
+                              await showModalBottomSheet<void>(
                                 context: context,
                                 useSafeArea: true,
                                 isScrollControlled: true,
                                 builder: (_) => BookmarksSheet(
                                   libraryItemId: widget.book.id,
                                   bookTitle: widget.book.title,
+                                  playback: widget.playback,
                                 ),
                               );
-                              if (selected != null && mounted) {
-                                await _restoreBookmark(context, selected);
-                              }
                               if (mounted) _refresh();
                             },
                       child: const Text('See all'),

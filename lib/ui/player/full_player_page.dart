@@ -1009,24 +1009,16 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
       );
       return;
     }
-    final entry = await showModalBottomSheet<BookmarkEntry>(
+    await showModalBottomSheet<void>(
       context: context,
       useSafeArea: true,
       isScrollControlled: true,
       builder: (_) => BookmarksSheet(
         libraryItemId: np.libraryItemId,
         bookTitle: np.title,
+        playback: playback,
       ),
     );
-    if (entry == null) return;
-    final confirmed = await _confirmPositionJump(
-      context,
-      entry.chapterTitle ?? np.title,
-      entry.position,
-    );
-    if (!confirmed) return;
-    await playback.seekGlobal(entry.position, reportNow: true);
-    await playback.player.play();
   }
 
   Future<bool> _confirmPositionJump(BuildContext context, String title, Duration position) async {

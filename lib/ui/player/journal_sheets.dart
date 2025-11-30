@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/playback_journal_service.dart';
+import '../../core/playback_repository.dart';
 
 String _formatTimestamp(DateTime dt) {
   final local = dt.toLocal();
@@ -97,15 +98,82 @@ class PlayHistorySheet extends StatelessWidget {
   }
 }
 
-class BookmarksSheet extends StatelessWidget {
+class BookmarksSheet extends StatefulWidget {
   const BookmarksSheet({
     super.key,
     required this.libraryItemId,
     required this.bookTitle,
+    this.playback,
   });
 
   final String libraryItemId;
   final String bookTitle;
+  final PlaybackRepository? playback;
+
+  @override
+  State<BookmarksSheet> createState() => _BookmarksSheetState();
+}
+
+class _BookmarksSheetState extends State<BookmarksSheet> {
+  late Future<List<BookmarkEntry>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = PlaybackJournalService.instance.bookmarksFor(widget.libraryItemId);
+  }
+
+  Future<void> _refresh() async {
+    setState(() {
+      _future = PlaybackJournalService.instance.bookmarksFor(widget.libraryItemId);
+    });
+  }
+
+  Future<void> _playFromBookmark(BuildContext context, BookmarkEntry entry) async {
+    final text = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+          'Play from here?',
+          style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+        ),
+        content: Text(
+          'Go to "${entry.chapterTitle ?? widget.bookTitle}" at ${_fmtDuration(entry.position)}?',
+          style: text.bodyMedium,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: cs.primary,
+              foregroundColor: cs.onPrimary,
+            ),
+            child: const Text('Play'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      final playback = widget.playback;
+      if (playback == null) return;
+      Navigator.of(context).pop();
+      await playback.seekGlobal(entry.position, reportNow: true);
+      await playback.player.play();
+    }
+  }
+
+  Future<void> _removeBookmark(BuildContext context, BookmarkEntry entry) async {
+    await PlaybackJournalService.instance.deleteBookmark(entry.id);
+    if (mounted) {
+      await _refresh();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -137,13 +205,13 @@ class BookmarksSheet extends StatelessWidget {
                 style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600),
               ),
               Text(
-                bookTitle,
+                widget.bookTitle,
                 style: text.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
               ),
               const SizedBox(height: 16),
               Expanded(
                 child: FutureBuilder<List<BookmarkEntry>>(
-                  future: PlaybackJournalService.instance.bookmarksFor(libraryItemId),
+                  future: _future,
                   builder: (context, snapshot) {
                     if (snapshot.connectionState != ConnectionState.done) {
                       return const Center(child: CircularProgressIndicator());
@@ -171,7 +239,21 @@ class BookmarksSheet extends StatelessWidget {
                           leading: const Icon(Icons.bookmark_rounded),
                           title: Text(title),
                           subtitle: Text(subtitle),
-                          onTap: () => Navigator.of(context).pop(entry),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.play_arrow_rounded),
+                                tooltip: 'Play from here',
+                                onPressed: () => _playFromBookmark(context, entry),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete_outline_rounded),
+                                tooltip: 'Remove bookmark',
+                                onPressed: () => _removeBookmark(context, entry),
+                              ),
+                            ],
+                          ),
                         );
                       },
                     );
