@@ -14,7 +14,7 @@ import '../../widgets/audio_waveform.dart';
 import '../../widgets/download_button.dart';
 import 'dart:async';
 
-enum _TopMenuAction { toggleCompletion, toggleGradient }
+enum _TopMenuAction { toggleCompletion, toggleGradient, cast }
 
 class FullPlayerPage extends StatefulWidget {
   const FullPlayerPage({super.key});
@@ -678,23 +678,34 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     );
   }
 
-  Widget _buildChaptersQuickIcon(Color fg, Color accent) {
+  Widget _buildChaptersQuickIcon(ColorScheme cs, int totalChapters, int currentChapter) {
+    final baseColor = cs.onSurface;
+    final badgeColor = cs.primary;
+    final disabled = totalChapters <= 1;
+
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        Icon(Icons.library_books_rounded, size: 30, color: fg),
-        Positioned(
-          right: -2,
-          bottom: -2,
-          child: Container(
-            padding: const EdgeInsets.all(3),
-            decoration: BoxDecoration(
-              color: accent,
-              shape: BoxShape.circle,
+        Icon(Icons.menu_rounded, size: 30, color: disabled ? cs.onSurfaceVariant : baseColor),
+        if (!disabled)
+          Positioned(
+            right: -6,
+            bottom: -6,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: badgeColor,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                '$currentChapter/$totalChapters',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: cs.onPrimary,
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
             ),
-            child: const Icon(Icons.list_rounded, size: 12, color: Colors.white),
           ),
-        ),
       ],
     );
   }
@@ -1497,28 +1508,6 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                           Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              SizedBox(
-                                height: 44,
-                                child: StreamBuilder<double>(
-                                  stream: playback.player.speedStream,
-                                  initialData: playback.player.speed,
-                                  builder: (_, speedSnap) {
-                                    final cur = speedSnap.data ?? 1.0;
-                                    final speeds = PlaybackSpeedService.instance.availableSpeeds;
-                                    return PopupMenuButton<double>(
-                                      tooltip: 'Playback speed',
-                                      icon: _speedIndicator(cur, cs, text),
-                                      onSelected: (v) async {
-                                        await PlaybackSpeedService.instance.setSpeed(v);
-                                      },
-                                      itemBuilder: (context) => [
-                                        for (final s in speeds) _speedItem(context, cur, s),
-                                      ],
-                                    );
-                                  },
-                                ),
-                              ),
-                              const SizedBox(width: 4),
                               StreamBuilder<bool>(
                                 stream: _getBookCompletionStream(),
                                 initialData: false,
@@ -1546,6 +1535,9 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                             ),
                                           );
                                           break;
+                                        case _TopMenuAction.cast:
+                                          _showCastingComingSoon(context);
+                                          break;
                                       }
                                     },
                                     itemBuilder: (context) => [
@@ -1562,6 +1554,10 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                               ? 'Disable gradient background'
                                               : 'Enable gradient background',
                                         ),
+                                      ),
+                                      const PopupMenuItem(
+                                        value: _TopMenuAction.cast,
+                                        child: Text('Cast device'),
                                       ),
                                     ],
                                   );
@@ -1591,7 +1587,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                     opacity: _coverAnimation.value,
                                     child: Center(
                                       child: SizedBox(
-                                        width: MediaQuery.of(context).size.width * 0.62, // slightly larger cover for visual emphasis
+                                        width: MediaQuery.of(context).size.width * 0.7, // larger cover for stronger focus
                                         child: Hero(
                                           tag: 'mini-cover-${np.libraryItemId}',
                                           child: Container(
@@ -1934,7 +1930,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                       },
                                     ),
 
-                                    const SizedBox(height: 44),
+                                    const SizedBox(height: 56),
 
                                     // Quick access controls - four rounded buttons
                                     Row(
@@ -1942,19 +1938,20 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                         Expanded(
                                           child: _PlayerActionTile(
                                             icon: _buildChaptersQuickIcon(
-                                              cs.onPrimaryContainer,
-                                              cs.primary,
+                                              cs,
+                                              np.chapters.length,
+                                              np.chapters.length > 1
+                                                  ? (playback.currentChapterProgress?.index ?? 0) + 1
+                                                  : 0,
                                             ),
                                             label: '',
-                                            onTap: np.chapters.isEmpty
-                                                ? null
-                                                : () => _showChaptersSheet(context, playback, np),
-                                            tooltip: np.chapters.isEmpty
-                                                ? 'No chapters available'
-                                                : 'Open chapters',
-                                            enabled: np.chapters.isNotEmpty,
-                                            backgroundColor: cs.primaryContainer,
-                                            foregroundColor: cs.onPrimaryContainer,
+                                            onTap: np.chapters.length > 1
+                                                ? () => _showChaptersSheet(context, playback, np)
+                                                : null,
+                                            tooltip: np.chapters.length > 1
+                                                ? 'Open chapters'
+                                                : 'Single chapter – no chapters list',
+                                            enabled: np.chapters.length > 1,
                                           ),
                                         ),
                                         const SizedBox(width: 12),
@@ -1974,12 +1971,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                         ),
                                         const SizedBox(width: 12),
                                         Expanded(
-                                          child: _PlayerActionTile(
-                                            icon: const Icon(Icons.cast_rounded),
-                                            label: '',
-                                            onTap: () => _showCastingComingSoon(context),
-                                            tooltip: 'Casting',
-                                          ),
+                                          child: _SpeedQuickAction(playback: playback),
                                         ),
                                       ],
                                     ),
@@ -2030,26 +2022,20 @@ class _PlayerActionTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
-    final bg = backgroundColor ?? cs.surfaceContainerHighest;
-    final fg = foregroundColor ?? cs.onSurface;
     final radius = BorderRadius.circular(22);
+    final bg = backgroundColor ?? cs.surfaceContainerHigh.withOpacity(0.85);
+    final fg = foregroundColor ?? cs.onSurface;
 
     final tile = Container(
       decoration: BoxDecoration(
         borderRadius: radius,
-        gradient: LinearGradient(
-          colors: [
-            (backgroundColor ?? cs.secondaryContainer).withOpacity(enabled ? 1.0 : 0.5),
-            (backgroundColor ?? cs.primaryContainer).withOpacity(enabled ? 0.85 : 0.4),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: enabled ? bg : bg.withOpacity(0.6),
+        border: Border.all(color: cs.outlineVariant.withOpacity(0.2)),
         boxShadow: [
           BoxShadow(
-            color: cs.shadow.withOpacity(0.1),
-            blurRadius: 12,
-            offset: const Offset(0, 6),
+            color: cs.shadow.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 5),
           ),
         ],
       ),
@@ -2071,8 +2057,8 @@ class _PlayerActionTile extends StatelessWidget {
                   ),
                   child: icon,
                 ),
-                const SizedBox(height: 8),
-                if (label.isNotEmpty)
+                if (label.isNotEmpty) ...[
+                  const SizedBox(height: 8),
                   Text(
                     label,
                     textAlign: TextAlign.center,
@@ -2081,6 +2067,7 @@ class _PlayerActionTile extends StatelessWidget {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
+                ],
               ],
             ),
           ),
@@ -2117,6 +2104,114 @@ class _SleepQuickAction extends StatelessWidget {
           foregroundColor: active ? cs.onPrimary : cs.onSurface,
         );
       },
+    );
+  }
+}
+
+class _SpeedQuickAction extends StatelessWidget {
+  const _SpeedQuickAction({required this.playback});
+
+  final PlaybackRepository playback;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return StreamBuilder<double>(
+      stream: playback.player.speedStream,
+      initialData: playback.player.speed,
+      builder: (_, snap) {
+        final cur = snap.data ?? 1.0;
+        final isNormal = (cur - 1.0).abs() < 0.001;
+        final accentColor = cs.primary;
+        return _PlayerActionTile(
+          icon: _SpeedIcon(
+            value: cur,
+            color: isNormal ? cs.onSurface : accentColor,
+            accentColor: accentColor,
+            highlight: !isNormal,
+          ),
+          label: '',
+          tooltip: 'Playback speed',
+          onTap: () => _showSpeedSheet(context, cur),
+          backgroundColor: isNormal
+              ? null
+              : Color.alphaBlend(accentColor.withOpacity(0.08), cs.surfaceContainerHighest),
+        );
+      },
+    );
+  }
+
+  void _showSpeedSheet(BuildContext context, double current) {
+    final speeds = PlaybackSpeedService.instance.availableSpeeds;
+    showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (ctx) {
+        return ListView.separated(
+          shrinkWrap: true,
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+          itemCount: speeds.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 4),
+          itemBuilder: (_, i) {
+            final speed = speeds[i];
+            final selected = (current - speed).abs() < 0.001;
+            return ListTile(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              tileColor: selected ? Theme.of(ctx).colorScheme.primaryContainer : null,
+              title: Text('${speed.toStringAsFixed(2)}×'),
+              trailing: selected ? const Icon(Icons.check_rounded) : null,
+              onTap: () async {
+                Navigator.of(ctx).pop();
+                await PlaybackSpeedService.instance.setSpeed(speed);
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _SpeedIcon extends StatelessWidget {
+  const _SpeedIcon({
+    required this.value,
+    required this.color,
+    required this.accentColor,
+    required this.highlight,
+  });
+
+  final double value;
+  final Color color;
+  final Color accentColor;
+  final bool highlight;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Icon(Icons.speed_rounded, size: 28, color: color),
+        if (highlight)
+          Positioned(
+            right: -8,
+            bottom: -6,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: accentColor,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                '${value.toStringAsFixed(2)}×',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: Theme.of(context).colorScheme.onPrimary,
+                    ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
