@@ -1,4 +1,5 @@
 // lib/ui/player/full_player_page.dart
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -14,7 +15,7 @@ import '../../core/downloads_repository.dart';
 import '../../main.dart'; // ServicesScope
 import '../../widgets/audio_waveform.dart';
 import '../../widgets/download_button.dart';
-import 'dart:async';
+import 'full_player_overlay.dart';
 
 enum _TopMenuAction { toggleCompletion, toggleGradient, cast }
 
@@ -50,6 +51,7 @@ class FullPlayerPage extends StatefulWidget {
   static Future<void> openOnce(BuildContext context) async {
     if (_isOpen) return;
     _isOpen = true;
+    FullPlayerOverlay.isVisible.value = true;
     try {
       await Navigator.of(context).push(PageRouteBuilder(
         pageBuilder: (_, __, ___) => const FullPlayerPage(),
@@ -89,6 +91,7 @@ class FullPlayerPage extends StatefulWidget {
       ));
     } finally {
       _isOpen = false;
+      FullPlayerOverlay.isVisible.value = false;
     }
   }
 
