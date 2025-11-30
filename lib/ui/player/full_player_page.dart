@@ -2030,7 +2030,10 @@ class _PlayerActionTile extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: radius,
         color: enabled ? bg : bg.withOpacity(0.6),
-        border: Border.all(color: cs.outlineVariant.withOpacity(0.2)),
+        border: Border.all(
+          color: cs.outlineVariant.withOpacity(enabled ? 0.35 : 0.2),
+          width: 1.2,
+        ),
         boxShadow: [
           BoxShadow(
             color: cs.shadow.withOpacity(0.05),
