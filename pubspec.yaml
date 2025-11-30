@@ -54,6 +54,7 @@ dependencies:
   url_launcher: ^6.3.1
   # liquid_glass_renderer: ^0.1.1-dev.3  # Temporarily disabled due to compatibility issues
   cupertino_native: ^0.1.1
+  palette_generator: ^0.3.3
 
 
   # The following adds the Cupertino Icons font to your application.

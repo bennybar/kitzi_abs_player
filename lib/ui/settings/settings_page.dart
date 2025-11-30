@@ -476,6 +476,15 @@ class _SettingsPageState extends State<SettingsPage> {
             },
           ),
           SwitchListTile(
+            title: const Text('Gradient background in player'),
+            subtitle: const Text('Apply a gradient surface to the full screen player'),
+            value: UiPrefs.playerGradientBackground.value,
+            onChanged: (v) async {
+              await UiPrefs.setPlayerGradientBackground(v, pinToSettingsOnChange: true);
+              if (mounted) setState(() {});
+            },
+          ),
+          SwitchListTile(
             title: const Text('Add Letter Scrolling'),
             subtitle: const Text('Show an alphabetical scrollbar in long lists'),
             value: _letterScrollEnabled ?? false,

@@ -1,7 +1,9 @@
 // lib/ui/player/full_player_page.dart
 import 'dart:convert';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:palette_generator/palette_generator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/playback_repository.dart';
@@ -73,6 +75,10 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
   late Animation<double> _coverAnimation;
   late Animation<double> _titleAnimation;
   late Animation<double> _controlsAnimation;
+  Color? _palettePrimary;
+  Color? _paletteSecondary;
+  String? _paletteCoverUrl;
+  bool _paletteLoading = false;
 
   @override
   void initState() {
@@ -126,6 +132,51 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
         _contentAnimationController.forward();
       }
     });
+  }
+
+  Future<void> _maybeUpdatePalette(NowPlaying np) async {
+    final cover = np.coverUrl;
+    if (cover == null || cover.isEmpty) {
+      if (_paletteCoverUrl != null || _palettePrimary != null || _paletteSecondary != null) {
+        setState(() {
+          _paletteCoverUrl = null;
+          _palettePrimary = null;
+          _paletteSecondary = null;
+        });
+      }
+      return;
+    }
+
+    if (_paletteCoverUrl == cover || _paletteLoading) return;
+
+    _paletteLoading = true;
+    try {
+      final provider = CachedNetworkImageProvider(cover);
+      final palette = await PaletteGenerator.fromImageProvider(
+        provider,
+        size: const Size(200, 200),
+        maximumColorCount: 12,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _paletteCoverUrl = cover;
+        _palettePrimary = palette.dominantColor?.color ?? palette.darkVibrantColor?.color;
+        _paletteSecondary = palette.vibrantColor?.color ??
+            palette.lightVibrantColor?.color ??
+            palette.mutedColor?.color ??
+            _palettePrimary;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _paletteCoverUrl = cover;
+        _palettePrimary = null;
+        _paletteSecondary = null;
+      });
+    } finally {
+      _paletteLoading = false;
+    }
   }
 
   @override
@@ -645,20 +696,28 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     );
   }
 
-  BoxDecoration _playerBackgroundDecoration(bool gradientEnabled, ColorScheme cs, Brightness brightness) {
+  BoxDecoration _playerBackgroundDecoration(
+    bool gradientEnabled,
+    ColorScheme cs,
+    Brightness brightness, {
+    Color? palettePrimary,
+    Color? paletteSecondary,
+  }) {
     if (!gradientEnabled) {
       return BoxDecoration(color: cs.surface);
     }
+    final primary = palettePrimary ?? cs.primary;
+    final secondary = paletteSecondary ?? cs.secondary;
     final colors = brightness == Brightness.dark
         ? [
-            Color.alphaBlend(cs.primary.withOpacity(0.15), cs.surface),
-            Color.alphaBlend(cs.secondary.withOpacity(0.12), cs.surfaceContainerHighest),
+            Color.alphaBlend(primary.withOpacity(0.25), cs.surface),
+            Color.alphaBlend(secondary.withOpacity(0.18), cs.surfaceContainerHighest),
             Colors.black,
           ]
         : [
-            Color.alphaBlend(cs.primaryContainer.withOpacity(0.4), Colors.white),
-            cs.surface,
-            Color.alphaBlend(cs.secondaryContainer.withOpacity(0.25), Colors.white),
+            Color.alphaBlend(primary.withOpacity(0.35), cs.surface),
+            Color.alphaBlend(secondary.withOpacity(0.25), cs.surface),
+            Colors.white,
           ];
     return BoxDecoration(
       gradient: LinearGradient(
@@ -678,15 +737,43 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     );
   }
 
-  Widget _buildChaptersQuickIcon(ColorScheme cs, int totalChapters, int currentChapter) {
-    final baseColor = cs.onSurface;
-    final badgeColor = cs.primary;
+  Widget _buildChaptersQuickIcon({
+    required BuildContext context,
+    required ColorScheme cs,
+    required int totalChapters,
+    required int currentChapter,
+  }) {
     final disabled = totalChapters <= 1;
+    final baseColor = disabled ? cs.onSurfaceVariant : cs.onSurface;
+    final badgeColor = cs.primary;
+    final safeCurrent = currentChapter.clamp(1, totalChapters);
+
+    Widget _line(double width) => Container(
+          width: width,
+          height: 3,
+          decoration: BoxDecoration(
+            color: baseColor,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        );
 
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        Icon(Icons.menu_rounded, size: 30, color: disabled ? cs.onSurfaceVariant : baseColor),
+        SizedBox(
+          height: 30,
+          width: 26,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _line(18),
+              const SizedBox(height: 4),
+              _line(22),
+              const SizedBox(height: 4),
+              _line(16),
+            ],
+          ),
+        ),
         if (!disabled)
           Positioned(
             right: -6,
@@ -698,7 +785,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text(
-                '$currentChapter/$totalChapters',
+                '$safeCurrent/$totalChapters',
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
                       color: cs.onPrimary,
                       fontWeight: FontWeight.w700,
@@ -1428,7 +1515,13 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
       valueListenable: UiPrefs.playerGradientBackground,
       builder: (_, gradientEnabled, __) {
         return DecoratedBox(
-          decoration: _playerBackgroundDecoration(gradientEnabled, cs, brightness),
+          decoration: _playerBackgroundDecoration(
+            gradientEnabled,
+            cs,
+            brightness,
+            palettePrimary: _palettePrimary,
+            paletteSecondary: _paletteSecondary,
+          ),
           child: Scaffold(
             backgroundColor: Colors.transparent,
       body: GestureDetector(
@@ -1480,6 +1573,8 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                     ),
                   );
                 }
+
+                unawaited(_maybeUpdatePalette(np));
 
                 return Column(
                   children: [
@@ -1938,11 +2033,12 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                         Expanded(
                                           child: _PlayerActionTile(
                                             icon: _buildChaptersQuickIcon(
-                                              cs,
-                                              np.chapters.length,
-                                              np.chapters.length > 1
+                                              context: context,
+                                              cs: cs,
+                                              totalChapters: np.chapters.length,
+                                              currentChapter: np.chapters.length > 1
                                                   ? (playback.currentChapterProgress?.index ?? 0) + 1
-                                                  : 0,
+                                                  : 1,
                                             ),
                                             label: '',
                                             onTap: np.chapters.length > 1
