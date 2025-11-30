@@ -30,7 +30,6 @@ class _BookDetailPageState extends State<BookDetailPage> {
   late final Future<BooksRepository> _repoFut;
   Book? _cachedBook;
   StreamSubscription<BookDbChange>? _dbChangeSub;
-  Future<double?>? _serverProgressFut;
   AppServices? _services;
   int? _resolvedDurationMs;
   int? _resolvedSizeBytes;
@@ -137,7 +136,6 @@ class _BookDetailPageState extends State<BookDetailPage> {
     super.didChangeDependencies();
     final services = ServicesScope.of(context).services;
     _services ??= services;
-    _serverProgressFut ??= services.playback.fetchServerProgress(widget.bookId);
   }
 
   @override
@@ -945,7 +943,6 @@ class _BookDetailPageState extends State<BookDetailPage> {
                         child: _ProgressSummary(
                           playback: playbackRepo,
                           book: b,
-                          serverProgressFuture: _serverProgressFut!,
                         ),
                       ),
                     ),
@@ -1139,16 +1136,62 @@ class _MetaLine extends StatelessWidget {
 }
 
 // ---------- Listening Progress ----------
-class _ProgressSummary extends StatelessWidget {
+class _ProgressSummary extends StatefulWidget {
   const _ProgressSummary({
     required this.playback,
     required this.book,
-    required this.serverProgressFuture,
   });
 
   final PlaybackRepository playback;
   final Book book;
-  final Future<double?> serverProgressFuture;
+
+  @override
+  State<_ProgressSummary> createState() => _ProgressSummaryState();
+}
+
+class _ProgressSummaryState extends State<_ProgressSummary> {
+  double? _localSeconds;
+  bool _loadingLocal = true;
+  late bool _isCompleted;
+  StreamSubscription<Map<String, bool>>? _completionSub;
+
+  PlaybackRepository get playback => widget.playback;
+  Book get book => widget.book;
+
+  @override
+  void initState() {
+    super.initState();
+    _isCompleted = playback.completionCache[book.id] ?? false;
+    _completionSub = playback.completionStatusStream.listen((map) {
+      if (map.containsKey(book.id) && mounted) {
+        setState(() {
+          _isCompleted = map[book.id]!;
+        });
+      }
+    });
+    _loadLocalProgress();
+  }
+
+  Future<void> _loadLocalProgress() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final sec = prefs.getDouble('abs_progress:${book.id}');
+      if (!mounted) return;
+      setState(() {
+        _localSeconds = sec;
+        _loadingLocal = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loadingLocal = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    _completionSub?.cancel();
+    super.dispose();
+  }
 
   /// Format duration for display
   String _formatDuration(Duration duration) {
@@ -1164,41 +1207,6 @@ class _ProgressSummary extends StatelessWidget {
       return '${seconds}s';
     }
   }
-
-  /// Get server progress information including completion status
-  Future<Map<String, dynamic>> _getServerProgressInfo(PlaybackRepository playback, String bookId) async {
-    try {
-      final progress = await playback.fetchServerProgress(bookId);
-      // Always fetch fresh completion status from server to ensure accuracy
-      final isCompleted = await playback.isBookCompleted(bookId);
-      // Update the cache with the fresh data
-      playback.completionCache[bookId] = isCompleted;
-      return {
-        'progress': progress,
-        'isCompleted': isCompleted,
-      };
-    } catch (e) {
-      return {'progress': null, 'isCompleted': false};
-    }
-  }
-
-  Stream<Map<String, dynamic>> _getServerProgressStream(PlaybackRepository playback, String bookId) async* {
-    // First emit the initial server progress data
-    final initialData = await _getServerProgressInfo(playback, bookId);
-    yield initialData;
-    
-    // Then listen to completion status changes and emit updated data
-    await for (final completionMap in playback.completionStatusStream) {
-      if (completionMap.containsKey(bookId)) {
-        final isCompleted = completionMap[bookId]!;
-        yield {
-          'progress': initialData['progress'],
-          'isCompleted': isCompleted,
-        };
-      }
-    }
-  }
-
 
   @override
   Widget build(BuildContext context) {
@@ -1230,30 +1238,26 @@ class _ProgressSummary extends StatelessWidget {
         },
       );
     }
-    return StreamBuilder<Map<String, dynamic>>(
-      stream: _getServerProgressStream(playback, book.id),
-      builder: (_, sSnap) {
-        if (sSnap.connectionState == ConnectionState.waiting) {
-          final cs = Theme.of(context).colorScheme;
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Row(
-              children: [
-                const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
-                const SizedBox(width: 8),
-                Text('Loading progress...', style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: cs.onSurfaceVariant)),
-              ],
+    if (_loadingLocal) {
+      final cs = Theme.of(context).colorScheme;
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          children: [
+            const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+            const SizedBox(width: 8),
+            Text(
+              'Checking progress…',
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: cs.onSurfaceVariant),
             ),
-          );
-        }
-        
-        final progressInfo = sSnap.data ?? {'progress': null, 'isCompleted': false};
-        final sec = progressInfo['progress'] as double?;
-        final isCompleted = progressInfo['isCompleted'] as bool;
-        
-        return _renderTextWithCompletion(context, sec, (book.durationMs ?? 0) / 1000.0, isCompleted);
-      },
-    );
+          ],
+        ),
+      );
+    }
+
+    final totalSeconds = (book.durationMs ?? 0) > 0 ? (book.durationMs! / 1000.0) : null;
+    final seconds = _localSeconds;
+    return _renderTextWithCompletion(context, seconds, totalSeconds, _isCompleted);
   }
 
 
@@ -1521,15 +1525,36 @@ class _ProgressSummary extends StatelessWidget {
 
 }
 
-class _PlayPrimaryButton extends StatelessWidget {
+class _PlayPrimaryButton extends StatefulWidget {
   const _PlayPrimaryButton({
-    required this.book, 
+    required this.book,
     required this.playback,
     this.onResetPerformed,
   });
   final Book book;
   final PlaybackRepository playback;
   final VoidCallback? onResetPerformed;
+
+  @override
+  State<_PlayPrimaryButton> createState() => _PlayPrimaryButtonState();
+}
+
+class _PlayPrimaryButtonState extends State<_PlayPrimaryButton> {
+  late Future<Map<String, dynamic>> _progressFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _progressFuture = _getBookProgressInfo(widget.playback, widget.book.id);
+  }
+
+  @override
+  void didUpdateWidget(covariant _PlayPrimaryButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.book.id != widget.book.id) {
+      _progressFuture = _getBookProgressInfo(widget.playback, widget.book.id);
+    }
+  }
 
   /// Show reset dialog for completed book
   /// Returns true if reset was performed, false if cancelled
@@ -1578,6 +1603,7 @@ class _PlayPrimaryButton extends StatelessWidget {
   /// Reset book progress for completed book
   Future<void> _resetBookProgressForCompletedBook(BuildContext context, String bookId) async {
     final cs = Theme.of(context).colorScheme;
+    final playback = widget.playback;
     
     try {
       final api = ServicesScope.of(context).services.auth.api;
@@ -1667,6 +1693,8 @@ class _PlayPrimaryButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final book = widget.book;
+    final playback = widget.playback;
     if (!book.isAudioBook) {
       return FilledButton.icon(
         onPressed: null,
@@ -1766,8 +1794,8 @@ class _PlayPrimaryButton extends StatelessWidget {
         }
 
         // Not active on player: decide between Resume vs Play by checking saved progress
-        return FutureBuilder<Map<String, dynamic>>(
-          future: _getBookProgressInfo(playback, book.id),
+    return FutureBuilder<Map<String, dynamic>>(
+          future: _progressFuture,
           builder: (context, snap) {
             if (snap.connectionState == ConnectionState.waiting) {
               return FilledButton.icon(
@@ -1776,62 +1804,71 @@ class _PlayPrimaryButton extends StatelessWidget {
                 label: const Text('Loading...'),
               );
             }
-            
-            final progressInfo = snap.data ?? {'hasProgress': false, 'isCompleted': false};
-            final hasProgress = progressInfo['hasProgress'] as bool;
-            final isCompleted = progressInfo['isCompleted'] as bool;
-            
-            String label;
-            IconData icon;
-            if (isCompleted) {
-              label = 'Start';
-              icon = Icons.play_arrow_rounded;
-            } else if (hasProgress) {
-              label = 'Resume';
-              icon = Icons.play_arrow_rounded;
-            } else {
-              label = 'Play';
-              icon = Icons.play_arrow_rounded;
-            }
-            
-            return FilledButton.icon(
-              onPressed: () async {
-                // Check cache directly to avoid race conditions
-                final currentCompletionStatus = playback.completionCache[book.id] ?? false;
-                
-                // Use cache value as source of truth for completion status
-                if (currentCompletionStatus) {
-                  final resetPerformed = await _showResetDialogForCompletedBook(context, book.id);
-                  if (resetPerformed && onResetPerformed != null) {
-                    onResetPerformed!();
-                  }
-                  return;
-                }
-                
-                
-                // Start playback in background and open full player immediately
-                unawaited(playback.playItem(book.id, context: context).then((success) {
-                  if (!success && context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Cannot play: server unavailable and sync progress is required'),
-                        duration: Duration(seconds: 4),
-                      ),
-                    );
-                  }
-                }));
-                
-                // Open full player page immediately - it will show loading state until NowPlaying is ready
-                if (context.mounted) {
-                  await FullPlayerPage.openOnce(context);
-                }
-              },
-              icon: Icon(icon),
-              label: Text(label),
-            );
+
+        final progressInfo = snap.data ?? {'hasProgress': false, 'isCompleted': false};
+        final playback = widget.playback;
+        final book = widget.book;
+        return _buildInactiveAction(
+          context,
+          playback,
+          book,
+          progressInfo['hasProgress'] == true,
+          progressInfo['isCompleted'] == true,
+        );
           },
         );
       },
+    );
+  }
+
+  Widget _buildInactiveAction(
+    BuildContext context,
+    PlaybackRepository playback,
+    Book book,
+    bool hasProgress,
+    bool isCompleted,
+  ) {
+    String label;
+    IconData icon;
+    if (isCompleted) {
+      label = 'Start';
+      icon = Icons.play_arrow_rounded;
+    } else if (hasProgress) {
+      label = 'Resume';
+      icon = Icons.play_arrow_rounded;
+    } else {
+      label = 'Play';
+      icon = Icons.play_arrow_rounded;
+    }
+
+    return FilledButton.icon(
+      onPressed: () async {
+        final currentCompletionStatus = playback.completionCache[book.id] ?? false;
+        if (currentCompletionStatus) {
+          final resetPerformed = await _showResetDialogForCompletedBook(context, book.id);
+          if (resetPerformed && widget.onResetPerformed != null) {
+            widget.onResetPerformed!();
+          }
+          return;
+        }
+
+        unawaited(playback.playItem(book.id, context: context).then((success) {
+          if (!success && context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Cannot play: server unavailable and sync progress is required'),
+                duration: Duration(seconds: 4),
+              ),
+            );
+          }
+        }));
+
+        if (context.mounted) {
+          await FullPlayerPage.openOnce(context);
+        }
+      },
+      icon: Icon(icon),
+      label: Text(label),
     );
   }
 }

@@ -157,6 +157,10 @@ class PlaybackRepository {
 
   String? _progressItemId;
   String? _activeSessionId; // Remote streaming session id (if any)
+  final Map<String, _CachedProgressValue> _serverProgressCache = <String, _CachedProgressValue>{};
+  final Map<String, DateTime> _completionTimestamps = <String, DateTime>{};
+  static const _progressCacheTtl = Duration(seconds: 20);
+  static const _completionCacheTtl = Duration(seconds: 30);
 
   late final WidgetsBindingObserver _lifecycleHook = _LifecycleHook(
     onPauseOrDetach: () async {
@@ -399,7 +403,13 @@ class PlaybackRepository {
     }
   }
 
-  Future<double?> fetchServerProgress(String libraryItemId) async {
+  Future<double?> fetchServerProgress(String libraryItemId, {bool forceRefresh = false}) async {
+    if (!forceRefresh) {
+      final cached = _serverProgressCache[libraryItemId];
+      if (cached != null && DateTime.now().difference(cached.timestamp) < _progressCacheTtl) {
+        return cached.seconds;
+      }
+    }
     try {
       final api = _auth.api;
       final resp = await api.request('GET', '/api/me/progress/$libraryItemId');
@@ -407,13 +417,29 @@ class PlaybackRepository {
       try {
         final data = jsonDecode(resp.body);
         if (data is Map<String, dynamic>) {
-          if (data['currentTime'] is num) return (data['currentTime'] as num).toDouble();
-          if (data['currentTime'] is String) return double.tryParse(data['currentTime'] as String);
+          if (data['currentTime'] is num) {
+            final value = (data['currentTime'] as num).toDouble();
+            _serverProgressCache[libraryItemId] = _CachedProgressValue(value, DateTime.now());
+            return value;
+          }
+          if (data['currentTime'] is String) {
+            final value = double.tryParse(data['currentTime'] as String);
+            _serverProgressCache[libraryItemId] = _CachedProgressValue(value, DateTime.now());
+            return value;
+          }
           final first = _firstMapValue(data);
           if (first != null) {
             final v = first['currentTime'];
-            if (v is num) return v.toDouble();
-            if (v is String) return double.tryParse(v);
+            if (v is num) {
+              final value = v.toDouble();
+              _serverProgressCache[libraryItemId] = _CachedProgressValue(value, DateTime.now());
+              return value;
+            }
+            if (v is String) {
+              final value = double.tryParse(v);
+              _serverProgressCache[libraryItemId] = _CachedProgressValue(value, DateTime.now());
+              return value;
+            }
           }
         }
       } catch (_) {}
@@ -421,46 +447,61 @@ class PlaybackRepository {
     } on SocketException catch (_) {
       // Offline
       return null;
+    } finally {
+      _serverProgressCache.putIfAbsent(libraryItemId, () => _CachedProgressValue(null, DateTime.now()));
     }
   }
 
   /// Check if a book is marked as finished/completed on the server
-  Future<bool> isBookCompleted(String libraryItemId) async {
+  Future<bool> isBookCompleted(String libraryItemId, {bool forceRefresh = false}) async {
+    if (!forceRefresh) {
+      final cached = completionCache[libraryItemId];
+      final stamp = _completionTimestamps[libraryItemId];
+      if (cached != null && stamp != null && DateTime.now().difference(stamp) < _completionCacheTtl) {
+        return cached;
+      }
+    }
     try {
       final api = _auth.api;
       final resp = await api.request('GET', '/api/me/progress/$libraryItemId');
-      if (resp.statusCode != 200) return false;
+      if (resp.statusCode != 200) return completionCache[libraryItemId] ?? false;
       try {
         final data = jsonDecode(resp.body);
         if (data is Map<String, dynamic>) {
-          // Check for isFinished field
-          if (data['isFinished'] == true) return true;
-          // Check for progress being 100% or very close
+          if (data['isFinished'] == true) {
+            completionCache[libraryItemId] = true;
+            _completionTimestamps[libraryItemId] = DateTime.now();
+            return true;
+          }
           if (data['progress'] is num) {
             final progress = (data['progress'] as num).toDouble();
-            return progress >= 0.99; // Consider 99%+ as completed
+            final isCompleted = progress >= 0.99;
+            completionCache[libraryItemId] = isCompleted;
+            _completionTimestamps[libraryItemId] = DateTime.now();
+            return isCompleted;
           }
-          // Check if currentTime is very close to duration
           if (data['currentTime'] is num && data['duration'] is num) {
             final currentTime = (data['currentTime'] as num).toDouble();
             final duration = (data['duration'] as num).toDouble();
             if (duration > 0) {
-              final progress = currentTime / duration;
-              return progress >= 0.99; // Consider 99%+ as completed
+              final isCompleted = (currentTime / duration) >= 0.99;
+              completionCache[libraryItemId] = isCompleted;
+              _completionTimestamps[libraryItemId] = DateTime.now();
+              return isCompleted;
             }
           }
         }
       } catch (_) {}
-      return false;
+      return completionCache[libraryItemId] ?? false;
     } on SocketException catch (_) {
-      // Offline - return false to be conservative
-      return false;
+      return completionCache[libraryItemId] ?? false;
     }
   }
 
   /// Update book completion status and notify all listeners
   Future<void> updateBookCompletionStatus(String libraryItemId, bool isCompleted) async {
     completionCache[libraryItemId] = isCompleted;
+    _completionTimestamps[libraryItemId] = DateTime.now();
     final newCache = Map<String, bool>.from(completionCache);
     _completionStatusCtr.add(newCache);
     _log('Updated completion status for $libraryItemId: $isCompleted');
@@ -1143,6 +1184,50 @@ class PlaybackRepository {
 
   Future<void> reportProgressNow() => _sendProgressImmediate();
 
+  Future<double?> getCachedProgressSeconds(String libraryItemId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final local = prefs.getDouble('$_kLocalProgPrefix$libraryItemId');
+      if (local != null) return local;
+    } catch (_) {}
+    return fetchServerProgress(libraryItemId);
+  }
+
+  Future<void> sendCompletionUpdate(
+    String libraryItemId,
+    bool finished, {
+    double? overrideCurrentTimeSeconds,
+  }) async {
+    double? currentSeconds = overrideCurrentTimeSeconds;
+    final total = _computeTotalDurationSec();
+    final isActive = _nowPlaying?.libraryItemId == libraryItemId;
+    if (currentSeconds == null) {
+      if (isActive) currentSeconds = _computeGlobalPositionSec();
+      currentSeconds ??= await getCachedProgressSeconds(libraryItemId);
+    }
+
+    if (isActive && _activeSessionId != null && currentSeconds != null) {
+      final synced = await _syncSession(
+        cur: currentSeconds,
+        total: total,
+        finished: finished,
+        paused: true,
+      );
+      if (synced) {
+        await updateBookCompletionStatus(libraryItemId, finished);
+        return;
+      }
+    }
+
+    await _patchProgressCompletion(
+      libraryItemId: libraryItemId,
+      finished: finished,
+      currentSeconds: currentSeconds,
+      totalSeconds: total,
+    );
+    await updateBookCompletionStatus(libraryItemId, finished);
+  }
+
   Future<void> setSpeed(double speed) => player.setSpeed(speed.clamp(0.5, 3.0));
   bool get hasPrev => _nowPlaying != null && _nowPlaying!.currentIndex > 0;
   bool get hasNext =>
@@ -1577,6 +1662,31 @@ class PlaybackRepository {
     } catch (e) {
       _log("POST error: $e");
     }
+  }
+
+  Future<void> _patchProgressCompletion({
+    required String libraryItemId,
+    required bool finished,
+    double? currentSeconds,
+    double? totalSeconds,
+  }) async {
+    final api = _auth.api;
+    final path = '/api/me/progress/$libraryItemId';
+    final bodyMap = <String, dynamic>{
+      'isFinished': finished,
+      if (currentSeconds != null) 'currentTime': currentSeconds,
+    };
+    if (currentSeconds != null && totalSeconds != null && totalSeconds > 0) {
+      bodyMap['duration'] = totalSeconds;
+      bodyMap['progress'] = (currentSeconds / totalSeconds).clamp(0.0, 1.0);
+    }
+
+    await api.request(
+      'PATCH',
+      path,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(bodyMap),
+    );
   }
 
   // ---- Internals ----
@@ -2300,6 +2410,12 @@ class PlaybackRepository {
       return null;
     }
   }
+}
+
+class _CachedProgressValue {
+  const _CachedProgressValue(this.seconds, this.timestamp);
+  final double? seconds;
+  final DateTime timestamp;
 }
 
 class _LifecycleHook extends WidgetsBindingObserver {

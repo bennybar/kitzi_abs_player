@@ -29,7 +29,8 @@ class PlaybackHistoryEntry {
 
 class BookmarkEntry {
   BookmarkEntry({
-    required this.id,
+    this.localId,
+    this.remoteId,
     required this.libraryItemId,
     required this.bookTitle,
     required this.positionMs,
@@ -39,7 +40,8 @@ class BookmarkEntry {
     required this.note,
   });
 
-  final int id;
+  final int? localId;
+  final String? remoteId;
   final String libraryItemId;
   final String? bookTitle;
   final int positionMs;
@@ -47,6 +49,8 @@ class BookmarkEntry {
   final String? chapterTitle;
   final int? chapterIndex;
   final String? note;
+
+  bool get isRemote => remoteId != null && remoteId!.isNotEmpty;
 
   Duration get position => Duration(milliseconds: positionMs);
   DateTime get createdAt => DateTime.fromMillisecondsSinceEpoch(createdAtMs);
@@ -180,7 +184,7 @@ class PlaybackJournalService {
     );
     return rows
         .map((row) => BookmarkEntry(
-              id: row['id'] as int,
+              localId: row['id'] as int,
               libraryItemId: row['libraryItemId'] as String,
               bookTitle: row['bookTitle'] as String?,
               positionMs: row['positionMs'] as int,

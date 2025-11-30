@@ -177,8 +177,13 @@ class _DownloadButtonState extends State<DownloadButton> {
     // 2) Running/Queued -> progress button + cancel
     else if (snap != null &&
         (snap.status == 'running' || snap.status == 'queued')) {
-      final pct = (snap.progress * 100).clamp(0, 100).toStringAsFixed(snap.totalTasks >= 50 ? 1 : 0);
-      final frac = '${snap.completed}/${snap.totalTasks}';
+      final pctRaw = (snap.progress * 100).clamp(0, 100);
+      final pct = pctRaw >= 1
+          ? pctRaw.toStringAsFixed(pctRaw >= 10 ? 0 : 1)
+          : '';
+      final frac = (snap.completed > 0 || snap.totalTasks > 0)
+          ? '${snap.completed}/${snap.totalTasks}'
+          : '';
       child = SizedBox(
         height: 40, // keep aligned with play button
         child: Stack(
@@ -199,42 +204,48 @@ class _DownloadButtonState extends State<DownloadButton> {
                 child: Padding(
                   padding: const EdgeInsets.only(left: 12, right: 48),
                   child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    // Left: fraction text
-                    Flexible(
-                      child: Text(
-                        frac,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onPrimary,
-                          fontWeight: FontWeight.w600,
+                    children: [
+                      Expanded(
+                        child: Row(
+                          children: [
+                            if (frac.isNotEmpty)
+                              Flexible(
+                                child: Text(
+                                  frac,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                        color: Theme.of(context).colorScheme.onPrimary,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                ),
+                              ),
+                            if (frac.isNotEmpty) const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                pct.isNotEmpty ? '$pct%' : 'Downloading…',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: Theme.of(context).colorScheme.onPrimary,
+                                      fontFeatures: const [FontFeature.tabularFigures()],
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    ),
-                    // Middle: percent text
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      child: Text(
-                        '$pct%',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      const SizedBox(width: 8),
+                      SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
                           color: Theme.of(context).colorScheme.onPrimary,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                          fontWeight: FontWeight.w700,
                         ),
                       ),
-                    ),
-                    // Right: spinner (kept inside content area, not under cancel)
-                    SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Theme.of(context).colorScheme.onPrimary,
-                      ),
-                    ),
-                  ],
+                    ],
                   ),
                 ),
               ),

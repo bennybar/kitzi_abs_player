@@ -169,7 +169,9 @@ class _BookmarksSheetState extends State<BookmarksSheet> {
   }
 
   Future<void> _removeBookmark(BuildContext context, BookmarkEntry entry) async {
-    await PlaybackJournalService.instance.deleteBookmark(entry.id);
+    final localId = entry.localId;
+    if (localId == null) return;
+    await PlaybackJournalService.instance.deleteBookmark(localId);
     if (mounted) {
       await _refresh();
     }
