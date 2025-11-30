@@ -17,8 +17,10 @@ import '../../main.dart'; // ServicesScope
 import '../../widgets/audio_waveform.dart';
 import '../../widgets/download_button.dart';
 import 'full_player_overlay.dart';
+import '../../core/playback_journal_service.dart';
+import 'journal_sheets.dart';
 
-enum _TopMenuAction { toggleCompletion, toggleGradient, cast }
+enum _TopMenuAction { toggleCompletion, toggleGradient, cast, playHistory, bookmarks }
 
 /// Custom slider track shape that allows tighter horizontal padding than the
 /// default Material slider track.
@@ -937,6 +939,129 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     }
   }
 
+  Future<void> _addBookmark(BuildContext context, PlaybackRepository playback) async {
+    final np = playback.nowPlaying;
+    final globalPos = playback.globalBookPosition;
+    if (np == null || globalPos == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Start playback to add a bookmark.')),
+      );
+      return;
+    }
+    final metrics = playback.currentChapterProgress;
+    final chapterTitle = metrics?.title ?? (metrics != null ? 'Chapter ${metrics.index + 1}' : null);
+    try {
+      await PlaybackJournalService.instance.addBookmark(
+        libraryItemId: np.libraryItemId,
+        bookTitle: np.title,
+        positionMs: globalPos.inMilliseconds,
+        chapterTitle: chapterTitle,
+        chapterIndex: metrics?.index,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Bookmark saved')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to save bookmark: $e')),
+      );
+    }
+  }
+
+  Future<void> _openHistorySheet(BuildContext context, PlaybackRepository playback) async {
+    final np = playback.nowPlaying;
+    if (np == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No audiobook is playing right now.')),
+      );
+      return;
+    }
+    final entry = await showModalBottomSheet<PlaybackHistoryEntry>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      builder: (_) => PlayHistorySheet(
+        libraryItemId: np.libraryItemId,
+        bookTitle: np.title,
+      ),
+    );
+    if (entry == null) return;
+    final confirmed = await _confirmPositionJump(
+      context,
+      entry.chapterTitle ?? np.title,
+      entry.position,
+    );
+    if (!confirmed) return;
+    await playback.seekGlobal(entry.position, reportNow: true);
+    await playback.player.play();
+  }
+
+  Future<void> _openBookmarksSheet(BuildContext context, PlaybackRepository playback) async {
+    final np = playback.nowPlaying;
+    if (np == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No audiobook is playing right now.')),
+      );
+      return;
+    }
+    final entry = await showModalBottomSheet<BookmarkEntry>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      builder: (_) => BookmarksSheet(
+        libraryItemId: np.libraryItemId,
+        bookTitle: np.title,
+      ),
+    );
+    if (entry == null) return;
+    final confirmed = await _confirmPositionJump(
+      context,
+      entry.chapterTitle ?? np.title,
+      entry.position,
+    );
+    if (!confirmed) return;
+    await playback.seekGlobal(entry.position, reportNow: true);
+    await playback.player.play();
+  }
+
+  Future<bool> _confirmPositionJump(BuildContext context, String title, Duration position) async {
+    final text = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+          'Resume from bookmark?',
+          style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+        ),
+        content: Text(
+          'Jump to "$title" at ${_fmt(position)}?',
+          style: text.bodyMedium,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: cs.primary,
+              foregroundColor: cs.onPrimary,
+            ),
+            child: const Text('Resume'),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
+  }
+
   Future<bool> _showMarkAsFinishedDialog(BuildContext context) async {
     final cs = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
@@ -1605,6 +1730,11 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                           Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
+                              IconButton(
+                                tooltip: 'Add bookmark',
+                                onPressed: np == null ? null : () => _addBookmark(context, playback),
+                                icon: const Icon(Icons.bookmark_add_rounded),
+                              ),
                               StreamBuilder<bool>(
                                 stream: _getBookCompletionStream(),
                                 initialData: false,
@@ -1626,30 +1756,36 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                         color: cs.outlineVariant.withOpacity(0.2),
                                       ),
                                     ),
-                                    onSelected: (action) {
-                                      switch (action) {
-                                        case _TopMenuAction.toggleCompletion:
-                                          _toggleBookCompletion(context, isCompleted);
-                                          break;
-                                        case _TopMenuAction.toggleGradient:
-                                          final next = !gradientEnabled;
-                                          UiPrefs.setPlayerGradientBackground(next);
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            SnackBar(
-                                              content: Text(
-                                                next
-                                                    ? 'Gradient background enabled'
-                                                    : 'Gradient background disabled',
-                                              ),
-                                              duration: const Duration(seconds: 2),
+                                  onSelected: (action) {
+                                    switch (action) {
+                                      case _TopMenuAction.toggleCompletion:
+                                        _toggleBookCompletion(context, isCompleted);
+                                        break;
+                                      case _TopMenuAction.toggleGradient:
+                                        final next = !gradientEnabled;
+                                        UiPrefs.setPlayerGradientBackground(next);
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              next
+                                                  ? 'Gradient background enabled'
+                                                  : 'Gradient background disabled',
                                             ),
-                                          );
-                                          break;
-                                        case _TopMenuAction.cast:
-                                          _showCastingComingSoon(context);
-                                          break;
-                                      }
-                                    },
+                                            duration: const Duration(seconds: 2),
+                                          ),
+                                        );
+                                        break;
+                                      case _TopMenuAction.cast:
+                                        _showCastingComingSoon(context);
+                                        break;
+                                      case _TopMenuAction.playHistory:
+                                        _openHistorySheet(context, playback);
+                                        break;
+                                      case _TopMenuAction.bookmarks:
+                                        _openBookmarksSheet(context, playback);
+                                        break;
+                                    }
+                                  },
                                     itemBuilder: (context) => [
                                       PopupMenuItem(
                                         value: _TopMenuAction.toggleCompletion,
@@ -1685,6 +1821,30 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                                     ? 'Disable gradient background'
                                                     : 'Enable gradient background',
                                               ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      PopupMenuItem(
+                                        value: _TopMenuAction.playHistory,
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.history_rounded, size: 18, color: cs.primary),
+                                            const SizedBox(width: 12),
+                                            const Expanded(
+                                              child: Text('Play history'),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      PopupMenuItem(
+                                        value: _TopMenuAction.bookmarks,
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.bookmark_rounded, size: 18, color: cs.primary),
+                                            const SizedBox(width: 12),
+                                            const Expanded(
+                                              child: Text('Bookmarks'),
                                             ),
                                           ],
                                         ),

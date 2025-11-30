@@ -15,6 +15,8 @@ import '../../main.dart'; // ServicesScope
 import '../../ui/player/full_player_page.dart'; // Added import for FullPlayerPage
 import '../../core/books_repository.dart' as repo_helpers;
 import 'package:just_audio/just_audio.dart';
+import '../../core/playback_journal_service.dart';
+import '../player/journal_sheets.dart';
 
 class BookDetailPage extends StatefulWidget {
   const BookDetailPage({super.key, required this.bookId});
@@ -982,6 +984,14 @@ class _BookDetailPageState extends State<BookDetailPage> {
                         ],
                       ),
                     ),
+                    if (b.isAudioBook)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                        child: _BookmarksPreview(
+                          book: b,
+                          playback: playbackRepo,
+                        ),
+                      ),
                     // Scrollable description area
                     if (b.description != null && b.description!.isNotEmpty)
                       Expanded(
@@ -1832,6 +1842,189 @@ class _PlayPrimaryButton extends StatelessWidget {
         );
       },
     );
+  }
+}
+
+class _BookmarksPreview extends StatefulWidget {
+  const _BookmarksPreview({required this.book, required this.playback});
+  final Book book;
+  final PlaybackRepository playback;
+
+  @override
+  State<_BookmarksPreview> createState() => _BookmarksPreviewState();
+}
+
+class _BookmarksPreviewState extends State<_BookmarksPreview> {
+  late Future<List<BookmarkEntry>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = PlaybackJournalService.instance.bookmarksFor(widget.book.id);
+  }
+
+  Future<void> _refresh() async {
+    setState(() {
+      _future = PlaybackJournalService.instance.bookmarksFor(widget.book.id);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    return FutureBuilder<List<BookmarkEntry>>(
+      future: _future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return Card(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: Center(
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: cs.primary,
+                ),
+              ),
+            ),
+          );
+        }
+        final entries = snapshot.data ?? const [];
+        return Card(
+          elevation: 0,
+          color: cs.surfaceContainerLowest,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Bookmarks',
+                        style: text.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: entries.isEmpty
+                          ? null
+                          : () async {
+                              final selected = await showModalBottomSheet<BookmarkEntry>(
+                                context: context,
+                                useSafeArea: true,
+                                isScrollControlled: true,
+                                builder: (_) => BookmarksSheet(
+                                  libraryItemId: widget.book.id,
+                                  bookTitle: widget.book.title,
+                                ),
+                              );
+                              if (selected != null && mounted) {
+                                await _restoreBookmark(context, selected);
+                              }
+                              if (mounted) _refresh();
+                            },
+                      child: const Text('See all'),
+                    ),
+                  ],
+                ),
+                if (entries.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: Text(
+                      'No bookmarks yet. Tap the bookmark icon in the player to save your spot.',
+                      style: text.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+                    ),
+                  )
+                else
+                  ...entries.take(3).map((entry) {
+                    final subtitle =
+                        '${_formatTimestamp(entry.createdAt)} • ${_fmt(Duration(milliseconds: entry.positionMs))}';
+                    final title = entry.chapterTitle?.isNotEmpty == true
+                        ? entry.chapterTitle!
+                        : 'Chapter ${entry.chapterIndex != null ? entry.chapterIndex! + 1 : entries.indexOf(entry) + 1}';
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.bookmark_rounded, color: cs.primary),
+                      title: Text(title),
+                      subtitle: Text(subtitle),
+                      onTap: () => _restoreBookmark(context, entry),
+                    );
+                  }),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _restoreBookmark(BuildContext context, BookmarkEntry entry) async {
+    final playback = widget.playback;
+    final confirm = await _confirmJump(context, entry);
+    if (!confirm) return;
+
+    if (playback.nowPlaying?.libraryItemId != widget.book.id) {
+      final success = await playback.playItem(widget.book.id, context: context);
+      if (!success) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Unable to start playback for this book.')),
+        );
+        return;
+      }
+    }
+    final position = Duration(milliseconds: entry.positionMs);
+    await playback.seekGlobal(position, reportNow: true);
+    await playback.player.play();
+    if (!mounted) return;
+    await FullPlayerPage.openOnce(context);
+  }
+
+  Future<bool> _confirmJump(BuildContext context, BookmarkEntry entry) async {
+    final text = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+          'Jump to bookmark?',
+          style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+        ),
+        content: Text(
+          'Go to "${entry.chapterTitle ?? widget.book.title}" at ${_fmt(Duration(milliseconds: entry.positionMs))}?',
+          style: text.bodyMedium,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: cs.primary,
+              foregroundColor: cs.onPrimary,
+            ),
+            child: const Text('Go'),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
+  }
+
+  String _formatTimestamp(DateTime dt) {
+    final local = dt.toLocal();
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${local.year}-${two(local.month)}-${two(local.day)} ${two(local.hour)}:${two(local.minute)}';
+  }
+
+  String _fmt(Duration d) {
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    return h > 0 ? '$h hr $m min' : '$m min';
   }
 }
 

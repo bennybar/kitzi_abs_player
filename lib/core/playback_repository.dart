@@ -18,6 +18,7 @@ import 'sleep_timer_service.dart';
 import 'playback_speed_service.dart';
 import 'download_storage.dart';
 import 'play_history_service.dart';
+import 'playback_journal_service.dart';
 import 'dynamic_island_service.dart';
 import '../models/book.dart';
 import 'books_repository.dart';
@@ -750,6 +751,9 @@ class PlaybackRepository {
 
   /// UPDATED: Send position to server on pause
   Future<void> pause() async {
+    final np = _nowPlaying;
+    final globalPos = globalBookPosition;
+    final chapterMetrics = currentChapterProgress;
     // Optionally stop any active sleep timer based on user setting
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -762,6 +766,17 @@ class PlaybackRepository {
     await _sendProgressImmediate(paused: true);
     await _closeActiveSession();
     try { await SmartRewindService.instance.recordPauseNow(); } catch (_) {}
+    if (np != null && globalPos != null) {
+      final chapterTitle = chapterMetrics?.title ??
+          (chapterMetrics != null ? 'Chapter ${chapterMetrics.index + 1}' : null);
+      unawaited(PlaybackJournalService.instance.recordHistoryEntry(
+        libraryItemId: np.libraryItemId,
+        bookTitle: np.title,
+        positionMs: globalPos.inMilliseconds,
+        chapterTitle: chapterTitle,
+        chapterIndex: chapterMetrics?.index,
+      ));
+    }
   }
 
   /// UPDATED: Check server position and sync before resuming
