@@ -14,6 +14,8 @@ import '../../widgets/audio_waveform.dart';
 import '../../widgets/download_button.dart';
 import 'dart:async';
 
+enum _TopMenuAction { toggleCompletion, toggleGradient }
+
 class FullPlayerPage extends StatefulWidget {
   const FullPlayerPage({super.key});
 
@@ -205,46 +207,6 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     final value = position.inMilliseconds.toDouble().clamp(0.0, sliderMax);
     final remaining = (total - position).isNegative ? Duration.zero : total - position;
 
-    final header = isPrimary
-        ? Padding(
-            padding: const EdgeInsets.only(bottom: 6),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: cs.primaryContainer,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.auto_stories_rounded, size: 14, color: cs.onPrimaryContainer),
-                      const SizedBox(width: 6),
-                      Text(
-                        'Book progress',
-                        style: text.labelMedium?.copyWith(
-                          color: cs.onPrimaryContainer,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          )
-        : Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: Text(
-              'Full book progress',
-              style: text.bodyMedium?.copyWith(
-                color: cs.onSurfaceVariant,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          );
 
     final sliderTheme = SliderTheme.of(context).copyWith(
       trackHeight: isPrimary ? 6 : 4,
@@ -268,7 +230,6 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          header,
           SliderTheme(
             data: sliderTheme,
             child: Slider(
@@ -536,35 +497,6 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     return RepaintBoundary(
       child: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.only(bottom: 6),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: cs.primaryContainer,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.auto_stories_rounded, size: 14, color: cs.onPrimaryContainer),
-                      const SizedBox(width: 6),
-                      Text(
-                        'Book progress',
-                        style: text.labelMedium?.copyWith(
-                          color: cs.onPrimaryContainer,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
           SliderTheme(
             data: SliderTheme.of(context).copyWith(
               trackHeight: 6,
@@ -671,24 +603,20 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
         final total = playback.totalBookDuration;
         final global = playback.globalBookPosition;
         String headline;
-        String subtitle;
         if (total != null && total > Duration.zero && global != null) {
           final percent = (global.inMilliseconds / total.inMilliseconds * 100).clamp(0.0, 100.0);
-          headline = '${percent.toStringAsFixed(1)}%';
-          subtitle = 'Complete';
+          headline = '${percent.toStringAsFixed(1)}% complete';
         } else {
-          headline = 'Syncing…';
-          subtitle = 'Calculating progress';
+          headline = 'Syncing progress…';
         }
         return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
-            color: cs.surfaceContainerHighest.withOpacity(0.8),
+            color: cs.surfaceContainerHighest.withOpacity(0.85),
             borderRadius: BorderRadius.circular(18),
             border: Border.all(color: cs.outline.withOpacity(0.08)),
           ),
           child: Row(
-            mainAxisSize: MainAxisSize.min,
             children: [
               Container(
                 padding: const EdgeInsets.all(8),
@@ -699,25 +627,16 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                 child: Icon(Icons.auto_graph_rounded, size: 18, color: cs.primary),
               ),
               const SizedBox(width: 10),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    headline,
-                    style: text.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: cs.onSurface,
-                    ),
+              Expanded(
+                child: Text(
+                  headline,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: text.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: cs.onSurface,
                   ),
-                  Text(
-                    subtitle,
-                    style: text.bodySmall?.copyWith(
-                      color: cs.onSurfaceVariant,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
+                ),
               ),
             ],
           ),
@@ -732,18 +651,18 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     }
     final colors = brightness == Brightness.dark
         ? [
-            cs.surface.withOpacity(0.9),
-            cs.surfaceContainerHighest,
+            Color.alphaBlend(cs.primary.withOpacity(0.15), cs.surface),
+            Color.alphaBlend(cs.secondary.withOpacity(0.12), cs.surfaceContainerHighest),
             Colors.black,
           ]
         : [
+            Color.alphaBlend(cs.primaryContainer.withOpacity(0.4), Colors.white),
             cs.surface,
-            cs.surfaceContainerHighest,
-            Colors.white,
+            Color.alphaBlend(cs.secondaryContainer.withOpacity(0.25), Colors.white),
           ];
     return BoxDecoration(
       gradient: LinearGradient(
-        begin: Alignment.topLeft,
+        begin: Alignment.topCenter,
         end: Alignment.bottomRight,
         colors: colors,
       ),
@@ -756,6 +675,27 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
         content: Text('Casting support is coming soon.'),
         duration: Duration(seconds: 2),
       ),
+    );
+  }
+
+  Widget _buildChaptersQuickIcon(Color fg, Color accent) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Icon(Icons.library_books_rounded, size: 30, color: fg),
+        Positioned(
+          right: -2,
+          bottom: -2,
+          child: Container(
+            padding: const EdgeInsets.all(3),
+            decoration: BoxDecoration(
+              color: accent,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.list_rounded, size: 12, color: Colors.white),
+          ),
+        ),
+      ],
     );
   }
 
@@ -1435,12 +1375,12 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                       );
                                     }
                                   } else if (selected != null) {
-                                    timer.startTimer(selected!);
-                                  }
+                              timer.startTimer(selected!);
+                            }
                                   if (started) {
-                                    Navigator.of(ctx).pop();
+                            Navigator.of(ctx).pop();
                                   }
-                                },
+                          },
                           child: const Text('Start'),
                         ),
                       ),
@@ -1480,7 +1420,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
           decoration: _playerBackgroundDecoration(gradientEnabled, cs, brightness),
           child: Scaffold(
             backgroundColor: Colors.transparent,
-            body: GestureDetector(
+      body: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onVerticalDragUpdate: (details) {
           final dy = details.delta.dy;
@@ -1578,50 +1518,54 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                   },
                                 ),
                               ),
-                              const SizedBox(width: 8),
+                              const SizedBox(width: 4),
                               StreamBuilder<bool>(
                                 stream: _getBookCompletionStream(),
                                 initialData: false,
                                 builder: (_, completionSnap) {
                                   final isCompleted = completionSnap.data ?? false;
-                                  return IconButton.filledTonal(
-                                    onPressed: () => _toggleBookCompletion(context, isCompleted),
-                                    icon: Icon(
-                                      isCompleted
-                                          ? Icons.undo_rounded
-                                          : Icons.check_circle_outline_rounded,
-                                    ),
-                                    tooltip: isCompleted ? 'Mark as unfinished' : 'Mark as finished',
-                                    style: IconButton.styleFrom(
-                                      backgroundColor: isCompleted
-                                          ? cs.errorContainer
-                                          : cs.surfaceContainerHighest,
-                                      foregroundColor: isCompleted
-                                          ? cs.onErrorContainer
-                                          : cs.onSurface,
-                                    ),
+                                  return PopupMenuButton<_TopMenuAction>(
+                                    tooltip: 'More options',
+                                    icon: const Icon(Icons.more_vert_rounded),
+                                    onSelected: (action) {
+                                      switch (action) {
+                                        case _TopMenuAction.toggleCompletion:
+                                          _toggleBookCompletion(context, isCompleted);
+                                          break;
+                                        case _TopMenuAction.toggleGradient:
+                                          final next = !gradientEnabled;
+                                          UiPrefs.setPlayerGradientBackground(next);
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                next
+                                                    ? 'Gradient background enabled'
+                                                    : 'Gradient background disabled',
+                                              ),
+                                              duration: const Duration(seconds: 2),
+                                            ),
+                                          );
+                                          break;
+                                      }
+                                    },
+                                    itemBuilder: (context) => [
+                                      PopupMenuItem(
+                                        value: _TopMenuAction.toggleCompletion,
+                                        child: Text(
+                                          isCompleted ? 'Mark as unfinished' : 'Mark as finished',
+                                        ),
+                                      ),
+                                      PopupMenuItem(
+                                        value: _TopMenuAction.toggleGradient,
+                                        child: Text(
+                                          gradientEnabled
+                                              ? 'Disable gradient background'
+                                              : 'Enable gradient background',
+                                        ),
+                                      ),
+                                    ],
                                   );
                                 },
-                              ),
-                              const SizedBox(width: 8),
-                              IconButton.filledTonal(
-                                onPressed: () {
-                                  UiPrefs.setPlayerGradientBackground(!gradientEnabled);
-                                },
-                                tooltip: gradientEnabled
-                                    ? 'Disable gradient background'
-                                    : 'Enable gradient background',
-                                icon: Icon(
-                                  gradientEnabled ? Icons.gradient : Icons.gradient_outlined,
-                                ),
-                                style: IconButton.styleFrom(
-                                  backgroundColor: gradientEnabled
-                                      ? cs.primaryContainer
-                                      : cs.surfaceContainerHighest,
-                                  foregroundColor: gradientEnabled
-                                      ? cs.onPrimaryContainer
-                                      : cs.onSurface,
-                                ),
                               ),
                             ],
                           ),
@@ -1990,29 +1934,27 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                       },
                                     ),
 
-                                    const SizedBox(height: 32),
+                                    const SizedBox(height: 44),
 
-                                    // Quick access controls: chapters, download, sleep, cast
+                                    // Quick access controls - four rounded buttons
                                     Row(
                                       children: [
                                         Expanded(
                                           child: _PlayerActionTile(
-                                            icon: const Icon(Icons.library_books_rounded),
-                                            label: 'Chapters',
+                                            icon: _buildChaptersQuickIcon(
+                                              cs.onPrimaryContainer,
+                                              cs.primary,
+                                            ),
+                                            label: '',
                                             onTap: np.chapters.isEmpty
                                                 ? null
-                                                : () {
-                                                    _showChaptersSheet(context, playback, np);
-                                                  },
+                                                : () => _showChaptersSheet(context, playback, np),
                                             tooltip: np.chapters.isEmpty
                                                 ? 'No chapters available'
                                                 : 'Open chapters',
                                             enabled: np.chapters.isNotEmpty,
-                                            foregroundColor: np.chapters.isNotEmpty
-                                                ? null
-                                                : Theme.of(context)
-                                                    .colorScheme
-                                                    .onSurfaceVariant,
+                                            backgroundColor: cs.primaryContainer,
+                                            foregroundColor: cs.onPrimaryContainer,
                                           ),
                                         ),
                                         const SizedBox(width: 12),
@@ -2021,21 +1963,20 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                             libraryItemId: np.libraryItemId,
                                             episodeId: np.episodeId,
                                             title: np.title,
+                                            iconOnly: true,
                                           ),
                                         ),
                                         const SizedBox(width: 12),
                                         Expanded(
                                           child: _SleepQuickAction(
-                                            onTap: () {
-                                              _showSleepTimerSheet(context, np);
-                                            },
+                                            onTap: () => _showSleepTimerSheet(context, np),
                                           ),
                                         ),
                                         const SizedBox(width: 12),
                                         Expanded(
                                           child: _PlayerActionTile(
                                             icon: const Icon(Icons.cast_rounded),
-                                            label: 'Cast',
+                                            label: '',
                                             onTap: () => _showCastingComingSoon(context),
                                             tooltip: 'Casting',
                                           ),
@@ -2046,21 +1987,21 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                       ],
                                     ),
                                   ),
+                                                  ),
+                                                ),
+                                              );
+                                            },
+                                        ),
+                                      ],
+                );
+              },
+                                    ),
+                                    ),
+                                  ),
                                 ),
                               ),
                             );
                           },
-                        ),
-                  ],
-                );
-              },
-            ),
-          ),
-        ),
-            ),
-          ),
-        );
-      },
     );
   }
 }
@@ -2093,35 +2034,55 @@ class _PlayerActionTile extends StatelessWidget {
     final fg = foregroundColor ?? cs.onSurface;
     final radius = BorderRadius.circular(22);
 
-    final tile = Material(
-      color: enabled ? bg : bg.withOpacity(0.6),
-      borderRadius: radius,
-      elevation: 0,
-      child: InkWell(
+    final tile = Container(
+      decoration: BoxDecoration(
         borderRadius: radius,
-        onTap: enabled ? onTap : null,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              IconTheme(
-                data: IconThemeData(
-                  color: enabled ? fg : cs.onSurfaceVariant,
-                  size: 28,
+        gradient: LinearGradient(
+          colors: [
+            (backgroundColor ?? cs.secondaryContainer).withOpacity(enabled ? 1.0 : 0.5),
+            (backgroundColor ?? cs.primaryContainer).withOpacity(enabled ? 0.85 : 0.4),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: cs.shadow.withOpacity(0.1),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: radius,
+        child: InkWell(
+          borderRadius: radius,
+          onTap: enabled ? onTap : null,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconTheme(
+                  data: IconThemeData(
+                    color: enabled ? fg : cs.onSurfaceVariant,
+                    size: 28,
+                  ),
+                  child: icon,
                 ),
-                child: icon,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                label,
-                textAlign: TextAlign.center,
-                style: text.labelSmall?.copyWith(
-                  color: enabled ? fg : cs.onSurfaceVariant,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
+                const SizedBox(height: 8),
+                if (label.isNotEmpty)
+                  Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    style: text.labelSmall?.copyWith(
+                      color: enabled ? fg : cs.onSurfaceVariant,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -2147,16 +2108,9 @@ class _SleepQuickAction extends StatelessWidget {
         final timer = SleepTimerService.instance;
         final active = timer.isActive;
         final isChapterMode = timer.isChapterMode;
-        final remaining = timer.formattedRemainingTime;
-        var label = 'Sleep';
-        if (active) {
-          label = isChapterMode
-              ? 'Sleep (Chapter)'
-              : (remaining.isNotEmpty ? 'Sleep ($remaining)' : 'Sleep');
-        }
         return _PlayerActionTile(
           icon: Icon(isChapterMode ? Icons.menu_book_rounded : Icons.nights_stay_rounded),
-          label: label,
+          label: '',
           onTap: onTap,
           tooltip: active ? 'Adjust sleep timer' : 'Set sleep timer',
           backgroundColor: active ? cs.primary : cs.surfaceContainerHighest,
@@ -2172,11 +2126,13 @@ class _ChaptersDownloadButton extends StatefulWidget {
     required this.libraryItemId,
     this.episodeId,
     this.title,
+    this.iconOnly = false,
   });
 
   final String libraryItemId;
   final String? episodeId;
   final String? title;
+  final bool iconOnly;
 
   @override
   State<_ChaptersDownloadButton> createState() => _ChaptersDownloadButtonState();
@@ -2198,21 +2154,16 @@ class _ChaptersDownloadButtonState extends State<_ChaptersDownloadButton> {
       _sub = _downloads!
           .watchItemProgress(widget.libraryItemId)
           .listen((p) => setState(() => _snap = p));
-      
-      // Force immediate refresh of download status when button is initialized
+
       _refreshDownloadStatus();
     }
   }
-  
-  /// Force refresh download status
+
   Future<void> _refreshDownloadStatus() async {
     if (_downloads == null) return;
     try {
-      // Force a refresh which will update the stream
       await _downloads!.refreshItemStatus(widget.libraryItemId);
-    } catch (_) {
-      // Best effort - if it fails, the stream will update eventually
-    }
+    } catch (_) {}
   }
 
   @override
@@ -2224,22 +2175,19 @@ class _ChaptersDownloadButtonState extends State<_ChaptersDownloadButton> {
   Future<void> _enqueue() async {
     if (_downloads == null) return;
     try {
-      // If this item is already active, ignore duplicate enqueue taps
       if (_snap != null && (_snap!.status == 'running' || _snap!.status == 'queued')) {
         return;
       }
 
-      // Check whether other items are active/queued
       final othersActive = await _downloads!.hasActiveOrQueued();
       bool requireCancelOthers = false;
       if (othersActive) {
-        // If only this item is tracked or active, allow enqueue directly
         try {
           final tracked = await _downloads!.listTrackedItemIds();
           final onlyThis = tracked.isNotEmpty && tracked.every((id) => id == widget.libraryItemId);
           if (!onlyThis) requireCancelOthers = true;
         } catch (_) {
-          requireCancelOthers = true; // be conservative if unknown
+          requireCancelOthers = true;
         }
       }
 
@@ -2250,8 +2198,7 @@ class _ChaptersDownloadButtonState extends State<_ChaptersDownloadButton> {
           context: context,
           builder: (context) => AlertDialog(
             title: const Text('Single download at a time'),
-            content: const Text(
-                'Another book is downloading. Cancel it and download this book now?'),
+            content: const Text('Another book is downloading. Cancel it and download this book now?'),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context, false),
@@ -2274,7 +2221,6 @@ class _ChaptersDownloadButtonState extends State<_ChaptersDownloadButton> {
         await _downloads!.cancelAll();
       }
 
-      // Proceed to enqueue this item
       await _downloads!.enqueueItemDownloads(
         widget.libraryItemId,
         episodeId: widget.episodeId,
@@ -2406,7 +2352,7 @@ class _ChaptersDownloadButtonState extends State<_ChaptersDownloadButton> {
 
     return _PlayerActionTile(
       icon: iconWidget,
-      label: label,
+      label: widget.iconOnly ? '' : label,
       onTap: action,
       tooltip: tooltip,
       backgroundColor: backgroundColor,

@@ -64,7 +64,7 @@ class UiPrefs {
       }
       // If context not available and key doesn't exist, keep current value (default is true from initialization)
       progressPrimary.value = _parseProgressPrimary(prefs.getString(_kProgressPrimary));
-      playerGradientBackground.value = prefs.getBool(_kPlayerGradient) ?? false;
+      playerGradientBackground.value = prefs.getBool(_kPlayerGradient) ?? true;
     } catch (_) {}
   }
   
