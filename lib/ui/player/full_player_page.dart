@@ -710,13 +710,13 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     final secondary = paletteSecondary ?? cs.secondary;
     final colors = brightness == Brightness.dark
         ? [
-            Color.alphaBlend(primary.withOpacity(0.25), cs.surface),
-            Color.alphaBlend(secondary.withOpacity(0.18), cs.surfaceContainerHighest),
+            Color.alphaBlend(primary.withOpacity(0.4), cs.surface),
+            Color.alphaBlend(secondary.withOpacity(0.28), cs.surfaceContainerHighest),
             Colors.black,
           ]
         : [
-            Color.alphaBlend(primary.withOpacity(0.35), cs.surface),
-            Color.alphaBlend(secondary.withOpacity(0.25), cs.surface),
+            Color.alphaBlend(primary.withOpacity(0.48), cs.surface),
+            Color.alphaBlend(secondary.withOpacity(0.35), cs.surface),
             Colors.white,
           ];
     return BoxDecoration(

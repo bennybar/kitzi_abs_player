@@ -1,52 +1,70 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:palette_generator/palette_generator.dart';
 
 import '../core/playback_repository.dart';
-import 'package:cached_network_image/cached_network_image.dart';
-import 'dart:io';
+import '../core/ui_prefs.dart';
 import '../main.dart'; // ServicesScope
 import '../ui/player/full_player_page.dart';
 import 'audio_waveform.dart';
 
-class MiniPlayer extends StatelessWidget {
+class MiniPlayer extends StatefulWidget {
   const MiniPlayer({super.key, this.height = 60});
 
   final double height;
 
   @override
+  State<MiniPlayer> createState() => _MiniPlayerState();
+}
+
+class _MiniPlayerState extends State<MiniPlayer> {
+  Color? _palettePrimary;
+  Color? _paletteSecondary;
+  String? _paletteCoverUrl;
+  bool _paletteLoading = false;
+
+  @override
   Widget build(BuildContext context) {
     final playback = ServicesScope.of(context).services.playback;
     final cs = Theme.of(context).colorScheme;
+    final brightness = Theme.of(context).brightness;
 
-    // iOS: floating rounded Material card
-    if (Platform.isIOS) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-        child: Card(
-          elevation: 2,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(22),
-            side: BorderSide(
-              color: cs.outline.withOpacity(0.1),
-              width: 0.5,
-            ),
-          ),
-          child: _buildContent(context, playback, cs, showTopBorder: false),
-        ),
-      );
-    }
+    return ValueListenableBuilder<bool>(
+      valueListenable: UiPrefs.playerGradientBackground,
+      builder: (_, gradientEnabled, __) {
+        final content = Platform.isIOS
+            ? Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                child: Card(
+                  color: Colors.transparent,
+                  elevation: 2,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(22),
+                    side: BorderSide(
+                      color: cs.outline.withOpacity(0.1),
+                      width: 0.5,
+                    ),
+                  ),
+                  child: _buildContent(context, playback, cs, showTopBorder: false),
+                ),
+              )
+            : Container(
+                decoration: const BoxDecoration(),
+                child: _buildContent(context, playback, cs, showTopBorder: true),
+              );
 
-    // Others: full-width Material surface with top divider
-    return Container(
-      decoration: BoxDecoration(
-        color: cs.surface,
-        border: Border(
-          top: BorderSide(
-            color: cs.outlineVariant.withOpacity(0.3),
-            width: 0.5,
+        return DecoratedBox(
+          decoration: _miniBackgroundDecoration(
+            gradientEnabled,
+            cs,
+            brightness,
           ),
-        ),
-      ),
-      child: _buildContent(context, playback, cs, showTopBorder: true),
+          child: content,
+        );
+      },
     );
   }
 
@@ -58,7 +76,7 @@ class MiniPlayer extends StatelessWidget {
           await FullPlayerPage.openOnce(context);
         },
         child: Container(
-          height: height,
+          height: widget.height,
           decoration: showTopBorder
               ? BoxDecoration(
                   border: Border(
@@ -79,6 +97,8 @@ class MiniPlayer extends StatelessWidget {
                   return const SizedBox.shrink();
                 }
 
+              unawaited(_maybeUpdatePalette(np.coverUrl));
+
                 return Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   child: Row(
@@ -88,7 +108,7 @@ class MiniPlayer extends StatelessWidget {
                         tag: 'mini-cover-${np.libraryItemId}',
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(4),
-                          child: _MiniCover(url: np.coverUrl, size: height - 16),
+                          child: _MiniCover(url: np.coverUrl, size: widget.height - 16),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -264,6 +284,79 @@ class MiniPlayer extends StatelessWidget {
           ),
         ),
       );
+  }
+
+  Future<void> _maybeUpdatePalette(String? coverUrl) async {
+    if (coverUrl == null || coverUrl.isEmpty) {
+      if (_paletteCoverUrl != null || _palettePrimary != null || _paletteSecondary != null) {
+        setState(() {
+          _paletteCoverUrl = null;
+          _palettePrimary = null;
+          _paletteSecondary = null;
+        });
+      }
+      return;
+    }
+
+    if (_paletteCoverUrl == coverUrl || _paletteLoading) return;
+
+    _paletteLoading = true;
+    try {
+      final provider = CachedNetworkImageProvider(coverUrl);
+      final palette = await PaletteGenerator.fromImageProvider(
+        provider,
+        size: const Size(120, 120),
+        maximumColorCount: 10,
+      );
+      if (!mounted) return;
+      setState(() {
+        _paletteCoverUrl = coverUrl;
+        _palettePrimary = palette.dominantColor?.color ?? palette.darkVibrantColor?.color;
+        _paletteSecondary = palette.vibrantColor?.color ??
+            palette.lightVibrantColor?.color ??
+            palette.mutedColor?.color ??
+            _palettePrimary;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _paletteCoverUrl = coverUrl;
+        _palettePrimary = null;
+        _paletteSecondary = null;
+      });
+    } finally {
+      _paletteLoading = false;
+    }
+  }
+
+  BoxDecoration _miniBackgroundDecoration(
+    bool gradientEnabled,
+    ColorScheme cs,
+    Brightness brightness,
+  ) {
+    if (!gradientEnabled) {
+      return BoxDecoration(color: cs.surface);
+    }
+    final primary = _palettePrimary ?? cs.primary;
+    final secondary = _paletteSecondary ?? cs.secondary;
+    final colors = brightness == Brightness.dark
+        ? [
+            Color.alphaBlend(primary.withOpacity(0.4), cs.surface),
+            Color.alphaBlend(secondary.withOpacity(0.28), cs.surfaceContainerHighest),
+            Colors.black,
+          ]
+        : [
+            Color.alphaBlend(primary.withOpacity(0.42), cs.surface),
+            Color.alphaBlend(secondary.withOpacity(0.32), cs.surface),
+            Colors.white,
+          ];
+    return BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: colors,
+      ),
+    );
   }
 }
 
