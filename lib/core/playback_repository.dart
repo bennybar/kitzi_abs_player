@@ -189,14 +189,21 @@ class PlaybackRepository {
     return _openSessionAndGetTracks(libraryItemId, episodeId: episodeId);
   }
 
-  /// Total number of tracks for an item (remote preferred; fallback to local count).
+  /// Total number of tracks for an item (local preferred to avoid opening sessions).
+  /// Only opens a session if local tracks are not available and we actually need the count.
   Future<int> getTotalTrackCount(String libraryItemId, {String? episodeId}) async {
+    // Prefer local tracks to avoid opening unnecessary sessions
+    final local = await _localTracks(libraryItemId);
+    if (local.isNotEmpty) {
+      return local.length;
+    }
+    // Only open session if we really need the count and have no local tracks
+    // This should be rare - most calls should have local tracks available
     try {
       final remote = await _streamTracks(libraryItemId, episodeId: episodeId);
       return remote.length;
     } catch (_) {
-      final local = await _localTracks(libraryItemId);
-      return local.length;
+      return 0;
     }
   }
 
@@ -1740,17 +1747,11 @@ class PlaybackRepository {
     final missing = tracks.any((t) => t.duration <= 0);
     if (!missing) return tracks;
 
-    try {
-      final remote = await _streamTracks(libraryItemId, episodeId: episodeId);
-      final byIndex = {for (final t in remote) t.index: t.duration};
-      return tracks
-          .map((t) => t.duration > 0
-          ? t
-          : t.copyWith(duration: (byIndex[t.index] ?? 0.0)))
-          .toList();
-    } catch (_) {
-      return tracks;
-    }
+    // Don't open a session just to get durations - this causes unnecessary server load
+    // If durations are missing, we'll use 0 and they'll be resolved when actually playing
+    // or we can get them from book metadata if available
+    _log('Local tracks missing durations, but skipping session open to avoid unnecessary server load');
+    return tracks;
   }
 
   Future<List<PlaybackTrack>> _streamTracks(String libraryItemId,

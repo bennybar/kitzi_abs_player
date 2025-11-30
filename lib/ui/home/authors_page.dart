@@ -26,17 +26,26 @@ class _AuthorsPageState extends State<AuthorsPage> {
   Map<String, int> _authorLetterIndex = <String, int>{};
   List<String> _authorLetterOrder = const <String>[];
   int _authorLetterDenominator = 1;
+  StreamSubscription<BookDbChange>? _dbChangeSub;
 
   @override
   void initState() {
     super.initState();
     _repoFut = BooksRepository.create();
+    _repoFut.then((repo) {
+      _dbChangeSub ??= repo.dbChanges.listen((change) {
+        if (change.type == BookDbChangeType.upsert) {
+          _loadAuthors(silent: true);
+        }
+      });
+    });
     _loadAuthors();
     _searchController.addListener(_onSearchChanged);
   }
 
   @override
   void dispose() {
+    _dbChangeSub?.cancel();
     _searchController.dispose();
     _scrollCtrl.dispose();
     super.dispose();
@@ -87,25 +96,31 @@ class _AuthorsPageState extends State<AuthorsPage> {
     );
   }
 
-  Future<void> _loadAuthors() async {
+  Future<void> _loadAuthors({bool silent = false}) async {
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
       final repo = await _repoFut;
       final authors = await repo.getAllAuthors();
-      if (mounted) {
-        setState(() {
-          _authors = authors;
-          _filteredAuthors = List.from(authors);
+      if (!mounted) return;
+      setState(() {
+        _authors = authors;
+        _filteredAuthors = List.from(authors);
+        if (!silent) {
           _loading = false;
-        });
-        _prepareAuthorLetterAnchors(_filteredAuthors);
-      }
+        }
+      });
+      _prepareAuthorLetterAnchors(_filteredAuthors);
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _error = e.toString();
-          _loading = false;
-        });
-      }
+      if (!mounted || silent) return;
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
     }
   }
 

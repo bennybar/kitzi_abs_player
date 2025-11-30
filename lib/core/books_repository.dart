@@ -27,7 +27,7 @@ class BooksRepository {
   // Query caching for better performance
   final Map<String, List<Book>> _queryCache = {};
   final Map<String, DateTime> _cacheTimestamps = {};
-  final StreamController<BookDbChange> _dbChangeCtrl = StreamController<BookDbChange>.broadcast();
+  static final StreamController<BookDbChange> _dbChangeCtrl = StreamController<BookDbChange>.broadcast();
   bool _disposed = false;
   final Queue<Book> _coverRetryQueue = Queue();
   final Map<String, int> _coverRetryAttempts = {};
@@ -1067,16 +1067,15 @@ class BooksRepository {
         return books;
       }
 
-    // 1) Try page-based (API uses 0-based page indexing)
-    final pageIndex = page > 0 ? page - 1 : 0;
-    final basePage = '/api/libraries/$libId/items?limit=$limit&page=$pageIndex&sort=$sort';
+    // 1) Try page-based (API uses 1-based page indexing)
+    final basePage = '/api/libraries/$libId/items?limit=$limit&page=$page&sort=$sort';
     final pathPage = (encodedQ != null)
         ? '$basePage&q=$encodedQ$tokenQS'
         : '$basePage$tokenQS';
     final etagKey = _etagPrefsKey(sort, query);
     final cachedEtag = _prefs.getString(etagKey);
     final headers = <String, String>{};
-    if (cachedEtag != null && pageIndex == 0) {
+    if (cachedEtag != null && page == 1) {
       headers['If-None-Match'] = cachedEtag;
     }
     List<Book> books = await requestAndParse(pathPage, extraHeaders: headers).catchError((e) async {
@@ -1130,7 +1129,7 @@ class BooksRepository {
   /// Fetch series directly from the audiobookshelf series endpoint
   Future<List<Map<String, dynamic>>> fetchSeries({
     int limit = 100,
-    int page = 0,
+    int page = 0, // Series endpoint still uses 0-based indexing
     String sort = 'name',
     bool desc = false,
     String filter = 'all',
@@ -1185,7 +1184,7 @@ class BooksRepository {
     String filter = 'all',
   }) async {
     final allSeries = <Map<String, dynamic>>[];
-    int page = 0;
+    int page = 0; // Series endpoint is 0-based
     const pageSize = 100;
     
     while (true) {
@@ -1244,39 +1243,115 @@ class BooksRepository {
 
   /// Get books for a specific series by fetching all books that belong to that series
   Future<List<Book>> getBooksForSeries(Series series) async {
-    if (series.bookIds.isEmpty) return <Book>[];
-    
+    final seen = <String>{};
     final books = <Book>[];
     
-    // First try to get books from local DB
-    try {
-      for (final bookId in series.bookIds) {
-        final book = await getBookFromDb(bookId);
-        if (book != null) {
-          books.add(book);
-        }
-      }
-    } catch (e) {
-      _log('[BOOKS] getBooksForSeries: DB error: $e');
-    }
-    
-    // If we don't have all books locally, try to fetch them from server
-    if (books.length < series.bookIds.length) {
+    if (series.bookIds.isNotEmpty) {
       try {
-        for (final bookId in series.bookIds) {
-          if (!books.any((b) => b.id == bookId)) {
-            final book = await getBook(bookId);
-            books.add(book);
-          }
+        final local = await _loadBooksByIds(series.bookIds);
+        for (final book in local) {
+          if (seen.add(book.id)) books.add(book);
         }
       } catch (e) {
-        _log('[BOOKS] getBooksForSeries: server fetch error: $e');
+        _log('[BOOKS] getBooksForSeries: DB error loading ids: $e');
+      }
+      
+      final missing = series.bookIds.where((id) => !seen.contains(id)).toList();
+      if (missing.isNotEmpty) {
+        for (final bookId in missing) {
+          try {
+            final book = await getBook(bookId);
+            if (seen.add(book.id)) books.add(book);
+          } catch (e) {
+            _log('[BOOKS] getBooksForSeries: server fetch error for $bookId: $e');
+          }
+        }
+      }
+    } else {
+      final fromDb = await _loadBooksBySeriesName(series.name);
+      for (final book in fromDb) {
+        if (seen.add(book.id)) books.add(book);
+      }
+      
+      if (books.isEmpty && series.id.isNotEmpty) {
+        final remote = await _fetchBooksForSeriesRemote(series);
+        for (final book in remote) {
+          if (seen.add(book.id)) books.add(book);
+        }
       }
     }
     
-    // Sort books primarily by explicit series sequence, then fall back to
-    // the order provided by the series.bookIds array (matches ABS web UI),
-    // and finally by title to keep results stable for any remaining ties.
+    if (books.isEmpty) return const [];
+    return _sortSeriesBooks(books, series);
+  }
+
+  Future<List<Book>> _loadBooksByIds(List<String> ids) async {
+    if (ids.isEmpty) return const [];
+    await _ensureDbForCurrentLib();
+    final db = _db;
+    if (db == null) return const [];
+    final baseUrl = _auth.api.baseUrl ?? '';
+    final token = await _auth.api.accessToken();
+    final placeholders = List.filled(ids.length, '?').join(',');
+    final rows = await db.query(
+      'books',
+      where: 'id IN ($placeholders)',
+      whereArgs: ids,
+    );
+    return rows.map((m) => _bookFromDbRow(m, baseUrl, token)).toList();
+  }
+
+  Future<List<Book>> _loadBooksBySeriesName(String? seriesName) async {
+    if (seriesName == null || seriesName.trim().isEmpty) return const [];
+    await _ensureDbForCurrentLib();
+    final db = _db;
+    if (db == null) return const [];
+    final baseUrl = _auth.api.baseUrl ?? '';
+    final token = await _auth.api.accessToken();
+    final rows = await db.query(
+      'books',
+      where: 'series = ?',
+      whereArgs: [seriesName],
+      orderBy: 'seriesSequence IS NULL, seriesSequence ASC, title COLLATE NOCASE ASC',
+    );
+    return rows.map((m) => _bookFromDbRow(m, baseUrl, token)).toList();
+  }
+
+  Future<List<Book>> _fetchBooksForSeriesRemote(Series series) async {
+    try {
+      final libId = await _ensureLibraryId();
+      final resp = await _auth.api.request('GET', '/api/libraries/$libId/series/${series.id}');
+      if (resp.statusCode != 200 || resp.body.isEmpty) return const [];
+      final body = jsonDecode(resp.body);
+      List items = const [];
+      if (body is Map) {
+        if (body['books'] is List) {
+          items = body['books'] as List;
+        } else if (body['items'] is List) {
+          items = body['items'] as List;
+        }
+      } else if (body is List) {
+        items = body;
+      }
+      if (items.isEmpty) return const [];
+      final baseUrl = _auth.api.baseUrl ?? '';
+      final token = await _auth.api.accessToken();
+      final books = items
+          .whereType<Map>()
+          .map((m) => Book.fromLibraryItemJson(m.cast<String, dynamic>(), baseUrl: baseUrl, token: token))
+          .where((b) => b.id.isNotEmpty)
+          .toList();
+      if (books.isNotEmpty) {
+        await _upsertBooks(books);
+      }
+      return books;
+    } catch (e) {
+      _log('[BOOKS] _fetchBooksForSeriesRemote error: $e');
+      return const [];
+    }
+  }
+
+  List<Book> _sortSeriesBooks(List<Book> books, Series series) {
     final idOrder = <String, int>{};
     for (var i = 0; i < series.bookIds.length; i++) {
       idOrder[series.bookIds[i]] = i;
@@ -1307,6 +1382,44 @@ class BooksRepository {
     });
     
     return books;
+  }
+
+  Book _bookFromDbRow(Map<String, Object?> m, String baseUrl, String? token) {
+    final id = (m['id'] as String);
+    var coverUrl = '$baseUrl/api/items/$id/cover';
+    if (token != null && token.isNotEmpty) coverUrl = '$coverUrl?token=$token';
+    final localPath = m['coverPath'] as String?;
+    if (localPath != null && File(localPath).existsSync()) {
+      coverUrl = 'file://$localPath';
+    }
+    final isAudioRaw = m['isAudioBook'] as int?;
+    final durationRaw = m['durationMs'] as int?;
+    final computedIsAudio = (isAudioRaw != null)
+        ? (isAudioRaw != 0)
+        : (durationRaw != null && durationRaw > 0);
+    return Book(
+      id: id,
+      title: (m['title'] as String),
+      author: m['author'] as String?,
+      coverUrl: coverUrl,
+      description: m['description'] as String?,
+      durationMs: m['durationMs'] as int?,
+      sizeBytes: m['sizeBytes'] as int?,
+      updatedAt: (m['updatedAt'] as int?) != null
+          ? DateTime.fromMillisecondsSinceEpoch((m['updatedAt'] as int), isUtc: true)
+          : null,
+      series: m['series'] as String?,
+      seriesSequence: (m['seriesSequence'] is num)
+          ? (m['seriesSequence'] as num).toDouble()
+          : (m['seriesSequence'] is String ? double.tryParse((m['seriesSequence'] as String)) : null),
+      collection: m['collection'] as String?,
+      collectionSequence: (m['collectionSequence'] is num)
+          ? (m['collectionSequence'] as num).toDouble()
+          : (m['collectionSequence'] is String ? double.tryParse((m['collectionSequence'] as String)) : null),
+      mediaKind: m['mediaKind'] as String?,
+      isAudioBook: computedIsAudio,
+      libraryId: m['libraryId'] as String?,
+    );
   }
 
   /// Get server status information including version
@@ -1681,17 +1794,16 @@ class BooksRepository {
       }
     } catch (_) {}
 
-    // Fall back to page-based (API uses 0-based page indexing)
+    // Fall back to page-based (API uses 1-based page indexing)
     final page = (offset ~/ limit) + 1;
-    final pageIndex = page > 0 ? page - 1 : 0;
-    final basePage = '/api/libraries/$libId/items?limit=$limit&page=$pageIndex&sort=$sort';
+    final basePage = '/api/libraries/$libId/items?limit=$limit&page=$page&sort=$sort';
     final pathPage = (encodedQ != null)
         ? '$basePage&q=$encodedQ$tokenQS'
         : '$basePage$tokenQS';
     final etagKey = _etagPrefsKey(sort, query);
     final cachedEtag = _prefs.getString(etagKey);
     final headers = <String, String>{};
-    if (cachedEtag != null && pageIndex == 0) {
+    if (cachedEtag != null && page == 1) {
       headers['If-None-Match'] = cachedEtag;
     }
     List<Book> pageBooks = await requestAndParse(pathPage, extraHeaders: headers);
@@ -2032,9 +2144,6 @@ class BooksRepository {
       await _db?.close();
     } catch (_) {}
     _db = null;
-    if (!_dbChangeCtrl.isClosed) {
-      await _dbChangeCtrl.close();
-    }
   }
 }
 

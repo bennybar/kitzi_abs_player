@@ -307,7 +307,11 @@ class DownloadsRepository {
   }
 
   // === Download plan (no sessions) ===
-  Future<List<_DlTrack>> _ensureDownloadPlan(String libraryItemId, {String? episodeId}) async {
+  Future<List<_DlTrack>> _ensureDownloadPlan(
+    String libraryItemId, {
+    String? episodeId,
+    bool allowSessionFallback = true,
+  }) async {
     final existing = _downloadPlanByItem[libraryItemId];
     if (existing != null && existing.isNotEmpty) return existing;
 
@@ -434,7 +438,7 @@ class DownloadsRepository {
       }
 
       // Fallback: open a single session to derive fileIds from track URLs, then close it
-      if (tracks.isEmpty) {
+      if (tracks.isEmpty && allowSessionFallback) {
         try {
           final open = await _playback.openSessionAndGetTracks(libraryItemId, episodeId: episodeId);
           final sessionId = open.sessionId;
@@ -475,8 +479,16 @@ class DownloadsRepository {
     }
   }
 
-  Future<int> _getTotalTracksWithoutSession(String libraryItemId, {String? episodeId}) async {
-    final plan = await _ensureDownloadPlan(libraryItemId, episodeId: episodeId);
+  Future<int> _getTotalTracksWithoutSession(
+    String libraryItemId, {
+    String? episodeId,
+    bool allowSessionFallback = true,
+  }) async {
+    final plan = await _ensureDownloadPlan(
+      libraryItemId,
+      episodeId: episodeId,
+      allowSessionFallback: allowSessionFallback,
+    );
     return plan.length;
   }
 
@@ -862,6 +874,53 @@ class DownloadsRepository {
     } catch (_) {}
   }
 
+  /// Completely wipe all download metadata and internal caches (used on logout).
+  Future<void> wipeAllData() async {
+    try {
+      final records = await _getAllRecordsCached(forceRefresh: true);
+      for (final r in records) {
+        try {
+          await FileDownloader().database.deleteRecordWithId(r.taskId);
+          if (records.length > 1) {
+            await Future.delayed(const Duration(milliseconds: 5));
+          }
+        } catch (_) {}
+      }
+    } catch (_) {}
+    _cachedAllRecords = null;
+    _cacheTimestamp = null;
+
+    _globalDownloadQueue.clear();
+    _itemsInGlobalQueue.clear();
+    _inFlightItems.clear();
+    _pendingQueuedUntil.clear();
+    _activeItems.clear();
+    _uiActive.clear();
+    _downloadPlanByItem.clear();
+    _blockedItems.clear();
+    await _persistBlockedItems();
+
+    for (final timer in _progressNotificationTimers.values) {
+      timer.cancel();
+    }
+    _progressNotificationTimers.clear();
+    _progressNotificationTitles.clear();
+    _downloadSessionByItem.clear();
+
+    // Notify listeners that items have been cleared
+    for (final entry in _itemCtrls.entries) {
+      if (!entry.value.isClosed) {
+        entry.value.add(ItemProgress(
+          libraryItemId: entry.key,
+          status: 'none',
+          progress: 0,
+          totalTasks: 0,
+          completed: 0,
+        ));
+      }
+    }
+  }
+
   Future<List<TaskRecord>> listAll() async {
     return await _getAllRecordsCached();
   }
@@ -1081,10 +1140,10 @@ class DownloadsRepository {
     // First check if local files exist - this is the most reliable indicator
     final hasLocal = await hasLocalDownloads(libraryItemId);
     final recs = await _recordsForItem(libraryItemId);
-    int totalTracks = await _getTotalTracksWithoutSession(libraryItemId);
-    if (totalTracks == 0) {
-      try { totalTracks = await _playback.getTotalTrackCount(libraryItemId); } catch (_) {}
-    }
+    int totalTracks = await _getTotalTracksWithoutSession(
+      libraryItemId,
+      allowSessionFallback: false,
+    );
     final completedLocal = await _countLocalFiles(libraryItemId);
 
     // Determine per-file running progress using live cache for stability

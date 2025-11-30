@@ -865,6 +865,25 @@ class _SettingsPageState extends State<SettingsPage> {
               icon: const Icon(Icons.logout_rounded),
               label: const Text('Log out'),
               onPressed: () async {
+                final confirmed = await showDialog<bool>(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text('Log out?'),
+                    content: const Text('This will remove all downloads, history, and cached data from this device.'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        child: const Text('Cancel'),
+                      ),
+                      FilledButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        child: const Text('Log out'),
+                      ),
+                    ],
+                  ),
+                );
+                if (confirmed != true) return;
+
                 final auth = services.auth;
                 try {
                   await auth.logout();
@@ -891,6 +910,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 try {
                   // Cancel all downloads and delete all local files
                   await services.downloads.cancelAll();
+                  await services.downloads.wipeAllData();
                 } catch (_) {}
                 try {
                   // Delete downloads root directory

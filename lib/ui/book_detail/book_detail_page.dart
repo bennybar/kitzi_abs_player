@@ -592,17 +592,8 @@ class _BookDetailPageState extends State<BookDetailPage> {
                 // Layout: header and actions stay static; description area scrolls independently.
                 return Column(
                   children: [
-                    if (!_kickedResolve) ...[
-                      // Kick best-effort resolves once when page builds with data
-                      FutureBuilder<void>(
-                        future: () async {
-                          _kickedResolve = true;
-                          await _resolveDurationIfNeeded(b, playbackRepo);
-                          await _resolveSizeIfNeeded(context, b);
-                        }(),
-                        builder: (_, __) => const SizedBox.shrink(),
-                      ),
-                    ],
+                    // Removed automatic duration/size resolution to prevent unnecessary session opening
+                    // Duration and size will be resolved only when user explicitly requests it
                     // Cover, title, and author/narrator in one row
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
