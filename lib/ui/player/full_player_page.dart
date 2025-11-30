@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -53,41 +54,9 @@ class FullPlayerPage extends StatefulWidget {
     _isOpen = true;
     FullPlayerOverlay.isVisible.value = true;
     try {
-      await Navigator.of(context).push(PageRouteBuilder(
-        pageBuilder: (_, __, ___) => const FullPlayerPage(),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          final screenHeight = MediaQuery.of(context).size.height;
-          final miniPlayerOffset = 128 / screenHeight;
-
-          final entranceCurve = CurvedAnimation(
-            parent: animation,
-            curve: Curves.easeOutCubic,
-            reverseCurve: Curves.easeInCubic,
-          );
-
-          final slideAnimation = Tween<Offset>(
-            begin: Offset(0, 1.0 - miniPlayerOffset),
-            end: Offset.zero,
-          ).animate(entranceCurve);
-
-          final fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(entranceCurve);
-          final scaleAnimation = Tween<double>(begin: 0.94, end: 1.0).animate(entranceCurve);
-
-          return FadeTransition(
-            opacity: fadeAnimation,
-            child: SlideTransition(
-              position: slideAnimation,
-              child: ScaleTransition(
-                scale: scaleAnimation,
-                child: child,
-              ),
-            ),
-          );
-        },
-        transitionDuration: const Duration(milliseconds: 420),
-        reverseTransitionDuration: const Duration(milliseconds: 320),
-        opaque: true,
-        fullscreenDialog: false,
+      await Navigator.of(context).push(CupertinoPageRoute<void>(
+        builder: (_) => const FullPlayerPage(),
+        fullscreenDialog: true,
       ));
     } finally {
       _isOpen = false;
