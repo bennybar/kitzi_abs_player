@@ -1608,9 +1608,22 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                 initialData: false,
                                 builder: (_, completionSnap) {
                                   final isCompleted = completionSnap.data ?? false;
+        final menuBg = gradientEnabled
+            ? Color.alphaBlend(
+                (_palettePrimary ?? cs.primary).withOpacity(0.1),
+                cs.surface,
+              )
+            : cs.surface;
                                   return PopupMenuButton<_TopMenuAction>(
                                     tooltip: 'More options',
                                     icon: const Icon(Icons.more_vert_rounded),
+                                    color: menuBg,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(18),
+                                      side: BorderSide(
+                                        color: cs.outlineVariant.withOpacity(0.2),
+                                      ),
+                                    ),
                                     onSelected: (action) {
                                       switch (action) {
                                         case _TopMenuAction.toggleCompletion:
@@ -1638,21 +1651,51 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                     itemBuilder: (context) => [
                                       PopupMenuItem(
                                         value: _TopMenuAction.toggleCompletion,
-                                        child: Text(
-                                          isCompleted ? 'Mark as unfinished' : 'Mark as finished',
+                                        child: Row(
+                                          children: [
+                                            Icon(
+                                              isCompleted ? Icons.undo_rounded : Icons.check_rounded,
+                                              size: 18,
+                                              color: cs.primary,
+                                            ),
+                                            const SizedBox(width: 12),
+                                            Expanded(
+                                              child: Text(
+                                                isCompleted ? 'Mark as unfinished' : 'Mark as finished',
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ),
                                       PopupMenuItem(
                                         value: _TopMenuAction.toggleGradient,
-                                        child: Text(
-                                          gradientEnabled
-                                              ? 'Disable gradient background'
-                                              : 'Enable gradient background',
+                                        child: Row(
+                                          children: [
+                                            Icon(
+                                              gradientEnabled ? Icons.gradient : Icons.gradient_outlined,
+                                              size: 18,
+                                              color: cs.primary,
+                                            ),
+                                            const SizedBox(width: 12),
+                                            Expanded(
+                                              child: Text(
+                                                gradientEnabled
+                                                    ? 'Disable gradient background'
+                                                    : 'Enable gradient background',
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ),
-                                      const PopupMenuItem(
+                                      PopupMenuItem(
                                         value: _TopMenuAction.cast,
-                                        child: Text('Cast device'),
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.cast_rounded, size: 18, color: cs.primary),
+                                            const SizedBox(width: 12),
+                                            const Expanded(child: Text('Cast device')),
+                                          ],
+                                        ),
                                       ),
                                     ],
                                   );
