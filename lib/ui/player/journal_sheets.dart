@@ -120,12 +120,14 @@ class _BookmarksSheetState extends State<BookmarksSheet> {
   @override
   void initState() {
     super.initState();
-    _future = PlaybackJournalService.instance.bookmarksFor(widget.libraryItemId);
+    _future = PlaybackJournalService.instance
+        .bookmarksFor(widget.libraryItemId, forceRemote: true);
   }
 
   Future<void> _refresh() async {
     setState(() {
-      _future = PlaybackJournalService.instance.bookmarksFor(widget.libraryItemId);
+      _future = PlaybackJournalService.instance
+          .bookmarksFor(widget.libraryItemId, forceRemote: true);
     });
   }
 
@@ -169,11 +171,24 @@ class _BookmarksSheetState extends State<BookmarksSheet> {
   }
 
   Future<void> _removeBookmark(BuildContext context, BookmarkEntry entry) async {
-    final localId = entry.localId;
-    if (localId == null) return;
-    await PlaybackJournalService.instance.deleteBookmark(localId);
-    if (mounted) {
-      await _refresh();
+    try {
+      await PlaybackJournalService.instance.deleteBookmark(
+        libraryItemId: entry.libraryItemId,
+        remoteTimeSeconds: entry.remoteTimeSeconds,
+        remoteTimeKey: entry.remoteTimeKey,
+        localId: entry.localId,
+        fallbackPositionMs: entry.positionMs,
+      );
+      if (mounted) {
+        await _refresh();
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to delete bookmark: $e'),
+        ),
+      );
     }
   }
 

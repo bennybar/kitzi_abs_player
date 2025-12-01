@@ -1888,12 +1888,14 @@ class _BookmarksPreviewState extends State<_BookmarksPreview> {
   @override
   void initState() {
     super.initState();
-    _future = PlaybackJournalService.instance.bookmarksFor(widget.book.id);
+    _future = PlaybackJournalService.instance
+        .bookmarksFor(widget.book.id, forceRemote: true);
   }
 
   Future<void> _refresh() async {
     setState(() {
-      _future = PlaybackJournalService.instance.bookmarksFor(widget.book.id);
+      _future = PlaybackJournalService.instance
+          .bookmarksFor(widget.book.id, forceRemote: true);
     });
   }
 
