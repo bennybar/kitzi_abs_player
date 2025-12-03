@@ -1892,20 +1892,37 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                             borderRadius: BorderRadius.circular(24),
                                             child: AspectRatio(
                                               aspectRatio: 1,
-                                              child: Image.network(
-                                                np.coverUrl ?? '',
-                                                fit: BoxFit.cover,
-                                                gaplessPlayback: true,
-                                                filterQuality: FilterQuality.low,
-                                                errorBuilder: (_, __, ___) => Container(
-                                                  color: cs.surfaceContainerHighest,
-                                                  child: Icon(
-                                                    Icons.menu_book_outlined,
-                                                    size: 88,
-                                                    color: cs.onSurfaceVariant,
-                                                  ),
-                                                ),
-                                              ),
+                                              child: np.coverUrl != null && np.coverUrl!.isNotEmpty
+                                                  ? CachedNetworkImage(
+                                                      imageUrl: np.coverUrl!,
+                                                      fit: BoxFit.cover,
+                                                      fadeInDuration: const Duration(milliseconds: 200),
+                                                      fadeOutDuration: const Duration(milliseconds: 100),
+                                                      placeholder: (_, __) => Container(
+                                                        color: cs.surfaceContainerHighest,
+                                                        child: Icon(
+                                                          Icons.menu_book_outlined,
+                                                          size: 88,
+                                                          color: cs.onSurfaceVariant,
+                                                        ),
+                                                      ),
+                                                      errorWidget: (_, __, ___) => Container(
+                                                        color: cs.surfaceContainerHighest,
+                                                        child: Icon(
+                                                          Icons.menu_book_outlined,
+                                                          size: 88,
+                                                          color: cs.onSurfaceVariant,
+                                                        ),
+                                                      ),
+                                                    )
+                                                  : Container(
+                                                      color: cs.surfaceContainerHighest,
+                                                      child: Icon(
+                                                        Icons.menu_book_outlined,
+                                                        size: 88,
+                                                        color: cs.onSurfaceVariant,
+                                                      ),
+                                                    ),
                                             ),
                                           ),
                                         ),
