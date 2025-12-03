@@ -56,10 +56,7 @@ class FullPlayerPage extends StatefulWidget {
     _isOpen = true;
     FullPlayerOverlay.isVisible.value = true;
     try {
-      await Navigator.of(context).push(CupertinoPageRoute<void>(
-        builder: (_) => const FullPlayerPage(),
-        fullscreenDialog: true,
-      ));
+      await Navigator.of(context).push(_CupertinoFullPlayerRoute());
     } finally {
       _isOpen = false;
       FullPlayerOverlay.isVisible.value = false;
@@ -2787,5 +2784,74 @@ class _ControlButton extends StatelessWidget {
     );
 
     return tooltip == null ? button : Tooltip(message: tooltip!, child: button);
+  }
+}
+
+class _CupertinoFullPlayerRoute extends PageRoute<void> {
+  _CupertinoFullPlayerRoute();
+
+  @override
+  Duration get transitionDuration => const Duration(milliseconds: 480);
+
+  @override
+  Duration get reverseTransitionDuration => const Duration(milliseconds: 360);
+
+  @override
+  bool get opaque => true;
+
+  @override
+  bool get barrierDismissible => false;
+
+  @override
+  Color? get barrierColor => null;
+
+  @override
+  String? get barrierLabel => null;
+
+  @override
+  bool get maintainState => true;
+
+  @override
+  Widget buildPage(BuildContext context, Animation<double> animation, Animation<double> secondaryAnimation) {
+    return const FullPlayerPage();
+  }
+
+  @override
+  Widget buildTransitions(
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    final forwardCurve = CurvedAnimation(
+      parent: animation,
+      curve: const Cubic(0.08, 0.9, 0.05, 1.0),
+      reverseCurve: const Cubic(0.3, 0.0, 0.5, 0.9),
+    );
+
+    final view = MediaQuery.of(context);
+    final chromeHeight = 68.0 + 72.0 + view.padding.bottom;
+    final slideStart = (chromeHeight / view.size.height).clamp(0.05, 0.85);
+
+    final slide = Tween<Offset>(
+      begin: Offset(0, slideStart),
+      end: Offset.zero,
+    ).chain(CurveTween(curve: Curves.easeInOutCubic)).animate(forwardCurve);
+
+    final fade = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: animation,
+        curve: const Interval(0.04, 1.0, curve: Curves.easeOutQuad),
+        reverseCurve: const Interval(0.0, 0.8, curve: Curves.easeInQuad),
+      ),
+    );
+
+    return FadeTransition(
+      opacity: fade,
+      child: SlideTransition(
+        position: slide,
+        child: child,
+      ),
+    );
   }
 }
