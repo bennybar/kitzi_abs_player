@@ -58,29 +58,45 @@ class FullPlayerPage extends StatefulWidget {
       await Navigator.of(context).push(PageRouteBuilder<void>(
         pageBuilder: (_, __, ___) => const FullPlayerPage(),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          // Material Design 3 emphasized easing - optimized for 120Hz displays
-          const emphasizedDecelerate = Cubic(0.05, 0.7, 0.1, 1.0);
-          const emphasizedAccelerate = Cubic(0.3, 0.0, 0.8, 0.15);
-          
-          final curve = CurvedAnimation(
+          const slideIn = Cubic(0.05, 0.7, 0.1, 1.0); // emphasized decelerate
+          const slideOut = Cubic(0.3, 0.0, 0.8, 0.15); // emphasized accelerate
+
+          final primaryCurve = CurvedAnimation(
             parent: animation,
-            curve: emphasizedDecelerate,
-            reverseCurve: emphasizedAccelerate,
+            curve: slideIn,
+            reverseCurve: slideOut,
+          );
+          final fadeCurve = CurvedAnimation(
+            parent: animation,
+            curve: const Interval(0.0, 0.9, curve: Curves.easeOutQuad),
+            reverseCurve: const Interval(0.0, 1.0, curve: Curves.easeInQuad),
+          );
+          final scaleCurve = CurvedAnimation(
+            parent: animation,
+            curve: const Interval(0.0, 0.7, curve: Curves.easeOutCubic),
+            reverseCurve: const Interval(0.0, 1.0, curve: Curves.easeInCubic),
           );
 
-          // Calculate mini player position (128px from bottom: 60px nav + 68px mini)
-          final screenHeight = MediaQuery.of(context).size.height;
-          final miniPlayerOffset = 128 / screenHeight;
+          // Calculate mini player position (nav bar + mini height + safe bottom)
+          final view = MediaQuery.of(context);
+          final miniHeight = 68.0;
+          final navHeight = 72.0;
+          final totalOffsetPx = miniHeight + navHeight + view.padding.bottom;
+          final slideStart = (totalOffsetPx / view.size.height).clamp(0.08, 0.9);
 
-          // Combined slide and fade for ultra-smooth transition
+          final slideTween = Tween<Offset>(
+            begin: Offset(0, slideStart),
+            end: Offset.zero,
+          ).chain(CurveTween(curve: Curves.easeOutCubic));
+
           return FadeTransition(
-            opacity: curve,
+            opacity: fadeCurve,
             child: SlideTransition(
-              position: Tween<Offset>(
-                begin: Offset(0, 1.0 - miniPlayerOffset), // Start from mini player position
-                end: Offset.zero,
-              ).animate(curve),
-              child: child,
+              position: slideTween.animate(primaryCurve),
+              child: ScaleTransition(
+                scale: Tween<double>(begin: 0.975, end: 1.0).animate(scaleCurve),
+                child: child,
+              ),
             ),
           );
         },
