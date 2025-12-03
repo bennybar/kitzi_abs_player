@@ -1,6 +1,7 @@
 // lib/ui/player/full_player_page.dart
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ui' show Rect;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
@@ -62,6 +63,10 @@ class FullPlayerPage extends StatefulWidget {
       FullPlayerOverlay.isVisible.value = false;
     }
   }
+
+  static String heroTagForItem(String libraryItemId) => 'fullPlayerCover_$libraryItemId';
+
+  static Tween<Rect?> heroRectTween(Rect? begin, Rect? end) => MaterialRectArcTween(begin: begin, end: end);
 
   @override
   State<FullPlayerPage> createState() => _FullPlayerPageState();
@@ -1885,21 +1890,25 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                                       ),
                                                     ],
                                                   ),
-                                                  child: ClipRRect(
-                                                    borderRadius: BorderRadius.circular(24),
-                                                    child: AspectRatio(
-                                                      aspectRatio: 1,
-                                                      child: Image.network(
-                                                        np.coverUrl ?? '',
-                                                        fit: BoxFit.cover,
-                                                        gaplessPlayback: true,
-                                                        filterQuality: FilterQuality.low,
-                                                        errorBuilder: (_, __, ___) => Container(
-                                                          color: cs.surfaceContainerHighest,
-                                                          child: Icon(
-                                                            Icons.menu_book_outlined,
-                                                            size: 88,
-                                                            color: cs.onSurfaceVariant,
+                                                  child: Hero(
+                                                    tag: FullPlayerPage.heroTagForItem(np.libraryItemId),
+                                                    createRectTween: FullPlayerPage.heroRectTween,
+                                                    child: ClipRRect(
+                                                      borderRadius: BorderRadius.circular(24),
+                                                      child: AspectRatio(
+                                                        aspectRatio: 1,
+                                                        child: Image.network(
+                                                          np.coverUrl ?? '',
+                                                          fit: BoxFit.cover,
+                                                          gaplessPlayback: true,
+                                                          filterQuality: FilterQuality.low,
+                                                          errorBuilder: (_, __, ___) => Container(
+                                                            color: cs.surfaceContainerHighest,
+                                                            child: Icon(
+                                                              Icons.menu_book_outlined,
+                                                              size: 88,
+                                                              color: cs.onSurfaceVariant,
+                                                            ),
                                                           ),
                                                         ),
                                                       ),
@@ -2823,35 +2832,59 @@ class _CupertinoFullPlayerRoute extends PageRoute<void> {
     Animation<double> secondaryAnimation,
     Widget child,
   ) {
-    final forwardCurve = CurvedAnimation(
+    final eased = CurvedAnimation(
       parent: animation,
-      curve: const Cubic(0.08, 0.9, 0.05, 1.0),
-      reverseCurve: const Cubic(0.3, 0.0, 0.5, 0.9),
+      curve: const Cubic(0.08, 0.8, 0.2, 1.0),
+      reverseCurve: const Cubic(0.2, 0.0, 0.2, 1.0),
     );
-
-    final view = MediaQuery.of(context);
-    final chromeHeight = 68.0 + 72.0 + view.padding.bottom;
-    final slideStart = (chromeHeight / view.size.height).clamp(0.05, 0.85);
 
     final slide = Tween<Offset>(
-      begin: Offset(0, slideStart),
+      begin: const Offset(0, 0.08),
       end: Offset.zero,
-    ).chain(CurveTween(curve: Curves.easeInOutCubic)).animate(forwardCurve);
+    ).animate(eased);
 
-    final fade = Tween<double>(begin: 0.0, end: 1.0).animate(
+    final scale = Tween<double>(
+      begin: 0.94,
+      end: 1.0,
+    ).animate(eased);
+
+    final contentFade = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: animation,
-        curve: const Interval(0.04, 1.0, curve: Curves.easeOutQuad),
-        reverseCurve: const Interval(0.0, 0.8, curve: Curves.easeInQuad),
+        curve: const Interval(0.05, 1.0, curve: Curves.easeOut),
+        reverseCurve: const Interval(0.0, 0.9, curve: Curves.easeIn),
       ),
     );
 
-    return FadeTransition(
-      opacity: fade,
-      child: SlideTransition(
-        position: slide,
-        child: child,
+    final scrimFade = Tween<double>(begin: 0.0, end: 0.65).animate(
+      CurvedAnimation(
+        parent: animation,
+        curve: const Interval(0.0, 0.5, curve: Curves.easeOut),
+        reverseCurve: const Interval(0.0, 0.4, curve: Curves.easeIn),
       ),
+    );
+
+    return Stack(
+      children: [
+        FadeTransition(
+          opacity: scrimFade,
+          child: const DecoratedBox(
+            decoration: BoxDecoration(
+              color: Colors.black,
+            ),
+          ),
+        ),
+        SlideTransition(
+          position: slide,
+          child: ScaleTransition(
+            scale: scale,
+            child: FadeTransition(
+              opacity: contentFade,
+              child: child,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

@@ -97,16 +97,22 @@ class _MiniPlayerState extends State<MiniPlayer> {
                   return const SizedBox.shrink();
                 }
 
-              unawaited(_maybeUpdatePalette(np.coverUrl));
+                unawaited(_maybeUpdatePalette(np.coverUrl));
+
+                final heroTag = FullPlayerPage.heroTagForItem(np.libraryItemId);
 
                 return Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   child: Row(
                     children: [
                       // Album art with Hero (YouTube Music style - square, slightly rounded)
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
-                        child: _MiniCover(url: np.coverUrl, size: widget.height - 16),
+                      Hero(
+                        tag: heroTag,
+                        createRectTween: FullPlayerPage.heroRectTween,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: _MiniCover(url: np.coverUrl, size: widget.height - 16),
+                        ),
                       ),
                       const SizedBox(width: 12),
 
