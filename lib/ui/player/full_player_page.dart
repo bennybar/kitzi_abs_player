@@ -20,6 +20,28 @@ import 'full_player_overlay.dart';
 import '../../core/playback_journal_service.dart';
 import 'journal_sheets.dart';
 
+/// Custom CupertinoPageRoute with customizable transition durations
+class CustomCupertinoPageRoute<T> extends CupertinoPageRoute<T> {
+  CustomCupertinoPageRoute({
+    required super.builder,
+    super.settings,
+    super.fullscreenDialog,
+    this.transitionDurationOverride,
+    this.reverseTransitionDurationOverride,
+  });
+
+  final Duration? transitionDurationOverride;
+  final Duration? reverseTransitionDurationOverride;
+
+  @override
+  Duration get transitionDuration => 
+      transitionDurationOverride ?? const Duration(milliseconds: 400);
+
+  @override
+  Duration get reverseTransitionDuration => 
+      reverseTransitionDurationOverride ?? const Duration(milliseconds: 350);
+}
+
 enum _TopMenuAction { toggleCompletion, toggleGradient, cast, playHistory, bookmarks }
 
 /// Custom slider track shape that allows tighter horizontal padding than the
@@ -56,9 +78,11 @@ class FullPlayerPage extends StatefulWidget {
     _isOpen = true;
     FullPlayerOverlay.isVisible.value = true;
     try {
-      await Navigator.of(context).push(CupertinoPageRoute<void>(
+      await Navigator.of(context).push(CustomCupertinoPageRoute<void>(
         builder: (_) => const FullPlayerPage(),
         fullscreenDialog: true,
+        transitionDurationOverride: const Duration(milliseconds: 250), // Smooth appearance
+        reverseTransitionDurationOverride: const Duration(milliseconds: 300), // Quick dismiss
       ));
     } finally {
       _isOpen = false;
