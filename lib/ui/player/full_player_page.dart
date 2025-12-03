@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -55,7 +56,10 @@ class FullPlayerPage extends StatefulWidget {
     _isOpen = true;
     FullPlayerOverlay.isVisible.value = true;
     try {
-      await Navigator.of(context).push(_FullPlayerRoute());
+      await Navigator.of(context).push(CupertinoPageRoute<void>(
+        builder: (_) => const FullPlayerPage(),
+        fullscreenDialog: true,
+      ));
     } finally {
       _isOpen = false;
       FullPlayerOverlay.isVisible.value = false;
@@ -697,12 +701,12 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
   }
 
   BoxDecoration _playerBackgroundDecoration(
-    bool gradientEnabled,
-    ColorScheme cs,
-    Brightness brightness, {
-    Color? palettePrimary,
-    Color? paletteSecondary,
-  }) {
+      bool gradientEnabled,
+      ColorScheme cs,
+      Brightness brightness, {
+        Color? palettePrimary,
+        Color? paletteSecondary,
+      }) {
     if (!gradientEnabled) {
       return BoxDecoration(color: cs.surface);
     }
@@ -710,15 +714,15 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     final secondary = paletteSecondary ?? cs.secondary;
     final colors = brightness == Brightness.dark
         ? [
-            Color.alphaBlend(primary.withOpacity(0.4), cs.surface),
-            Color.alphaBlend(secondary.withOpacity(0.28), cs.surfaceContainerHighest),
-            Colors.black,
-          ]
+      Color.alphaBlend(primary.withOpacity(0.4), cs.surface),
+      Color.alphaBlend(secondary.withOpacity(0.28), cs.surfaceContainerHighest),
+      Colors.black,
+    ]
         : [
-            Color.alphaBlend(primary.withOpacity(0.48), cs.surface),
-            Color.alphaBlend(secondary.withOpacity(0.35), cs.surface),
-            Colors.white,
-          ];
+      Color.alphaBlend(primary.withOpacity(0.48), cs.surface),
+      Color.alphaBlend(secondary.withOpacity(0.35), cs.surface),
+      Colors.white,
+    ];
     return BoxDecoration(
       gradient: LinearGradient(
         begin: Alignment.topCenter,
@@ -749,13 +753,13 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     final safeCurrent = currentChapter.clamp(1, totalChapters);
 
     Widget _line(double width) => Container(
-          width: width,
-          height: 3,
-          decoration: BoxDecoration(
-            color: baseColor,
-            borderRadius: BorderRadius.circular(2),
-          ),
-        );
+      width: width,
+      height: 3,
+      decoration: BoxDecoration(
+        color: baseColor,
+        borderRadius: BorderRadius.circular(2),
+      ),
+    );
 
     return Stack(
       clipBehavior: Clip.none,
@@ -787,9 +791,9 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
               child: Text(
                 '$safeCurrent/$totalChapters',
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: cs.onPrimary,
-                      fontWeight: FontWeight.w700,
-                    ),
+                  color: cs.onPrimary,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           ),
@@ -808,7 +812,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     final playback = ServicesScope.of(context).services.playback;
     return playback.nowPlayingStream.asyncExpand((np) {
       if (np == null) return Stream.value(false);
-      
+
       // Use the new completion status stream from PlaybackRepository
       return playback.getBookCompletionStream(np.libraryItemId);
     });
@@ -820,7 +824,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     if (np == null) return;
 
     final newCompletionStatus = !isCurrentlyCompleted;
-    
+
     // Show confirmation dialog(s)
     Duration? unfinishChoice; // null => cancel, 0 => restart, >0 => resume
     if (newCompletionStatus) {
@@ -843,24 +847,24 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     try {
       // Log the request for troubleshooting
       // Toggling book completion
-      
+
       // Send the request to server
       double? overrideSeconds;
       if (!newCompletionStatus && unfinishChoice != null) {
         overrideSeconds = unfinishChoice.inSeconds.toDouble();
       }
       await _markBookAsFinished(np.libraryItemId, newCompletionStatus, overrideCurrentTimeSeconds: overrideSeconds);
-      
+
       // Update the global completion status cache and notify all listeners
       await playback.updateBookCompletionStatus(np.libraryItemId, newCompletionStatus);
-      
+
       // If marking as finished, stop playback and navigate to book details
       if (newCompletionStatus) {
         // Book marked as finished, stopping playback
-        
+
         // Stop the current playback
         await playback.stop();
-        
+
         // Show feedback to user
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -870,7 +874,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
             ),
           );
         }
-        
+
         // Navigate back to book details page
         if (mounted) {
           Navigator.of(context).pop(); // Close the full player
@@ -909,7 +913,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
             // Error seeking to saved position
           }
         }
-        
+
         // Show feedback for unmarking as finished
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -920,10 +924,10 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
           );
         }
       }
-      
+
     } catch (e) {
       // Error toggling completion
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1053,7 +1057,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
   Future<bool> _showMarkAsFinishedDialog(BuildContext context) async {
     final cs = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
-    
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -1080,7 +1084,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
         ],
       ),
     );
-    
+
     return confirmed ?? false;
   }
 
@@ -1090,14 +1094,14 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     final playback = ServicesScope.of(context).services.playback;
     final np = playback.nowPlaying;
     if (np == null) return null;
-    
+
     // Get current position from server (more reliable than local player position)
     final currentPositionSeconds = await playback.fetchServerProgress(np.libraryItemId);
-    final currentPosition = currentPositionSeconds != null 
+    final currentPosition = currentPositionSeconds != null
         ? Duration(seconds: currentPositionSeconds.round())
         : playback.player.position;
     final positionText = _formatDuration(currentPosition);
-    
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -1206,7 +1210,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     final hours = duration.inHours;
     final minutes = duration.inMinutes.remainder(60);
     final seconds = duration.inSeconds.remainder(60);
-    
+
     if (hours > 0) {
       return '${hours}h ${minutes}m ${seconds}s';
     } else if (minutes > 0) {
@@ -1219,38 +1223,38 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
   Future<void> _markBookAsFinished(String libraryItemId, bool finished, {double? overrideCurrentTimeSeconds}) async {
     final playback = ServicesScope.of(context).services.playback;
     final api = ServicesScope.of(context).services.auth.api;
-    
+
     // Prepare the request body
     Map<String, dynamic> requestBody = {'isFinished': finished};
-    
-         // If unfinishing, include current progress to preserve position
-         if (!finished) {
-           // Get position from server (more reliable than local player position)
-           double? currentPositionSeconds = await playback.fetchServerProgress(libraryItemId);
-           if (overrideCurrentTimeSeconds != null) {
-             currentPositionSeconds = overrideCurrentTimeSeconds;
-           }
-           final currentTimeSeconds = currentPositionSeconds ?? playback.player.position.inSeconds.toDouble();
 
-           if (currentTimeSeconds > 0) {
-             requestBody['currentTime'] = currentTimeSeconds;
-             
-             // Include duration and progress like regular progress updates
-             final totalDuration = playback.totalBookDuration;
-             if (totalDuration != null && totalDuration.inSeconds > 0) {
-               final totalSeconds = totalDuration.inSeconds.toDouble();
-               requestBody['duration'] = totalSeconds;
-               requestBody['progress'] = (currentTimeSeconds / totalSeconds).clamp(0.0, 1.0);
-               // Including full progress
-             } else {
-               // Including currentTime to preserve position
-             }
-           }
-         }
-    
+    // If unfinishing, include current progress to preserve position
+    if (!finished) {
+      // Get position from server (more reliable than local player position)
+      double? currentPositionSeconds = await playback.fetchServerProgress(libraryItemId);
+      if (overrideCurrentTimeSeconds != null) {
+        currentPositionSeconds = overrideCurrentTimeSeconds;
+      }
+      final currentTimeSeconds = currentPositionSeconds ?? playback.player.position.inSeconds.toDouble();
+
+      if (currentTimeSeconds > 0) {
+        requestBody['currentTime'] = currentTimeSeconds;
+
+        // Include duration and progress like regular progress updates
+        final totalDuration = playback.totalBookDuration;
+        if (totalDuration != null && totalDuration.inSeconds > 0) {
+          final totalSeconds = totalDuration.inSeconds.toDouble();
+          requestBody['duration'] = totalSeconds;
+          requestBody['progress'] = (currentTimeSeconds / totalSeconds).clamp(0.0, 1.0);
+          // Including full progress
+        } else {
+          // Including currentTime to preserve position
+        }
+      }
+    }
+
     // Log the API request for troubleshooting
     // API Request for updating progress
-    
+
     try {
       final response = await api.request(
         'PATCH',
@@ -1258,9 +1262,9 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(requestBody),
       );
-      
+
       // API Response received
-      
+
       if (response.statusCode == 200 || response.statusCode == 204) {
         // Successfully updated book completion status
       } else {
@@ -1289,7 +1293,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     final globalTotal = playback.totalBookDuration;
     final useGlobal = _dualProgressEnabled && globalTotal != null && globalTotal > Duration.zero;
     final globalPos = useGlobal ? (playback.globalBookPosition ?? Duration.zero) : playback.player.position;
-    
+
     int currentIdx = 0;
     for (int i = 0; i < chapters.length; i++) {
       if (globalPos >= chapters[i].start) {
@@ -1324,122 +1328,122 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
         });
 
         return Container(
-              decoration: BoxDecoration(
-                color: Theme.of(ctx).colorScheme.surface,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.list_alt_rounded,
-                          color: Theme.of(ctx).colorScheme.primary,
-                        ),
-                        const SizedBox(width: 12),
-                        Text(
-                          'Chapters',
-                          style: Theme.of(ctx).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
+          decoration: BoxDecoration(
+            color: Theme.of(ctx).colorScheme.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.list_alt_rounded,
+                      color: Theme.of(ctx).colorScheme.primary,
                     ),
-                  ),
-                  Flexible(
-                    child: StreamBuilder<Duration>(
-                      stream: ServicesScope.of(context).services.playback.positionStream,
-                      initialData: ServicesScope.of(context).services.playback.player.position,
-                      builder: (_, posSnap) {
-                        final pos = posSnap.data ?? Duration.zero;
-                        final currentGlobalPos = useGlobal ? (playback.globalBookPosition ?? Duration.zero) : pos;
-                        int liveIdx = 0;
-                        for (int i = 0; i < chapters.length; i++) {
-                          if (currentGlobalPos >= chapters[i].start) {
-                            liveIdx = i;
-                          } else {
-                            break;
-                          }
-                        }
-                        return ListView.separated(
-                          controller: scrollController,
-                          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-                          itemCount: chapters.length,
-                          separatorBuilder: (_, __) => Divider(
-                            height: 1,
-                            color: Theme.of(ctx).colorScheme.outline.withOpacity(0.2),
+                    const SizedBox(width: 12),
+                    Text(
+                      'Chapters',
+                      style: Theme.of(ctx).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Flexible(
+                child: StreamBuilder<Duration>(
+                  stream: ServicesScope.of(context).services.playback.positionStream,
+                  initialData: ServicesScope.of(context).services.playback.player.position,
+                  builder: (_, posSnap) {
+                    final pos = posSnap.data ?? Duration.zero;
+                    final currentGlobalPos = useGlobal ? (playback.globalBookPosition ?? Duration.zero) : pos;
+                    int liveIdx = 0;
+                    for (int i = 0; i < chapters.length; i++) {
+                      if (currentGlobalPos >= chapters[i].start) {
+                        liveIdx = i;
+                      } else {
+                        break;
+                      }
+                    }
+                    return ListView.separated(
+                      controller: scrollController,
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                      itemCount: chapters.length,
+                      separatorBuilder: (_, __) => Divider(
+                        height: 1,
+                        color: Theme.of(ctx).colorScheme.outline.withOpacity(0.2),
+                      ),
+                      itemBuilder: (_, i) {
+                        final c = chapters[i];
+                        final isCurrent = i == liveIdx;
+                        return ListTile(
+                          dense: false,
+                          contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                          title: Text(
+                            c.title.isEmpty ? 'Chapter ${i + 1}' : c.title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(ctx).textTheme.bodyLarge?.copyWith(
+                              fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w500,
+                              color: isCurrent
+                                  ? Theme.of(ctx).colorScheme.primary
+                                  : Theme.of(ctx).colorScheme.onSurface,
+                            ),
                           ),
-                          itemBuilder: (_, i) {
-                            final c = chapters[i];
-                            final isCurrent = i == liveIdx;
-                            return ListTile(
-                              dense: false,
-                              contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                              title: Text(
-                                c.title.isEmpty ? 'Chapter ${i + 1}' : c.title,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(ctx).textTheme.bodyLarge?.copyWith(
-                                  fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w500,
+                          // Show raw time for debugging when long-pressing a row
+                          onLongPress: () {
+                            // Chapter tap
+                          },
+                          subtitle: Text(
+                            _fmt(c.start),
+                            style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
+                              color: isCurrent
+                                  ? Theme.of(ctx).colorScheme.primary
+                                  : Theme.of(ctx).colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                          leading: Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: isCurrent
+                                  ? Theme.of(ctx).colorScheme.primary
+                                  : Theme.of(ctx).colorScheme.primaryContainer,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Center(
+                              child: Text(
+                                '${i + 1}',
+                                style: Theme.of(ctx).textTheme.labelLarge?.copyWith(
                                   color: isCurrent
-                                      ? Theme.of(ctx).colorScheme.primary
-                                      : Theme.of(ctx).colorScheme.onSurface,
+                                      ? Theme.of(ctx).colorScheme.onPrimary
+                                      : Theme.of(ctx).colorScheme.onPrimaryContainer,
+                                  fontWeight: isCurrent ? FontWeight.w800 : FontWeight.w600,
                                 ),
                               ),
-                              // Show raw time for debugging when long-pressing a row
-                              onLongPress: () {
-                                // Chapter tap
-                              },
-                              subtitle: Text(
-                                _fmt(c.start),
-                                style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
-                                  color: isCurrent
-                                      ? Theme.of(ctx).colorScheme.primary
-                                      : Theme.of(ctx).colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                              leading: Container(
-                                width: 40,
-                                height: 40,
-                                decoration: BoxDecoration(
-                                  color: isCurrent
-                                      ? Theme.of(ctx).colorScheme.primary
-                                      : Theme.of(ctx).colorScheme.primaryContainer,
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Center(
-                                  child: Text(
-                                    '${i + 1}',
-                                    style: Theme.of(ctx).textTheme.labelLarge?.copyWith(
-                                      color: isCurrent
-                                          ? Theme.of(ctx).colorScheme.onPrimary
-                                          : Theme.of(ctx).colorScheme.onPrimaryContainer,
-                                      fontWeight: isCurrent ? FontWeight.w800 : FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              trailing: isCurrent
-                                  ? Icon(Icons.play_arrow_rounded,
-                                      color: Theme.of(ctx).colorScheme.primary)
-                                  : null,
-                              onTap: () async {
-                                SleepTimerService.instance.cancelChapterSleepIfActive();
-                                Navigator.of(ctx).pop();
-                                await ServicesScope.of(context).services.playback.seek(c.start, reportNow: true);
-                              },
-                            );
+                            ),
+                          ),
+                          trailing: isCurrent
+                              ? Icon(Icons.play_arrow_rounded,
+                              color: Theme.of(ctx).colorScheme.primary)
+                              : null,
+                          onTap: () async {
+                            SleepTimerService.instance.cancelChapterSleepIfActive();
+                            Navigator.of(ctx).pop();
+                            await ServicesScope.of(context).services.playback.seek(c.start, reportNow: true);
                           },
                         );
                       },
-                    ),
-                  ),
-                ],
+                    );
+                  },
+                ),
               ),
-            );
+            ],
+          ),
+        );
       },
     ).then((_) {
       // Dispose scroll controller when sheet is closed
@@ -1547,7 +1551,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                       padding: const EdgeInsets.only(top: 6),
                       child: Text(
                         'Stops playback when the current chapter ends. '
-                        'Changing chapters will cancel the sleep timer, but quick seek buttons will not.',
+                            'Changing chapters will cancel the sleep timer, but quick seek buttons will not.',
                         style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant),
                       ),
                     ),
@@ -1579,20 +1583,20 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                           onPressed: (selected == null && !eoc)
                               ? null
                               : () async {
-                                  var started = true;
-                                  if (eoc) {
-                                    started = timer.startSleepUntilChapterEnd();
-                                    if (!started) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text('Unable to start chapter sleep. Try again later.')),
-                                      );
-                                    }
-                                  } else if (selected != null) {
+                            var started = true;
+                            if (eoc) {
+                              started = timer.startSleepUntilChapterEnd();
+                              if (!started) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Unable to start chapter sleep. Try again later.')),
+                                );
+                              }
+                            } else if (selected != null) {
                               timer.startTimer(selected!);
                             }
-                                  if (started) {
-                            Navigator.of(ctx).pop();
-                                  }
+                            if (started) {
+                              Navigator.of(ctx).pop();
+                            }
                           },
                           child: const Text('Start'),
                         ),
@@ -1639,361 +1643,361 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
           ),
           child: Scaffold(
             backgroundColor: Colors.transparent,
-      body: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onVerticalDragUpdate: (details) {
-          final dy = details.delta.dy;
-          if (dy > 0 || _dragY > 0) {
-            setState(() {
-              _dragY = (_dragY + dy).clamp(0.0, MediaQuery.of(context).size.height);
-            });
-          }
-        },
-        onVerticalDragEnd: (details) {
-          final v = details.velocity.pixelsPerSecond.dy;
-          final shouldDismiss = _dragY > 120 || v > 650;
-          if (shouldDismiss) {
-            Navigator.of(context).maybePop();
-          } else {
-            setState(() {
-              _dragY = 0.0;
-            });
-          }
-        },
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 300), // Buttery snap-back
-          curve: const Cubic(0.05, 0.7, 0.1, 1.0), // Material Design 3 emphasized - ultra smooth
-          transform: Matrix4.translationValues(0, _dragY, 0)
-            ..scale(1.0 - (_dragY * 0.00015).clamp(0.0, 0.06)), // Very subtle scale - premium feel
-          child: SafeArea(
-            child: StreamBuilder<NowPlaying?>(
-              stream: playback.nowPlayingStream,
-              initialData: playback.nowPlaying,
-              builder: (context, snap) {
-                final np = snap.data;
-                if (np == null) {
-                  return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const CircularProgressIndicator(),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Loading...',
-                          style: text.titleMedium?.copyWith(
-                            color: cs.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
+            body: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onVerticalDragUpdate: (details) {
+                final dy = details.delta.dy;
+                if (dy > 0 || _dragY > 0) {
+                  setState(() {
+                    _dragY = (_dragY + dy).clamp(0.0, MediaQuery.of(context).size.height);
+                  });
                 }
-
-                unawaited(_maybeUpdatePalette(np));
-
-                return Column(
-                  children: [
-                    // Custom App Bar
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          IconButton.filledTonal(
-                            onPressed: () => Navigator.of(context).pop(),
-                            icon: const Icon(Icons.keyboard_arrow_down_rounded),
-                            style: IconButton.styleFrom(
-                              backgroundColor: cs.surfaceContainerHighest,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _buildPercentCompleteLabel(
-                              playback: playback,
-                              text: text,
-                              cs: cs,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
+              },
+              onVerticalDragEnd: (details) {
+                final v = details.velocity.pixelsPerSecond.dy;
+                final shouldDismiss = _dragY > 120 || v > 650;
+                if (shouldDismiss) {
+                  Navigator.of(context).maybePop();
+                } else {
+                  setState(() {
+                    _dragY = 0.0;
+                  });
+                }
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 300), // Buttery snap-back
+                curve: const Cubic(0.05, 0.7, 0.1, 1.0), // Material Design 3 emphasized - ultra smooth
+                transform: Matrix4.translationValues(0, _dragY, 0)
+                  ..scale(1.0 - (_dragY * 0.00015).clamp(0.0, 0.06)), // Very subtle scale - premium feel
+                child: SafeArea(
+                  child: StreamBuilder<NowPlaying?>(
+                    stream: playback.nowPlayingStream,
+                    initialData: playback.nowPlaying,
+                    builder: (context, snap) {
+                      final np = snap.data;
+                      if (np == null) {
+                        return Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              IconButton(
-                                tooltip: 'Add bookmark',
-                                onPressed: np == null ? null : () => _addBookmark(context, playback),
-                                icon: const Icon(Icons.bookmark_add_rounded),
-                              ),
-                              StreamBuilder<bool>(
-                                stream: _getBookCompletionStream(),
-                                initialData: false,
-                                builder: (_, completionSnap) {
-                                  final isCompleted = completionSnap.data ?? false;
-        final menuBg = gradientEnabled
-            ? Color.alphaBlend(
-                (_palettePrimary ?? cs.primary).withOpacity(0.1),
-                cs.surface,
-              )
-            : cs.surface;
-                                  return PopupMenuButton<_TopMenuAction>(
-                                    tooltip: 'More options',
-                                    icon: const Icon(Icons.more_vert_rounded),
-                                    color: menuBg,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(18),
-                                      side: BorderSide(
-                                        color: cs.outlineVariant.withOpacity(0.2),
-                                      ),
-                                    ),
-                                  onSelected: (action) {
-                                    switch (action) {
-                                      case _TopMenuAction.toggleCompletion:
-                                        _toggleBookCompletion(context, isCompleted);
-                                        break;
-                                      case _TopMenuAction.toggleGradient:
-                                        final next = !gradientEnabled;
-                                        UiPrefs.setPlayerGradientBackground(next);
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(
-                                            content: Text(
-                                              next
-                                                  ? 'Gradient background enabled'
-                                                  : 'Gradient background disabled',
-                                            ),
-                                            duration: const Duration(seconds: 2),
-                                          ),
-                                        );
-                                        break;
-                                      case _TopMenuAction.cast:
-                                        _showCastingComingSoon(context);
-                                        break;
-                                      case _TopMenuAction.playHistory:
-                                        _openHistorySheet(context, playback);
-                                        break;
-                                      case _TopMenuAction.bookmarks:
-                                        _openBookmarksSheet(context, playback);
-                                        break;
-                                    }
-                                  },
-                                    itemBuilder: (context) => [
-                                      PopupMenuItem(
-                                        value: _TopMenuAction.toggleCompletion,
-                                        child: Row(
-                                          children: [
-                                            Icon(
-                                              isCompleted ? Icons.undo_rounded : Icons.check_rounded,
-                                              size: 18,
-                                              color: cs.primary,
-                                            ),
-                                            const SizedBox(width: 12),
-                                            Expanded(
-                                              child: Text(
-                                                isCompleted ? 'Mark as unfinished' : 'Mark as finished',
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      PopupMenuItem(
-                                        value: _TopMenuAction.toggleGradient,
-                                        child: Row(
-                                          children: [
-                                            Icon(
-                                              gradientEnabled ? Icons.gradient : Icons.gradient_outlined,
-                                              size: 18,
-                                              color: cs.primary,
-                                            ),
-                                            const SizedBox(width: 12),
-                                            Expanded(
-                                              child: Text(
-                                                gradientEnabled
-                                                    ? 'Disable gradient background'
-                                                    : 'Enable gradient background',
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      PopupMenuItem(
-                                        value: _TopMenuAction.playHistory,
-                                        child: Row(
-                                          children: [
-                                            Icon(Icons.history_rounded, size: 18, color: cs.primary),
-                                            const SizedBox(width: 12),
-                                            const Expanded(
-                                              child: Text('Play history'),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      PopupMenuItem(
-                                        value: _TopMenuAction.bookmarks,
-                                        child: Row(
-                                          children: [
-                                            Icon(Icons.bookmark_rounded, size: 18, color: cs.primary),
-                                            const SizedBox(width: 12),
-                                            const Expanded(
-                                              child: Text('Bookmarks'),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                  );
-                                },
+                              const CircularProgressIndicator(),
+                              const SizedBox(height: 16),
+                              Text(
+                                'Loading...',
+                                style: text.titleMedium?.copyWith(
+                                  color: cs.onSurfaceVariant,
+                                ),
                               ),
                             ],
                           ),
-                        ],
-                      ),
-                    ),
+                        );
+                      }
 
-                    // ARTWORK + TITLE
-                    Expanded(
-                      child: RepaintBoundary(
-                        child: SingleChildScrollView(
-                          physics: const BouncingScrollPhysics(),
-                          padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
-                          child: Column(
-                            children: [
-                            // Cover with enhanced shadow and border - compact size
-                            AnimatedBuilder(
-                              animation: _coverAnimation,
-                              builder: (context, child) {
-                                return Transform.translate(
-                                  offset: Offset(0, 20 * (1 - _coverAnimation.value)),
-                                  child: Opacity(
-                                    opacity: _coverAnimation.value,
-                                    child: Center(
-                                      child: SizedBox(
-                                        width: MediaQuery.of(context).size.width * 0.7, // larger cover for stronger focus
-                                        child: Container(
-                                          decoration: BoxDecoration(
-                                            borderRadius: BorderRadius.circular(24),
-                                            boxShadow: [
-                                              BoxShadow(
-                                                color: cs.shadow.withOpacity(0.25),
-                                                blurRadius: 24,
-                                                spreadRadius: 2,
-                                                offset: const Offset(0, 8),
-                                              ),
-                                              BoxShadow(
-                                                color: cs.primary.withOpacity(0.1),
-                                                blurRadius: 40,
-                                                spreadRadius: -4,
-                                                offset: const Offset(0, 12),
-                                              ),
-                                            ],
+                      unawaited(_maybeUpdatePalette(np));
+
+                      return Column(
+                        children: [
+                          // Custom App Bar
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                IconButton.filledTonal(
+                                  onPressed: () => Navigator.of(context).pop(),
+                                  icon: const Icon(Icons.keyboard_arrow_down_rounded),
+                                  style: IconButton.styleFrom(
+                                    backgroundColor: cs.surfaceContainerHighest,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: _buildPercentCompleteLabel(
+                                    playback: playback,
+                                    text: text,
+                                    cs: cs,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      tooltip: 'Add bookmark',
+                                      onPressed: np == null ? null : () => _addBookmark(context, playback),
+                                      icon: const Icon(Icons.bookmark_add_rounded),
+                                    ),
+                                    StreamBuilder<bool>(
+                                      stream: _getBookCompletionStream(),
+                                      initialData: false,
+                                      builder: (_, completionSnap) {
+                                        final isCompleted = completionSnap.data ?? false;
+                                        final menuBg = gradientEnabled
+                                            ? Color.alphaBlend(
+                                          (_palettePrimary ?? cs.primary).withOpacity(0.1),
+                                          cs.surface,
+                                        )
+                                            : cs.surface;
+                                        return PopupMenuButton<_TopMenuAction>(
+                                          tooltip: 'More options',
+                                          icon: const Icon(Icons.more_vert_rounded),
+                                          color: menuBg,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(18),
+                                            side: BorderSide(
+                                              color: cs.outlineVariant.withOpacity(0.2),
+                                            ),
                                           ),
-                                          child: ClipRRect(
-                                            borderRadius: BorderRadius.circular(24),
-                                            child: AspectRatio(
-                                              aspectRatio: 1,
-                                              child: Image.network(
-                                                np.coverUrl ?? '',
-                                                fit: BoxFit.cover,
-                                                gaplessPlayback: true,
-                                                filterQuality: FilterQuality.low,
-                                                errorBuilder: (_, __, ___) => Container(
-                                                  color: cs.surfaceContainerHighest,
-                                                  child: Icon(
-                                                    Icons.menu_book_outlined,
-                                                    size: 88,
-                                                    color: cs.onSurfaceVariant,
+                                          onSelected: (action) {
+                                            switch (action) {
+                                              case _TopMenuAction.toggleCompletion:
+                                                _toggleBookCompletion(context, isCompleted);
+                                                break;
+                                              case _TopMenuAction.toggleGradient:
+                                                final next = !gradientEnabled;
+                                                UiPrefs.setPlayerGradientBackground(next);
+                                                ScaffoldMessenger.of(context).showSnackBar(
+                                                  SnackBar(
+                                                    content: Text(
+                                                      next
+                                                          ? 'Gradient background enabled'
+                                                          : 'Gradient background disabled',
+                                                    ),
+                                                    duration: const Duration(seconds: 2),
+                                                  ),
+                                                );
+                                                break;
+                                              case _TopMenuAction.cast:
+                                                _showCastingComingSoon(context);
+                                                break;
+                                              case _TopMenuAction.playHistory:
+                                                _openHistorySheet(context, playback);
+                                                break;
+                                              case _TopMenuAction.bookmarks:
+                                                _openBookmarksSheet(context, playback);
+                                                break;
+                                            }
+                                          },
+                                          itemBuilder: (context) => [
+                                            PopupMenuItem(
+                                              value: _TopMenuAction.toggleCompletion,
+                                              child: Row(
+                                                children: [
+                                                  Icon(
+                                                    isCompleted ? Icons.undo_rounded : Icons.check_rounded,
+                                                    size: 18,
+                                                    color: cs.primary,
+                                                  ),
+                                                  const SizedBox(width: 12),
+                                                  Expanded(
+                                                    child: Text(
+                                                      isCompleted ? 'Mark as unfinished' : 'Mark as finished',
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            PopupMenuItem(
+                                              value: _TopMenuAction.toggleGradient,
+                                              child: Row(
+                                                children: [
+                                                  Icon(
+                                                    gradientEnabled ? Icons.gradient : Icons.gradient_outlined,
+                                                    size: 18,
+                                                    color: cs.primary,
+                                                  ),
+                                                  const SizedBox(width: 12),
+                                                  Expanded(
+                                                    child: Text(
+                                                      gradientEnabled
+                                                          ? 'Disable gradient background'
+                                                          : 'Enable gradient background',
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            PopupMenuItem(
+                                              value: _TopMenuAction.playHistory,
+                                              child: Row(
+                                                children: [
+                                                  Icon(Icons.history_rounded, size: 18, color: cs.primary),
+                                                  const SizedBox(width: 12),
+                                                  const Expanded(
+                                                    child: Text('Play history'),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            PopupMenuItem(
+                                              value: _TopMenuAction.bookmarks,
+                                              child: Row(
+                                                children: [
+                                                  Icon(Icons.bookmark_rounded, size: 18, color: cs.primary),
+                                                  const SizedBox(width: 12),
+                                                  const Expanded(
+                                                    child: Text('Bookmarks'),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        );
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          // ARTWORK + TITLE
+                          Expanded(
+                            child: RepaintBoundary(
+                              child: SingleChildScrollView(
+                                physics: const BouncingScrollPhysics(),
+                                padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
+                                child: Column(
+                                  children: [
+                                    // Cover with enhanced shadow and border - compact size
+                                    AnimatedBuilder(
+                                      animation: _coverAnimation,
+                                      builder: (context, child) {
+                                        return Transform.translate(
+                                          offset: Offset(0, 20 * (1 - _coverAnimation.value)),
+                                          child: Opacity(
+                                            opacity: _coverAnimation.value,
+                                            child: Center(
+                                              child: SizedBox(
+                                                width: MediaQuery.of(context).size.width * 0.7, // larger cover for stronger focus
+                                                child: Container(
+                                                  decoration: BoxDecoration(
+                                                    borderRadius: BorderRadius.circular(24),
+                                                    boxShadow: [
+                                                      BoxShadow(
+                                                        color: cs.shadow.withOpacity(0.25),
+                                                        blurRadius: 24,
+                                                        spreadRadius: 2,
+                                                        offset: const Offset(0, 8),
+                                                      ),
+                                                      BoxShadow(
+                                                        color: cs.primary.withOpacity(0.1),
+                                                        blurRadius: 40,
+                                                        spreadRadius: -4,
+                                                        offset: const Offset(0, 12),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  child: ClipRRect(
+                                                    borderRadius: BorderRadius.circular(24),
+                                                    child: AspectRatio(
+                                                      aspectRatio: 1,
+                                                      child: Image.network(
+                                                        np.coverUrl ?? '',
+                                                        fit: BoxFit.cover,
+                                                        gaplessPlayback: true,
+                                                        filterQuality: FilterQuality.low,
+                                                        errorBuilder: (_, __, ___) => Container(
+                                                          color: cs.surfaceContainerHighest,
+                                                          child: Icon(
+                                                            Icons.menu_book_outlined,
+                                                            size: 88,
+                                                            color: cs.onSurfaceVariant,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ),
                                                   ),
                                                 ),
                                               ),
                                             ),
                                           ),
-                                        ),
-                                      ),
+                                        );
+                                      },
                                     ),
-                                  ),
-                                );
-                              },
-                            ),
-                            const SizedBox(height: 16),
+                                    const SizedBox(height: 16),
 
-                            // Title / author / narrator with enhanced typography
-                            AnimatedBuilder(
-                              animation: _titleAnimation,
-                              builder: (context, child) {
-                                return Transform.translate(
-                                  offset: Offset(0, 20 * (1 - _titleAnimation.value)),
-                                  child: Opacity(
-                                    opacity: _titleAnimation.value,
-                                    child: Column(
-                                      children: [
-                                        Text(
-                                          np.title,
-                                          textAlign: TextAlign.center,
-                                          style: text.headlineMedium?.copyWith(
-                                            fontWeight: FontWeight.w800,
-                                            height: 1.15,
-                                            letterSpacing: -0.5,
-                                          ),
-                                          maxLines: 3,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                        if (np.author != null && np.author!.isNotEmpty) ...[
-                                          const SizedBox(height: 12),
-                                          Text(
-                                            np.author!,
-                                            textAlign: TextAlign.center,
-                                            style: text.titleLarge?.copyWith(
-                                              color: cs.onSurfaceVariant,
-                                              fontWeight: FontWeight.w600,
-                                              letterSpacing: 0.15,
+                                    // Title / author / narrator with enhanced typography
+                                    AnimatedBuilder(
+                                      animation: _titleAnimation,
+                                      builder: (context, child) {
+                                        return Transform.translate(
+                                          offset: Offset(0, 20 * (1 - _titleAnimation.value)),
+                                          child: Opacity(
+                                            opacity: _titleAnimation.value,
+                                            child: Column(
+                                              children: [
+                                                Text(
+                                                  np.title,
+                                                  textAlign: TextAlign.center,
+                                                  style: text.headlineMedium?.copyWith(
+                                                    fontWeight: FontWeight.w800,
+                                                    height: 1.15,
+                                                    letterSpacing: -0.5,
+                                                  ),
+                                                  maxLines: 3,
+                                                  overflow: TextOverflow.ellipsis,
+                                                ),
+                                                if (np.author != null && np.author!.isNotEmpty) ...[
+                                                  const SizedBox(height: 12),
+                                                  Text(
+                                                    np.author!,
+                                                    textAlign: TextAlign.center,
+                                                    style: text.titleLarge?.copyWith(
+                                                      color: cs.onSurfaceVariant,
+                                                      fontWeight: FontWeight.w600,
+                                                      letterSpacing: 0.15,
+                                                    ),
+                                                    maxLines: 2,
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                ],
+                                              ],
                                             ),
-                                            maxLines: 2,
-                                            overflow: TextOverflow.ellipsis,
                                           ),
-                                        ],
-                                      ],
+                                        );
+                                      },
                                     ),
-                                  ),
-                                );
-                              },
-                            ),
-                            if (np.narrator != null && np.narrator!.isNotEmpty) ...[
-                              const SizedBox(height: 8),
-                              Text(
-                                'Narrated by ${np.narrator!}',
-                                textAlign: TextAlign.center,
-                                style: text.bodyLarge?.copyWith(
-                                  color: cs.onSurfaceVariant.withOpacity(0.85),
-                                  fontWeight: FontWeight.w500,
-                                  fontStyle: FontStyle.italic,
-                                  letterSpacing: 0.25,
+                                    if (np.narrator != null && np.narrator!.isNotEmpty) ...[
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        'Narrated by ${np.narrator!}',
+                                        textAlign: TextAlign.center,
+                                        style: text.bodyLarge?.copyWith(
+                                          color: cs.onSurfaceVariant.withOpacity(0.85),
+                                          fontWeight: FontWeight.w500,
+                                          fontStyle: FontStyle.italic,
+                                          letterSpacing: 0.25,
+                                        ),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
+                                    const SizedBox(height: 4), // Reduced padding
+                                  ],
                                 ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
                               ),
-                            ],
-                            const SizedBox(height: 4), // Reduced padding
-                          ],
+                            ),
                           ),
-                        ),
-                      ),
-                    ),
 
-                    // Waveform visualization (only visible when playing and enabled in settings)
-                    ValueListenableBuilder<bool>(
-                      valueListenable: UiPrefs.waveformAnimationEnabled,
-                      builder: (_, waveformEnabled, __) {
-                        if (!waveformEnabled) {
-                          return const SizedBox(height: 4);
-                        }
-                        
-                        return StreamBuilder<bool>(
-                          stream: playback.playingStream,
-                          initialData: playback.player.playing,
-                          builder: (_, playSnap) {
-                            final playing = playSnap.data ?? false;
-                            return AnimatedSize(
-                              duration: const Duration(milliseconds: 350),
-                              curve: Curves.easeInOut,
-                              child: playing
-                                  ? Padding(
+                          // Waveform visualization (only visible when playing and enabled in settings)
+                          ValueListenableBuilder<bool>(
+                            valueListenable: UiPrefs.waveformAnimationEnabled,
+                            builder: (_, waveformEnabled, __) {
+                              if (!waveformEnabled) {
+                                return const SizedBox(height: 4);
+                              }
+
+                              return StreamBuilder<bool>(
+                                stream: playback.playingStream,
+                                initialData: playback.player.playing,
+                                builder: (_, playSnap) {
+                                  final playing = playSnap.data ?? false;
+                                  return AnimatedSize(
+                                    duration: const Duration(milliseconds: 350),
+                                    curve: Curves.easeInOut,
+                                    child: playing
+                                        ? Padding(
                                       padding: const EdgeInsets.symmetric(vertical: 12),
                                       child: Center(
                                         child: AudioWaveform(
@@ -2006,270 +2010,270 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                         ),
                                       ),
                                     )
-                                  : const SizedBox(height: 4),
-                            );
-                          },
-                        );
-                      },
-                    ),
+                                        : const SizedBox(height: 4),
+                                  );
+                                },
+                              );
+                            },
+                          ),
 
-                    // POSITION + SLIDER - Material Design 3 Enhanced
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-                      child: StreamBuilder<Duration>(
-                        stream: playback.positionStream,
-                        initialData: playback.player.position,
-                        builder: (_, posSnap) {
-                          final globalTotal = playback.totalBookDuration;
-                          final hasGlobal = _dualProgressEnabled && globalTotal != null && globalTotal > Duration.zero;
-                          final chapterMetrics = hasGlobal ? playback.currentChapterProgress : null;
-                          final preferChapter =
-                              hasGlobal && chapterMetrics != null && _progressPrimary == ProgressPrimary.chapter;
+                          // POSITION + SLIDER - Material Design 3 Enhanced
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                            child: StreamBuilder<Duration>(
+                              stream: playback.positionStream,
+                              initialData: playback.player.position,
+                              builder: (_, posSnap) {
+                                final globalTotal = playback.totalBookDuration;
+                                final hasGlobal = _dualProgressEnabled && globalTotal != null && globalTotal > Duration.zero;
+                                final chapterMetrics = hasGlobal ? playback.currentChapterProgress : null;
+                                final preferChapter =
+                                    hasGlobal && chapterMetrics != null && _progressPrimary == ProgressPrimary.chapter;
 
-                          if (preferChapter) {
-                            final globalPos = playback.globalBookPosition ?? Duration.zero;
-                            return Column(
-                              children: [
-                                _buildChapterProgressPrimary(
+                                if (preferChapter) {
+                                  final globalPos = playback.globalBookPosition ?? Duration.zero;
+                                  return Column(
+                                    children: [
+                                      _buildChapterProgressPrimary(
+                                        context: context,
+                                        text: text,
+                                        cs: cs,
+                                        playback: playback,
+                                        metrics: chapterMetrics!,
+                                      ),
+                                      if (globalTotal != null)
+                                        Padding(
+                                          padding: const EdgeInsets.only(top: 12),
+                                          child: _buildBookSummaryRow(
+                                            text: text,
+                                            cs: cs,
+                                            position: globalPos,
+                                            total: globalTotal,
+                                          ),
+                                        ),
+                                    ],
+                                  );
+                                }
+
+                                if (hasGlobal) {
+                                  final globalPos = playback.globalBookPosition ?? Duration.zero;
+                                  return Column(
+                                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                                    children: [
+                                      _buildBookProgressSection(
+                                        context: context,
+                                        text: text,
+                                        cs: cs,
+                                        playback: playback,
+                                        position: globalPos,
+                                        total: globalTotal!,
+                                        isPrimary: true,
+                                      ),
+                                      if (chapterMetrics != null)
+                                        Padding(
+                                          padding: const EdgeInsets.only(top: 8),
+                                          child: _buildChapterSummaryRow(
+                                            text: text,
+                                            cs: cs,
+                                            metrics: chapterMetrics,
+                                          ),
+                                        ),
+                                    ],
+                                  );
+                                }
+
+                                final total = playback.player.duration ?? Duration.zero;
+                                final pos = posSnap.data ?? Duration.zero;
+                                return _buildTrackProgressFallback(
                                   context: context,
-                                  text: text,
                                   cs: cs,
-                                  playback: playback,
-                                  metrics: chapterMetrics!,
-                                ),
-                                if (globalTotal != null)
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 12),
-                                    child: _buildBookSummaryRow(
-                                      text: text,
-                                      cs: cs,
-                                      position: globalPos,
-                                      total: globalTotal,
-                                    ),
-                                  ),
-                              ],
-                            );
-                          }
-
-                          if (hasGlobal) {
-                            final globalPos = playback.globalBookPosition ?? Duration.zero;
-                            return Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                _buildBookProgressSection(
-                                  context: context,
                                   text: text,
-                                  cs: cs,
                                   playback: playback,
-                                  position: globalPos,
-                                  total: globalTotal!,
-                                  isPrimary: true,
-                                ),
-                                if (chapterMetrics != null)
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 8),
-                                    child: _buildChapterSummaryRow(
-                                      text: text,
-                                      cs: cs,
-                                      metrics: chapterMetrics,
-                                    ),
-                                  ),
-                              ],
-                            );
-                          }
+                                  total: total,
+                                  position: pos,
+                                );
+                              },
+                            ),
+                          ),
 
-                          final total = playback.player.duration ?? Duration.zero;
-                          final pos = posSnap.data ?? Duration.zero;
-                          return _buildTrackProgressFallback(
-                            context: context,
-                            cs: cs,
-                            text: text,
-                            playback: playback,
-                            total: total,
-                            position: pos,
-                          );
-                        },
-                      ),
-                    ),
+                          const SizedBox(height: 12),
 
-                    const SizedBox(height: 12),
-
-                    // CONTROLS + CHAPTERS
-                    AnimatedBuilder(
-                      animation: _controlsAnimation,
-                      builder: (context, child) {
-                        return Transform.translate(
-                          offset: Offset(0, 30 * (1 - _controlsAnimation.value)),
-                          child: Opacity(
-                            opacity: _controlsAnimation.value,
-                            child: RepaintBoundary(
-                              child: Padding(
-                                padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
-                                child: Column(
-                                  children: [
-                                    // Large transport controls (Material 3) - single row, auto-sized
-                                    LayoutBuilder(
-                                      builder: (context, constraints) {
-                                        final maxW = constraints.maxWidth;
-                                        double spacing = 12;
-                                        double side = 56;   // base side buttons
-                                        double center = 72; // base center button
-                                        final needed = 4 * side + center + 4 * spacing;
-                                        if (needed > maxW) {
-                                          final scale = (maxW - 4 * spacing) / (4 * side + center);
-                                          final clamped = scale.clamp(0.6, 1.0);
-                                          side = side * clamped;
-                                          center = center * clamped;
-                                        }
-                                        return Row(
-                                          mainAxisAlignment: MainAxisAlignment.center,
-                                          children: [
-                                            _ControlButton(
-                                              tooltip: 'Previous track',
-                                              icon: Icons.skip_previous_rounded,
-                                              size: side,
-                                              onTap: () async {
-                                                if (playback.hasSmartPrev) {
-                                                  await playback.smartPrev();
-                                                }
-                                              },
-                                            ),
-                                            SizedBox(width: spacing),
-                                            _ControlButton(
-                                              tooltip: 'Back 30s',
-                                              icon: Icons.replay_30_rounded,
-                                              size: side,
-                                              onTap: () => playback.nudgeSeconds(-30),
-                                            ),
-                                            SizedBox(width: spacing),
-                                            StreamBuilder<bool>(
-                                              stream: playback.playingStream,
-                                              initialData: playback.player.playing,
-                                              builder: (_, playSnap) {
-                                                final playing = playSnap.data ?? false;
-                                                return _ControlButton(
-                                                  tooltip: playing ? 'Pause' : 'Play',
-                                                  icon: playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                                                  isPrimary: true,
-                                                  isCircular: !playing, // keep round when showing Play triangle
-                                                  size: center,
-                                                  onTap: () async {
-                                                    // Check if we have a valid nowPlaying item and it's actually playing
-                                                    final hasValidNowPlaying = np != null && playing;
-                                                    if (hasValidNowPlaying) {
-                                                      await playback.pause();
-                                                    } else {
-                                                      // Try to resume first, but if that fails (no current item), 
-                                                      // warm load the last item and play it
-                                                      bool success = await playback.resume(context: context);
-                                                      if (!success) {
-                                                        try {
-                                                          await playback.warmLoadLastItem(playAfterLoad: true);
-                                                        } catch (e) {
-                                                          // If warm load fails, show error message
-                                                          if (context.mounted) {
-                                                            ScaffoldMessenger.of(context).showSnackBar(
-                                                              const SnackBar(
-                                                                content: Text('Cannot play: server unavailable and sync progress is required'),
-                                                                duration: Duration(seconds: 4),
-                                                              ),
-                                                            );
-                                                          }
-                                                        }
+                          // CONTROLS + CHAPTERS
+                          AnimatedBuilder(
+                            animation: _controlsAnimation,
+                            builder: (context, child) {
+                              return Transform.translate(
+                                offset: Offset(0, 30 * (1 - _controlsAnimation.value)),
+                                child: Opacity(
+                                  opacity: _controlsAnimation.value,
+                                  child: RepaintBoundary(
+                                    child: Padding(
+                                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+                                      child: Column(
+                                        children: [
+                                          // Large transport controls (Material 3) - single row, auto-sized
+                                          LayoutBuilder(
+                                            builder: (context, constraints) {
+                                              final maxW = constraints.maxWidth;
+                                              double spacing = 12;
+                                              double side = 56;   // base side buttons
+                                              double center = 72; // base center button
+                                              final needed = 4 * side + center + 4 * spacing;
+                                              if (needed > maxW) {
+                                                final scale = (maxW - 4 * spacing) / (4 * side + center);
+                                                final clamped = scale.clamp(0.6, 1.0);
+                                                side = side * clamped;
+                                                center = center * clamped;
+                                              }
+                                              return Row(
+                                                mainAxisAlignment: MainAxisAlignment.center,
+                                                children: [
+                                                  _ControlButton(
+                                                    tooltip: 'Previous track',
+                                                    icon: Icons.skip_previous_rounded,
+                                                    size: side,
+                                                    onTap: () async {
+                                                      if (playback.hasSmartPrev) {
+                                                        await playback.smartPrev();
                                                       }
-                                                    }
-                                                  },
-                                                );
-                                              },
-                                            ),
-                                            SizedBox(width: spacing),
-                                            _ControlButton(
-                                              tooltip: 'Forward 30s',
-                                              icon: Icons.forward_30_rounded,
-                                              size: side,
-                                              onTap: () => playback.nudgeSeconds(30),
-                                            ),
-                                            SizedBox(width: spacing),
-                                            _ControlButton(
-                                              tooltip: 'Next track',
-                                              icon: Icons.skip_next_rounded,
-                                              size: side,
-                                              onTap: () async {
-                                                if (playback.hasSmartNext) {
-                                                  await playback.smartNext();
-                                                }
-                                              },
-                                            ),
-                                          ],
-                                        );
-                                      },
-                                    ),
-
-                                    const SizedBox(height: 40),
-
-                                    // Quick access controls - four rounded buttons
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: _PlayerActionTile(
-                                            icon: _buildChaptersQuickIcon(
-                                              context: context,
-                                              cs: cs,
-                                              totalChapters: np.chapters.length,
-                                              currentChapter: np.chapters.length > 1
-                                                  ? (playback.currentChapterProgress?.index ?? 0) + 1
-                                                  : 1,
-                                            ),
-                                            label: '',
-                                            onTap: np.chapters.length > 1
-                                                ? () => _showChaptersSheet(context, playback, np)
-                                                : null,
-                                            tooltip: np.chapters.length > 1
-                                                ? 'Open chapters'
-                                                : 'Single chapter – no chapters list',
-                                            enabled: np.chapters.length > 1,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 12),
-                                        Expanded(
-                                          child: _ChaptersDownloadButton(
-                                            libraryItemId: np.libraryItemId,
-                                            episodeId: np.episodeId,
-                                            title: np.title,
-                                            iconOnly: true,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 12),
-                                        Expanded(
-                                          child: _SleepQuickAction(
-                                            onTap: () => _showSleepTimerSheet(context, np),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 12),
-                                        Expanded(
-                                          child: _SpeedQuickAction(playback: playback),
-                                        ),
-                                      ],
-                                    ),
-                                        // Removed redundant countdown widget (countdown shown on Sleep button only)
-                                      ],
-                                    ),
-                                  ),
+                                                    },
                                                   ),
-                                                ),
+                                                  SizedBox(width: spacing),
+                                                  _ControlButton(
+                                                    tooltip: 'Back 30s',
+                                                    icon: Icons.replay_30_rounded,
+                                                    size: side,
+                                                    onTap: () => playback.nudgeSeconds(-30),
+                                                  ),
+                                                  SizedBox(width: spacing),
+                                                  StreamBuilder<bool>(
+                                                    stream: playback.playingStream,
+                                                    initialData: playback.player.playing,
+                                                    builder: (_, playSnap) {
+                                                      final playing = playSnap.data ?? false;
+                                                      return _ControlButton(
+                                                        tooltip: playing ? 'Pause' : 'Play',
+                                                        icon: playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                                                        isPrimary: true,
+                                                        isCircular: !playing, // keep round when showing Play triangle
+                                                        size: center,
+                                                        onTap: () async {
+                                                          // Check if we have a valid nowPlaying item and it's actually playing
+                                                          final hasValidNowPlaying = np != null && playing;
+                                                          if (hasValidNowPlaying) {
+                                                            await playback.pause();
+                                                          } else {
+                                                            // Try to resume first, but if that fails (no current item),
+                                                            // warm load the last item and play it
+                                                            bool success = await playback.resume(context: context);
+                                                            if (!success) {
+                                                              try {
+                                                                await playback.warmLoadLastItem(playAfterLoad: true);
+                                                              } catch (e) {
+                                                                // If warm load fails, show error message
+                                                                if (context.mounted) {
+                                                                  ScaffoldMessenger.of(context).showSnackBar(
+                                                                    const SnackBar(
+                                                                      content: Text('Cannot play: server unavailable and sync progress is required'),
+                                                                      duration: Duration(seconds: 4),
+                                                                    ),
+                                                                  );
+                                                                }
+                                                              }
+                                                            }
+                                                          }
+                                                        },
+                                                      );
+                                                    },
+                                                  ),
+                                                  SizedBox(width: spacing),
+                                                  _ControlButton(
+                                                    tooltip: 'Forward 30s',
+                                                    icon: Icons.forward_30_rounded,
+                                                    size: side,
+                                                    onTap: () => playback.nudgeSeconds(30),
+                                                  ),
+                                                  SizedBox(width: spacing),
+                                                  _ControlButton(
+                                                    tooltip: 'Next track',
+                                                    icon: Icons.skip_next_rounded,
+                                                    size: side,
+                                                    onTap: () async {
+                                                      if (playback.hasSmartNext) {
+                                                        await playback.smartNext();
+                                                      }
+                                                    },
+                                                  ),
+                                                ],
                                               );
                                             },
-                                        ),
-                                      ],
-                );
-              },
-                                    ),
+                                          ),
+
+                                          const SizedBox(height: 40),
+
+                                          // Quick access controls - four rounded buttons
+                                          Row(
+                                            children: [
+                                              Expanded(
+                                                child: _PlayerActionTile(
+                                                  icon: _buildChaptersQuickIcon(
+                                                    context: context,
+                                                    cs: cs,
+                                                    totalChapters: np.chapters.length,
+                                                    currentChapter: np.chapters.length > 1
+                                                        ? (playback.currentChapterProgress?.index ?? 0) + 1
+                                                        : 1,
+                                                  ),
+                                                  label: '',
+                                                  onTap: np.chapters.length > 1
+                                                      ? () => _showChaptersSheet(context, playback, np)
+                                                      : null,
+                                                  tooltip: np.chapters.length > 1
+                                                      ? 'Open chapters'
+                                                      : 'Single chapter – no chapters list',
+                                                  enabled: np.chapters.length > 1,
+                                                ),
+                                              ),
+                                              const SizedBox(width: 12),
+                                              Expanded(
+                                                child: _ChaptersDownloadButton(
+                                                  libraryItemId: np.libraryItemId,
+                                                  episodeId: np.episodeId,
+                                                  title: np.title,
+                                                  iconOnly: true,
+                                                ),
+                                              ),
+                                              const SizedBox(width: 12),
+                                              Expanded(
+                                                child: _SleepQuickAction(
+                                                  onTap: () => _showSleepTimerSheet(context, np),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 12),
+                                              Expanded(
+                                                child: _SpeedQuickAction(playback: playback),
+                                              ),
+                                            ],
+                                          ),
+                                          // Removed redundant countdown widget (countdown shown on Sleep button only)
+                                        ],
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
-                            );
-                          },
+                              );
+                            },
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -2484,9 +2488,9 @@ class _SpeedIcon extends StatelessWidget {
               child: Text(
                 '${value.toStringAsFixed(2)}×',
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: Theme.of(context).colorScheme.onPrimary,
-                    ),
+                  fontWeight: FontWeight.w700,
+                  color: Theme.of(context).colorScheme.onPrimary,
+                ),
               ),
             ),
           ),
@@ -2784,58 +2788,4 @@ class _ControlButton extends StatelessWidget {
 
     return tooltip == null ? button : Tooltip(message: tooltip!, child: button);
   }
-}
-
-class _FullPlayerRoute extends PageRouteBuilder<void> {
-  _FullPlayerRoute()
-      : super(
-          transitionDuration: const Duration(milliseconds: 400),
-          reverseTransitionDuration: const Duration(milliseconds: 300),
-          opaque: true,
-          fullscreenDialog: true,
-          barrierColor: Colors.transparent,
-          pageBuilder: (_, __, ___) => const FullPlayerPage(),
-          transitionsBuilder: (context, animation, secondaryAnimation, child) {
-            const forwardCurve = Cubic(0.2, 0.8, 0.0, 1.0);
-            const reverseCurve = Cubic(0.4, 0.0, 0.6, 0.8);
-
-            final primary = CurvedAnimation(
-              parent: animation,
-              curve: forwardCurve,
-              reverseCurve: reverseCurve,
-            );
-
-            final slide = Tween<Offset>(
-              begin: const Offset(0, 0.18),
-              end: Offset.zero,
-            ).chain(CurveTween(curve: Curves.easeInOutCubic)).animate(primary);
-
-            final fade = Tween<double>(begin: 0.0, end: 1.0).animate(
-              CurvedAnimation(
-                parent: animation,
-                curve: const Interval(0.1, 1.0, curve: Curves.easeOutQuad),
-                reverseCurve: const Interval(0.0, 0.9, curve: Curves.easeInQuad),
-              ),
-            );
-
-            final scale = Tween<double>(begin: 0.985, end: 1.0).animate(
-              CurvedAnimation(
-                parent: animation,
-                curve: const Interval(0.0, 0.7, curve: Curves.easeOutCubic),
-                reverseCurve: const Interval(0.0, 1.0, curve: Curves.easeInCubic),
-              ),
-            );
-
-            return FadeTransition(
-              opacity: fade,
-              child: SlideTransition(
-                position: slide,
-                child: ScaleTransition(
-                  scale: scale,
-                  child: child,
-                ),
-              ),
-            );
-          },
-        );
 }
