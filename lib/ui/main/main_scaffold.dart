@@ -142,18 +142,20 @@ class _MainScaffoldState extends State<MainScaffold> {
                 ],
               );
 
-              const animDuration = Duration(milliseconds: 260);
+              const animDuration = Duration(milliseconds: 300);
 
               return IgnorePointer(
                 ignoring: fullPlayerVisible,
-                child: AnimatedOpacity(
+                child: AnimatedSlide(
                   duration: animDuration,
-                  curve: Curves.easeInOut,
-                  opacity: fullPlayerVisible ? 0.0 : 1.0,
-                  child: AnimatedSlide(
+                  curve: fullPlayerVisible 
+                      ? Curves.easeInCubic // Smooth acceleration when hiding (going down)
+                      : Curves.easeOutCubic, // Smooth deceleration when showing (coming up)
+                  offset: fullPlayerVisible ? const Offset(0, 1.0) : Offset.zero,
+                  child: AnimatedOpacity(
                     duration: animDuration,
-                    curve: Curves.easeOutCubic,
-                    offset: fullPlayerVisible ? const Offset(0, 0.3) : Offset.zero,
+                    curve: Curves.easeInOut,
+                    opacity: fullPlayerVisible ? 0.0 : 1.0,
                     child: chrome,
                   ),
                 ),
