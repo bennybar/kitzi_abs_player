@@ -55,56 +55,7 @@ class FullPlayerPage extends StatefulWidget {
     _isOpen = true;
     FullPlayerOverlay.isVisible.value = true;
     try {
-      await Navigator.of(context).push(PageRouteBuilder<void>(
-        pageBuilder: (_, __, ___) => const FullPlayerPage(),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          const slideIn = Cubic(0.05, 0.7, 0.1, 1.0); // emphasized decelerate
-          const slideOut = Cubic(0.3, 0.0, 0.8, 0.15); // emphasized accelerate
-
-          final primaryCurve = CurvedAnimation(
-            parent: animation,
-            curve: slideIn,
-            reverseCurve: slideOut,
-          );
-          final fadeCurve = CurvedAnimation(
-            parent: animation,
-            curve: const Interval(0.0, 0.9, curve: Curves.easeOutQuad),
-            reverseCurve: const Interval(0.0, 1.0, curve: Curves.easeInQuad),
-          );
-          final scaleCurve = CurvedAnimation(
-            parent: animation,
-            curve: const Interval(0.0, 0.7, curve: Curves.easeOutCubic),
-            reverseCurve: const Interval(0.0, 1.0, curve: Curves.easeInCubic),
-          );
-
-          // Calculate mini player position (nav bar + mini height + safe bottom)
-          final view = MediaQuery.of(context);
-          final miniHeight = 68.0;
-          final navHeight = 72.0;
-          final totalOffsetPx = miniHeight + navHeight + view.padding.bottom;
-          final slideStart = (totalOffsetPx / view.size.height).clamp(0.08, 0.9);
-
-          final slideTween = Tween<Offset>(
-            begin: Offset(0, slideStart),
-            end: Offset.zero,
-          ).chain(CurveTween(curve: Curves.easeOutCubic));
-
-          return FadeTransition(
-            opacity: fadeCurve,
-            child: SlideTransition(
-              position: slideTween.animate(primaryCurve),
-              child: ScaleTransition(
-                scale: Tween<double>(begin: 0.975, end: 1.0).animate(scaleCurve),
-                child: child,
-              ),
-            ),
-          );
-        },
-        transitionDuration: const Duration(milliseconds: 400),
-        reverseTransitionDuration: const Duration(milliseconds: 300),
-        opaque: true,
-        fullscreenDialog: true,
-      ));
+      await Navigator.of(context).push(_FullPlayerRoute());
     } finally {
       _isOpen = false;
       FullPlayerOverlay.isVisible.value = false;
@@ -2833,4 +2784,58 @@ class _ControlButton extends StatelessWidget {
 
     return tooltip == null ? button : Tooltip(message: tooltip!, child: button);
   }
+}
+
+class _FullPlayerRoute extends PageRouteBuilder<void> {
+  _FullPlayerRoute()
+      : super(
+          transitionDuration: const Duration(milliseconds: 400),
+          reverseTransitionDuration: const Duration(milliseconds: 300),
+          opaque: true,
+          fullscreenDialog: true,
+          barrierColor: Colors.transparent,
+          pageBuilder: (_, __, ___) => const FullPlayerPage(),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            const forwardCurve = Cubic(0.2, 0.8, 0.0, 1.0);
+            const reverseCurve = Cubic(0.4, 0.0, 0.6, 0.8);
+
+            final primary = CurvedAnimation(
+              parent: animation,
+              curve: forwardCurve,
+              reverseCurve: reverseCurve,
+            );
+
+            final slide = Tween<Offset>(
+              begin: const Offset(0, 0.18),
+              end: Offset.zero,
+            ).chain(CurveTween(curve: Curves.easeInOutCubic)).animate(primary);
+
+            final fade = Tween<double>(begin: 0.0, end: 1.0).animate(
+              CurvedAnimation(
+                parent: animation,
+                curve: const Interval(0.1, 1.0, curve: Curves.easeOutQuad),
+                reverseCurve: const Interval(0.0, 0.9, curve: Curves.easeInQuad),
+              ),
+            );
+
+            final scale = Tween<double>(begin: 0.985, end: 1.0).animate(
+              CurvedAnimation(
+                parent: animation,
+                curve: const Interval(0.0, 0.7, curve: Curves.easeOutCubic),
+                reverseCurve: const Interval(0.0, 1.0, curve: Curves.easeInCubic),
+              ),
+            );
+
+            return FadeTransition(
+              opacity: fade,
+              child: SlideTransition(
+                position: slide,
+                child: ScaleTransition(
+                  scale: scale,
+                  child: child,
+                ),
+              ),
+            );
+          },
+        );
 }
