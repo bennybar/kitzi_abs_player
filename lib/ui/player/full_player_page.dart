@@ -3,7 +3,6 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -56,8 +55,38 @@ class FullPlayerPage extends StatefulWidget {
     _isOpen = true;
     FullPlayerOverlay.isVisible.value = true;
     try {
-      await Navigator.of(context).push(CupertinoPageRoute<void>(
-        builder: (_) => const FullPlayerPage(),
+      await Navigator.of(context).push(PageRouteBuilder<void>(
+        pageBuilder: (_, __, ___) => const FullPlayerPage(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          // Material Design 3 emphasized easing - optimized for 120Hz displays
+          const emphasizedDecelerate = Cubic(0.05, 0.7, 0.1, 1.0);
+          const emphasizedAccelerate = Cubic(0.3, 0.0, 0.8, 0.15);
+          
+          final curve = CurvedAnimation(
+            parent: animation,
+            curve: emphasizedDecelerate,
+            reverseCurve: emphasizedAccelerate,
+          );
+
+          // Calculate mini player position (128px from bottom: 60px nav + 68px mini)
+          final screenHeight = MediaQuery.of(context).size.height;
+          final miniPlayerOffset = 128 / screenHeight;
+
+          // Combined slide and fade for ultra-smooth transition
+          return FadeTransition(
+            opacity: curve,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: Offset(0, 1.0 - miniPlayerOffset), // Start from mini player position
+                end: Offset.zero,
+              ).animate(curve),
+              child: child,
+            ),
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 400),
+        reverseTransitionDuration: const Duration(milliseconds: 300),
+        opaque: true,
         fullscreenDialog: true,
       ));
     } finally {

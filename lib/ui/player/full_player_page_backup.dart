@@ -1,7 +1,11 @@
 // lib/ui/player/full_player_page.dart
+import 'dart:async';
 import 'dart:convert';
 
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:palette_generator/palette_generator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/playback_repository.dart';
@@ -12,7 +16,35 @@ import '../../core/downloads_repository.dart';
 import '../../main.dart'; // ServicesScope
 import '../../widgets/audio_waveform.dart';
 import '../../widgets/download_button.dart';
-import 'dart:async';
+import 'full_player_overlay.dart';
+import '../../core/playback_journal_service.dart';
+import 'journal_sheets.dart';
+
+enum _TopMenuAction { toggleCompletion, toggleGradient, cast, playHistory, bookmarks }
+
+/// Custom slider track shape that allows tighter horizontal padding than the
+/// default Material slider track.
+class _EdgeToEdgeSliderTrackShape extends RoundedRectSliderTrackShape {
+  const _EdgeToEdgeSliderTrackShape({this.horizontalInset = 0});
+
+  final double horizontalInset;
+
+  @override
+  Rect getPreferredRect({
+    required RenderBox parentBox,
+    Offset offset = Offset.zero,
+    required SliderThemeData sliderTheme,
+    bool isEnabled = false,
+    bool isDiscrete = false,
+  }) {
+    final trackHeight = sliderTheme.trackHeight ?? 2.0;
+    final inset = horizontalInset.clamp(0.0, parentBox.size.width / 2);
+    final trackLeft = offset.dx;
+    final trackTop = offset.dy + (parentBox.size.height - trackHeight) / 2;
+    final trackWidth = parentBox.size.width - inset * 2;
+    return Rect.fromLTWH(trackLeft + inset, trackTop, trackWidth, trackHeight);
+  }
+}
 
 class FullPlayerPage extends StatefulWidget {
   const FullPlayerPage({super.key});
@@ -22,39 +54,15 @@ class FullPlayerPage extends StatefulWidget {
   static Future<void> openOnce(BuildContext context) async {
     if (_isOpen) return;
     _isOpen = true;
+    FullPlayerOverlay.isVisible.value = true;
     try {
-      await Navigator.of(context).push(PageRouteBuilder(
-        pageBuilder: (_, __, ___) => const FullPlayerPage(),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          // Material Design 3 emphasized easing - optimized for 120Hz displays
-          const emphasizedDecelerate = Cubic(0.05, 0.7, 0.1, 1.0);
-          const emphasizedAccelerate = Cubic(0.3, 0.0, 0.8, 0.15);
-          
-          final curve = CurvedAnimation(
-            parent: animation,
-            curve: emphasizedDecelerate,
-            reverseCurve: emphasizedAccelerate,
-          );
-
-          // Calculate mini player position (128px from bottom: 60px nav + 68px mini)
-          final screenHeight = MediaQuery.of(context).size.height;
-          final miniPlayerOffset = 128 / screenHeight;
-
-          return SlideTransition(
-            position: Tween<Offset>(
-              begin: Offset(0, 1.0 - miniPlayerOffset), // Start from mini player position
-              end: Offset.zero,
-            ).animate(curve),
-            child: child,
-          );
-        },
-        transitionDuration: const Duration(milliseconds: 350),
-        reverseTransitionDuration: const Duration(milliseconds: 250),
-        opaque: true,
-        fullscreenDialog: false,
+      await Navigator.of(context).push(CupertinoPageRoute<void>(
+        builder: (_) => const FullPlayerPage(),
+        fullscreenDialog: true,
       ));
     } finally {
       _isOpen = false;
+      FullPlayerOverlay.isVisible.value = false;
     }
   }
 
@@ -71,6 +79,10 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
   late Animation<double> _coverAnimation;
   late Animation<double> _titleAnimation;
   late Animation<double> _controlsAnimation;
+  Color? _palettePrimary;
+  Color? _paletteSecondary;
+  String? _paletteCoverUrl;
+  bool _paletteLoading = false;
 
   @override
   void initState() {
@@ -124,6 +136,51 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
         _contentAnimationController.forward();
       }
     });
+  }
+
+  Future<void> _maybeUpdatePalette(NowPlaying np) async {
+    final cover = np.coverUrl;
+    if (cover == null || cover.isEmpty) {
+      if (_paletteCoverUrl != null || _palettePrimary != null || _paletteSecondary != null) {
+        setState(() {
+          _paletteCoverUrl = null;
+          _palettePrimary = null;
+          _paletteSecondary = null;
+        });
+      }
+      return;
+    }
+
+    if (_paletteCoverUrl == cover || _paletteLoading) return;
+
+    _paletteLoading = true;
+    try {
+      final provider = CachedNetworkImageProvider(cover);
+      final palette = await PaletteGenerator.fromImageProvider(
+        provider,
+        size: const Size(200, 200),
+        maximumColorCount: 12,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _paletteCoverUrl = cover;
+        _palettePrimary = palette.dominantColor?.color ?? palette.darkVibrantColor?.color;
+        _paletteSecondary = palette.vibrantColor?.color ??
+            palette.lightVibrantColor?.color ??
+            palette.mutedColor?.color ??
+            _palettePrimary;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _paletteCoverUrl = cover;
+        _palettePrimary = null;
+        _paletteSecondary = null;
+      });
+    } finally {
+      _paletteLoading = false;
+    }
   }
 
   @override
@@ -203,59 +260,18 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     final max = total.inMilliseconds.toDouble();
     final sliderMax = max > 0 ? max : 1.0;
     final value = position.inMilliseconds.toDouble().clamp(0.0, sliderMax);
-    final percent = max > 0 ? (value / max * 100).clamp(0.0, 100.0) : 0.0;
     final remaining = (total - position).isNegative ? Duration.zero : total - position;
 
-    final header = isPrimary
-        ? Padding(
-            padding: const EdgeInsets.only(bottom: 6),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: cs.primaryContainer,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.auto_stories_rounded, size: 14, color: cs.onPrimaryContainer),
-                      const SizedBox(width: 6),
-                      Text(
-                        '${percent.toStringAsFixed(1)}% Complete',
-                        style: text.labelMedium?.copyWith(
-                          color: cs.onPrimaryContainer,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          )
-        : Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: Text(
-              'Full book progress • ${percent.toStringAsFixed(1)}%',
-              style: text.bodyMedium?.copyWith(
-                color: cs.onSurfaceVariant,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          );
 
     final sliderTheme = SliderTheme.of(context).copyWith(
-      trackHeight: isPrimary ? 6 : 4,
-      thumbShape: RoundSliderThumbShape(enabledThumbRadius: isPrimary ? 12 : 9),
-      overlayShape: const RoundSliderOverlayShape(overlayRadius: 24),
+      trackHeight: isPrimary ? 14 : 10,
+      thumbShape: RoundSliderThumbShape(enabledThumbRadius: isPrimary ? 15 : 12),
+      overlayShape: RoundSliderOverlayShape(overlayRadius: isPrimary ? 30 : 26),
       activeTrackColor: cs.primary,
       inactiveTrackColor: cs.surfaceContainerHighest,
       thumbColor: cs.primary,
       overlayColor: cs.primary.withOpacity(isPrimary ? 0.16 : 0.12),
-      trackShape: const RoundedRectSliderTrackShape(),
+      trackShape: const _EdgeToEdgeSliderTrackShape(horizontalInset: 6),
       valueIndicatorShape: const PaddleSliderValueIndicatorShape(),
       valueIndicatorColor: cs.primary,
       valueIndicatorTextStyle: text.labelMedium?.copyWith(
@@ -269,7 +285,6 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          header,
           SliderTheme(
             data: sliderTheme,
             child: Slider(
@@ -347,7 +362,6 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     if (duration <= Duration.zero) return const SizedBox.shrink();
     final max = duration.inMilliseconds.toDouble();
     final value = metrics.elapsed.inMilliseconds.toDouble().clamp(0.0, max);
-    final percent = (max > 0 ? (value / max * 100) : 0.0).clamp(0.0, 100.0);
     final remaining = duration - metrics.elapsed;
 
     return RepaintBoundary(
@@ -357,7 +371,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
           Padding(
             padding: const EdgeInsets.only(bottom: 6),
             child: Text(
-              'Chapter progress • ${percent.toStringAsFixed(1)}%',
+              'Chapter progress',
               style: text.bodyMedium?.copyWith(
                 color: cs.onSurfaceVariant,
                 fontWeight: FontWeight.w700,
@@ -366,18 +380,18 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
           ),
           SliderTheme(
             data: SliderTheme.of(context).copyWith(
-              trackHeight: 6,
+              trackHeight: 14,
               thumbShape: const RoundSliderThumbShape(
-                enabledThumbRadius: 12,
+                enabledThumbRadius: 15,
                 elevation: 6,
                 pressedElevation: 8,
               ),
-              overlayShape: const RoundSliderOverlayShape(overlayRadius: 24),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 30),
               activeTrackColor: cs.primary,
               inactiveTrackColor: cs.surfaceContainerHighest,
               thumbColor: cs.primary,
               overlayColor: cs.primary.withOpacity(0.16),
-              trackShape: const RoundedRectSliderTrackShape(),
+              trackShape: const _EdgeToEdgeSliderTrackShape(horizontalInset: 6),
             ),
             child: Slider(
               min: 0.0,
@@ -430,7 +444,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Chapter ${metrics.index + 1} of ${metrics.totalChapters}',
+                        _chapterDescriptor(metrics),
                         style: text.labelMedium?.copyWith(
                           color: cs.onSurfaceVariant,
                           fontWeight: FontWeight.w700,
@@ -469,7 +483,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
       children: [
         Expanded(
           child: Text(
-            'Chapter ${metrics.index + 1} of ${metrics.totalChapters}',
+            _chapterDescriptor(metrics),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: text.bodyMedium?.copyWith(
@@ -497,14 +511,13 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     required Duration total,
   }) {
     final max = total.inMilliseconds.toDouble();
-    final percent = max > 0 ? (position.inMilliseconds / max * 100).clamp(0.0, 100.0) : 0.0;
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(
           child: Text(
-            'Full book progress • ${percent.toStringAsFixed(1)}%',
+            'Full book progress',
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: text.bodyMedium?.copyWith(
@@ -535,54 +548,24 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
   }) {
     final max = total.inMilliseconds.toDouble().clamp(0.0, double.infinity);
     final value = position.inMilliseconds.toDouble().clamp(0.0, max > 0 ? max : 1.0);
-    final percent = max > 0 ? (value / max * 100).clamp(0.0, 100.0) : 0.0;
 
     return RepaintBoundary(
       child: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.only(bottom: 6),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: cs.primaryContainer,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.auto_stories_rounded, size: 14, color: cs.onPrimaryContainer),
-                      const SizedBox(width: 6),
-                      Text(
-                        '${percent.toStringAsFixed(1)}% Complete',
-                        style: text.labelMedium?.copyWith(
-                          color: cs.onPrimaryContainer,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
           SliderTheme(
             data: SliderTheme.of(context).copyWith(
-              trackHeight: 6,
+              trackHeight: 14,
               thumbShape: const RoundSliderThumbShape(
-                enabledThumbRadius: 12,
+                enabledThumbRadius: 15,
                 elevation: 6,
                 pressedElevation: 8,
               ),
-              overlayShape: const RoundSliderOverlayShape(overlayRadius: 24),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 30),
               activeTrackColor: cs.primary,
               inactiveTrackColor: cs.surfaceContainerHighest,
               thumbColor: cs.primary,
               overlayColor: cs.primary.withOpacity(0.16),
-              trackShape: const RoundedRectSliderTrackShape(),
+              trackShape: const _EdgeToEdgeSliderTrackShape(horizontalInset: 6),
             ),
             child: Slider(
               min: 0.0,
@@ -661,6 +644,168 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
     final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
     return h > 0 ? '$h:$m:$s' : '$m:$s';
+  }
+
+  Widget _buildPercentCompleteLabel({
+    required PlaybackRepository playback,
+    required TextTheme text,
+    required ColorScheme cs,
+  }) {
+    return StreamBuilder<Duration>(
+      stream: playback.positionStream,
+      initialData: playback.player.position,
+      builder: (_, __) {
+        final total = playback.totalBookDuration;
+        final global = playback.globalBookPosition;
+        String headline;
+        if (total != null && total > Duration.zero && global != null) {
+          final percent = (global.inMilliseconds / total.inMilliseconds * 100).clamp(0.0, 100.0);
+          headline = '${percent.toStringAsFixed(1)}% complete';
+        } else {
+          headline = 'Syncing progress…';
+        }
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest.withOpacity(0.85),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: cs.outline.withOpacity(0.08)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: cs.primary.withOpacity(0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.auto_graph_rounded, size: 18, color: cs.primary),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  headline,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: text.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: cs.onSurface,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  BoxDecoration _playerBackgroundDecoration(
+    bool gradientEnabled,
+    ColorScheme cs,
+    Brightness brightness, {
+    Color? palettePrimary,
+    Color? paletteSecondary,
+  }) {
+    if (!gradientEnabled) {
+      return BoxDecoration(color: cs.surface);
+    }
+    final primary = palettePrimary ?? cs.primary;
+    final secondary = paletteSecondary ?? cs.secondary;
+    final colors = brightness == Brightness.dark
+        ? [
+            Color.alphaBlend(primary.withOpacity(0.4), cs.surface),
+            Color.alphaBlend(secondary.withOpacity(0.28), cs.surfaceContainerHighest),
+            Colors.black,
+          ]
+        : [
+            Color.alphaBlend(primary.withOpacity(0.48), cs.surface),
+            Color.alphaBlend(secondary.withOpacity(0.35), cs.surface),
+            Colors.white,
+          ];
+    return BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomRight,
+        colors: colors,
+      ),
+    );
+  }
+
+  void _showCastingComingSoon(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Casting support is coming soon.'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
+  Widget _buildChaptersQuickIcon({
+    required BuildContext context,
+    required ColorScheme cs,
+    required int totalChapters,
+    required int currentChapter,
+  }) {
+    final disabled = totalChapters <= 1;
+    final baseColor = disabled ? cs.onSurfaceVariant : cs.onSurface;
+    final badgeColor = cs.primary;
+    final safeCurrent = currentChapter.clamp(1, totalChapters);
+
+    Widget _line(double width) => Container(
+          width: width,
+          height: 3,
+          decoration: BoxDecoration(
+            color: baseColor,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        );
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        SizedBox(
+          height: 30,
+          width: 26,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _line(18),
+              const SizedBox(height: 4),
+              _line(22),
+              const SizedBox(height: 4),
+              _line(16),
+            ],
+          ),
+        ),
+        if (!disabled)
+          Positioned(
+            right: -6,
+            bottom: -6,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: badgeColor,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                '$safeCurrent/$totalChapters',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: cs.onPrimary,
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  String _chapterDescriptor(ChapterProgressMetrics metrics) {
+    final base = 'Chapter ${metrics.index + 1} of ${metrics.totalChapters}';
+    final title = metrics.title;
+    if (title == null || title.isEmpty) return base;
+    return '$base • $title';
   }
 
   Stream<bool> _getBookCompletionStream() {
@@ -792,6 +937,121 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
         );
       }
     }
+  }
+
+  Future<void> _addBookmark(BuildContext context, PlaybackRepository playback) async {
+    final np = playback.nowPlaying;
+    final globalPos = playback.globalBookPosition;
+    if (np == null || globalPos == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Start playback to add a bookmark.')),
+      );
+      return;
+    }
+    final metrics = playback.currentChapterProgress;
+    final chapterTitle = metrics?.title ?? (metrics != null ? 'Chapter ${metrics.index + 1}' : null);
+    try {
+      await PlaybackJournalService.instance.addBookmark(
+        libraryItemId: np.libraryItemId,
+        bookTitle: np.title,
+        positionMs: globalPos.inMilliseconds,
+        chapterTitle: chapterTitle,
+        chapterIndex: metrics?.index,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Bookmark saved')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to save bookmark: $e')),
+      );
+    }
+  }
+
+  Future<void> _openHistorySheet(BuildContext context, PlaybackRepository playback) async {
+    final np = playback.nowPlaying;
+    if (np == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No audiobook is playing right now.')),
+      );
+      return;
+    }
+    final entry = await showModalBottomSheet<PlaybackHistoryEntry>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      builder: (_) => PlayHistorySheet(
+        libraryItemId: np.libraryItemId,
+        bookTitle: np.title,
+      ),
+    );
+    if (entry == null) return;
+    final confirmed = await _confirmPositionJump(
+      context,
+      entry.chapterTitle ?? np.title,
+      entry.position,
+    );
+    if (!confirmed) return;
+    await playback.seekGlobal(entry.position, reportNow: true);
+    await playback.player.play();
+  }
+
+  Future<void> _openBookmarksSheet(BuildContext context, PlaybackRepository playback) async {
+    final np = playback.nowPlaying;
+    if (np == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No audiobook is playing right now.')),
+      );
+      return;
+    }
+    await showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      builder: (_) => BookmarksSheet(
+        libraryItemId: np.libraryItemId,
+        bookTitle: np.title,
+        playback: playback,
+      ),
+    );
+  }
+
+  Future<bool> _confirmPositionJump(BuildContext context, String title, Duration position) async {
+    final text = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+          'Resume from bookmark?',
+          style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+        ),
+        content: Text(
+          'Jump to "$title" at ${_fmt(position)}?',
+          style: text.bodyMedium,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: cs.primary,
+              foregroundColor: cs.onPrimary,
+            ),
+            child: const Text('Resume'),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
   }
 
   Future<bool> _showMarkAsFinishedDialog(BuildContext context) async {
@@ -1332,12 +1592,12 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                       );
                                     }
                                   } else if (selected != null) {
-                                    timer.startTimer(selected!);
-                                  }
+                              timer.startTimer(selected!);
+                            }
                                   if (started) {
-                                    Navigator.of(ctx).pop();
+                            Navigator.of(ctx).pop();
                                   }
-                                },
+                          },
                           child: const Text('Start'),
                         ),
                       ),
@@ -1365,11 +1625,24 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
   @override
   Widget build(BuildContext context) {
     final playback = ServicesScope.of(context).services.playback;
-    final cs = Theme.of(context).colorScheme;
-    final text = Theme.of(context).textTheme;
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final text = theme.textTheme;
+    final brightness = theme.brightness;
 
-    return Scaffold(
-      backgroundColor: cs.surface,
+    return ValueListenableBuilder<bool>(
+      valueListenable: UiPrefs.playerGradientBackground,
+      builder: (_, gradientEnabled, __) {
+        return DecoratedBox(
+          decoration: _playerBackgroundDecoration(
+            gradientEnabled,
+            cs,
+            brightness,
+            palettePrimary: _palettePrimary,
+            paletteSecondary: _paletteSecondary,
+          ),
+          child: Scaffold(
+            backgroundColor: Colors.transparent,
       body: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onVerticalDragUpdate: (details) {
@@ -1420,12 +1693,15 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                   );
                 }
 
+                unawaited(_maybeUpdatePalette(np));
+
                 return Column(
                   children: [
                     // Custom App Bar
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                       child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           IconButton.filledTonal(
                             onPressed: () => Navigator.of(context).pop(),
@@ -1434,56 +1710,142 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                               backgroundColor: cs.surfaceContainerHighest,
                             ),
                           ),
-                          const Spacer(),
-                          Text(
-                            'Now Playing',
-                            style: text.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _buildPercentCompleteLabel(
+                              playback: playback,
+                              text: text,
+                              cs: cs,
                             ),
                           ),
-                          const Spacer(),
-                          // Mark as finished/unfinished button
-                          StreamBuilder<bool>(
-                            stream: _getBookCompletionStream(),
-                            initialData: false,
-                            builder: (_, completionSnap) {
-                              final isCompleted = completionSnap.data ?? false;
-                              
-                              return IconButton.filledTonal(
-                                onPressed: () => _toggleBookCompletion(context, isCompleted),
-                                icon: Icon(isCompleted 
-                                    ? Icons.undo_rounded 
-                                    : Icons.check_circle_outline_rounded),
-                                tooltip: isCompleted ? 'Mark as unfinished' : 'Mark as finished',
-                                style: IconButton.styleFrom(
-                                  backgroundColor: isCompleted 
-                                      ? cs.errorContainer 
-                                      : cs.surfaceContainerHighest,
-                                  foregroundColor: isCompleted 
-                                      ? cs.onErrorContainer 
-                                      : cs.onSurface,
-                                ),
-                              );
-                            },
-                          ),
-                          const SizedBox(width: 8),
-                          StreamBuilder<double>(
-                            stream: ServicesScope.of(context).services.playback.player.speedStream,
-                            initialData: ServicesScope.of(context).services.playback.player.speed,
-                            builder: (_, speedSnap) {
-                              final cur = speedSnap.data ?? 1.0;
-                              final speeds = PlaybackSpeedService.instance.availableSpeeds;
-                              return PopupMenuButton<double>(
-                                tooltip: 'Playback speed',
-                                icon: _speedIndicator(cur, cs, text),
-                                onSelected: (v) async {
-                                  await PlaybackSpeedService.instance.setSpeed(v);
+                          const SizedBox(width: 12),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                tooltip: 'Add bookmark',
+                                onPressed: np == null ? null : () => _addBookmark(context, playback),
+                                icon: const Icon(Icons.bookmark_add_rounded),
+                              ),
+                              StreamBuilder<bool>(
+                                stream: _getBookCompletionStream(),
+                                initialData: false,
+                                builder: (_, completionSnap) {
+                                  final isCompleted = completionSnap.data ?? false;
+        final menuBg = gradientEnabled
+            ? Color.alphaBlend(
+                (_palettePrimary ?? cs.primary).withOpacity(0.1),
+                cs.surface,
+              )
+            : cs.surface;
+                                  return PopupMenuButton<_TopMenuAction>(
+                                    tooltip: 'More options',
+                                    icon: const Icon(Icons.more_vert_rounded),
+                                    color: menuBg,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(18),
+                                      side: BorderSide(
+                                        color: cs.outlineVariant.withOpacity(0.2),
+                                      ),
+                                    ),
+                                  onSelected: (action) {
+                                    switch (action) {
+                                      case _TopMenuAction.toggleCompletion:
+                                        _toggleBookCompletion(context, isCompleted);
+                                        break;
+                                      case _TopMenuAction.toggleGradient:
+                                        final next = !gradientEnabled;
+                                        UiPrefs.setPlayerGradientBackground(next);
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              next
+                                                  ? 'Gradient background enabled'
+                                                  : 'Gradient background disabled',
+                                            ),
+                                            duration: const Duration(seconds: 2),
+                                          ),
+                                        );
+                                        break;
+                                      case _TopMenuAction.cast:
+                                        _showCastingComingSoon(context);
+                                        break;
+                                      case _TopMenuAction.playHistory:
+                                        _openHistorySheet(context, playback);
+                                        break;
+                                      case _TopMenuAction.bookmarks:
+                                        _openBookmarksSheet(context, playback);
+                                        break;
+                                    }
+                                  },
+                                    itemBuilder: (context) => [
+                                      PopupMenuItem(
+                                        value: _TopMenuAction.toggleCompletion,
+                                        child: Row(
+                                          children: [
+                                            Icon(
+                                              isCompleted ? Icons.undo_rounded : Icons.check_rounded,
+                                              size: 18,
+                                              color: cs.primary,
+                                            ),
+                                            const SizedBox(width: 12),
+                                            Expanded(
+                                              child: Text(
+                                                isCompleted ? 'Mark as unfinished' : 'Mark as finished',
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      PopupMenuItem(
+                                        value: _TopMenuAction.toggleGradient,
+                                        child: Row(
+                                          children: [
+                                            Icon(
+                                              gradientEnabled ? Icons.gradient : Icons.gradient_outlined,
+                                              size: 18,
+                                              color: cs.primary,
+                                            ),
+                                            const SizedBox(width: 12),
+                                            Expanded(
+                                              child: Text(
+                                                gradientEnabled
+                                                    ? 'Disable gradient background'
+                                                    : 'Enable gradient background',
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      PopupMenuItem(
+                                        value: _TopMenuAction.playHistory,
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.history_rounded, size: 18, color: cs.primary),
+                                            const SizedBox(width: 12),
+                                            const Expanded(
+                                              child: Text('Play history'),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      PopupMenuItem(
+                                        value: _TopMenuAction.bookmarks,
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.bookmark_rounded, size: 18, color: cs.primary),
+                                            const SizedBox(width: 12),
+                                            const Expanded(
+                                              child: Text('Bookmarks'),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  );
                                 },
-                                itemBuilder: (context) => [
-                                  for (final s in speeds) _speedItem(context, cur, s),
-                                ],
-                              );
-                            },
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -1494,7 +1856,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                       child: RepaintBoundary(
                         child: SingleChildScrollView(
                           physics: const BouncingScrollPhysics(),
-                          padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                          padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
                           child: Column(
                             children: [
                             // Cover with enhanced shadow and border - compact size
@@ -1507,43 +1869,40 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                     opacity: _coverAnimation.value,
                                     child: Center(
                                       child: SizedBox(
-                                        width: MediaQuery.of(context).size.width * 0.56, // 56% of screen width - balanced size
-                                        child: Hero(
-                                          tag: 'mini-cover-${np.libraryItemId}',
-                                          child: Container(
-                                            decoration: BoxDecoration(
-                                              borderRadius: BorderRadius.circular(24),
-                                              boxShadow: [
-                                                BoxShadow(
-                                                  color: cs.shadow.withOpacity(0.25),
-                                                  blurRadius: 24,
-                                                  spreadRadius: 2,
-                                                  offset: const Offset(0, 8),
-                                                ),
-                                                BoxShadow(
-                                                  color: cs.primary.withOpacity(0.1),
-                                                  blurRadius: 40,
-                                                  spreadRadius: -4,
-                                                  offset: const Offset(0, 12),
-                                                ),
-                                              ],
-                                            ),
-                                            child: ClipRRect(
-                                              borderRadius: BorderRadius.circular(24),
-                                              child: AspectRatio(
-                                                aspectRatio: 1,
-                                                child: Image.network(
-                                                  np.coverUrl ?? '',
-                                                  fit: BoxFit.cover,
-                                                  gaplessPlayback: true,
-                                                  filterQuality: FilterQuality.low,
-                                                  errorBuilder: (_, __, ___) => Container(
-                                                    color: cs.surfaceContainerHighest,
-                                                    child: Icon(
-                                                      Icons.menu_book_outlined,
-                                                      size: 88,
-                                                      color: cs.onSurfaceVariant,
-                                                    ),
+                                        width: MediaQuery.of(context).size.width * 0.7, // larger cover for stronger focus
+                                        child: Container(
+                                          decoration: BoxDecoration(
+                                            borderRadius: BorderRadius.circular(24),
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: cs.shadow.withOpacity(0.25),
+                                                blurRadius: 24,
+                                                spreadRadius: 2,
+                                                offset: const Offset(0, 8),
+                                              ),
+                                              BoxShadow(
+                                                color: cs.primary.withOpacity(0.1),
+                                                blurRadius: 40,
+                                                spreadRadius: -4,
+                                                offset: const Offset(0, 12),
+                                              ),
+                                            ],
+                                          ),
+                                          child: ClipRRect(
+                                            borderRadius: BorderRadius.circular(24),
+                                            child: AspectRatio(
+                                              aspectRatio: 1,
+                                              child: Image.network(
+                                                np.coverUrl ?? '',
+                                                fit: BoxFit.cover,
+                                                gaplessPlayback: true,
+                                                filterQuality: FilterQuality.low,
+                                                errorBuilder: (_, __, ___) => Container(
+                                                  color: cs.surfaceContainerHighest,
+                                                  child: Icon(
+                                                    Icons.menu_book_outlined,
+                                                    size: 88,
+                                                    color: cs.onSurfaceVariant,
                                                   ),
                                                 ),
                                               ),
@@ -1739,79 +2098,6 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
 
                     const SizedBox(height: 12),
 
-                    // Material Design 3 Chapter Name (if available)
-                    StreamBuilder<Duration>(
-                      stream: playback.positionStream,
-                      initialData: playback.player.position,
-                      builder: (_, posSnap) {
-                        final globalTotal = playback.totalBookDuration;
-                        final useGlobal = _dualProgressEnabled && globalTotal != null && globalTotal > Duration.zero;
-                        final globalPos = useGlobal ? (playback.globalBookPosition ?? Duration.zero) : (posSnap.data ?? Duration.zero);
-                        
-                        final np = playback.nowPlaying;
-                        if (np == null || np.chapters.isEmpty) {
-                          return const SizedBox.shrink();
-                        }
-
-                        // Find current chapter
-                        int chapterIdx = 0;
-                        for (int i = 0; i < np.chapters.length; i++) {
-                          if (globalPos >= np.chapters[i].start) {
-                            chapterIdx = i;
-                          } else {
-                            break;
-                          }
-                        }
-                        
-                        final currentChapter = np.chapters[chapterIdx];
-                        final chapterTitle = currentChapter.title.isEmpty 
-                            ? 'Chapter ${chapterIdx + 1}' 
-                            : currentChapter.title;
-
-                        return Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                          child: Card(
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
-                              side: BorderSide(
-                                color: cs.outline.withOpacity(0.1),
-                                width: 0.5,
-                              ),
-                            ),
-                            child: InkWell(
-                              onTap: () => _showChaptersSheet(context, playback, np),
-                              borderRadius: BorderRadius.circular(14),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      Icons.bookmark_rounded,
-                                      size: 18,
-                                      color: cs.primary,
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: Text(
-                                        chapterTitle,
-                                        style: text.bodyMedium?.copyWith(
-                                          color: cs.onSurface,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-
                     // CONTROLS + CHAPTERS
                     AnimatedBuilder(
                       animation: _controlsAnimation,
@@ -1923,58 +2209,49 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                       },
                                     ),
 
-                                    const SizedBox(height: 24),
+                                    const SizedBox(height: 40),
 
-                                    // Download/Chapters + Sleep controls - compact design
+                                    // Quick access controls - four rounded buttons
                                     Row(
                                       children: [
+                                        Expanded(
+                                          child: _PlayerActionTile(
+                                            icon: _buildChaptersQuickIcon(
+                                              context: context,
+                                              cs: cs,
+                                              totalChapters: np.chapters.length,
+                                              currentChapter: np.chapters.length > 1
+                                                  ? (playback.currentChapterProgress?.index ?? 0) + 1
+                                                  : 1,
+                                            ),
+                                            label: '',
+                                            onTap: np.chapters.length > 1
+                                                ? () => _showChaptersSheet(context, playback, np)
+                                                : null,
+                                            tooltip: np.chapters.length > 1
+                                                ? 'Open chapters'
+                                                : 'Single chapter – no chapters list',
+                                            enabled: np.chapters.length > 1,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
                                         Expanded(
                                           child: _ChaptersDownloadButton(
                                             libraryItemId: np.libraryItemId,
                                             episodeId: np.episodeId,
                                             title: np.title,
+                                            iconOnly: true,
                                           ),
                                         ),
                                         const SizedBox(width: 12),
                                         Expanded(
-                                          child: StreamBuilder<Duration?>(
-                                            stream: SleepTimerService.instance.remainingTimeStream,
-                                            initialData: SleepTimerService.instance.remainingTime,
-                                            builder: (ctx, snap) {
-                                              final timer = SleepTimerService.instance;
-                                              final active = timer.isActive;
-                                              String label = 'Sleep';
-                                              if (active) {
-                                                final remain = timer.formattedRemainingTime;
-                                                if (timer.isChapterMode) {
-                                                  label = remain.isNotEmpty
-                                                      ? 'Sleep · Chapter end ($remain)'
-                                                      : 'Sleep · Chapter end';
-                                                } else if (snap.data != null && remain.isNotEmpty) {
-                                                  label = 'Sleep · $remain';
-                                                }
-                                              }
-                                              return FilledButton.tonalIcon(
-                                                icon: Icon(
-                                                  active ? Icons.nightlight : Icons.nightlight_round,
-                                                  size: 20,
-                                                ),
-                                                label: Text(label),
-                                                onPressed: () => _showSleepTimerSheet(context, np),
-                                                style: FilledButton.styleFrom(
-                                                  padding: const EdgeInsets.symmetric(vertical: 14),
-                                                  elevation: 1,
-                                                  shape: RoundedRectangleBorder(
-                                                    borderRadius: BorderRadius.circular(16),
-                                                  ),
-                                                  textStyle: text.labelMedium?.copyWith(
-                                                    fontWeight: FontWeight.w600,
-                                                    letterSpacing: 0.3,
-                                                  ),
-                                                ),
-                                              );
-                                            },
+                                          child: _SleepQuickAction(
+                                            onTap: () => _showSleepTimerSheet(context, np),
                                           ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: _SpeedQuickAction(playback: playback),
                                         ),
                                       ],
                                     ),
@@ -1982,33 +2259,258 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                       ],
                                     ),
                                   ),
+                                                  ),
+                                                ),
+                                              );
+                                            },
+                                        ),
+                                      ],
+                );
+              },
+                                    ),
+                                    ),
+                                  ),
                                 ),
                               ),
                             );
                           },
-                        ),
-                  ],
-                );
-              },
-            ),
-          ),
-        ),
-      ),
     );
   }
 }
 
 /// Button that shows download status for the entire book
+class _PlayerActionTile extends StatelessWidget {
+  const _PlayerActionTile({
+    required this.icon,
+    required this.label,
+    this.onTap,
+    this.tooltip,
+    this.enabled = true,
+    this.backgroundColor,
+    this.foregroundColor,
+  });
+
+  final Widget icon;
+  final String label;
+  final VoidCallback? onTap;
+  final String? tooltip;
+  final bool enabled;
+  final Color? backgroundColor;
+  final Color? foregroundColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    final radius = BorderRadius.circular(22);
+    final bg = backgroundColor ?? cs.surfaceContainerHigh.withOpacity(0.85);
+    final fg = foregroundColor ?? cs.onSurface;
+
+    final tile = Container(
+      decoration: BoxDecoration(
+        borderRadius: radius,
+        color: enabled ? bg : bg.withOpacity(0.6),
+        border: Border.all(
+          color: cs.outlineVariant.withOpacity(enabled ? 0.35 : 0.2),
+          width: 1.2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: cs.shadow.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: radius,
+        child: InkWell(
+          borderRadius: radius,
+          onTap: enabled ? onTap : null,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconTheme(
+                  data: IconThemeData(
+                    color: enabled ? fg : cs.onSurfaceVariant,
+                    size: 28,
+                  ),
+                  child: icon,
+                ),
+                if (label.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    style: text.labelSmall?.copyWith(
+                      color: enabled ? fg : cs.onSurfaceVariant,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final wrapped = tooltip != null ? Tooltip(message: tooltip!, child: tile) : tile;
+    return Opacity(opacity: enabled ? 1.0 : 0.6, child: wrapped);
+  }
+}
+
+class _SleepQuickAction extends StatelessWidget {
+  const _SleepQuickAction({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return StreamBuilder<Duration?>(
+      stream: SleepTimerService.instance.remainingTimeStream,
+      initialData: SleepTimerService.instance.remainingTime,
+      builder: (ctx, snap) {
+        final timer = SleepTimerService.instance;
+        final active = timer.isActive;
+        final isChapterMode = timer.isChapterMode;
+        return _PlayerActionTile(
+          icon: Icon(isChapterMode ? Icons.menu_book_rounded : Icons.nights_stay_rounded),
+          label: '',
+          onTap: onTap,
+          tooltip: active ? 'Adjust sleep timer' : 'Set sleep timer',
+          backgroundColor: active ? cs.primary : cs.surfaceContainerHighest,
+          foregroundColor: active ? cs.onPrimary : cs.onSurface,
+        );
+      },
+    );
+  }
+}
+
+class _SpeedQuickAction extends StatelessWidget {
+  const _SpeedQuickAction({required this.playback});
+
+  final PlaybackRepository playback;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return StreamBuilder<double>(
+      stream: playback.player.speedStream,
+      initialData: playback.player.speed,
+      builder: (_, snap) {
+        final cur = snap.data ?? 1.0;
+        final isNormal = (cur - 1.0).abs() < 0.001;
+        final accentColor = cs.primary;
+        return _PlayerActionTile(
+          icon: _SpeedIcon(
+            value: cur,
+            color: isNormal ? cs.onSurface : accentColor,
+            accentColor: accentColor,
+            highlight: !isNormal,
+          ),
+          label: '',
+          tooltip: 'Playback speed',
+          onTap: () => _showSpeedSheet(context, cur),
+          backgroundColor: isNormal
+              ? null
+              : Color.alphaBlend(accentColor.withOpacity(0.08), cs.surfaceContainerHighest),
+        );
+      },
+    );
+  }
+
+  void _showSpeedSheet(BuildContext context, double current) {
+    final speeds = PlaybackSpeedService.instance.availableSpeeds;
+    showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (ctx) {
+        return ListView.separated(
+          shrinkWrap: true,
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+          itemCount: speeds.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 4),
+          itemBuilder: (_, i) {
+            final speed = speeds[i];
+            final selected = (current - speed).abs() < 0.001;
+            return ListTile(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              tileColor: selected ? Theme.of(ctx).colorScheme.primaryContainer : null,
+              title: Text('${speed.toStringAsFixed(2)}×'),
+              trailing: selected ? const Icon(Icons.check_rounded) : null,
+              onTap: () async {
+                Navigator.of(ctx).pop();
+                await PlaybackSpeedService.instance.setSpeed(speed);
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _SpeedIcon extends StatelessWidget {
+  const _SpeedIcon({
+    required this.value,
+    required this.color,
+    required this.accentColor,
+    required this.highlight,
+  });
+
+  final double value;
+  final Color color;
+  final Color accentColor;
+  final bool highlight;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Icon(Icons.speed_rounded, size: 28, color: color),
+        if (highlight)
+          Positioned(
+            right: -8,
+            bottom: -6,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: accentColor,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                '${value.toStringAsFixed(2)}×',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: Theme.of(context).colorScheme.onPrimary,
+                    ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
 class _ChaptersDownloadButton extends StatefulWidget {
   const _ChaptersDownloadButton({
     required this.libraryItemId,
     this.episodeId,
     this.title,
+    this.iconOnly = false,
   });
 
   final String libraryItemId;
   final String? episodeId;
   final String? title;
+  final bool iconOnly;
 
   @override
   State<_ChaptersDownloadButton> createState() => _ChaptersDownloadButtonState();
@@ -2030,21 +2532,16 @@ class _ChaptersDownloadButtonState extends State<_ChaptersDownloadButton> {
       _sub = _downloads!
           .watchItemProgress(widget.libraryItemId)
           .listen((p) => setState(() => _snap = p));
-      
-      // Force immediate refresh of download status when button is initialized
+
       _refreshDownloadStatus();
     }
   }
-  
-  /// Force refresh download status
+
   Future<void> _refreshDownloadStatus() async {
     if (_downloads == null) return;
     try {
-      // Force a refresh which will update the stream
       await _downloads!.refreshItemStatus(widget.libraryItemId);
-    } catch (_) {
-      // Best effort - if it fails, the stream will update eventually
-    }
+    } catch (_) {}
   }
 
   @override
@@ -2056,22 +2553,19 @@ class _ChaptersDownloadButtonState extends State<_ChaptersDownloadButton> {
   Future<void> _enqueue() async {
     if (_downloads == null) return;
     try {
-      // If this item is already active, ignore duplicate enqueue taps
       if (_snap != null && (_snap!.status == 'running' || _snap!.status == 'queued')) {
         return;
       }
 
-      // Check whether other items are active/queued
       final othersActive = await _downloads!.hasActiveOrQueued();
       bool requireCancelOthers = false;
       if (othersActive) {
-        // If only this item is tracked or active, allow enqueue directly
         try {
           final tracked = await _downloads!.listTrackedItemIds();
           final onlyThis = tracked.isNotEmpty && tracked.every((id) => id == widget.libraryItemId);
           if (!onlyThis) requireCancelOthers = true;
         } catch (_) {
-          requireCancelOthers = true; // be conservative if unknown
+          requireCancelOthers = true;
         }
       }
 
@@ -2082,8 +2576,7 @@ class _ChaptersDownloadButtonState extends State<_ChaptersDownloadButton> {
           context: context,
           builder: (context) => AlertDialog(
             title: const Text('Single download at a time'),
-            content: const Text(
-                'Another book is downloading. Cancel it and download this book now?'),
+            content: const Text('Another book is downloading. Cancel it and download this book now?'),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context, false),
@@ -2106,7 +2599,6 @@ class _ChaptersDownloadButtonState extends State<_ChaptersDownloadButton> {
         await _downloads!.cancelAll();
       }
 
-      // Proceed to enqueue this item
       await _downloads!.enqueueItemDownloads(
         widget.libraryItemId,
         episodeId: widget.episodeId,
@@ -2164,23 +2656,22 @@ class _ChaptersDownloadButtonState extends State<_ChaptersDownloadButton> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
     final snap = _snap;
 
-    // Determine button state and content
-    IconData icon;
+    Widget iconWidget;
     String label;
-    Color? backgroundColor;
-    Color? foregroundColor;
-    VoidCallback? onPressed;
+    String tooltip;
+    Color backgroundColor;
+    Color foregroundColor;
+    VoidCallback? action;
 
     if (snap?.status == 'complete') {
-      icon = Icons.check_circle_outline;
-      label = 'Downloaded';
+      iconWidget = const Icon(Icons.delete_outline);
+      label = 'Remove';
+      tooltip = 'Remove download';
       backgroundColor = cs.secondaryContainer;
       foregroundColor = cs.onSecondaryContainer;
-      // When downloaded, tap shows confirmation dialog before removing
-      onPressed = () async {
+      action = () async {
         final confirmed = await showDialog<bool>(
           context: context,
           builder: (dialogContext) {
@@ -2213,58 +2704,37 @@ class _ChaptersDownloadButtonState extends State<_ChaptersDownloadButton> {
         }
       };
     } else if (snap != null && (snap.status == 'running' || snap.status == 'queued')) {
-      icon = Icons.download;
-      final pct = (snap.progress * 100).clamp(0, 100).toStringAsFixed(0);
-      label = '$pct%';
+      iconWidget = SizedBox(
+        width: 28,
+        height: 28,
+        child: CircularProgressIndicator(
+          strokeWidth: 2.5,
+          value: snap.status == 'running' ? snap.progress : null,
+          valueColor: AlwaysStoppedAnimation<Color>(cs.onPrimary),
+          backgroundColor: cs.onPrimary.withOpacity(0.2),
+        ),
+      );
+      label = snap.status == 'queued' ? 'Queued' : 'Cancel';
+      tooltip = snap.status == 'queued' ? 'Download queued' : 'Cancel download';
       backgroundColor = cs.primary;
       foregroundColor = cs.onPrimary;
-      // When downloading, tap cancels
-      onPressed = _cancelCurrent;
+      action = _cancelCurrent;
     } else {
-      icon = Icons.download_outlined;
+      iconWidget = const Icon(Icons.download_rounded);
       label = 'Download';
-      backgroundColor = null; // Use default tonal
-      foregroundColor = null;
-      // When not downloaded, tap starts download
-      onPressed = _enqueue;
+      tooltip = 'Download for offline';
+      backgroundColor = cs.surfaceContainerHighest;
+      foregroundColor = cs.onSurface;
+      action = _enqueue;
     }
 
-    return FilledButton.tonalIcon(
-      icon: snap != null && (snap.status == 'running' || snap.status == 'queued')
-          ? SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                value: snap.status == 'running' ? snap.progress : null,
-                color: foregroundColor,
-              ),
-            )
-          : snap?.status == 'complete'
-              ? Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(icon, size: 20),
-                    const SizedBox(width: 4),
-                    Icon(Icons.delete_outline, size: 16, color: cs.error),
-                  ],
-                )
-              : Icon(icon, size: 20),
-      label: Text(label),
-      onPressed: onPressed,
-      style: FilledButton.styleFrom(
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        elevation: 1,
-        backgroundColor: backgroundColor,
-        foregroundColor: foregroundColor,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        textStyle: textTheme.labelMedium?.copyWith(
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.3,
-        ),
-      ),
+    return _PlayerActionTile(
+      icon: iconWidget,
+      label: widget.iconOnly ? '' : label,
+      onTap: action,
+      tooltip: tooltip,
+      backgroundColor: backgroundColor,
+      foregroundColor: foregroundColor,
     );
   }
 }
