@@ -35,6 +35,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool? _authorViewEnabled;
   bool? _bluetoothAutoPlay;
   bool? _waveformAnimationEnabled;
+  bool? _squigglyProgressBar;
   bool? _letterScrollEnabled;
   bool? _letterScrollBooksAlpha;
   bool? _smartRewindEnabled;
@@ -76,6 +77,7 @@ class _SettingsPageState extends State<SettingsPage> {
         
         // Load waveform animation setting (default already set above)
         _waveformAnimationEnabled = prefs.getBool('ui_waveform_animation_enabled') ?? true;
+        _squigglyProgressBar = prefs.getBool('ui_squiggly_progress_bar') ?? true;
         _letterScrollEnabled = prefs.getBool('ui_letter_scroll_enabled') ?? false;
         _letterScrollBooksAlpha = prefs.getBool('ui_letter_scroll_books_alpha') ?? false;
         _progressPrimary = UiPrefs.progressPrimary.value;
@@ -599,6 +601,15 @@ class _SettingsPageState extends State<SettingsPage> {
             onChanged: (v) async {
               await UiPrefs.setWaveformAnimationEnabled(v, pinToSettingsOnChange: true);
               if (mounted) setState(() { _waveformAnimationEnabled = v; });
+            },
+          ),
+          SwitchListTile(
+            title: const Text('Squiggly progress bar'),
+            subtitle: const Text('Use Android 13-style wiggly progress bar in full screen player'),
+            value: _squigglyProgressBar ?? true,
+            onChanged: (v) async {
+              await UiPrefs.setSquigglyProgressBar(v, pinToSettingsOnChange: true);
+              if (mounted) setState(() { _squigglyProgressBar = v; });
             },
           ),
           SwitchListTile(

@@ -7,6 +7,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:squiggly_slider/slider.dart';
 
 import '../../core/playback_repository.dart';
 import '../../core/playback_speed_service.dart';
@@ -285,19 +286,63 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SliderTheme(
-            data: sliderTheme,
-            child: Slider(
-              min: 0.0,
-              max: sliderMax,
-              value: value,
-              onChanged: (v) async {
-                await playback.seekGlobal(Duration(milliseconds: v.round()), reportNow: false);
-              },
-              onChangeEnd: (v) async {
-                await playback.seekGlobal(Duration(milliseconds: v.round()), reportNow: true);
-              },
-            ),
+          ValueListenableBuilder<bool>(
+            valueListenable: UiPrefs.squigglyProgressBar,
+            builder: (context, useSquiggly, _) {
+              if (useSquiggly) {
+                return StreamBuilder<bool>(
+                  stream: playback.playingStream,
+                  initialData: playback.player.playing,
+                  builder: (context, playSnap) {
+                    final playing = playSnap.data ?? false;
+                    final targetAmplitude = isPrimary ? 5.0 : 4.0;
+                    return TweenAnimationBuilder<double>(
+                      key: ValueKey(playing),
+                      tween: Tween<double>(
+                        begin: playing ? 0.0 : targetAmplitude,
+                        end: playing ? targetAmplitude : 0.0,
+                      ),
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOut,
+                      builder: (context, animatedAmplitude, _) {
+                        return SliderTheme(
+                          data: sliderTheme.copyWith(trackHeight: 5.0),
+                          child: SquigglySlider(
+                            value: value,
+                            min: 0.0,
+                            max: sliderMax,
+                            onChanged: (v) async {
+                              await playback.seekGlobal(Duration(milliseconds: v.round()), reportNow: false);
+                            },
+                            onChangeEnd: (v) async {
+                              await playback.seekGlobal(Duration(milliseconds: v.round()), reportNow: true);
+                            },
+                            squiggleAmplitude: animatedAmplitude,
+                            squiggleWavelength: isPrimary ? 7.0 : 8.0,
+                            squiggleSpeed: playing ? 0.2 : 0.0,
+                          ),
+                        );
+                      },
+                    );
+                  },
+                );
+              } else {
+                return SliderTheme(
+                  data: sliderTheme,
+                  child: Slider(
+                    min: 0.0,
+                    max: sliderMax,
+                    value: value,
+                    onChanged: (v) async {
+                      await playback.seekGlobal(Duration(milliseconds: v.round()), reportNow: false);
+                    },
+                    onChangeEnd: (v) async {
+                      await playback.seekGlobal(Duration(milliseconds: v.round()), reportNow: true);
+                    },
+                  ),
+                );
+              }
+            },
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -378,38 +423,100 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
               ),
             ),
           ),
-          SliderTheme(
-            data: SliderTheme.of(context).copyWith(
-              trackHeight: 14,
-              thumbShape: const RoundSliderThumbShape(
-                enabledThumbRadius: 15,
-                elevation: 6,
-                pressedElevation: 8,
-              ),
-              overlayShape: const RoundSliderOverlayShape(overlayRadius: 30),
-              activeTrackColor: cs.primary,
-              inactiveTrackColor: cs.surfaceContainerHighest,
-              thumbColor: cs.primary,
-              overlayColor: cs.primary.withOpacity(0.16),
-              trackShape: const _EdgeToEdgeSliderTrackShape(horizontalInset: 6),
-            ),
-            child: Slider(
-              min: 0.0,
-              max: max > 0 ? max : 1.0,
-              value: value,
-              onChanged: (v) async {
-                await playback.seekGlobal(
-                  metrics.start + Duration(milliseconds: v.round()),
-                  reportNow: false,
+          ValueListenableBuilder<bool>(
+            valueListenable: UiPrefs.squigglyProgressBar,
+            builder: (context, useSquiggly, _) {
+              if (useSquiggly) {
+                return StreamBuilder<bool>(
+                  stream: playback.playingStream,
+                  initialData: playback.player.playing,
+                  builder: (context, playSnap) {
+                    final playing = playSnap.data ?? false;
+                    return TweenAnimationBuilder<double>(
+                      key: ValueKey(playing),
+                      tween: Tween<double>(
+                        begin: playing ? 0.0 : 5.0,
+                        end: playing ? 5.0 : 0.0,
+                      ),
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOut,
+                      builder: (context, animatedAmplitude, _) {
+                        return SliderTheme(
+                          data: SliderTheme.of(context).copyWith(
+                            trackHeight: 5.0,
+                            thumbShape: const RoundSliderThumbShape(
+                              enabledThumbRadius: 15,
+                              elevation: 6,
+                              pressedElevation: 8,
+                            ),
+                            overlayShape: const RoundSliderOverlayShape(overlayRadius: 30),
+                            activeTrackColor: cs.primary,
+                            inactiveTrackColor: cs.surfaceContainerHighest,
+                            thumbColor: cs.primary,
+                            overlayColor: cs.primary.withOpacity(0.16),
+                            trackShape: const _EdgeToEdgeSliderTrackShape(horizontalInset: 6),
+                          ),
+                          child: SquigglySlider(
+                            value: value,
+                            min: 0.0,
+                            max: max > 0 ? max : 1.0,
+                            onChanged: (v) async {
+                              await playback.seekGlobal(
+                                metrics.start + Duration(milliseconds: v.round()),
+                                reportNow: false,
+                              );
+                            },
+                            onChangeEnd: (v) async {
+                              await playback.seekGlobal(
+                                metrics.start + Duration(milliseconds: v.round()),
+                                reportNow: true,
+                              );
+                            },
+                            squiggleAmplitude: animatedAmplitude,
+                            squiggleWavelength: 7.0,
+                            squiggleSpeed: playing ? 0.2 : 0.0,
+                          ),
+                        );
+                      },
+                    );
+                  },
                 );
-              },
-              onChangeEnd: (v) async {
-                await playback.seekGlobal(
-                  metrics.start + Duration(milliseconds: v.round()),
-                  reportNow: true,
+              } else {
+                return SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    trackHeight: 14,
+                    thumbShape: const RoundSliderThumbShape(
+                      enabledThumbRadius: 15,
+                      elevation: 6,
+                      pressedElevation: 8,
+                    ),
+                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 30),
+                    activeTrackColor: cs.primary,
+                    inactiveTrackColor: cs.surfaceContainerHighest,
+                    thumbColor: cs.primary,
+                    overlayColor: cs.primary.withOpacity(0.16),
+                    trackShape: const _EdgeToEdgeSliderTrackShape(horizontalInset: 6),
+                  ),
+                  child: Slider(
+                    min: 0.0,
+                    max: max > 0 ? max : 1.0,
+                    value: value,
+                    onChanged: (v) async {
+                      await playback.seekGlobal(
+                        metrics.start + Duration(milliseconds: v.round()),
+                        reportNow: false,
+                      );
+                    },
+                    onChangeEnd: (v) async {
+                      await playback.seekGlobal(
+                        metrics.start + Duration(milliseconds: v.round()),
+                        reportNow: true,
+                      );
+                    },
+                  ),
                 );
-              },
-            ),
+              }
+            },
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -552,38 +659,100 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     return RepaintBoundary(
       child: Column(
         children: [
-          SliderTheme(
-            data: SliderTheme.of(context).copyWith(
-              trackHeight: 14,
-              thumbShape: const RoundSliderThumbShape(
-                enabledThumbRadius: 15,
-                elevation: 6,
-                pressedElevation: 8,
-              ),
-              overlayShape: const RoundSliderOverlayShape(overlayRadius: 30),
-              activeTrackColor: cs.primary,
-              inactiveTrackColor: cs.surfaceContainerHighest,
-              thumbColor: cs.primary,
-              overlayColor: cs.primary.withOpacity(0.16),
-              trackShape: const _EdgeToEdgeSliderTrackShape(horizontalInset: 6),
-            ),
-            child: Slider(
-              min: 0.0,
-              max: max > 0 ? max : 1.0,
-              value: value,
-              onChanged: (v) async {
-                await playback.seek(
-                  Duration(milliseconds: v.round()),
-                  reportNow: false,
+          ValueListenableBuilder<bool>(
+            valueListenable: UiPrefs.squigglyProgressBar,
+            builder: (context, useSquiggly, _) {
+              if (useSquiggly) {
+                return StreamBuilder<bool>(
+                  stream: playback.playingStream,
+                  initialData: playback.player.playing,
+                  builder: (context, playSnap) {
+                    final playing = playSnap.data ?? false;
+                    return TweenAnimationBuilder<double>(
+                      key: ValueKey(playing),
+                      tween: Tween<double>(
+                        begin: playing ? 0.0 : 5.0,
+                        end: playing ? 5.0 : 0.0,
+                      ),
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOut,
+                      builder: (context, animatedAmplitude, _) {
+                        return SliderTheme(
+                          data: SliderTheme.of(context).copyWith(
+                            trackHeight: 5.0,
+                            thumbShape: const RoundSliderThumbShape(
+                              enabledThumbRadius: 15,
+                              elevation: 6,
+                              pressedElevation: 8,
+                            ),
+                            overlayShape: const RoundSliderOverlayShape(overlayRadius: 30),
+                            activeTrackColor: cs.primary,
+                            inactiveTrackColor: cs.surfaceContainerHighest,
+                            thumbColor: cs.primary,
+                            overlayColor: cs.primary.withOpacity(0.16),
+                            trackShape: const _EdgeToEdgeSliderTrackShape(horizontalInset: 6),
+                          ),
+                          child: SquigglySlider(
+                            value: value,
+                            min: 0.0,
+                            max: max > 0 ? max : 1.0,
+                            onChanged: (v) async {
+                              await playback.seek(
+                                Duration(milliseconds: v.round()),
+                                reportNow: false,
+                              );
+                            },
+                            onChangeEnd: (v) async {
+                              await playback.seek(
+                                Duration(milliseconds: v.round()),
+                                reportNow: true,
+                              );
+                            },
+                            squiggleAmplitude: animatedAmplitude,
+                            squiggleWavelength: 7.0,
+                            squiggleSpeed: playing ? 0.2 : 0.0,
+                          ),
+                        );
+                      },
+                    );
+                  },
                 );
-              },
-              onChangeEnd: (v) async {
-                await playback.seek(
-                  Duration(milliseconds: v.round()),
-                  reportNow: true,
+              } else {
+                return SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    trackHeight: 14,
+                    thumbShape: const RoundSliderThumbShape(
+                      enabledThumbRadius: 15,
+                      elevation: 6,
+                      pressedElevation: 8,
+                    ),
+                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 30),
+                    activeTrackColor: cs.primary,
+                    inactiveTrackColor: cs.surfaceContainerHighest,
+                    thumbColor: cs.primary,
+                    overlayColor: cs.primary.withOpacity(0.16),
+                    trackShape: const _EdgeToEdgeSliderTrackShape(horizontalInset: 6),
+                  ),
+                  child: Slider(
+                    min: 0.0,
+                    max: max > 0 ? max : 1.0,
+                    value: value,
+                    onChanged: (v) async {
+                      await playback.seek(
+                        Duration(milliseconds: v.round()),
+                        reportNow: false,
+                      );
+                    },
+                    onChangeEnd: (v) async {
+                      await playback.seek(
+                        Duration(milliseconds: v.round()),
+                        reportNow: true,
+                      );
+                    },
+                  ),
                 );
-              },
-            ),
+              }
+            },
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4),
