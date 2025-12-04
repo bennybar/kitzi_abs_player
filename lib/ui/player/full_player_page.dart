@@ -306,7 +306,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                       curve: Curves.easeInOut,
                       builder: (context, animatedAmplitude, _) {
                         return SliderTheme(
-                          data: sliderTheme.copyWith(trackHeight: 5.0),
+                          data: sliderTheme.copyWith(trackHeight: 6.0),
                           child: SquigglySlider(
                             value: value,
                             min: 0.0,
@@ -443,7 +443,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                       builder: (context, animatedAmplitude, _) {
                         return SliderTheme(
                           data: SliderTheme.of(context).copyWith(
-                            trackHeight: 5.0,
+                            trackHeight: 6.0,
                             thumbShape: const RoundSliderThumbShape(
                               enabledThumbRadius: 15,
                               elevation: 6,
@@ -679,7 +679,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                       builder: (context, animatedAmplitude, _) {
                         return SliderTheme(
                           data: SliderTheme.of(context).copyWith(
-                            trackHeight: 5.0,
+                            trackHeight: 6.0,
                             thumbShape: const RoundSliderThumbShape(
                               enabledThumbRadius: 15,
                               elevation: 6,
