@@ -57,7 +57,7 @@ class FullPlayerPage extends StatefulWidget {
     _isOpen = true;
     FullPlayerOverlay.isVisible.value = true;
     try {
-      await Navigator.of(context).push(MaterialPageRoute<void>(
+      await Navigator.of(context).push(CupertinoPageRoute<void>(
         builder: (_) => const FullPlayerPage(),
         fullscreenDialog: true,
       ));
