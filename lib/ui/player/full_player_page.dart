@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:animate_do/animate_do.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -58,7 +59,9 @@ class FullPlayerPage extends StatefulWidget {
     FullPlayerOverlay.isVisible.value = true;
     try {
       await Navigator.of(context).push(CupertinoPageRoute<void>(
-        builder: (_) => const FullPlayerPage(),
+        builder: (_) => SlideInUp(
+          child: const FullPlayerPage(),
+        ),
         fullscreenDialog: true,
       ));
     } finally {
