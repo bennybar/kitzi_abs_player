@@ -61,7 +61,7 @@ class FullPlayerPage extends StatefulWidget {
       await Navigator.of(context).push(PageTransition(
         type: PageTransitionType.bottomToTop,
         child: const FullPlayerPage(),
-        duration: Duration(milliseconds: 350),
+        duration: Duration(milliseconds: 250),
         fullscreenDialog: true,
       ));
     } finally {
