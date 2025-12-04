@@ -40,11 +40,11 @@ class _MiniPlayerState extends State<MiniPlayer> {
                 padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
                 child: Card(
                   color: Colors.transparent,
-                  elevation: 2,
+                  elevation: 3,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(22),
+                    borderRadius: BorderRadius.circular(24),
                     side: BorderSide(
-                      color: cs.outline.withOpacity(0.1),
+                      color: cs.outline.withOpacity(0.12),
                       width: 0.5,
                     ),
                   ),
@@ -100,13 +100,26 @@ class _MiniPlayerState extends State<MiniPlayer> {
               unawaited(_maybeUpdatePalette(np.coverUrl));
 
                 return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   child: Row(
                     children: [
-                      // Album art with Hero (YouTube Music style - square, slightly rounded)
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
-                        child: _MiniCover(url: np.coverUrl, size: widget.height - 16),
+                      // Album art with PixelPlay-inspired rounded corners and shadow
+                      Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: [
+                            BoxShadow(
+                              color: cs.shadow.withOpacity(0.15),
+                              blurRadius: 8,
+                              spreadRadius: 0,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: _MiniCover(url: np.coverUrl, size: widget.height - 16),
+                        ),
                       ),
                       const SizedBox(width: 12),
 
@@ -201,20 +214,31 @@ class _MiniPlayerState extends State<MiniPlayer> {
                       ),
                       const SizedBox(width: 12),
 
-                      // 10 seconds rewind button
-                      IconButton(
-                        onPressed: () async {
-                          await playback.nudgeSeconds(-10);
-                        },
-                        icon: const Icon(Icons.replay_10),
-                        tooltip: 'Rewind 10 seconds',
-                        style: IconButton.styleFrom(
-                          backgroundColor: Colors.transparent,
-                          foregroundColor: cs.onSurface,
+                      // 10 seconds rewind button - PixelPlay-inspired Material 3 style
+                      Material(
+                        color: cs.surfaceContainerHighest.withOpacity(0.7),
+                        borderRadius: BorderRadius.circular(20),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(20),
+                          onTap: () async {
+                            await playback.nudgeSeconds(-10);
+                          },
+                          child: Container(
+                            width: 40,
+                            height: 40,
+                            alignment: Alignment.center,
+                            child: Icon(
+                              Icons.replay_10,
+                              size: 22,
+                              color: cs.onSurface,
+                            ),
+                          ),
                         ),
                       ),
 
-                      // Play/Pause button only (YouTube Music style)
+                      const SizedBox(width: 8),
+
+                      // Play/Pause button - PixelPlay-inspired with primary color
                       StreamBuilder<bool>(
                         stream: playback.playingStream,
                         initialData: playback.player.playing,
@@ -222,53 +246,66 @@ class _MiniPlayerState extends State<MiniPlayer> {
                           final playing = playSnap.data ?? false;
                           // Ensure we have a valid nowPlaying item and it's actually playing
                           final hasValidNowPlaying = np != null && playing;
-                          return IconButton(
-                            onPressed: () async {
-                              // Button pressed
-                              if (hasValidNowPlaying) {
-                                // Pausing playback
-                                await playback.pause();
-                                // Don't open full player on pause
-                              } else {
-                                // Attempting to resume/play
-                                // Try to resume first, but if that fails (no current item), 
-                                // warm load the last item and play it
-                                bool success = await playback.resume(context: context);
-                                // Resume result
-                                if (!success) {
-                                  try {
-                                    // Resume failed, trying warmLoadLastItem
-                                    await playback.warmLoadLastItem(playAfterLoad: true);
-                                    success = true; // Consider warm load a success
-                                    // WarmLoadLastItem succeeded
-                                  } catch (e) {
-                                    // WarmLoadLastItem failed
-                                    success = false;
+                          return Material(
+                            color: hasValidNowPlaying 
+                                ? cs.primary 
+                                : cs.surfaceContainerHighest.withOpacity(0.7),
+                            borderRadius: BorderRadius.circular(24),
+                            elevation: hasValidNowPlaying ? 2 : 0,
+                            shadowColor: hasValidNowPlaying 
+                                ? cs.primary.withOpacity(0.3) 
+                                : Colors.transparent,
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(24),
+                              onTap: () async {
+                                // Button pressed
+                                if (hasValidNowPlaying) {
+                                  // Pausing playback
+                                  await playback.pause();
+                                  // Don't open full player on pause
+                                } else {
+                                  // Attempting to resume/play
+                                  // Try to resume first, but if that fails (no current item), 
+                                  // warm load the last item and play it
+                                  bool success = await playback.resume(context: context);
+                                  // Resume result
+                                  if (!success) {
+                                    try {
+                                      // Resume failed, trying warmLoadLastItem
+                                      await playback.warmLoadLastItem(playAfterLoad: true);
+                                      success = true; // Consider warm load a success
+                                      // WarmLoadLastItem succeeded
+                                    } catch (e) {
+                                      // WarmLoadLastItem failed
+                                      success = false;
+                                    }
+                                  }
+                                  
+                                  if (!success && context.mounted) {
+                                    // Both resume and warmLoad failed, showing error
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Cannot play: server unavailable and sync progress is required'),
+                                        duration: Duration(seconds: 4),
+                                      ),
+                                    );
+                                  } else if (success && context.mounted) {
+                                    // Success, opening full player
+                                    // Open the full player page when resuming, like the book detail page does
+                                    await FullPlayerPage.openOnce(context);
                                   }
                                 }
-                                
-                                if (!success && context.mounted) {
-                                  // Both resume and warmLoad failed, showing error
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Cannot play: server unavailable and sync progress is required'),
-                                      duration: Duration(seconds: 4),
-                                    ),
-                                  );
-                                } else if (success && context.mounted) {
-                                  // Success, opening full player
-                                  // Open the full player page when resuming, like the book detail page does
-                                  await FullPlayerPage.openOnce(context);
-                                }
-                              }
-                            },
-                            icon: Icon(
-                              hasValidNowPlaying ? Icons.pause : Icons.play_arrow,
-                              size: 28,
-                            ),
-                            style: IconButton.styleFrom(
-                              backgroundColor: Colors.transparent,
-                              foregroundColor: cs.onSurface,
+                              },
+                              child: Container(
+                                width: 48,
+                                height: 48,
+                                alignment: Alignment.center,
+                                child: Icon(
+                                  hasValidNowPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                                  size: 28,
+                                  color: hasValidNowPlaying ? cs.onPrimary : cs.onSurface,
+                                ),
+                              ),
                             ),
                           );
                         },
@@ -377,13 +414,13 @@ class _MiniCover extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    // YouTube Music style: subtle rounded corners (4px)
+    // PixelPlay-inspired: more rounded corners (12px) for modern look
     final placeholder = Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Icon(
         Icons.menu_book_outlined,

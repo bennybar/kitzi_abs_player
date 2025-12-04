@@ -1872,32 +1872,24 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                         width: MediaQuery.of(context).size.width * 0.7, // larger cover for stronger focus
                                         child: Container(
                                           decoration: BoxDecoration(
-                                            borderRadius: BorderRadius.circular(28),
+                                            borderRadius: BorderRadius.circular(24),
                                             boxShadow: [
-                                              // PixelPlay-inspired enhanced shadows for depth
                                               BoxShadow(
-                                                color: cs.shadow.withOpacity(0.3),
-                                                blurRadius: 32,
+                                                color: cs.shadow.withOpacity(0.25),
+                                                blurRadius: 24,
                                                 spreadRadius: 2,
-                                                offset: const Offset(0, 10),
+                                                offset: const Offset(0, 8),
                                               ),
                                               BoxShadow(
-                                                color: cs.primary.withOpacity(0.15),
-                                                blurRadius: 48,
-                                                spreadRadius: -6,
-                                                offset: const Offset(0, 16),
-                                              ),
-                                              // Additional subtle shadow for more depth
-                                              BoxShadow(
-                                                color: cs.shadow.withOpacity(0.1),
-                                                blurRadius: 16,
-                                                spreadRadius: 0,
-                                                offset: const Offset(0, 4),
+                                                color: cs.primary.withOpacity(0.1),
+                                                blurRadius: 40,
+                                                spreadRadius: -4,
+                                                offset: const Offset(0, 12),
                                               ),
                                             ],
                                           ),
                                           child: ClipRRect(
-                                            borderRadius: BorderRadius.circular(28),
+                                            borderRadius: BorderRadius.circular(24),
                                             child: AspectRatio(
                                               aspectRatio: 1,
                                               child: np.coverUrl != null && np.coverUrl!.isNotEmpty
@@ -2327,9 +2319,8 @@ class _PlayerActionTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
-    // PixelPlay-inspired: more rounded corners for Material 3 Expressive
-    final radius = BorderRadius.circular(24);
-    final bg = backgroundColor ?? cs.surfaceContainerHigh.withOpacity(0.9);
+    final radius = BorderRadius.circular(22);
+    final bg = backgroundColor ?? cs.surfaceContainerHigh.withOpacity(0.85);
     final fg = foregroundColor ?? cs.onSurface;
 
     final tile = Container(
@@ -2337,22 +2328,14 @@ class _PlayerActionTile extends StatelessWidget {
         borderRadius: radius,
         color: enabled ? bg : bg.withOpacity(0.6),
         border: Border.all(
-          color: cs.outlineVariant.withOpacity(enabled ? 0.3 : 0.15),
-          width: 1.0,
+          color: cs.outlineVariant.withOpacity(enabled ? 0.35 : 0.2),
+          width: 1.2,
         ),
-        // Enhanced shadows for better Material 3 elevation
         boxShadow: [
           BoxShadow(
-            color: cs.shadow.withOpacity(0.08),
-            blurRadius: 12,
-            spreadRadius: 0,
-            offset: const Offset(0, 4),
-          ),
-          BoxShadow(
-            color: cs.shadow.withOpacity(0.04),
-            blurRadius: 6,
-            spreadRadius: 0,
-            offset: const Offset(0, 2),
+            color: cs.shadow.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 5),
           ),
         ],
       ),
@@ -2795,16 +2778,12 @@ class _ControlButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    // PixelPlay-inspired Material 3 Expressive styling
-    final bg = isPrimary 
-        ? cs.primary 
-        : cs.surfaceContainerHighest.withOpacity(0.85);
+    final bg = isPrimary ? cs.primary : cs.surfaceContainerHighest;
     final fg = isPrimary ? cs.onPrimary : cs.onSurface;
 
-    // More rounded corners for modern Material 3 look
     final shape = isCircular
         ? const CircleBorder()
-        : RoundedRectangleBorder(borderRadius: BorderRadius.circular(20));
+        : RoundedRectangleBorder(borderRadius: BorderRadius.circular(16));
 
     final child = SizedBox(
       width: size,
@@ -2812,18 +2791,14 @@ class _ControlButton extends StatelessWidget {
       child: Icon(icon, size: size * 0.48, color: fg),
     );
 
-    // Enhanced elevation and shadow for better depth perception
     final button = Material(
       color: bg,
       shape: shape,
-      elevation: isPrimary ? 6 : 1,
-      shadowColor: isPrimary 
-          ? cs.primary.withOpacity(0.4) 
-          : cs.shadow.withOpacity(0.1),
+      elevation: isPrimary ? 4 : 0,
+      shadowColor: isPrimary ? cs.primary.withOpacity(0.3) : Colors.transparent,
       child: InkWell(
         customBorder: shape,
         onTap: onTap,
-        borderRadius: isCircular ? null : BorderRadius.circular(20),
         child: child,
       ),
     );
