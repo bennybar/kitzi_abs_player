@@ -57,10 +57,7 @@ class FullPlayerPage extends StatefulWidget {
     _isOpen = true;
     FullPlayerOverlay.isVisible.value = true;
     try {
-      await Navigator.of(context).push(CupertinoPageRoute<void>(
-        builder: (_) => const FullPlayerPage(),
-        fullscreenDialog: true,
-      ));
+      await Navigator.of(context).push(_FullPlayerRoute(const FullPlayerPage()));
     } finally {
       _isOpen = false;
       FullPlayerOverlay.isVisible.value = false;
@@ -71,11 +68,41 @@ class FullPlayerPage extends StatefulWidget {
   State<FullPlayerPage> createState() => _FullPlayerPageState();
 }
 
+class _FullPlayerRoute extends PageRouteBuilder<void> {
+  _FullPlayerRoute(Widget child)
+      : super(
+          pageBuilder: (context, animation, secondaryAnimation) => child,
+          transitionDuration: const Duration(milliseconds: 260),
+          reverseTransitionDuration: const Duration(milliseconds: 220),
+          fullscreenDialog: true,
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            final curved = CurvedAnimation(
+              parent: animation,
+              curve: Curves.easeOutCubic,
+              reverseCurve: Curves.easeInCubic,
+            );
+            final slide = Tween<Offset>(
+              begin: const Offset(0, 0.06),
+              end: Offset.zero,
+            ).animate(curved);
+            final fade = Tween<double>(begin: 0, end: 1).animate(curved);
+            return FadeTransition(
+              opacity: fade,
+              child: SlideTransition(
+                position: slide,
+                child: child,
+              ),
+            );
+          },
+        );
+}
+
 class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStateMixin {
   double _dragY = 0.0;
   bool _dualProgressEnabled = true;
   ProgressPrimary _progressPrimary = UiPrefs.progressPrimary.value;
   VoidCallback? _progressPrefListener;
+  bool _paletteScheduled = false;
   late AnimationController _contentAnimationController;
   late Animation<double> _coverAnimation;
   late Animation<double> _titleAnimation;
@@ -135,6 +162,22 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     Future.delayed(const Duration(milliseconds: 100), () {
       if (mounted) {
         _contentAnimationController.forward();
+      }
+    });
+  }
+
+  void _schedulePaletteUpdate(NowPlaying np) {
+    if (_paletteScheduled || _paletteLoading) return;
+    _paletteScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) {
+        _paletteScheduled = false;
+        return;
+      }
+      try {
+        await _maybeUpdatePalette(np);
+      } finally {
+        _paletteScheduled = false;
       }
     });
   }
@@ -1862,7 +1905,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                   );
                 }
 
-                unawaited(_maybeUpdatePalette(np));
+                _schedulePaletteUpdate(np);
 
                 return Column(
                   children: [
