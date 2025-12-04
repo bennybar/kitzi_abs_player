@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:page_transition/page_transition.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:squiggly_slider/slider.dart';
@@ -57,8 +58,10 @@ class FullPlayerPage extends StatefulWidget {
     _isOpen = true;
     FullPlayerOverlay.isVisible.value = true;
     try {
-      await Navigator.of(context).push(CupertinoPageRoute<void>(
-        builder: (_) => const FullPlayerPage(),
+      await Navigator.of(context).push(PageTransition(
+        type: PageTransitionType.bottomToTop,
+        child: const FullPlayerPage(),
+        duration: Duration(milliseconds: 350),
         fullscreenDialog: true,
       ));
     } finally {
