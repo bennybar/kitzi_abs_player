@@ -88,6 +88,8 @@ class BooksRepository {
   Future<String> _ensureLibraryId() async {
     final cached = _prefs.getString(_libIdKey);
     if (cached != null && cached.isNotEmpty) {
+      // Make sure the open DB matches the cached library before returning
+      await _ensureDbForLibrary(cached);
       return cached;
     }
 
@@ -127,6 +129,7 @@ class BooksRepository {
     }
 
     await _prefs.setString(_libIdKey, id);
+    await _ensureDbForLibrary(id); // Switch DB/caches to the active library
     return id;
   }
 
@@ -434,8 +437,33 @@ class BooksRepository {
     final current = _prefs.getString(_libIdKey) ?? 'default';
     if (_db == null || _dbLibId != current) {
       try { await _db?.close(); } catch (_) {}
+      _db = null;
+      _dbLibId = null;
       await _openDb();
     }
+  }
+
+  /// Ensure the open DB and caches are aligned to the provided library id.
+  Future<void> _ensureDbForLibrary(String libId) async {
+    if (_dbLibId == libId && _db != null) return;
+    try { await _db?.close(); } catch (_) {}
+    _db = null;
+    _dbLibId = null;
+
+    // Clear cached etags/metadata that are library-specific to avoid cross-library pollution.
+    try {
+      await _prefs.remove(_etagKey);
+      await _prefs.remove(_cacheKey);
+      await _prefs.remove(_cacheMetadataKey);
+      for (final k in _prefs.getKeys()) {
+        if (k.startsWith('books_etag_') || k.startsWith('books_last_sync_')) {
+          await _prefs.remove(k);
+        }
+      }
+    } catch (_) {}
+    _clearAllCache();
+
+    await _openDb();
   }
 
   Future<void> _upsertBooks(List<Book> items) async {
