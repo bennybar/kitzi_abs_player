@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
-import 'dart:async' show unawaited;
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/services.dart' show SystemNavigator;
 import 'package:sqflite/sqflite.dart';
@@ -50,11 +50,38 @@ class _SettingsPageState extends State<SettingsPage> {
   double? _streamingCacheLimitMb;
   int? _streamingCacheUsageBytes;
   bool _clearingStreamingCache = false;
+  DateTime? _lastReloadTime;
+  Timer? _reloadDebounce;
 
   @override
   void initState() {
     super.initState();
     _loadPrefs();
+  }
+
+  @override
+  void dispose() {
+    _reloadDebounce?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Reload preferences when page becomes visible to reflect changes made elsewhere
+    // Use debounce to avoid excessive reloads
+    if (ModalRoute.of(context)?.isCurrent == true) {
+      _reloadDebounce?.cancel();
+      _reloadDebounce = Timer(const Duration(milliseconds: 300), () {
+        final now = DateTime.now();
+        // Only reload if it's been at least 500ms since last reload
+        if (_lastReloadTime == null || 
+            now.difference(_lastReloadTime!) > const Duration(milliseconds: 500)) {
+          _lastReloadTime = now;
+          _loadPrefs();
+        }
+      });
+    }
   }
 
   Future<void> _loadPrefs() async {
