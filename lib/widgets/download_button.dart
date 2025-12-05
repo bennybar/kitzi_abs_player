@@ -2,6 +2,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/downloads_repository.dart';
 import '../main.dart'; // ServicesScope for DI
@@ -66,6 +68,44 @@ class _DownloadButtonState extends State<DownloadButton> {
       // If this item is already active, ignore duplicate enqueue taps
       if (_snap != null && (_snap!.status == 'running' || _snap!.status == 'queued')) {
         return;
+      }
+
+      // Check wifi-only setting and connectivity
+      final prefs = await SharedPreferences.getInstance();
+      final wifiOnly = prefs.getBool('downloads_wifi_only') ?? false;
+      
+      if (wifiOnly) {
+        final connectivity = await Connectivity().checkConnectivity();
+        final isOnCellular = connectivity.contains(ConnectivityResult.mobile) &&
+            !connectivity.contains(ConnectivityResult.wifi) &&
+            !connectivity.contains(ConnectivityResult.ethernet);
+        
+        if (isOnCellular) {
+          final changeSetting = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Wi‑Fi only downloads enabled'),
+              content: const Text(
+                  'Downloads are restricted to Wi‑Fi only. You are currently on cellular data. Would you like to allow downloads on cellular data?'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('No'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Yes, allow cellular'),
+                ),
+              ],
+            ),
+          );
+          
+          if (changeSetting == true) {
+            await prefs.setBool('downloads_wifi_only', false);
+          } else {
+            return; // User declined, do nothing
+          }
+        }
       }
 
       // Check whether other items are active/queued
@@ -234,15 +274,6 @@ class _DownloadButtonState extends State<DownloadButton> {
                               ),
                             ),
                           ],
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Theme.of(context).colorScheme.onPrimary,
                         ),
                       ),
                     ],
