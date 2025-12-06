@@ -48,7 +48,9 @@ class _EdgeToEdgeSliderTrackShape extends RoundedRectSliderTrackShape {
 }
 
 class FullPlayerPage extends StatefulWidget {
-  const FullPlayerPage({super.key});
+  const FullPlayerPage({super.key, this.overlayMode = true});
+
+  final bool overlayMode;
 
   // Prevent duplicate openings of the FullPlayerPage within the same session.
   static bool _isOpen = false;
@@ -63,23 +65,10 @@ class FullPlayerPage extends StatefulWidget {
       
       if (legacyMode) {
         // Legacy mode: use Navigator.push (original behavior)
-        await Navigator.of(context).push(_FullPlayerRoute(const FullPlayerPage()));
+        await Navigator.of(context).push(_FullPlayerRoute(const FullPlayerPage(overlayMode: false)));
       } else {
-        // New mode: show as drawer (like book details)
-        await showModalBottomSheet(
-          context: context,
-          isScrollControlled: true,
-          useSafeArea: true,
-          backgroundColor: Colors.transparent,
-          builder: (context) => Container(
-            height: MediaQuery.of(context).size.height * 0.95,
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-            ),
-            child: const FullPlayerPage(),
-          ),
-        );
+        // New mode: just show the persistent overlay host
+        await FullPlayerOverlay.showOverlay();
       }
     } finally {
       _isOpen = false;
@@ -1867,81 +1856,93 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     final text = theme.textTheme;
     final brightness = theme.brightness;
 
-    return ValueListenableBuilder<bool>(
-      valueListenable: UiPrefs.playerGradientBackground,
-      builder: (_, gradientEnabled, __) {
-        return DecoratedBox(
-          decoration: _playerBackgroundDecoration(
-            gradientEnabled,
-            cs,
-            brightness,
-            palettePrimary: _palettePrimary,
-            paletteSecondary: _paletteSecondary,
-          ),
-          child: Scaffold(
-            backgroundColor: Colors.transparent,
-      body: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onVerticalDragUpdate: (details) {
-          final dy = details.delta.dy;
-          final current = _dragYNotifier.value;
-          if (dy > 0 || current > 0) {
-            final next = (current + dy).clamp(0.0, MediaQuery.of(context).size.height);
-            if (next != current) {
-              _dragYNotifier.value = next;
-            }
-          }
-        },
-        onVerticalDragEnd: (details) {
-          final v = details.velocity.pixelsPerSecond.dy;
-          final dragY = _dragYNotifier.value;
-          final shouldDismiss = dragY > 120 || v > 650;
-          if (shouldDismiss) {
-            Navigator.of(context).maybePop();
-          } else {
-            if (_dragYNotifier.value != 0) {
-              _dragYNotifier.value = 0.0;
-            }
-          }
-        },
-        child: ValueListenableBuilder<double>(
-          valueListenable: _dragYNotifier,
-          builder: (_, dragY, child) {
-            return AnimatedContainer(
-              duration: const Duration(milliseconds: 300), // Buttery snap-back
-              curve: const Cubic(0.05, 0.7, 0.1, 1.0), // Material Design 3 emphasized - ultra smooth
-              transform: Matrix4.translationValues(0, dragY, 0)
-                ..scale(1.0 - (dragY * 0.00015).clamp(0.0, 0.06)), // Very subtle scale - premium feel
-              child: child,
-            );
-          },
-          child: SafeArea(
-            child: StreamBuilder<NowPlaying?>(
-              stream: playback.nowPlayingStream,
-              initialData: playback.nowPlaying,
-              builder: (context, snap) {
-                final np = snap.data;
-                if (np == null) {
-                  return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const CircularProgressIndicator(),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Loading...',
-                          style: text.titleMedium?.copyWith(
-                            color: cs.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                }
+    return WillPopScope(
+      onWillPop: () async {
+        if (widget.overlayMode && FullPlayerOverlay.isVisible.value) {
+          FullPlayerOverlay.hide();
+          return false;
+        }
+        return true;
+      },
+      child: ValueListenableBuilder<bool>(
+        valueListenable: UiPrefs.playerGradientBackground,
+        builder: (_, gradientEnabled, __) {
+          return DecoratedBox(
+            decoration: _playerBackgroundDecoration(
+              gradientEnabled,
+              cs,
+              brightness,
+              palettePrimary: _palettePrimary,
+              paletteSecondary: _paletteSecondary,
+            ),
+            child: Scaffold(
+              backgroundColor: Colors.transparent,
+              body: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onVerticalDragUpdate: (details) {
+                  final dy = details.delta.dy;
+                  final current = _dragYNotifier.value;
+                  if (dy > 0 || current > 0) {
+                    final next = (current + dy).clamp(0.0, MediaQuery.of(context).size.height);
+                    if (next != current) {
+                      _dragYNotifier.value = next;
+                    }
+                  }
+                },
+                onVerticalDragEnd: (details) {
+                  final v = details.velocity.pixelsPerSecond.dy;
+                  final dragY = _dragYNotifier.value;
+                  final shouldDismiss = dragY > 120 || v > 650;
+                  if (shouldDismiss) {
+                    if (widget.overlayMode) {
+                      FullPlayerOverlay.hide();
+                    } else {
+                      Navigator.of(context).maybePop();
+                    }
+                  } else {
+                    if (_dragYNotifier.value != 0) {
+                      _dragYNotifier.value = 0.0;
+                    }
+                  }
+                },
+                child: ValueListenableBuilder<double>(
+                  valueListenable: _dragYNotifier,
+                  builder: (_, dragY, child) {
+                    return AnimatedContainer(
+                      duration: const Duration(milliseconds: 300), // Buttery snap-back
+                      curve: const Cubic(0.05, 0.7, 0.1, 1.0), // Material Design 3 emphasized - ultra smooth
+                      transform: Matrix4.translationValues(0, dragY, 0)
+                        ..scale(1.0 - (dragY * 0.00015).clamp(0.0, 0.06)), // Very subtle scale - premium feel
+                      child: child,
+                    );
+                  },
+                  child: SafeArea(
+                    child: StreamBuilder<NowPlaying?>(
+                      stream: playback.nowPlayingStream,
+                      initialData: playback.nowPlaying,
+                      builder: (context, snap) {
+                        final np = snap.data;
+                        if (np == null) {
+                          return Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const CircularProgressIndicator(),
+                                const SizedBox(height: 16),
+                                Text(
+                                  'Loading...',
+                                  style: text.titleMedium?.copyWith(
+                                    color: cs.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }
 
-                _schedulePaletteUpdate(np);
+                        _schedulePaletteUpdate(np);
 
-                return Column(
+                        return Column(
                   children: [
                     // Custom App Bar
                     Padding(
@@ -1950,7 +1951,13 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           IconButton.filledTonal(
-                            onPressed: () => Navigator.of(context).pop(),
+                            onPressed: () {
+                              if (widget.overlayMode) {
+                                FullPlayerOverlay.hide();
+                              } else {
+                                Navigator.of(context).pop();
+                              }
+                            },
                             icon: const Icon(Icons.keyboard_arrow_down_rounded),
                             style: IconButton.styleFrom(
                               backgroundColor: cs.surfaceContainerHighest,
@@ -2387,7 +2394,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                       builder: (context, constraints) {
                                         final maxW = constraints.maxWidth;
                                         double spacing = 12;
-                                        double side = 56;   // base side buttons
+                                        double side = 56; // base side buttons
                                         double center = 72; // base center button
                                         final needed = 4 * side + center + 4 * spacing;
                                         if (needed > maxW) {
@@ -2434,18 +2441,18 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                                     if (hasValidNowPlaying) {
                                                       await playback.pause();
                                                     } else {
-                                                      // Try to resume first, but if that fails (no current item), 
-                                                      // warm load the last item and play it
+                                                      // Try to resume first; if that fails, warm load last item and play
                                                       bool success = await playback.resume(context: context);
                                                       if (!success) {
                                                         try {
                                                           await playback.warmLoadLastItem(playAfterLoad: true);
                                                         } catch (e) {
-                                                          // If warm load fails, show error message
                                                           if (context.mounted) {
                                                             ScaffoldMessenger.of(context).showSnackBar(
                                                               const SnackBar(
-                                                                content: Text('Cannot play: server unavailable and sync progress is required'),
+                                                                content: Text(
+                                                                  'Cannot play: server unavailable and sync progress is required',
+                                                                ),
                                                                 duration: Duration(seconds: 4),
                                                               ),
                                                             );
@@ -2526,26 +2533,27 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                         ),
                                       ],
                                     ),
-                                        // Removed redundant countdown widget (countdown shown on Sleep button only)
-                                      ],
-                                    ),
-                                  ),
-                                                  ),
-                                                ),
-                                              );
-                                            },
-                                        ),
-                                      ],
-                );
-              },
-                                    ),
-                                    ),
-                                  ),
+                                    // Removed redundant countdown widget (countdown shown on Sleep button only)
+                                  ],
                                 ),
                               ),
-                            );
-                          },
-    );
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                );
+              },
+          ), // StreamBuilder
+        ), // SafeArea
+      ), // ValueListenableBuilder<double>
+    ), // GestureDetector
+  ), // Scaffold
+          ); // DecoratedBox
+        },
+      ), // ValueListenableBuilder<bool>
+    ); // WillPopScope
   }
 }
 

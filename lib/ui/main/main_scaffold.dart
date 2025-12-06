@@ -6,6 +6,7 @@ import '../downloads/downloads_page.dart';
 // UPDATED import path: MiniPlayer now lives under widgets/
 import '../../widgets/mini_player.dart';
 import '../player/full_player_overlay.dart';
+import '../player/full_player_host.dart';
 import '../home/series_page.dart';
 import '../home/authors_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -96,74 +97,80 @@ class _MainScaffoldState extends State<MainScaffold> {
 
     final safeIndex = _index.clamp(0, pages.length - 1);
 
-    return StreamBuilder<NowPlaying?>
-      (stream: playback.nowPlayingStream,
-      initialData: playback.nowPlaying,
-      builder: (_, snap) {
-        final hideOnSettingsIndex = pages.length - 1;
-        final hasMini = snap.data != null && safeIndex != hideOnSettingsIndex; // hide on Settings
-        const double navHeight = 72;
+    return Stack(
+      children: [
+        StreamBuilder<NowPlaying?>(
+          stream: playback.nowPlayingStream,
+          initialData: playback.nowPlaying,
+          builder: (_, snap) {
+            final hideOnSettingsIndex = pages.length - 1;
+            final hasMini = snap.data != null && safeIndex != hideOnSettingsIndex; // hide on Settings
+            const double navHeight = 72;
 
-        return Scaffold(
-          backgroundColor: cs.surface,
-          body: IndexedStack(index: safeIndex, children: pages),
-          bottomNavigationBar: ValueListenableBuilder<bool>(
-            valueListenable: FullPlayerOverlay.isVisible,
-            builder: (_, fullPlayerVisible, __) {
-              final chrome = Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Mini player with animated size - only takes space when visible (120Hz optimized)
-                  AnimatedSize(
-                    duration: const Duration(milliseconds: 350), // Max smoothness at 120Hz (42 frames)
-                    curve: const Cubic(0.05, 0.7, 0.1, 1.0), // Material Design 3 emphasized decelerate
-                    child: hasMini
-                        ? const MiniPlayer(height: 68)
-                        : const SizedBox.shrink(),
-                  ),
-                  _buildNavigationBar(
-                    context: context,
-                    selectedIndex: safeIndex,
-                    onDestinationSelected: (i) {
-                      setState(() {
-                        if (UiPrefs.pinSettings.value) {
-                          _index = pages.length - 1;
-                          UiPrefs.pinSettings.value = false;
-                        } else {
-                          _index = i.clamp(0, pages.length - 1);
-                        }
-                      });
-                    },
-                    colorScheme: cs,
-                    height: navHeight,
-                    showAuthors: _showAuthors,
-                    showSeries: _showSeries,
-                  ),
-                ],
-              );
+            return Scaffold(
+              backgroundColor: cs.surface,
+              body: IndexedStack(index: safeIndex, children: pages),
+              bottomNavigationBar: ValueListenableBuilder<bool>(
+                valueListenable: FullPlayerOverlay.isVisible,
+                builder: (_, fullPlayerVisible, __) {
+                  final chrome = Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Mini player with animated size - only takes space when visible (120Hz optimized)
+                      AnimatedSize(
+                        duration: const Duration(milliseconds: 350), // Max smoothness at 120Hz (42 frames)
+                        curve: const Cubic(0.05, 0.7, 0.1, 1.0), // Material Design 3 emphasized decelerate
+                        child: hasMini
+                            ? const MiniPlayer(height: 68)
+                            : const SizedBox.shrink(),
+                      ),
+                      _buildNavigationBar(
+                        context: context,
+                        selectedIndex: safeIndex,
+                        onDestinationSelected: (i) {
+                          setState(() {
+                            if (UiPrefs.pinSettings.value) {
+                              _index = pages.length - 1;
+                              UiPrefs.pinSettings.value = false;
+                            } else {
+                              _index = i.clamp(0, pages.length - 1);
+                            }
+                          });
+                        },
+                        colorScheme: cs,
+                        height: navHeight,
+                        showAuthors: _showAuthors,
+                        showSeries: _showSeries,
+                      ),
+                    ],
+                  );
 
-              const animDuration = Duration(milliseconds: 300);
+                  const animDuration = Duration(milliseconds: 300);
 
-              return IgnorePointer(
-                ignoring: fullPlayerVisible,
-                child: AnimatedSlide(
-                  duration: animDuration,
-                  curve: fullPlayerVisible 
-                      ? Curves.easeInCubic // Smooth acceleration when hiding (going down)
-                      : Curves.easeOutCubic, // Smooth deceleration when showing (coming up)
-                  offset: fullPlayerVisible ? const Offset(0, 1.0) : Offset.zero,
-                  child: AnimatedOpacity(
-                    duration: animDuration,
-                    curve: Curves.easeInOut,
-                    opacity: fullPlayerVisible ? 0.0 : 1.0,
-                    child: chrome,
-                  ),
-                ),
-              );
-            },
-          ),
-        );
-      },
+                  return IgnorePointer(
+                    ignoring: fullPlayerVisible,
+                    child: AnimatedSlide(
+                      duration: animDuration,
+                      curve: fullPlayerVisible 
+                          ? Curves.easeInCubic // Smooth acceleration when hiding (going down)
+                          : Curves.easeOutCubic, // Smooth deceleration when showing (coming up)
+                      offset: fullPlayerVisible ? const Offset(0, 1.0) : Offset.zero,
+                      child: AnimatedOpacity(
+                        duration: animDuration,
+                        curve: Curves.easeInOut,
+                        opacity: fullPlayerVisible ? 0.0 : 1.0,
+                        child: chrome,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            );
+          },
+        ),
+        // Persistent overlay host for the full-screen player
+        const FullPlayerHost(),
+      ],
     );
   }
 
