@@ -121,7 +121,7 @@ class _FullPlayerRoute extends PageRouteBuilder<void> {
 }
 
 class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStateMixin {
-  double _dragY = 0.0;
+  late final ValueNotifier<double> _dragYNotifier;
   bool _dualProgressEnabled = true;
   ProgressPrimary _progressPrimary = UiPrefs.progressPrimary.value;
   VoidCallback? _progressPrefListener;
@@ -138,6 +138,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
   @override
   void initState() {
     super.initState();
+    _dragYNotifier = ValueNotifier<double>(0.0);
     _loadDualProgressPref();
     _progressPrimary = UiPrefs.progressPrimary.value;
     _progressPrefListener = () {
@@ -252,6 +253,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
 
   @override
   void dispose() {
+    _dragYNotifier.dispose();
     _contentAnimationController.dispose();
     if (_progressPrefListener != null) {
       UiPrefs.progressPrimary.removeListener(_progressPrefListener!);
@@ -1882,28 +1884,37 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
         behavior: HitTestBehavior.opaque,
         onVerticalDragUpdate: (details) {
           final dy = details.delta.dy;
-          if (dy > 0 || _dragY > 0) {
-            setState(() {
-              _dragY = (_dragY + dy).clamp(0.0, MediaQuery.of(context).size.height);
-            });
+          final current = _dragYNotifier.value;
+          if (dy > 0 || current > 0) {
+            final next = (current + dy).clamp(0.0, MediaQuery.of(context).size.height);
+            if (next != current) {
+              _dragYNotifier.value = next;
+            }
           }
         },
         onVerticalDragEnd: (details) {
           final v = details.velocity.pixelsPerSecond.dy;
-          final shouldDismiss = _dragY > 120 || v > 650;
+          final dragY = _dragYNotifier.value;
+          final shouldDismiss = dragY > 120 || v > 650;
           if (shouldDismiss) {
             Navigator.of(context).maybePop();
           } else {
-            setState(() {
-              _dragY = 0.0;
-            });
+            if (_dragYNotifier.value != 0) {
+              _dragYNotifier.value = 0.0;
+            }
           }
         },
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 300), // Buttery snap-back
-          curve: const Cubic(0.05, 0.7, 0.1, 1.0), // Material Design 3 emphasized - ultra smooth
-          transform: Matrix4.translationValues(0, _dragY, 0)
-            ..scale(1.0 - (_dragY * 0.00015).clamp(0.0, 0.06)), // Very subtle scale - premium feel
+        child: ValueListenableBuilder<double>(
+          valueListenable: _dragYNotifier,
+          builder: (_, dragY, child) {
+            return AnimatedContainer(
+              duration: const Duration(milliseconds: 300), // Buttery snap-back
+              curve: const Cubic(0.05, 0.7, 0.1, 1.0), // Material Design 3 emphasized - ultra smooth
+              transform: Matrix4.translationValues(0, dragY, 0)
+                ..scale(1.0 - (dragY * 0.00015).clamp(0.0, 0.06)), // Very subtle scale - premium feel
+              child: child,
+            );
+          },
           child: SafeArea(
             child: StreamBuilder<NowPlaying?>(
               stream: playback.nowPlayingStream,
