@@ -207,7 +207,14 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
   }
 
   Future<void> _maybeUpdatePalette(NowPlaying np) async {
+    // Prewarm cover image before palette extraction to reduce first-frame jank
     final cover = np.coverUrl;
+    if (cover != null && cover.isNotEmpty) {
+      try {
+        await precacheImage(CachedNetworkImageProvider(cover), context);
+      } catch (_) {}
+    }
+
     if (cover == null || cover.isEmpty) {
       if (_paletteCoverUrl != null || _palettePrimary != null || _paletteSecondary != null) {
         setState(() {
@@ -224,6 +231,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     _paletteLoading = true;
     try {
       final provider = CachedNetworkImageProvider(cover);
+      // Palette generation can be expensive; keep size bounded
       final palette = await PaletteGenerator.fromImageProvider(
         provider,
         size: const Size(200, 200),
@@ -1912,7 +1920,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
               curve: const Cubic(0.05, 0.7, 0.1, 1.0), // Material Design 3 emphasized - ultra smooth
               transform: Matrix4.translationValues(0, dragY, 0)
                 ..scale(1.0 - (dragY * 0.00015).clamp(0.0, 0.06)), // Very subtle scale - premium feel
-              child: child,
+              child: RepaintBoundary(child: child), // isolate heavy subtree during drag
             );
           },
           child: SafeArea(
