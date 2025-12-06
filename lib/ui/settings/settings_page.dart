@@ -39,6 +39,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool? _letterScrollEnabled;
   bool? _letterScrollBooksAlpha;
   bool? _smartRewindEnabled;
+  bool? _legacyFullScreenPlayer;
   ProgressPrimary? _progressPrimary;
   String? _activeLibraryId;
   List<Map<String, String>> _libraries = const [];
@@ -107,6 +108,7 @@ class _SettingsPageState extends State<SettingsPage> {
         _squigglyProgressBar = prefs.getBool('ui_squiggly_progress_bar') ?? true;
         _letterScrollEnabled = prefs.getBool('ui_letter_scroll_enabled') ?? false;
         _letterScrollBooksAlpha = prefs.getBool('ui_letter_scroll_books_alpha') ?? false;
+        _legacyFullScreenPlayer = prefs.getBool('ui_legacy_full_screen_player') ?? false;
         _progressPrimary = UiPrefs.progressPrimary.value;
         
         _activeLibraryId = prefs.getString('books_library_id');
@@ -670,6 +672,16 @@ class _SettingsPageState extends State<SettingsPage> {
                     }
                   : null,
             ),
+          ),
+          SwitchListTile(
+            title: const Text('Legacy full screen player'),
+            subtitle: const Text('Use the old full screen page navigation instead of drawer'),
+            value: _legacyFullScreenPlayer ?? false,
+            onChanged: (v) async {
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setBool('ui_legacy_full_screen_player', v);
+              if (mounted) setState(() { _legacyFullScreenPlayer = v; });
+            },
           ),
           // Live-bind to ThemeService.mode
           ValueListenableBuilder<ThemeMode>(

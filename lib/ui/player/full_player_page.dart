@@ -57,7 +57,30 @@ class FullPlayerPage extends StatefulWidget {
     _isOpen = true;
     FullPlayerOverlay.isVisible.value = true;
     try {
-      await Navigator.of(context).push(_FullPlayerRoute(const FullPlayerPage()));
+      // Check if legacy full screen player is enabled
+      final prefs = await SharedPreferences.getInstance();
+      final legacyMode = prefs.getBool('ui_legacy_full_screen_player') ?? false;
+      
+      if (legacyMode) {
+        // Legacy mode: use Navigator.push (original behavior)
+        await Navigator.of(context).push(_FullPlayerRoute(const FullPlayerPage()));
+      } else {
+        // New mode: show as drawer (like book details)
+        await showModalBottomSheet(
+          context: context,
+          isScrollControlled: true,
+          useSafeArea: true,
+          backgroundColor: Colors.transparent,
+          builder: (context) => Container(
+            height: MediaQuery.of(context).size.height * 0.95,
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+            ),
+            child: const FullPlayerPage(),
+          ),
+        );
+      }
     } finally {
       _isOpen = false;
       FullPlayerOverlay.isVisible.value = false;
