@@ -52,6 +52,19 @@ class FullPlayerPage extends StatefulWidget {
 
   // Prevent duplicate openings of the FullPlayerPage within the same session.
   static bool _isOpen = false;
+  
+  // Keep a cached instance alive for smooth drawer animations
+  static GlobalKey<_FullPlayerPageState>? _cachedStateKey;
+  static Widget? _cachedWidget;
+  
+  /// Pre-warm the widget instance for smoother drawer animations
+  static void preWarm() {
+    if (_cachedWidget == null) {
+      _cachedStateKey = GlobalKey<_FullPlayerPageState>();
+      _cachedWidget = FullPlayerPage(key: _cachedStateKey);
+    }
+  }
+  
   static Future<void> openOnce(BuildContext context) async {
     if (_isOpen) return;
     _isOpen = true;
@@ -66,18 +79,26 @@ class FullPlayerPage extends StatefulWidget {
         await Navigator.of(context).push(_FullPlayerRoute(const FullPlayerPage()));
       } else {
         // New mode: show as drawer (like book details)
+        // Reuse cached widget if available, otherwise create new one
+        if (_cachedWidget == null || _cachedStateKey?.currentState == null) {
+          _cachedStateKey = GlobalKey<_FullPlayerPageState>();
+          _cachedWidget = FullPlayerPage(key: _cachedStateKey);
+        }
+        
         await showModalBottomSheet(
           context: context,
           isScrollControlled: true,
           useSafeArea: true,
           backgroundColor: Colors.transparent,
+          enableDrag: true,
+          isDismissible: true,
           builder: (context) => Container(
             height: MediaQuery.of(context).size.height * 0.95,
             decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.surface,
               borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
             ),
-            child: const FullPlayerPage(),
+            child: _cachedWidget!,
           ),
         );
       }
@@ -120,7 +141,11 @@ class _FullPlayerRoute extends PageRouteBuilder<void> {
         );
 }
 
-class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStateMixin {
+class _FullPlayerPageState extends State<FullPlayerPage> 
+    with TickerProviderStateMixin, AutomaticKeepAliveClientMixin {
+  
+  @override
+  bool get wantKeepAlive => true; // Keep state alive for smooth drawer animations
   double _dragY = 0.0;
   bool _dualProgressEnabled = true;
   ProgressPrimary _progressPrimary = UiPrefs.progressPrimary.value;
@@ -193,6 +218,9 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     if (_paletteScheduled || _paletteLoading) return;
     _paletteScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      // Delay palette generation to not block drawer animation
+      // This ensures smooth drawer pull-up animation
+      await Future.delayed(const Duration(milliseconds: 200));
       if (!mounted) {
         _paletteScheduled = false;
         return;
@@ -1859,6 +1887,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // Required for AutomaticKeepAliveClientMixin
     final playback = ServicesScope.of(context).services.playback;
     final theme = Theme.of(context);
     final cs = theme.colorScheme;

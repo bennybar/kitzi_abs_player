@@ -97,6 +97,9 @@ class _MiniPlayerState extends State<MiniPlayer> {
                   return const SizedBox.shrink();
                 }
 
+                // Pre-warm the full player widget for smoother drawer animations
+                FullPlayerPage.preWarm();
+
               unawaited(_maybeUpdatePalette(np.coverUrl));
 
                 return Padding(
