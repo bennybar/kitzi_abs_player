@@ -14,6 +14,7 @@ import 'download_storage.dart';
 import 'notification_service.dart';
 import 'books_repository.dart';
 import 'streaming_cache_service.dart';
+import 'session_logger_service.dart';
 
 class ItemProgress {
   final String libraryItemId;
@@ -1469,6 +1470,22 @@ class DownloadsRepository {
       // Log the download URL with full details
       _d('Downloading from $url');
       
+      final logger = SessionLoggerService.instance;
+      if (logger.isActive) {
+        final sanitizedHeaders = Map<String, String>.from(headers);
+        if (sanitizedHeaders.containsKey('Authorization')) {
+          sanitizedHeaders['Authorization'] = 'Bearer [REDACTED]';
+        }
+        await logger.log('DOWNLOAD ENQUEUE:');
+        await logger.log('  URL: $url');
+        await logger.log('  LibraryItemId: $libraryItemId');
+        await logger.log('  TrackIndex: ${next.index}');
+        await logger.log('  Filename: $filename');
+        await logger.log('  Directory: $baseFolder/$libraryItemId');
+        await logger.log('  Headers: ${jsonEncode(sanitizedHeaders)}');
+        await logger.log('  RequiresWiFi: $wifiOnly');
+      }
+      
       final task = DownloadTask(
         url: url,
         filename: filename,
@@ -1484,6 +1501,10 @@ class DownloadsRepository {
       );
 
       await FileDownloader().enqueue(task);
+      
+      if (logger.isActive) {
+        await logger.log('DOWNLOAD ENQUEUED: TaskId ${task.taskId}');
+      }
       _inFlightItems.add(libraryItemId);
       _notifyItem(libraryItemId);
 
@@ -1516,6 +1537,13 @@ class DownloadsRepository {
       }
       // Fast-path: when a task completes, clear live flags and try to schedule the next immediately
       if (u is TaskStatusUpdate && u.status == TaskStatus.complete) {
+        final logger = SessionLoggerService.instance;
+        if (logger.isActive) {
+          await logger.log('DOWNLOAD COMPLETE:');
+          await logger.log('  TaskId: ${u.task.taskId}');
+          await logger.log('  LibraryItemId: $id');
+          await logger.log('  Filename: ${u.task.filename}');
+        }
         _uiActive[id] = false;
         _inFlightItems.remove(id);
         _lastRunningProgress.remove(id);
@@ -1529,6 +1557,43 @@ class DownloadsRepository {
           await _startNextForItem(id);
         }
         return;
+      }
+      
+      // Log other status updates
+      final logger = SessionLoggerService.instance;
+      if (logger.isActive) {
+        if (u is TaskProgressUpdate) {
+          await logger.log('DOWNLOAD PROGRESS UPDATE:');
+          await logger.log('  TaskId: ${u.task.taskId}');
+          await logger.log('  LibraryItemId: $id');
+          await logger.log('  Progress: ${((u.progress ?? 0.0) * 100).toStringAsFixed(1)}%');
+          await logger.log('  URL: ${u.task.url}');
+          await logger.log('  Filename: ${u.task.filename}');
+        } else if (u is TaskStatusUpdate) {
+          await logger.log('DOWNLOAD STATUS UPDATE:');
+          await logger.log('  TaskId: ${u.task.taskId}');
+          await logger.log('  LibraryItemId: $id');
+          await logger.log('  Status: ${u.status}');
+          await logger.log('  URL: ${u.task.url}');
+          await logger.log('  Filename: ${u.task.filename}');
+          if (u.status == TaskStatus.failed) {
+            await logger.log('  ERROR: Download failed');
+            try {
+              final allRecords = await FileDownloader().database.allRecords();
+              final record = allRecords.firstWhere(
+                (r) => r.taskId == u.task.taskId,
+                orElse: () => throw Exception('Record not found'),
+              );
+              if (record.status == TaskStatus.failed) {
+                await logger.log('  Error: Task failed (status: ${record.status})');
+              }
+            } catch (e) {
+              await logger.log('  Could not retrieve error details: $e');
+            }
+          } else if (u.status == TaskStatus.canceled) {
+            await logger.log('  CANCELED: Download was canceled');
+          }
+        }
       }
       // Only respond to items the user activated
       if (!_activeItems.contains(id)) return;

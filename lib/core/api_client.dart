@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'session_logger_service.dart';
 
 class ApiClient {
   ApiClient(this._prefs, this._secure);
@@ -148,16 +149,55 @@ class ApiClient {
     }
 
     var upper = method.toUpperCase();
+    
+    // Log request if logging session is active
+    final logger = SessionLoggerService.instance;
+    if (logger.isActive) {
+      final sanitizedHeaders = Map<String, String>.from(reqHeaders);
+      if (sanitizedHeaders.containsKey('Authorization')) {
+        final authValue = sanitizedHeaders['Authorization']!;
+        if (authValue.startsWith('Bearer ')) {
+          sanitizedHeaders['Authorization'] = 'Bearer [REDACTED]';
+        }
+      }
+      await logger.log('HTTP REQUEST: $upper $uri');
+      await logger.log('  Headers: ${jsonEncode(sanitizedHeaders)}');
+      if (body != null) {
+        final bodyStr = body.toString();
+        final bodyPreview = bodyStr.length > 1000 ? '${bodyStr.substring(0, 1000)}...[truncated ${bodyStr.length - 1000} chars]' : bodyStr;
+        await logger.log('  Body: $bodyPreview');
+      }
+    }
+    
     var resp = await send(upper);
 
     if (auth && resp.statusCode == 401) {
+      if (logger.isActive) {
+        await logger.log('HTTP 401 Unauthorized - attempting token refresh');
+      }
       final refreshed = await _refreshAccessToken();
       if (refreshed) {
         final retryHeaders = Map<String, String>.from(reqHeaders);
         retryHeaders['Authorization'] = 'Bearer ${await _getAccessToken()}';
         resp = await send(upper);
+        if (logger.isActive) {
+          await logger.log('HTTP REQUEST RETRY: $upper $uri (after token refresh)');
+        }
       }
     }
+    
+    // Log response if logging session is active
+    if (logger.isActive) {
+      final respBody = resp.body;
+      final respBodyPreview = respBody.length > 2000 
+          ? '${respBody.substring(0, 2000)}...[truncated ${respBody.length - 2000} chars]' 
+          : respBody;
+      await logger.log('HTTP RESPONSE: $upper $uri');
+      await logger.log('  Status: ${resp.statusCode} ${resp.reasonPhrase}');
+      await logger.log('  Headers: ${jsonEncode(resp.headers)}');
+      await logger.log('  Body: $respBodyPreview');
+    }
+    
     return resp;
   }
 
@@ -171,10 +211,13 @@ class ApiClient {
   }
 
   Future<bool> _refreshAccessToken() async {
+    final logger = SessionLoggerService.instance;
     final base = baseUrl;
     final refresh = await _getRefreshToken();
     if (base == null || refresh == null) {
-      // '[API] Token refresh failed: missing baseUrl or refresh token');
+      if (logger.isActive) {
+        await logger.log('TOKEN REFRESH: Failed - missing baseUrl or refresh token');
+      }
       return false;
     }
 
@@ -183,14 +226,28 @@ class ApiClient {
         'Content-Type': 'application/json',
         ..._currentCustomHeaders(),
       };
+      
+      if (logger.isActive) {
+        final sanitizedHeaders = Map<String, String>.from(refreshHeaders);
+        sanitizedHeaders['x-refresh-token'] = '[REDACTED]';
+        await logger.log('TOKEN REFRESH REQUEST: POST $base/auth/refresh');
+        await logger.log('  Headers: ${jsonEncode(sanitizedHeaders)}');
+      }
+      
       refreshHeaders['x-refresh-token'] = refresh;
       final resp = await http.post(
         Uri.parse('$base/auth/refresh'),
         headers: refreshHeaders,
       );
       
+      if (logger.isActive) {
+        await logger.log('TOKEN REFRESH RESPONSE: Status ${resp.statusCode}');
+        if (resp.statusCode != 200) {
+          await logger.log('  Body: ${resp.body}');
+        }
+      }
+      
       if (resp.statusCode != 200) {
-        // '[API] Token refresh failed: HTTP ${resp.statusCode}');
         return false;
       }
 
@@ -200,7 +257,9 @@ class ApiClient {
       final newRefresh = user?['refreshToken'] as String?;
       
       if (access == null) {
-        // '[API] Token refresh failed: no access token in response');
+        if (logger.isActive) {
+          await logger.log('TOKEN REFRESH: Failed - no access token in response');
+        }
         return false;
       }
 
@@ -210,10 +269,14 @@ class ApiClient {
         await _setRefreshToken(newRefresh);
       }
       
-      // '[API] Token refresh successful');
+      if (logger.isActive) {
+        await logger.log('TOKEN REFRESH: Success');
+      }
       return true;
     } catch (e) {
-      // '[API] Token refresh failed: $e');
+      if (logger.isActive) {
+        await logger.logError('TOKEN REFRESH: Failed', e);
+      }
       return false;
     }
   }
@@ -225,9 +288,16 @@ class ApiClient {
     required String username,
     required String password,
   }) async {
+    final logger = SessionLoggerService.instance;
     await setBaseUrl(baseUrl);
     final loginUrl = '$baseUrl/login';
-    // '[API] login: url="$loginUrl" user="$username" hasPassword=${password.isNotEmpty}');
+    
+    if (logger.isActive) {
+      await logger.log('LOGIN REQUEST: POST $loginUrl');
+      await logger.log('  Username: $username');
+      await logger.log('  HasPassword: ${password.isNotEmpty}');
+    }
+    
     http.Response resp;
     try {
       final loginHeaders = <String, String>{
@@ -235,14 +305,28 @@ class ApiClient {
         ..._currentCustomHeaders(),
       };
       loginHeaders['x-return-tokens'] = 'true';
+      
+      if (logger.isActive) {
+        await logger.log('  Headers: ${jsonEncode(loginHeaders)}');
+      }
+      
       resp = await http.post(
         Uri.parse(loginUrl),
         headers: loginHeaders,
         body: jsonEncode({'username': username, 'password': password}),
       );
-      // '[API] login: status=${resp.statusCode} len=${resp.body.length}');
+      
+      if (logger.isActive) {
+        await logger.log('LOGIN RESPONSE: Status ${resp.statusCode}');
+        await logger.log('  Body length: ${resp.body.length}');
+        if (resp.statusCode != 200) {
+          await logger.log('  Body: ${resp.body}');
+        }
+      }
     } catch (e) {
-      // '[API] login: network error: $e');
+      if (logger.isActive) {
+        await logger.logError('LOGIN: Network error', e);
+      }
       return false;
     }
 
