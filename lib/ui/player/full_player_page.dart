@@ -208,11 +208,84 @@ class FullPlayerPage extends StatefulWidget {
 
   // Prevent duplicate openings of the FullPlayerPage within the same session.
   static bool _isOpen = false;
+  
+  /// Validate and prewarm cover image cache before opening player
+  static Future<void> _validateAndPrewarmCover(BuildContext context) async {
+    try {
+      final playback = ServicesScope.of(context).services.playback;
+      final np = playback.nowPlaying;
+      final coverUrl = np?.coverUrl;
+      
+      if (coverUrl == null || coverUrl.isEmpty) return;
+      
+      final cacheManager = DefaultCacheManager();
+      final fileInfo = await cacheManager.getFileFromCache(coverUrl);
+      
+      bool shouldClear = false;
+      if (fileInfo != null) {
+        final file = fileInfo.file;
+        if (await file.exists()) {
+          final length = await file.length();
+          if (length == 0) {
+            shouldClear = true;
+          } else {
+            // Try to verify it's a valid image
+            try {
+              final bytes = await file.readAsBytes();
+              if (bytes.isEmpty) {
+                shouldClear = true;
+              } else {
+                // Check if cache entry is stale
+                final now = DateTime.now();
+                final validUntil = fileInfo.validTill;
+                if (validUntil != null && now.isAfter(validUntil)) {
+                  shouldClear = true;
+                }
+              }
+            } catch (_) {
+              shouldClear = true;
+            }
+          }
+        } else {
+          shouldClear = true;
+        }
+      }
+      
+      if (shouldClear && fileInfo != null) {
+        await cacheManager.removeFile(coverUrl);
+      }
+      
+      // Prewarm the image after validation/clearing
+      try {
+        await precacheImage(
+          CachedNetworkImageProvider(coverUrl),
+          context,
+        );
+      } catch (_) {
+        // If prewarming fails, continue anyway
+      }
+    } catch (_) {
+      // If validation fails, continue anyway
+    }
+  }
+  
   static Future<void> openOnce(BuildContext context) async {
     if (_isOpen) return;
     _isOpen = true;
     FullPlayerOverlay.isVisible.value = true;
     try {
+      // Validate and prewarm cover image before opening (with timeout to avoid blocking)
+      try {
+        await _validateAndPrewarmCover(context).timeout(
+          const Duration(milliseconds: 500),
+          onTimeout: () {
+            // Continue even if validation times out
+          },
+        );
+      } catch (_) {
+        // Continue even if validation fails
+      }
+      
       // Check if legacy full screen player is enabled
       final prefs = await SharedPreferences.getInstance();
       final legacyMode = prefs.getBool('ui_legacy_full_screen_player') ?? false;
