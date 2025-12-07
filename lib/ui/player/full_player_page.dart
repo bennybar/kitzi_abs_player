@@ -75,6 +75,8 @@ class _ValidatedCachedNetworkImage extends StatefulWidget {
 class _ValidatedCachedNetworkImageState extends State<_ValidatedCachedNetworkImage> {
   String? _currentUrl;
   bool _hasValidated = false;
+  int _retryKey = 0; // Key to force rebuild when cache is cleared
+  bool _hasRetried = false; // Prevent infinite retry loop
 
   @override
   void initState() {
@@ -89,6 +91,8 @@ class _ValidatedCachedNetworkImageState extends State<_ValidatedCachedNetworkIma
     if (oldWidget.imageUrl != widget.imageUrl) {
       _currentUrl = widget.imageUrl;
       _hasValidated = false;
+      _retryKey = 0;
+      _hasRetried = false;
       _validateCache();
     }
   }
@@ -116,6 +120,14 @@ class _ValidatedCachedNetworkImageState extends State<_ValidatedCachedNetworkIma
               final bytes = await file.readAsBytes();
               if (bytes.isEmpty) {
                 shouldClear = true;
+              } else {
+                // Check if cache entry is too old (more than 30 days)
+                // This helps with stale cache after app reopens
+                final now = DateTime.now();
+                final validUntil = fileInfo.validTill;
+                if (validUntil != null && now.isAfter(validUntil)) {
+                  shouldClear = true;
+                }
               }
             } catch (_) {
               // Can't read file, clear cache
@@ -131,7 +143,7 @@ class _ValidatedCachedNetworkImageState extends State<_ValidatedCachedNetworkIma
           await cacheManager.removeFile(_currentUrl!);
           if (mounted) {
             setState(() {
-              // Force rebuild to reload image
+              _retryKey++; // Force rebuild with new key
             });
           }
         }
@@ -141,15 +153,52 @@ class _ValidatedCachedNetworkImageState extends State<_ValidatedCachedNetworkIma
     }
   }
 
+  Future<void> _handleImageError(BuildContext context, String url, dynamic error) async {
+    // Only retry once to prevent infinite loop
+    if (_hasRetried) return;
+    _hasRetried = true;
+    
+    // Clear cache on error and retry
+    try {
+      final cacheManager = DefaultCacheManager();
+      await cacheManager.removeFile(url);
+      if (mounted) {
+        setState(() {
+          _retryKey++; // Force rebuild to retry
+        });
+      }
+    } catch (_) {
+      // If clearing cache fails, just show error widget
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return CachedNetworkImage(
+      key: ValueKey('${_currentUrl}_$_retryKey'), // Force rebuild when retry key changes
       imageUrl: _currentUrl!,
       fit: widget.fit,
       fadeInDuration: widget.fadeInDuration,
       fadeOutDuration: widget.fadeOutDuration,
       placeholder: widget.placeholder,
-      errorWidget: widget.errorWidget,
+      errorWidget: (context, url, error) {
+        // Clear cache and retry on error (only once)
+        if (!_hasRetried) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _handleImageError(context, url, error);
+          });
+        }
+        // Show error widget
+        return widget.errorWidget?.call(context, url, error) ?? 
+          Container(
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            child: Icon(
+              Icons.menu_book_outlined,
+              size: 88,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          );
+      },
     );
   }
 }
