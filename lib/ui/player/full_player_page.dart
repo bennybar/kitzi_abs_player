@@ -5,9 +5,11 @@ import 'dart:convert';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:squiggly_slider/slider.dart';
+import 'dart:io';
 
 import '../../core/playback_repository.dart';
 import '../../core/playback_speed_service.dart';
@@ -44,6 +46,111 @@ class _EdgeToEdgeSliderTrackShape extends RoundedRectSliderTrackShape {
     final trackTop = offset.dy + (parentBox.size.height - trackHeight) / 2;
     final trackWidth = parentBox.size.width - inset * 2;
     return Rect.fromLTWH(trackLeft + inset, trackTop, trackWidth, trackHeight);
+  }
+}
+
+/// Cached network image widget with cache validation
+/// Checks if cached image is valid, and clears cache if not
+class _ValidatedCachedNetworkImage extends StatefulWidget {
+  final String imageUrl;
+  final BoxFit fit;
+  final Duration fadeInDuration;
+  final Duration fadeOutDuration;
+  final Widget Function(BuildContext, String)? placeholder;
+  final Widget Function(BuildContext, String, dynamic)? errorWidget;
+
+  const _ValidatedCachedNetworkImage({
+    required this.imageUrl,
+    this.fit = BoxFit.cover,
+    this.fadeInDuration = const Duration(milliseconds: 220),
+    this.fadeOutDuration = const Duration(milliseconds: 120),
+    this.placeholder,
+    this.errorWidget,
+  });
+
+  @override
+  State<_ValidatedCachedNetworkImage> createState() => _ValidatedCachedNetworkImageState();
+}
+
+class _ValidatedCachedNetworkImageState extends State<_ValidatedCachedNetworkImage> {
+  String? _currentUrl;
+  bool _hasValidated = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentUrl = widget.imageUrl;
+    _validateCache();
+  }
+
+  @override
+  void didUpdateWidget(_ValidatedCachedNetworkImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.imageUrl != widget.imageUrl) {
+      _currentUrl = widget.imageUrl;
+      _hasValidated = false;
+      _validateCache();
+    }
+  }
+
+  Future<void> _validateCache() async {
+    if (_hasValidated) return;
+    _hasValidated = true;
+    
+    try {
+      final cacheManager = DefaultCacheManager();
+      final fileInfo = await cacheManager.getFileFromCache(_currentUrl!);
+      
+      if (fileInfo != null) {
+        final file = fileInfo.file;
+        // Check if file exists and has valid size (> 0 bytes)
+        bool shouldClear = false;
+        if (await file.exists()) {
+          final length = await file.length();
+          if (length == 0) {
+            // Invalid cached file (0 bytes), clear it
+            shouldClear = true;
+          } else {
+            // Try to verify it's a valid image by checking if we can read it
+            try {
+              final bytes = await file.readAsBytes();
+              if (bytes.isEmpty) {
+                shouldClear = true;
+              }
+            } catch (_) {
+              // Can't read file, clear cache
+              shouldClear = true;
+            }
+          }
+        } else {
+          // File doesn't exist, clear cache entry
+          shouldClear = true;
+        }
+        
+        if (shouldClear) {
+          await cacheManager.removeFile(_currentUrl!);
+          if (mounted) {
+            setState(() {
+              // Force rebuild to reload image
+            });
+          }
+        }
+      }
+    } catch (_) {
+      // If validation fails, just proceed with normal loading
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return CachedNetworkImage(
+      imageUrl: _currentUrl!,
+      fit: widget.fit,
+      fadeInDuration: widget.fadeInDuration,
+      fadeOutDuration: widget.fadeOutDuration,
+      placeholder: widget.placeholder,
+      errorWidget: widget.errorWidget,
+    );
   }
 }
 
@@ -2227,7 +2334,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                           child: AspectRatio(
                                             aspectRatio: 1,
                                             child: np.coverUrl != null && np.coverUrl!.isNotEmpty
-                                                ? CachedNetworkImage(
+                                                ? _ValidatedCachedNetworkImage(
                                                     imageUrl: np.coverUrl!,
                                                     fit: BoxFit.cover,
                                                     fadeInDuration: const Duration(milliseconds: 220),
