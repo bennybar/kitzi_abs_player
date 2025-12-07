@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/services.dart' show SystemNavigator;
 import 'package:sqflite/sqflite.dart';
+import 'package:path_provider/path_provider.dart';
 import '../../main.dart'; // ServicesScope
 import '../../core/audio_service_binding.dart';
 import '../../core/books_repository.dart';
@@ -53,6 +54,38 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _clearingStreamingCache = false;
   DateTime? _lastReloadTime;
   Timer? _reloadDebounce;
+  static const _prefKeys = <String>[
+    'downloads_wifi_only',
+    'sync_progress_before_play',
+    'pause_cancels_sleep_timer',
+    'ui_dual_progress_enabled',
+    'ui_show_series_tab',
+    'ui_author_view_enabled',
+    'bluetooth_auto_play',
+    'smart_rewind_enabled',
+    'ui_waveform_animation_enabled',
+    'ui_squiggly_progress_bar',
+    'ui_letter_scroll_enabled',
+    'ui_letter_scroll_books_alpha',
+    'ui_legacy_full_screen_player',
+    'ui_progress_primary',
+    'ui_player_gradient_background',
+    'ui_player_cover_size',
+    'books_library_id',
+    'play_history_v1',
+    'detailed_play_sessions_v1',
+    'detailed_play_history_enabled',
+    'playback_speed',
+    'ui_surface_tint_level',
+    'streaming_cache_max_bytes',
+  ];
+  static const _excludedKeys = <String>{
+    // Auth / login-derived values (not exported)
+    'abs_base_url',
+    'abs_access',
+    'abs_access_exp',
+    'abs_custom_headers',
+  };
 
   @override
   void initState() {
@@ -64,6 +97,168 @@ class _SettingsPageState extends State<SettingsPage> {
   void dispose() {
     _reloadDebounce?.cancel();
     super.dispose();
+  }
+
+  Future<File> _settingsFile() async {
+    final dir = await getApplicationDocumentsDirectory();
+    return File('${dir.path}/kitzi-settings.json');
+  }
+
+  Future<void> _exportSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final map = <String, dynamic>{};
+      for (final key in _prefKeys) {
+        if (_excludedKeys.contains(key)) continue;
+        if (!prefs.containsKey(key)) continue;
+        final val = prefs.get(key);
+        if (val is List<String>) {
+          map[key] = val;
+        } else {
+          map[key] = val;
+        }
+      }
+      final payload = jsonEncode({
+        'version': 1,
+        'exportedAt': DateTime.now().toIso8601String(),
+        'settings': map,
+      });
+      final file = await _settingsFile();
+      await file.writeAsString(payload, flush: true);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Settings exported to ${file.path}')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Export failed: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _importSettings() async {
+    try {
+      final file = await _settingsFile();
+      if (!file.existsSync()) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('No settings file found at ${file.path}')),
+          );
+        }
+        return;
+      }
+      final contents = await file.readAsString();
+      final decoded = jsonDecode(contents);
+      if (decoded is! Map || decoded['settings'] is! Map) {
+        throw Exception('Invalid settings file');
+      }
+      final settings = Map<String, dynamic>.from(decoded['settings'] as Map);
+      final prefs = await SharedPreferences.getInstance();
+
+      Future<void> setBool(String k, bool v) async => prefs.setBool(k, v);
+      Future<void> setString(String k, String v) async => prefs.setString(k, v);
+      Future<void> setStringList(String k, List<String> v) async => prefs.setStringList(k, v);
+      Future<void> setInt(String k, int v) async => prefs.setInt(k, v);
+
+      for (final entry in settings.entries) {
+        final key = entry.key;
+        final val = entry.value;
+        if (_excludedKeys.contains(key)) {
+          continue; // skip login-derived / credential-adjacent keys
+        }
+        switch (key) {
+          case 'ui_progress_primary':
+            final parsed = (val == 'chapter')
+                ? ProgressPrimary.chapter
+                : ProgressPrimary.book;
+            await UiPrefs.setProgressPrimary(parsed);
+            break;
+          case 'ui_player_cover_size':
+            final parsed = switch (val) {
+              'small' => PlayerCoverSize.small,
+              'medium' => PlayerCoverSize.medium,
+              'extraLarge' => PlayerCoverSize.extraLarge,
+              _ => PlayerCoverSize.large,
+            };
+            await UiPrefs.setPlayerCoverSize(parsed);
+            break;
+          case 'ui_show_series_tab':
+            if (val is bool) await UiPrefs.setSeriesVisible(val);
+            break;
+          case 'ui_author_view_enabled':
+            if (val is bool) await UiPrefs.setAuthorViewEnabled(val);
+            break;
+          case 'ui_waveform_animation_enabled':
+            if (val is bool) await UiPrefs.setWaveformAnimationEnabled(val);
+            break;
+          case 'ui_squiggly_progress_bar':
+            if (val is bool) await UiPrefs.setSquigglyProgressBar(val);
+            break;
+          case 'ui_letter_scroll_enabled':
+            if (val is bool) await UiPrefs.setLetterScrollEnabled(val);
+            break;
+          case 'ui_letter_scroll_books_alpha':
+            if (val is bool) await UiPrefs.setLetterScrollBooksAlpha(val);
+            break;
+          case 'ui_player_gradient_background':
+            if (val is bool) await UiPrefs.setPlayerGradientBackground(val);
+            break;
+          case 'play_history_v1':
+            if (val is List) {
+              final list = val.whereType<String>().toList();
+              await setStringList(key, list);
+            }
+            break;
+          case 'detailed_play_sessions_v1':
+            if (val is List) {
+              final list = val.whereType<String>().toList();
+              await setStringList(key, list);
+            }
+            break;
+          case 'detailed_play_history_enabled':
+            if (val is bool) await setBool(key, val);
+            break;
+          case 'playback_speed':
+            if (val is num) await prefs.setDouble(key, val.toDouble());
+            break;
+          case 'ui_surface_tint_level':
+            if (val is int) await setInt(key, val);
+            break;
+          case 'streaming_cache_max_bytes':
+            if (val is int) await setInt(key, val);
+            break;
+          default:
+            if (val is bool) {
+              await setBool(key, val);
+            } else if (val is String) {
+              await setString(key, val);
+            } else if (val is int) {
+              await setInt(key, val);
+            } else if (val is List) {
+              final list = val.whereType<String>().toList();
+              await setStringList(key, list);
+            }
+            break;
+        }
+      }
+
+      // Reload local state to reflect changes
+      if (mounted) {
+        await _loadPrefs();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Settings imported from ${file.path}')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Import failed: $e')),
+        );
+      }
+    }
   }
 
   @override
@@ -903,6 +1098,22 @@ class _SettingsPageState extends State<SettingsPage> {
                 await services.playback.reconfigureAudioSession();
               } catch (_) {}
             },
+          ),
+          const Divider(height: 32),
+          const ListTile(
+            title: Text('Backup & restore'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.file_download_rounded),
+            title: const Text('Export settings (JSON)'),
+            subtitle: const Text('Save app settings to device storage'),
+            onTap: _exportSettings,
+          ),
+          ListTile(
+            leading: const Icon(Icons.file_upload_rounded),
+            title: const Text('Import settings (JSON)'),
+            subtitle: const Text('Load settings from kitzi-settings.json'),
+            onTap: _importSettings,
           ),
           const Divider(height: 32),
           Padding(
