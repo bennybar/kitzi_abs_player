@@ -12,12 +12,14 @@ import '../../ui/login/login_screen.dart';
 import '../../core/download_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:file_picker/file_picker.dart';
 import '../../core/play_history_service.dart';
 import '../../core/playback_journal_service.dart';
 import '../../core/ui_prefs.dart';
 import '../../core/theme_service.dart';
 import '../../core/downloads_repository.dart';
 import '../../core/streaming_cache_service.dart';
+import '../../core/session_logger_service.dart';
 import '../profile/profile_page.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -54,6 +56,8 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _clearingStreamingCache = false;
   DateTime? _lastReloadTime;
   Timer? _reloadDebounce;
+  bool _loggingSessionActive = false;
+  Timer? _loggingSessionTimer;
   static const _prefKeys = <String>[
     'downloads_wifi_only',
     'sync_progress_before_play',
@@ -96,12 +100,8 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   void dispose() {
     _reloadDebounce?.cancel();
+    _loggingSessionTimer?.cancel();
     super.dispose();
-  }
-
-  Future<File> _settingsFile() async {
-    final dir = await getApplicationDocumentsDirectory();
-    return File('${dir.path}/kitzi-settings.json');
   }
 
   Future<void> _exportSettings() async {
@@ -123,7 +123,23 @@ class _SettingsPageState extends State<SettingsPage> {
         'exportedAt': DateTime.now().toIso8601String(),
         'settings': map,
       });
-      final file = await _settingsFile();
+
+      // Let user pick save location
+      final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
+      final fileName = 'kitzi-settings-$timestamp.json';
+      final result = await FilePicker.platform.saveFile(
+        dialogTitle: 'Export settings',
+        fileName: fileName,
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+      );
+
+      if (result == null) {
+        // User cancelled
+        return;
+      }
+
+      final file = File(result);
       await file.writeAsString(payload, flush: true);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -141,11 +157,23 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _importSettings() async {
     try {
-      final file = await _settingsFile();
+      // Let user pick file to import
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+        dialogTitle: 'Import settings',
+      );
+
+      if (result == null || result.files.single.path == null) {
+        // User cancelled
+        return;
+      }
+
+      final file = File(result.files.single.path!);
       if (!file.existsSync()) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('No settings file found at ${file.path}')),
+            const SnackBar(content: Text('Selected file does not exist')),
           );
         }
         return;
@@ -318,6 +346,15 @@ class _SettingsPageState extends State<SettingsPage> {
       }
       await _refreshStreamingCacheUsage();
       await _loadLibraries();
+      
+      // Check logging session status
+      final logger = SessionLoggerService.instance;
+      setState(() {
+        _loggingSessionActive = logger.isActive;
+      });
+      if (_loggingSessionActive) {
+        _startLoggingSessionTimer();
+      }
     } catch (_) {
       setState(() { 
         _wifiOnly = false;
@@ -353,6 +390,113 @@ class _SettingsPageState extends State<SettingsPage> {
       }
       if (mounted) setState(() { _libraries = libs; });
     } catch (_) {}
+  }
+
+  void _startLoggingSessionTimer() {
+    _loggingSessionTimer?.cancel();
+    _loggingSessionTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      final logger = SessionLoggerService.instance;
+      if (!logger.isActive) {
+        timer.cancel();
+        setState(() {
+          _loggingSessionActive = false;
+        });
+        return;
+      }
+      setState(() {
+        _loggingSessionActive = true;
+      });
+    });
+  }
+
+  Future<void> _toggleLoggingSession(bool enabled) async {
+    final logger = SessionLoggerService.instance;
+    if (enabled) {
+      final started = await logger.startSession();
+      if (started && mounted) {
+        setState(() {
+          _loggingSessionActive = true;
+        });
+        _startLoggingSessionTimer();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Logging session started (15 min max)'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to start logging session'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } else {
+      await logger.stopSession();
+      _loggingSessionTimer?.cancel();
+      if (mounted) {
+        setState(() {
+          _loggingSessionActive = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Logging session stopped'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _exportLogFile() async {
+    final logger = SessionLoggerService.instance;
+    final logFile = logger.logFile;
+    
+    if (logFile == null || !await logFile.exists()) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No log file available')),
+        );
+      }
+      return;
+    }
+
+    try {
+      // Let user pick save location
+      final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
+      final fileName = 'kitzi-session-log-$timestamp.txt';
+      final result = await FilePicker.platform.saveFile(
+        dialogTitle: 'Export log file',
+        fileName: fileName,
+        type: FileType.custom,
+        allowedExtensions: ['txt'],
+      );
+
+      if (result == null) {
+        // User cancelled
+        return;
+      }
+
+      final exportFile = File(result);
+      await logFile.copy(exportFile.path);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Log exported to ${exportFile.path}')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Export failed: $e')),
+        );
+      }
+    }
   }
 
   String _customHeadersSubtitle() {
@@ -1106,15 +1250,45 @@ class _SettingsPageState extends State<SettingsPage> {
           ListTile(
             leading: const Icon(Icons.file_download_rounded),
             title: const Text('Export settings (JSON)'),
-            subtitle: const Text('Save app settings to device storage'),
+            subtitle: const Text('Save app settings to a location of your choice'),
             onTap: _exportSettings,
           ),
           ListTile(
             leading: const Icon(Icons.file_upload_rounded),
             title: const Text('Import settings (JSON)'),
-            subtitle: const Text('Load settings from kitzi-settings.json'),
+            subtitle: const Text('Load settings from a JSON file'),
             onTap: _importSettings,
           ),
+          const Divider(height: 32),
+          const ListTile(
+            title: Text('Debug & logging'),
+          ),
+          SwitchListTile(
+            title: const Text('Logging session'),
+            subtitle: _loggingSessionActive
+                ? Builder(
+                    builder: (context) {
+                      final logger = SessionLoggerService.instance;
+                      final remaining = logger.remainingTime;
+                      if (remaining == null) {
+                        return const Text('Active');
+                      }
+                      final mins = remaining.inMinutes;
+                      final secs = remaining.inSeconds % 60;
+                      return Text('Active - ${mins}m ${secs}s remaining');
+                    },
+                  )
+                : const Text('Log everything to file for up to 15 minutes'),
+            value: _loggingSessionActive,
+            onChanged: _toggleLoggingSession,
+          ),
+          if (_loggingSessionActive || SessionLoggerService.instance.logFile != null)
+            ListTile(
+              leading: const Icon(Icons.file_download_rounded),
+              title: const Text('Export log file'),
+              subtitle: const Text('Save current session log to a location of your choice'),
+              onTap: _exportLogFile,
+            ),
           const Divider(height: 32),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
