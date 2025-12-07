@@ -245,6 +245,12 @@ class PlaybackRepository {
           }
         } catch (_) {}
 
+        // Always fetch a fresh cover URL (tokenized) to avoid stale/expired images
+        final refreshedCover = await _coverUrl(last);
+        final effectiveCoverUrl = (refreshedCover != null && refreshedCover.isNotEmpty)
+            ? refreshedCover
+            : coverUrl;
+
         // Do not attempt to ensure durations online; play with what we have
         // But try to get proper chapter metadata from server for better chapter titles
         List<Chapter> chapters = _chaptersFromTracks(localTracks);
@@ -286,7 +292,7 @@ class PlaybackRepository {
           title: title,
           author: author,
           narrator: null, // Narrator not available from local cache
-          coverUrl: coverUrl,
+          coverUrl: effectiveCoverUrl,
           tracks: localTracks,
           currentIndex: 0,
           chapters: chapters,
@@ -893,9 +899,20 @@ class PlaybackRepository {
     final itemId = _progressItemId;
     final np = _nowPlaying;
     
-    // Validate and clear invalid cover image cache in background
+    // Refresh cover URL (tokenized) and validate cache to avoid missing images after reopen
     if (np != null) {
-      unawaited(_validateCoverImageCache(np.coverUrl));
+      try {
+        final freshCover = await _coverUrl(np.libraryItemId);
+        if (freshCover != null && freshCover.isNotEmpty && freshCover != np.coverUrl) {
+          final updated = np.copyWith(coverUrl: freshCover);
+          _setNowPlaying(updated);
+          unawaited(_validateCoverImageCache(freshCover));
+        } else {
+          unawaited(_validateCoverImageCache(np.coverUrl));
+        }
+      } catch (_) {
+        unawaited(_validateCoverImageCache(np.coverUrl));
+      }
     }
     
     // Check if sync is required and server is available (unless skipSync is true)
