@@ -21,7 +21,7 @@ import 'full_player_overlay.dart';
 import '../../core/playback_journal_service.dart';
 import 'journal_sheets.dart';
 
-enum _TopMenuAction { toggleCompletion, toggleGradient, cast, playHistory, bookmarks }
+enum _TopMenuAction { toggleCompletion, toggleGradient, cast, playHistory, bookmarks, coverSize }
 
 /// Custom slider track shape that allows tighter horizontal padding than the
 /// default Material slider track.
@@ -323,6 +323,69 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
         ),
       ),
     );
+  }
+
+  void _showCoverSizeSheet(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    showModalBottomSheet(
+      context: context,
+      useSafeArea: true,
+      builder: (ctx) {
+        return SafeArea(
+          child: ValueListenableBuilder<PlayerCoverSize>(
+            valueListenable: UiPrefs.playerCoverSize,
+            builder: (_, current, __) {
+              return ListView(
+                shrinkWrap: true,
+                children: [
+                  ListTile(
+                    title: const Text('Cover size'),
+                    subtitle: const Text('Adjust the book cover size in the full player'),
+                  ),
+                  ...PlayerCoverSize.values.map((size) {
+                    final label = switch (size) {
+                      PlayerCoverSize.small => 'Small',
+                      PlayerCoverSize.medium => 'Medium',
+                      PlayerCoverSize.large => 'Large',
+                      PlayerCoverSize.extraLarge => 'Extra large',
+                    };
+                    return RadioListTile<PlayerCoverSize>(
+                      value: size,
+                      groupValue: current,
+                      activeColor: cs.primary,
+                      title: Text(label),
+                      onChanged: (sel) {
+                        if (sel != null) {
+                          UiPrefs.setPlayerCoverSize(sel);
+                          Navigator.of(ctx).pop();
+                        }
+                      },
+                    );
+                  }),
+                ],
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  _CoverDims _coverDimensionsForSize(BuildContext context, PlayerCoverSize size) {
+    final widthFactor = switch (size) {
+      PlayerCoverSize.small => 0.54,
+      PlayerCoverSize.medium => 0.62,
+      PlayerCoverSize.large => 0.7,
+      PlayerCoverSize.extraLarge => 0.78,
+    };
+    final radius = switch (size) {
+      PlayerCoverSize.small => 20.0,
+      PlayerCoverSize.medium => 22.0,
+      PlayerCoverSize.large => 24.0,
+      PlayerCoverSize.extraLarge => 26.0,
+    };
+    final width = MediaQuery.of(context).size.width * widthFactor;
+    return _CoverDims(width: width, radius: radius);
   }
 
   Widget _buildBookProgressSection({
@@ -2030,6 +2093,9 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                       case _TopMenuAction.bookmarks:
                                         _openBookmarksSheet(context, playback);
                                         break;
+                                      case _TopMenuAction.coverSize:
+                                        _showCoverSizeSheet(context);
+                                        break;
                                     }
                                   },
                                     itemBuilder: (context) => [
@@ -2095,6 +2161,18 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                           ],
                                         ),
                                       ),
+                                      PopupMenuItem(
+                                        value: _TopMenuAction.coverSize,
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.photo_size_select_large_rounded, size: 18, color: cs.primary),
+                                            const SizedBox(width: 12),
+                                            const Expanded(
+                                              child: Text('Cover size'),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
                                     ],
                                   );
                                 },
@@ -2113,71 +2191,65 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                           padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
                           child: Column(
                             children: [
-                            // Cover with enhanced shadow and border - compact size
-                            AnimatedBuilder(
-                              animation: _coverAnimation,
-                              builder: (context, child) {
-                                return Transform.translate(
-                                  offset: Offset(0, 20 * (1 - _coverAnimation.value)),
-                                  child: Opacity(
-                                    opacity: _coverAnimation.value,
-                                    child: Center(
-                                      child: SizedBox(
-                                        width: MediaQuery.of(context).size.width * 0.7, // larger cover for stronger focus
-                                        child: Container(
-                                          decoration: BoxDecoration(
-                                            borderRadius: BorderRadius.circular(28),
-                                            boxShadow: [
-                                              // PixelPlay-inspired enhanced shadows for depth
-                                              BoxShadow(
-                                                color: cs.shadow.withOpacity(0.3),
-                                                blurRadius: 32,
-                                                spreadRadius: 2,
-                                                offset: const Offset(0, 10),
-                                              ),
-                                              BoxShadow(
-                                                color: cs.primary.withOpacity(0.15),
-                                                blurRadius: 48,
-                                                spreadRadius: -6,
-                                                offset: const Offset(0, 16),
-                                              ),
-                                              // Additional subtle shadow for more depth
-                                              BoxShadow(
-                                                color: cs.shadow.withOpacity(0.1),
-                                                blurRadius: 16,
-                                                spreadRadius: 0,
-                                                offset: const Offset(0, 4),
-                                              ),
-                                            ],
-                                          ),
-                                          child: ClipRRect(
-                                            borderRadius: BorderRadius.circular(28),
-                                            child: AspectRatio(
-                                              aspectRatio: 1,
-                                              child: np.coverUrl != null && np.coverUrl!.isNotEmpty
-                                                  ? CachedNetworkImage(
-                                                      imageUrl: np.coverUrl!,
-                                                      fit: BoxFit.cover,
-                                                      fadeInDuration: const Duration(milliseconds: 200),
-                                                      fadeOutDuration: const Duration(milliseconds: 100),
-                                                      placeholder: (_, __) => Container(
-                                                        color: cs.surfaceContainerHighest,
-                                                        child: Icon(
-                                                          Icons.menu_book_outlined,
-                                                          size: 88,
-                                                          color: cs.onSurfaceVariant,
+                            // Cover with adjustable size
+                            ValueListenableBuilder<PlayerCoverSize>(
+                              valueListenable: UiPrefs.playerCoverSize,
+                              builder: (context, coverSize, _) {
+                                final dims = _coverDimensionsForSize(context, coverSize);
+                                return AnimatedBuilder(
+                                  animation: _coverAnimation,
+                                  builder: (context, child) {
+                                    final t = _coverAnimation.value;
+                                    final fade = Curves.easeOut.transform(t);
+                                    final scale = 0.975 + 0.025 * Curves.easeOut.transform(t); // subtle zoom-in
+                                    final translateY = 14 * (1 - t); // reduce lift for less wobble
+                                    return Transform.translate(
+                                      offset: Offset(0, translateY),
+                                      child: Opacity(
+                                        opacity: fade,
+                                        child: Transform.scale(
+                                          scale: scale,
+                                          child: child,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                  child: Center(
+                                    child: SizedBox(
+                                      width: dims.width,
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          borderRadius: BorderRadius.circular(dims.radius),
+                                          boxShadow: dims.shadows(cs),
+                                        ),
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(dims.radius),
+                                          child: AspectRatio(
+                                            aspectRatio: 1,
+                                            child: np.coverUrl != null && np.coverUrl!.isNotEmpty
+                                                ? CachedNetworkImage(
+                                                    imageUrl: np.coverUrl!,
+                                                    fit: BoxFit.cover,
+                                                    fadeInDuration: const Duration(milliseconds: 220),
+                                                    fadeOutDuration: const Duration(milliseconds: 120),
+                                                    placeholder: (_, __) => Container(
+                                                      decoration: BoxDecoration(
+                                                        gradient: LinearGradient(
+                                                          colors: [
+                                                            cs.surfaceContainerHighest,
+                                                            cs.surfaceContainerHigh.withOpacity(0.9),
+                                                          ],
+                                                          begin: Alignment.topLeft,
+                                                          end: Alignment.bottomRight,
                                                         ),
                                                       ),
-                                                      errorWidget: (_, __, ___) => Container(
-                                                        color: cs.surfaceContainerHighest,
-                                                        child: Icon(
-                                                          Icons.menu_book_outlined,
-                                                          size: 88,
-                                                          color: cs.onSurfaceVariant,
-                                                        ),
+                                                      child: Icon(
+                                                        Icons.menu_book_outlined,
+                                                        size: 88,
+                                                        color: cs.onSurfaceVariant.withOpacity(0.75),
                                                       ),
-                                                    )
-                                                  : Container(
+                                                    ),
+                                                    errorWidget: (_, __, ___) => Container(
                                                       color: cs.surfaceContainerHighest,
                                                       child: Icon(
                                                         Icons.menu_book_outlined,
@@ -2185,7 +2257,15 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                                         color: cs.onSurfaceVariant,
                                                       ),
                                                     ),
-                                            ),
+                                                  )
+                                                : Container(
+                                                    color: cs.surfaceContainerHighest,
+                                                    child: Icon(
+                                                      Icons.menu_book_outlined,
+                                                      size: 88,
+                                                      color: cs.onSurfaceVariant,
+                                                    ),
+                                                  ),
                                           ),
                                         ),
                                       ),
@@ -3084,4 +3164,25 @@ class _ControlButton extends StatelessWidget {
 
     return tooltip == null ? button : Tooltip(message: tooltip!, child: button);
   }
+}
+
+class _CoverDims {
+  _CoverDims({required this.width, required this.radius});
+  final double width;
+  final double radius;
+
+  List<BoxShadow> shadows(ColorScheme cs) => [
+        BoxShadow(
+          color: cs.shadow.withOpacity(0.18),
+          blurRadius: 22,
+          spreadRadius: 0,
+          offset: const Offset(0, 10),
+        ),
+        BoxShadow(
+          color: cs.primary.withOpacity(0.1),
+          blurRadius: 30,
+          spreadRadius: -2,
+          offset: const Offset(0, 12),
+        ),
+      ];
 }

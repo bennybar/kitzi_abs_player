@@ -8,6 +8,8 @@ enum ProgressPrimary {
   chapter,
 }
 
+enum PlayerCoverSize { small, medium, large, extraLarge }
+
 class UiPrefs {
   static final ValueNotifier<bool> seriesTabVisible = ValueNotifier<bool>(false);
   static final ValueNotifier<bool> authorViewEnabled = ValueNotifier<bool>(true);
@@ -18,6 +20,8 @@ class UiPrefs {
   static final ValueNotifier<ProgressPrimary> progressPrimary = ValueNotifier<ProgressPrimary>(ProgressPrimary.book);
   static final ValueNotifier<bool> playerGradientBackground = ValueNotifier<bool>(false);
   static final ValueNotifier<bool> squigglyProgressBar = ValueNotifier<bool>(true); // Default to true
+  static final ValueNotifier<PlayerCoverSize> playerCoverSize =
+      ValueNotifier<PlayerCoverSize>(PlayerCoverSize.large);
 
   static const String _kSeries = 'ui_show_series_tab';
   static const String _kAuthorView = 'ui_author_view_enabled';
@@ -27,6 +31,7 @@ class UiPrefs {
   static const String _kProgressPrimary = 'ui_progress_primary';
   static const String _kPlayerGradient = 'ui_player_gradient_background';
   static const String _kSquigglyProgressBar = 'ui_squiggly_progress_bar';
+  static const String _kPlayerCoverSize = 'ui_player_cover_size';
 
   /// Calculate screen diagonal size in inches
   static double getScreenDiagonalInches(BuildContext context) {
@@ -68,6 +73,7 @@ class UiPrefs {
       progressPrimary.value = _parseProgressPrimary(prefs.getString(_kProgressPrimary));
       playerGradientBackground.value = prefs.getBool(_kPlayerGradient) ?? true;
       squigglyProgressBar.value = prefs.getBool(_kSquigglyProgressBar) ?? true;
+      playerCoverSize.value = _parseCoverSize(prefs.getString(_kPlayerCoverSize));
     } catch (_) {}
   }
   
@@ -87,6 +93,7 @@ class UiPrefs {
       progressPrimary.value = _parseProgressPrimary(prefs.getString(_kProgressPrimary));
       playerGradientBackground.value = prefs.getBool(_kPlayerGradient) ?? playerGradientBackground.value;
       squigglyProgressBar.value = prefs.getBool(_kSquigglyProgressBar) ?? true;
+      playerCoverSize.value = _parseCoverSize(prefs.getString(_kPlayerCoverSize));
     } catch (_) {}
   }
 
@@ -163,9 +170,32 @@ class UiPrefs {
     if (pinToSettingsOnChange) pinSettings.value = true;
   }
 
+  static Future<void> setPlayerCoverSize(PlayerCoverSize value, {bool pinToSettingsOnChange = false}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kPlayerCoverSize, value.name);
+    } catch (_) {}
+    playerCoverSize.value = value;
+    if (pinToSettingsOnChange) pinSettings.value = true;
+  }
+
   static ProgressPrimary _parseProgressPrimary(String? raw) {
     if (raw == ProgressPrimary.chapter.name) return ProgressPrimary.chapter;
     return ProgressPrimary.book;
+  }
+
+  static PlayerCoverSize _parseCoverSize(String? raw) {
+    switch (raw) {
+      case 'small':
+        return PlayerCoverSize.small;
+      case 'medium':
+        return PlayerCoverSize.medium;
+      case 'extraLarge':
+        return PlayerCoverSize.extraLarge;
+      case 'large':
+      default:
+        return PlayerCoverSize.large;
+    }
   }
 }
 
