@@ -127,11 +127,13 @@ class _SettingsPageState extends State<SettingsPage> {
       // Let user pick save location
       final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
       final fileName = 'kitzi-settings-$timestamp.json';
+      final bytes = utf8.encode(payload);
       final result = await FilePicker.platform.saveFile(
         dialogTitle: 'Export settings',
         fileName: fileName,
         type: FileType.custom,
         allowedExtensions: ['json'],
+        bytes: bytes,
       );
 
       if (result == null) {
@@ -139,11 +141,9 @@ class _SettingsPageState extends State<SettingsPage> {
         return;
       }
 
-      final file = File(result);
-      await file.writeAsString(payload, flush: true);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Settings exported to ${file.path}')),
+          SnackBar(content: Text('Settings exported to $result')),
         );
       }
     } catch (e) {
@@ -467,6 +467,9 @@ class _SettingsPageState extends State<SettingsPage> {
     }
 
     try {
+      // Read log file content as bytes
+      final logBytes = await logFile.readAsBytes();
+      
       // Let user pick save location
       final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
       final fileName = 'kitzi-session-log-$timestamp.txt';
@@ -475,19 +478,17 @@ class _SettingsPageState extends State<SettingsPage> {
         fileName: fileName,
         type: FileType.custom,
         allowedExtensions: ['txt'],
+        bytes: logBytes,
       );
 
       if (result == null) {
         // User cancelled
         return;
       }
-
-      final exportFile = File(result);
-      await logFile.copy(exportFile.path);
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Log exported to ${exportFile.path}')),
+          SnackBar(content: Text('Log exported to $result')),
         );
       }
     } catch (e) {
