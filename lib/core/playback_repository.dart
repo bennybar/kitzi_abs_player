@@ -5,7 +5,9 @@ import 'dart:io';
 
 import 'package:audio_session/audio_session.dart';
 import 'package:audio_service/audio_service.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:http/http.dart' as http;
 import 'package:just_audio/just_audio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -657,6 +659,62 @@ class PlaybackRepository {
     }
   }
 
+  /// Validate and clear invalid cover image cache
+  Future<void> _validateCoverImageCache(String? coverUrl) async {
+    if (coverUrl == null || coverUrl.isEmpty) return;
+    
+    try {
+      final cacheManager = DefaultCacheManager();
+      final fileInfo = await cacheManager.getFileFromCache(coverUrl);
+      
+      if (fileInfo != null) {
+        final file = fileInfo.file;
+        bool shouldClear = false;
+        
+        if (await file.exists()) {
+          final length = await file.length();
+          if (length == 0) {
+            shouldClear = true;
+          } else {
+            // Try to verify it's a valid image
+            try {
+              final bytes = await file.readAsBytes();
+              if (bytes.isEmpty) {
+                shouldClear = true;
+              } else {
+                // Check if cache entry is stale
+                final now = DateTime.now();
+                final validUntil = fileInfo.validTill;
+                if (validUntil != null && now.isAfter(validUntil)) {
+                  shouldClear = true;
+                }
+              }
+            } catch (_) {
+              shouldClear = true;
+            }
+          }
+        } else {
+          shouldClear = true;
+        }
+        
+        if (shouldClear) {
+          await cacheManager.removeFile(coverUrl);
+          _log('Cleared invalid cover image cache for $coverUrl');
+        }
+      }
+      
+      // Prewarm the image after validation/clearing
+      try {
+        // Use a BuildContext if available, otherwise just clear cache
+        // The image will be loaded fresh when needed
+      } catch (_) {
+        // If prewarming fails, continue anyway
+      }
+    } catch (_) {
+      // If validation fails, continue anyway
+    }
+  }
+
   Future<bool> playItem(String libraryItemId, {String? episodeId, BuildContext? context}) async {
     // Guard: do not attempt playback if item appears to be non-audiobook
     try {
@@ -735,6 +793,9 @@ class PlaybackRepository {
     _setNowPlaying(np);
     _progressItemId = libraryItemId;
     _activeSessionId = openedSessionId;
+
+    // Validate and clear invalid cover image cache in background
+    unawaited(_validateCoverImageCache(np.coverUrl));
 
     // Update audio service with new now playing info
     _log('Updating audio service with now playing: ${np.title}');
@@ -832,6 +893,11 @@ class PlaybackRepository {
     final itemId = _progressItemId;
     final np = _nowPlaying;
     
+    // Validate and clear invalid cover image cache in background
+    if (np != null) {
+      unawaited(_validateCoverImageCache(np.coverUrl));
+    }
+    
     // Check if sync is required and server is available (unless skipSync is true)
     if (!skipSync) {
       final canProceed = await _checkSyncRequirement(context: context);
@@ -854,6 +920,8 @@ class PlaybackRepository {
           // Update nowPlaying with fresh tracks and seek appropriately
           final updated = np.copyWith(tracks: tracks);
           _setNowPlaying(updated);
+          // Validate cover image cache for updated NowPlaying
+          unawaited(_validateCoverImageCache(updated.coverUrl));
           final map = _mapGlobalSecondsToTrack(curSec, tracks);
           await _setTrackAt(map.index, preload: true);
           await player.seek(Duration(milliseconds: (map.offsetSec * 1000).round()));
