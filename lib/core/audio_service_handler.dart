@@ -265,7 +265,7 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
       UiPrefs.progressPrimary.removeListener(_progressPrefListener!);
       _progressPrefListener = null;
     }
-    await _playback.stop();
+    await _playback.pause(); // Changed from stop() to pause() - stop() marks book as finished
   }
 
   @override
