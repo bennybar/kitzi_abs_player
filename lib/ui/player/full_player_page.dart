@@ -349,7 +349,7 @@ class _FullPlayerRoute extends PageRouteBuilder<void> {
         );
 }
 
-class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStateMixin {
+class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStateMixin, WidgetsBindingObserver {
   late final ValueNotifier<double> _dragYNotifier;
   bool _dualProgressEnabled = true;
   ProgressPrimary _progressPrimary = UiPrefs.progressPrimary.value;
@@ -363,10 +363,14 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
   Color? _paletteSecondary;
   String? _paletteCoverUrl;
   bool _paletteLoading = false;
+  bool _warmLoadInProgress = false;
+  bool _warmLoadAttempted = false;
+  String? _warmLoadError;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _dragYNotifier = ValueNotifier<double>(0.0);
     _loadDualProgressPref();
     _progressPrimary = UiPrefs.progressPrimary.value;
@@ -379,6 +383,56 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     };
     UiPrefs.progressPrimary.addListener(_progressPrefListener!);
     _setupContentAnimations();
+    // If the player opens with no active session (e.g., app resumed from long sleep),
+    // try to warm-load the last item so we don't stick on the loading screen.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _restoreNowPlayingIfNeeded();
+    });
+  }
+
+  Future<void> _restoreNowPlayingIfNeeded({bool force = false}) async {
+    if (!mounted) return;
+    final playback = ServicesScope.of(context).services.playback;
+    if (!force && (playback.nowPlaying != null || _warmLoadInProgress || _warmLoadAttempted)) {
+      return;
+    }
+
+    setState(() {
+      _warmLoadAttempted = true;
+      _warmLoadInProgress = true;
+      _warmLoadError = null;
+    });
+
+    try {
+      await playback.warmLoadLastItem(playAfterLoad: false);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _warmLoadError = e.toString();
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _warmLoadInProgress = false;
+        });
+      } else {
+        _warmLoadInProgress = false;
+      }
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed) {
+      // When returning from a long sleep/background, the playback repo might
+      // have been torn down; kick a warm load if nothing is active.
+      final playback = ServicesScope.of(context).services.playback;
+      if (playback.nowPlaying == null) {
+        _restoreNowPlayingIfNeeded(force: true);
+      }
+    }
   }
 
   void _setupContentAnimations() {
@@ -490,6 +544,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _dragYNotifier.dispose();
     _contentAnimationController.dispose();
     if (_progressPrefListener != null) {
@@ -2226,14 +2281,43 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const CircularProgressIndicator(),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Loading...',
-                          style: text.titleMedium?.copyWith(
+                        if (_warmLoadInProgress) ...[
+                          const CircularProgressIndicator(),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Reconnecting to your last session...',
+                            style: text.titleMedium?.copyWith(
+                              color: cs.onSurfaceVariant,
+                            ),
+                          ),
+                        ] else ...[
+                          Icon(
+                            Icons.podcasts_rounded,
+                            size: 48,
                             color: cs.onSurfaceVariant,
                           ),
-                        ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Player needs a quick reload',
+                            style: text.titleMedium?.copyWith(
+                              color: cs.onSurfaceVariant,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          FilledButton.icon(
+                            onPressed: () => _restoreNowPlayingIfNeeded(force: true),
+                            icon: const Icon(Icons.refresh_rounded),
+                            label: const Text('Reload last session'),
+                          ),
+                          if (_warmLoadError != null) ...[
+                            const SizedBox(height: 8),
+                            Text(
+                              'Retrying failed: $_warmLoadError',
+                              textAlign: TextAlign.center,
+                              style: text.bodySmall?.copyWith(color: cs.error),
+                            ),
+                          ],
+                        ],
                       ],
                     ),
                   );

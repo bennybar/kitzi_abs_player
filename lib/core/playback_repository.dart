@@ -109,13 +109,17 @@ class NowPlaying {
     this.episodeId,
   });
 
-  NowPlaying copyWith({int? currentIndex, List<PlaybackTrack>? tracks}) =>
+  NowPlaying copyWith({
+    int? currentIndex,
+    List<PlaybackTrack>? tracks,
+    String? coverUrl,
+  }) =>
       NowPlaying(
         libraryItemId: libraryItemId,
         title: title,
         author: author,
         narrator: narrator,
-        coverUrl: coverUrl,
+        coverUrl: coverUrl ?? this.coverUrl,
         tracks: tracks ?? this.tracks,
         currentIndex: currentIndex ?? this.currentIndex,
         chapters: chapters,
