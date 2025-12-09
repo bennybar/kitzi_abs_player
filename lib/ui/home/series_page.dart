@@ -722,6 +722,7 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
                       itemBuilder: (context, i) {
                         final series = filteredSeries[i];
                         return _NewSeriesCard(
+                          key: ValueKey('series-${series.id}'),
                           series: series,
                           onTap: () {
                             Navigator.of(context).push(
@@ -842,6 +843,7 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
 
 class _NewSeriesCard extends StatefulWidget {
   const _NewSeriesCard({
+    super.key,
     required this.series,
     required this.onTap,
     required this.getBooksForSeries,
@@ -858,25 +860,37 @@ class _NewSeriesCard extends StatefulWidget {
 class _NewSeriesCardState extends State<_NewSeriesCard> {
   List<Book>? _books;
   bool _loading = false;
+  String? _lastSeriesId;
 
   @override
   void initState() {
     super.initState();
+    _lastSeriesId = widget.series.id;
     _loadBooks();
+  }
+
+  @override
+  void didUpdateWidget(_NewSeriesCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Reload books if series changed
+    if (oldWidget.series.id != widget.series.id) {
+      _lastSeriesId = widget.series.id;
+      _loadBooks();
+    }
   }
 
   Future<void> _loadBooks() async {
     setState(() => _loading = true);
     try {
       final books = await widget.getBooksForSeries(widget.series);
-      if (mounted) {
+      if (mounted && widget.series.id == _lastSeriesId) {
         setState(() {
           _books = books;
           _loading = false;
         });
       }
     } catch (e) {
-      if (mounted) {
+      if (mounted && widget.series.id == _lastSeriesId) {
         setState(() {
           _books = <Book>[];
           _loading = false;
@@ -935,12 +949,12 @@ class _NewSeriesCardState extends State<_NewSeriesCard> {
               // Show first 3 covers in a grid
               _loading
                   ? const SizedBox(
-                      height: 180,
+                      height: 120,
                       child: Center(child: CircularProgressIndicator()),
                     )
                   : _books == null || _books!.isEmpty
                       ? SizedBox(
-                          height: 180,
+                          height: 120,
                           child: Center(
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
@@ -970,7 +984,7 @@ class _NewSeriesCardState extends State<_NewSeriesCard> {
     final displayBooks = books.take(4).toList();
     
     return SizedBox(
-      height: 180,
+      height: 120,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         physics: const BouncingScrollPhysics(),
@@ -981,7 +995,7 @@ class _NewSeriesCardState extends State<_NewSeriesCard> {
           return SizedBox(
             width: 120,
             child: AspectRatio(
-              aspectRatio: 2/3,
+              aspectRatio: 1.0,
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12),
                 child: Stack(
@@ -1044,7 +1058,7 @@ class _SeriesCard extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             SizedBox(
-              height: 140,
+              height: 120,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 itemCount: books.length,
@@ -1054,7 +1068,7 @@ class _SeriesCard extends StatelessWidget {
                   return SizedBox(
                     width: 120,
                     child: AspectRatio(
-                    aspectRatio: 2/3,
+                    aspectRatio: 1.0,
                     child: InkWell(
                       onTap: () => onTapBook(b),
                       borderRadius: BorderRadius.circular(12),
@@ -1122,7 +1136,7 @@ class _CollectionCard extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             SizedBox(
-              height: 140,
+              height: 120,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 itemCount: books.length,
@@ -1132,7 +1146,7 @@ class _CollectionCard extends StatelessWidget {
                   return SizedBox(
                     width: 120,
                     child: AspectRatio(
-                    aspectRatio: 2/3,
+                    aspectRatio: 1.0,
                     child: InkWell(
                       onTap: () => onTapBook(b),
                       borderRadius: BorderRadius.circular(12),

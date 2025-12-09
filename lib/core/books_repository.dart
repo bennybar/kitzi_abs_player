@@ -1380,32 +1380,27 @@ class BooksRepository {
   }
 
   List<Book> _sortSeriesBooks(List<Book> books, Series series) {
-    final idOrder = <String, int>{};
-    for (var i = 0; i < series.bookIds.length; i++) {
-      idOrder[series.bookIds[i]] = i;
-    }
-    
     books.sort((a, b) {
       final sa = a.seriesSequence;
       final sb = b.seriesSequence;
       final aHasSeq = sa != null && !sa.isNaN;
       final bHasSeq = sb != null && !sb.isNaN;
       
+      // Primary sort: by seriesSequence if both have it
       if (aHasSeq && bHasSeq) {
         final cmp = sa!.compareTo(sb!);
         if (cmp != 0) return cmp;
+        // If sequences are equal, fall through to title comparison
       } else if (aHasSeq && !bHasSeq) {
+        // Books with sequence come before books without
         return -1;
       } else if (!aHasSeq && bHasSeq) {
+        // Books with sequence come before books without
         return 1;
       }
+      // If neither has sequence, or both have the same sequence, fall through
       
-      final ai = idOrder[a.id];
-      final bi = idOrder[b.id];
-      if (ai != null && bi != null && ai != bi) {
-        return ai.compareTo(bi);
-      }
-      
+      // Secondary sort: by book title (alphabetically)
       return a.title.toLowerCase().compareTo(b.title.toLowerCase());
     });
     

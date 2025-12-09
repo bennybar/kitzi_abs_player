@@ -692,6 +692,18 @@ class _BookDetailPageState extends State<BookDetailPage> {
                                 value: b.publishYear.toString(),
                               ),
                             ),
+                          // Series information (full width)
+                          if (b.series != null && b.series!.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: _MetaChip(
+                                icon: Icons.collections_bookmark_rounded,
+                                label: 'Series',
+                                value: b.seriesSequence != null && !b.seriesSequence!.isNaN
+                                    ? '${b.series} (#${b.seriesSequence!.toStringAsFixed(0)})'
+                                    : b.series!,
+                              ),
+                            ),
                           // Publisher and Genres in one row
                           if ((b.publisher ?? '').isNotEmpty || (b.genres ?? const []).isNotEmpty)
                             Padding(
