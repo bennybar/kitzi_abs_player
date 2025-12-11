@@ -1434,14 +1434,20 @@ class _BookCard extends StatelessWidget {
   }
 }
 
-class _ResumeBookCard extends StatelessWidget {
+class _ResumeBookCard extends StatefulWidget {
   const _ResumeBookCard({super.key, required this.book, required this.onTap});
   final Book book;
   final VoidCallback onTap;
 
   @override
+  State<_ResumeBookCard> createState() => _ResumeBookCardState();
+}
+
+class _ResumeBookCardState extends State<_ResumeBookCard> {
+  @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final playback = ServicesScope.of(context).services.playback;
     
     return Card(
       elevation: 0,
@@ -1454,7 +1460,7 @@ class _ResumeBookCard extends StatelessWidget {
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: onTap,
+        onTap: widget.onTap,
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: SingleChildScrollView(
@@ -1470,7 +1476,55 @@ class _ResumeBookCard extends StatelessWidget {
                   child: Stack(
                     children: [
                       Positioned.fill(
-                        child: EnhancedCoverImage(url: book.coverUrl),
+                        child: EnhancedCoverImage(url: widget.book.coverUrl),
+                      ),
+                      // Play/Pause button overlay - top left
+                      Positioned(
+                        top: 8,
+                        left: 8,
+                        child: StreamBuilder(
+                          stream: playback.nowPlayingStream,
+                          initialData: playback.nowPlaying,
+                          builder: (context, nowPlayingSnapshot) {
+                            return StreamBuilder<bool>(
+                              stream: playback.playingStream,
+                              initialData: playback.player.playing,
+                              builder: (context, playingSnapshot) {
+                                final nowPlaying = nowPlayingSnapshot.data;
+                                final isPlaying = playingSnapshot.data ?? false;
+                                final isThisBook = nowPlaying?.libraryItemId == widget.book.id;
+                                final showPause = isThisBook && isPlaying;
+                                
+                                return Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    onTap: () async {
+                                      if (showPause) {
+                                        await playback.pause();
+                                      } else {
+                                        await playback.playItem(widget.book.id, context: context);
+                                      }
+                                    },
+                                    borderRadius: BorderRadius.circular(20),
+                                    child: Container(
+                                      width: 40,
+                                      height: 40,
+                                      decoration: BoxDecoration(
+                                        color: Colors.black.withOpacity(0.5),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: Icon(
+                                        showPause ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                                        color: Colors.white,
+                                        size: 24,
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            );
+                          },
+                        ),
                       ),
                       // Material 3 progress indicator overlay
                       Positioned(
@@ -1478,7 +1532,7 @@ class _ResumeBookCard extends StatelessWidget {
                         right: 4,
                         bottom: 4,
                         child: FutureBuilder<Map<String, dynamic>>(
-                          future: _getBookProgress(context, book.id),
+                          future: _getBookProgress(context, widget.book.id),
                           builder: (context, snapshot) {
                             if (!snapshot.hasData) return const SizedBox.shrink();
                             final progressInfo = snapshot.data!;
@@ -1518,17 +1572,17 @@ class _ResumeBookCard extends StatelessWidget {
               const SizedBox(height: 10),
               // Title and author below the cover
               Text(
-                book.title,
+                widget.book.title,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.w600,
                 ),
               ),
-              if (book.author != null && book.author!.isNotEmpty) ...[
+              if (widget.book.author != null && widget.book.author!.isNotEmpty) ...[
                 const SizedBox(height: 2),
                 Text(
-                  book.author!,
+                  widget.book.author!,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
