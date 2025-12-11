@@ -1492,10 +1492,10 @@ class _ResumeBookCard extends StatelessWidget {
                             final progress = raw.clamp(0.0, 0.99);
                             
                             return Container(
-                              height: 3,
+                              height: 8,
                               decoration: BoxDecoration(
                                 color: Colors.black.withOpacity(0.3),
-                                borderRadius: BorderRadius.circular(1.5),
+                                borderRadius: BorderRadius.circular(2.5),
                               ),
                               child: FractionallySizedBox(
                                 alignment: Alignment.centerLeft,
@@ -1503,7 +1503,7 @@ class _ResumeBookCard extends StatelessWidget {
                                 child: Container(
                                   decoration: BoxDecoration(
                                     color: Theme.of(context).colorScheme.primary,
-                                    borderRadius: BorderRadius.circular(1.5),
+                                    borderRadius: BorderRadius.circular(2.5),
                                   ),
                                 ),
                               ),
