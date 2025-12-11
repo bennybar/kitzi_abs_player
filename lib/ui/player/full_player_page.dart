@@ -294,7 +294,7 @@ class FullPlayerPage extends StatefulWidget {
         // Legacy mode: use Navigator.push (original behavior)
         await Navigator.of(context).push(_FullPlayerRoute(const FullPlayerPage()));
       } else {
-        // New mode: show as drawer (like book details)
+        // New mode: show as drawer (like book details) - use exact same approach
         await showModalBottomSheet(
           context: context,
           isScrollControlled: true,
@@ -350,7 +350,6 @@ class _FullPlayerRoute extends PageRouteBuilder<void> {
 }
 
 class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStateMixin, WidgetsBindingObserver {
-  late final ValueNotifier<double> _dragYNotifier;
   bool _dualProgressEnabled = true;
   ProgressPrimary _progressPrimary = UiPrefs.progressPrimary.value;
   VoidCallback? _progressPrefListener;
@@ -371,7 +370,6 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _dragYNotifier = ValueNotifier<double>(0.0);
     _loadDualProgressPref();
     _progressPrimary = UiPrefs.progressPrimary.value;
     _progressPrefListener = () {
@@ -545,7 +543,6 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _dragYNotifier.dispose();
     _contentAnimationController.dispose();
     if (_progressPrefListener != null) {
       UiPrefs.progressPrimary.removeListener(_progressPrefListener!);
@@ -2235,43 +2232,8 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
           ),
           child: Scaffold(
             backgroundColor: Colors.transparent,
-      body: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onVerticalDragUpdate: (details) {
-          final dy = details.delta.dy;
-          final current = _dragYNotifier.value;
-          if (dy > 0 || current > 0) {
-            final next = (current + dy).clamp(0.0, MediaQuery.of(context).size.height);
-            if (next != current) {
-              _dragYNotifier.value = next;
-            }
-          }
-        },
-        onVerticalDragEnd: (details) {
-          final v = details.velocity.pixelsPerSecond.dy;
-          final dragY = _dragYNotifier.value;
-          final shouldDismiss = dragY > 120 || v > 650;
-          if (shouldDismiss) {
-            Navigator.of(context).maybePop();
-          } else {
-            if (_dragYNotifier.value != 0) {
-              _dragYNotifier.value = 0.0;
-            }
-          }
-        },
-        child: ValueListenableBuilder<double>(
-          valueListenable: _dragYNotifier,
-          builder: (_, dragY, child) {
-            return AnimatedContainer(
-              duration: const Duration(milliseconds: 300), // Buttery snap-back
-              curve: const Cubic(0.05, 0.7, 0.1, 1.0), // Material Design 3 emphasized - ultra smooth
-              transform: Matrix4.translationValues(0, dragY, 0)
-                ..scale(1.0 - (dragY * 0.00015).clamp(0.0, 0.06)), // Very subtle scale - premium feel
-              child: RepaintBoundary(child: child), // isolate heavy subtree during drag
-            );
-          },
-          child: SafeArea(
-            child: StreamBuilder<NowPlaying?>(
+            body: SafeArea(
+              child: StreamBuilder<NowPlaying?>(
               stream: playback.nowPlayingStream,
               initialData: playback.nowPlaying,
               builder: (context, snap) {
@@ -2939,13 +2901,11 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                       ],
                 );
               },
-                                    ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            );
-                          },
+            ),
+          ),
+        ),
+        );
+      },
     );
   }
 }
