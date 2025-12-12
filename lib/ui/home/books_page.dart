@@ -570,8 +570,9 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
         height: MediaQuery.of(context).size.height * 0.95,
         decoration: BoxDecoration(
           color: Theme.of(context).colorScheme.surface,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         ),
+        clipBehavior: Clip.antiAlias,
         child: BookDetailPage(bookId: b.id),
       ),
     );
