@@ -17,6 +17,7 @@ import '../../widgets/letter_scrollbar.dart';
 import '../../utils/alphabet_utils.dart';
 import '../book_detail/book_detail_page.dart';
 import '../player/full_player_page.dart';
+import '../profile/profile_page.dart';
 import '../../main.dart';
 
 // For unawaited background tasks
@@ -748,6 +749,18 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                 tooltip: 'Search',
                 onPressed: _toggleSearch,
                 icon: Icon(_searchVisible ? Icons.search_off_rounded : Icons.search_rounded),
+              ),
+              const SizedBox(width: 8),
+              IconButton.filledTonal(
+                tooltip: 'Profile',
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const ProfilePage(),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.person_rounded),
               ),
               const SizedBox(width: 8),
               IconButton.filledTonal(

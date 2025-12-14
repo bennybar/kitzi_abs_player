@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:convert';
 import '../../main.dart'; // ServicesScope
 import '../../core/books_repository.dart';
+import '../stats/stats_page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -721,7 +722,29 @@ class _ProfilePageState extends State<ProfilePage> {
         ],
       ),
       body: SingleChildScrollView(
-        child: _buildProfileCard(),
+        child: Column(
+          children: [
+            _buildProfileCard(),
+            // Stats button
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => const StatsPage(),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.bar_chart),
+                  label: const Text('View Listening Stats'),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -306,8 +306,9 @@ class PlaybackRepository {
         _progressItemId = last;
 
         // Resume from cached position (local or server if available)
+        // Force refresh to get latest server progress and avoid stale cache
         double? resumeSec;
-        try { resumeSec = await fetchServerProgress(last); } catch (_) {}
+        try { resumeSec = await fetchServerProgress(last, forceRefresh: true); } catch (_) {}
         resumeSec ??= prefs.getDouble('$_kLocalProgPrefix$last');
 
         if (resumeSec != null && resumeSec > 0) {
@@ -379,7 +380,8 @@ class PlaybackRepository {
       _setNowPlaying(np);
       _progressItemId = last;
 
-      final resumeSec = await fetchServerProgress(last) ??
+      // Force refresh to get latest server progress and avoid stale cache
+      final resumeSec = await fetchServerProgress(last, forceRefresh: true) ??
           prefs.getDouble('$_kLocalProgPrefix$last');
 
       if (resumeSec != null && resumeSec > 0) {
