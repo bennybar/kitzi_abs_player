@@ -1,6 +1,7 @@
 # Miscellaneous
 *.class
 IMPROVEMENTS.md
+android/app/google-services.json
 *.log
 *.pyc
 *.swp
