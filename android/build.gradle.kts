@@ -1,5 +1,16 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        // Add Google Services plugin for Firebase
+        classpath("com.google.gms:google-services:4.4.2")
+    }
+}
+
 allprojects {
     repositories {
         google()

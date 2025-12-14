@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "658362151464",
+    "project_id": "kitzi-21053",
+    "storage_bucket": "kitzi-21053.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:658362151464:android:82233a9926fbb0c4abbb1d",
+        "android_client_info": {
+          "package_name": "com.bennybar.kitzi"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDJT5ycCz9e1qxgB8TdnAMlC447TNcWZPk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

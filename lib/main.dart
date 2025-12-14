@@ -1,7 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_analytics/firebase_analytics.dart';
 
 import 'core/auth_repository.dart';
 import 'package:flutter/foundation.dart';
@@ -17,6 +20,7 @@ import 'ui/main/main_scaffold.dart';
 import 'core/app_warmup_service.dart';
 import 'core/background_sync_service.dart';
 import 'core/streaming_cache_service.dart';
+import 'core/firebase_analytics_service.dart';
 
 /// Simple app-wide service container
 class AppServices {
@@ -55,6 +59,30 @@ class ServicesScope extends InheritedWidget {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize Firebase
+  try {
+    await Firebase.initializeApp();
+    final analytics = FirebaseAnalytics.instance;
+    FirebaseAnalyticsService.instance.initialize(analytics);
+    
+    // Track app open (daily active user)
+    unawaited(FirebaseAnalyticsService.instance.logAppOpen().catchError((error) {
+      if (kDebugMode) {
+        debugPrint('[Main] Firebase Analytics error: $error');
+      }
+    }));
+    
+    if (kDebugMode) {
+      debugPrint('[Main] Firebase initialized successfully');
+    }
+  } catch (e) {
+    // Firebase initialization failed - app can still work without analytics
+    if (kDebugMode) {
+      debugPrint('[Main] Firebase initialization failed: $e');
+      debugPrint('[Main] App will continue without analytics');
+    }
+  }
 
   // Reduce logging noise in release builds
   if (kReleaseMode) {

@@ -57,6 +57,8 @@ dependencies:
   cupertino_native: ^0.1.1
   palette_generator: ^0.3.3
   squiggly_slider: ^1.0.5
+  firebase_core: ^3.6.0
+  firebase_analytics: ^11.3.3
 
 
   # The following adds the Cupertino Icons font to your application.
