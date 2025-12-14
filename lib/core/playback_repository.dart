@@ -306,8 +306,9 @@ class PlaybackRepository {
         _progressItemId = last;
 
         // Resume from cached position (local or server if available)
+        // Use forceRefresh to always get latest position from server
         double? resumeSec;
-        try { resumeSec = await fetchServerProgress(last); } catch (_) {}
+        try { resumeSec = await fetchServerProgress(last, forceRefresh: true); } catch (_) {}
         resumeSec ??= prefs.getDouble('$_kLocalProgPrefix$last');
 
         if (resumeSec != null && resumeSec > 0) {
@@ -379,7 +380,8 @@ class PlaybackRepository {
       _setNowPlaying(np);
       _progressItemId = last;
 
-      final resumeSec = await fetchServerProgress(last) ??
+      // Use forceRefresh to always get latest position from server
+      final resumeSec = await fetchServerProgress(last, forceRefresh: true) ??
           prefs.getDouble('$_kLocalProgPrefix$last');
 
       if (resumeSec != null && resumeSec > 0) {
@@ -1641,7 +1643,8 @@ class PlaybackRepository {
       if (cur == null) return;
 
       final bigJump = (_lastSentSec - cur).abs() >= 30;
-      final isDone = (total != null && total > 0) ? (cur / total) >= 0.999 : false;
+      // #book considered finished
+      final isDone = (total != null && total > 0) ? (cur / total) >= 0.9996 : false;
       if (bigJump || isDone) {
         _sendProgressImmediate(finished: isDone);
       }

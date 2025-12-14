@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:http/http.dart' as http;
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
 
@@ -56,9 +55,7 @@ class PlayHistoryService {
 
     final auth = await AuthRepository.ensure();
     final api = auth.api;
-    final token = await api.accessToken();
-    final tokenQS = (token != null && token.isNotEmpty) ? '?token=$token' : '';
-    final resp = await api.request('GET', '/api/libraries$tokenQS');
+    final resp = await api.request('GET', '/api/libraries');
     if (resp.statusCode != 200) {
       throw Exception('Failed to list libraries: ${resp.statusCode}');
     }
@@ -196,27 +193,10 @@ class PlayHistoryService {
       // 1) Me -> user.mediaProgress (true latest played)
       // 2) Personalized continue section
       // 3) Library in-progress include progress
-      final meUrl = '$baseUrl/api/me?token=$token';
-      final personalizedUrl = '$baseUrl/api/libraries/$libId/personalized?view=continue&limit=${count * 3}&token=$token';
-      final libraryInProgressUrl = '$baseUrl/api/libraries/$libId/items?inProgress=true&include=progress&limit=${count * 3}&token=$token';
-
-      Future<http.Response> doGet(String u) => http.get(
-        Uri.parse(u),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-      ).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () {
-          print('PlayHistory: Server request timed out after 10 seconds');
-          throw TimeoutException('Server request timed out');
-        },
-      );
 
       // ---- 1) Me.mediaProgress path ----
-      print('PlayHistory: Requesting Me: $meUrl');
-      var resp = await doGet(meUrl);
+      print('PlayHistory: Requesting Me: /api/me');
+      var resp = await api.request('GET', '/api/me');
       if (resp.statusCode == 200) {
         final data = jsonDecode(resp.body);
         final user = (data is Map) ? data as Map<String, dynamic> : const <String, dynamic>{};
@@ -255,9 +235,8 @@ class PlayHistoryService {
           for (final m in top) {
             final id = m['libraryItemId']?.toString();
             if (id == null || id.isEmpty) continue;
-            final itemUrl = '$baseUrl/api/items/$id?token=$token';
             try {
-              final itemResp = await doGet(itemUrl);
+              final itemResp = await api.request('GET', '/api/items/$id');
               if (itemResp.statusCode == 200) {
                 final bd = jsonDecode(itemResp.body);
                 Map<String, dynamic>? li;
@@ -287,8 +266,8 @@ class PlayHistoryService {
       }
 
       // ---- 2) Personalized continue ----
-      print('PlayHistory: Requesting personalized continue: $personalizedUrl');
-      resp = await doGet(personalizedUrl);
+      print('PlayHistory: Requesting personalized continue: /api/libraries/$libId/personalized?view=continue&limit=${count * 3}');
+      resp = await api.request('GET', '/api/libraries/$libId/personalized?view=continue&limit=${count * 3}');
       List<dynamic> items = [];
       if (resp.statusCode == 200) {
         final data = jsonDecode(resp.body);
@@ -316,8 +295,8 @@ class PlayHistoryService {
 
       if (items.isEmpty) {
         // ---- 3) Library in-progress include progress ----
-        print('PlayHistory: Falling back to library in-progress: $libraryInProgressUrl');
-        resp = await doGet(libraryInProgressUrl);
+        print('PlayHistory: Falling back to library in-progress: /api/libraries/$libId/items?inProgress=true&include=progress&limit=${count * 3}');
+        resp = await api.request('GET', '/api/libraries/$libId/items?inProgress=true&include=progress&limit=${count * 3}');
         if (resp.statusCode == 200) {
           final fb = jsonDecode(resp.body);
           if (fb is Map && fb['results'] is List) {

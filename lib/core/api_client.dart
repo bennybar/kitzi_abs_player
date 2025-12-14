@@ -1,8 +1,29 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'session_logger_service.dart';
+
+/// Represents a queued request waiting for token refresh
+class _QueuedRequest {
+  final String method;
+  final String path;
+  final Map<String, String>? headers;
+  final Object? body;
+  final bool auth;
+  final Completer<http.Response> completer;
+
+  _QueuedRequest({
+    required this.method,
+    required this.path,
+    this.headers,
+    this.body,
+    required this.auth,
+    required this.completer,
+  });
+}
 
 class ApiClient {
   ApiClient(this._prefs, this._secure);
@@ -11,6 +32,16 @@ class ApiClient {
   final FlutterSecureStorage _secure;
   static const String _customHeadersKey = 'abs_custom_headers';
   Map<String, String>? _customHeadersCache;
+  
+  // Token refresh queuing
+  bool _isRefreshing = false;
+  final List<_QueuedRequest> _refreshQueue = [];
+  
+  // Request timeout (30 seconds)
+  static const Duration _requestTimeout = Duration(seconds: 30);
+  
+  // Callback for token refresh (set by AuthRepository)
+  void Function(String newToken)? onTokenRefreshed;
 
   String? get baseUrl => _prefs.getString('abs_base_url');
 
@@ -105,8 +136,8 @@ class ApiClient {
     await _secure.delete(key: 'abs_refresh');
   }
 
-  // === Requests with auto-refresh ===
-  Future<http.Response> request(
+  /// Execute a request (internal, used by request() and for retries)
+  Future<http.Response> _executeRequest(
       String method,
       String path, {
         Map<String, String>? headers,
@@ -134,34 +165,64 @@ class ApiClient {
     Future<http.Response> send(String m) async {
       switch (m) {
         case 'GET':
-          return http.get(uri, headers: reqHeaders);
+          return http.get(uri, headers: reqHeaders).timeout(_requestTimeout);
         case 'POST':
-          return http.post(uri, headers: reqHeaders, body: body as String?);
+          return http.post(uri, headers: reqHeaders, body: body as String?).timeout(_requestTimeout);
         case 'DELETE':
-          return http.delete(uri, headers: reqHeaders, body: body as String?);
+          return http.delete(uri, headers: reqHeaders, body: body as String?).timeout(_requestTimeout);
         case 'PUT':
-          return http.put(uri, headers: reqHeaders, body: body as String?);
+          return http.put(uri, headers: reqHeaders, body: body as String?).timeout(_requestTimeout);
         case 'PATCH':
-          return http.patch(uri, headers: reqHeaders, body: body as String?);
+          return http.patch(uri, headers: reqHeaders, body: body as String?).timeout(_requestTimeout);
         default:
           throw UnimplementedError(m);
       }
     }
 
+    return await send(method.toUpperCase());
+  }
+
+  // === Requests with auto-refresh ===
+  Future<http.Response> request(
+      String method,
+      String path, {
+        Map<String, String>? headers,
+        Object? body,
+        bool auth = true,
+      }) async {
+    // If we're currently refreshing and this is an auth request, queue it
+    if (auth && _isRefreshing) {
+      final completer = Completer<http.Response>();
+      _refreshQueue.add(_QueuedRequest(
+        method: method,
+        path: path,
+        headers: headers,
+        body: body,
+        auth: auth,
+        completer: completer,
+      ));
+      return completer.future;
+    }
+
     var upper = method.toUpperCase();
+    final base = baseUrl;
+    if (base == null) throw Exception('Base URL not set');
+    final uri = Uri.parse('$base$path');
     
     // Log request if logging session is active
     final logger = SessionLoggerService.instance;
     if (logger.isActive) {
-      final sanitizedHeaders = Map<String, String>.from(reqHeaders);
-      if (sanitizedHeaders.containsKey('Authorization')) {
-        final authValue = sanitizedHeaders['Authorization']!;
-        if (authValue.startsWith('Bearer ')) {
-          sanitizedHeaders['Authorization'] = 'Bearer [REDACTED]';
-        }
+      final tempHeaders = <String, String>{
+        'Content-Type': 'application/json',
+        ..._currentCustomHeaders(),
+        ...?headers,
+      };
+      if (auth) {
+        final access = await _getAccessToken();
+        if (access != null) tempHeaders['Authorization'] = 'Bearer [REDACTED]';
       }
       await logger.log('HTTP REQUEST: $upper $uri');
-      await logger.log('  Headers: ${jsonEncode(sanitizedHeaders)}');
+      await logger.log('  Headers: ${jsonEncode(tempHeaders)}');
       if (body != null) {
         final bodyStr = body.toString();
         final bodyPreview = bodyStr.length > 1000 ? '${bodyStr.substring(0, 1000)}...[truncated ${bodyStr.length - 1000} chars]' : bodyStr;
@@ -169,36 +230,72 @@ class ApiClient {
       }
     }
     
-    var resp = await send(upper);
+    try {
+      var resp = await _executeRequest(method, path, headers: headers, body: body, auth: auth);
 
-    if (auth && resp.statusCode == 401) {
-      if (logger.isActive) {
-        await logger.log('HTTP 401 Unauthorized - attempting token refresh');
-      }
-      final refreshed = await _refreshAccessToken();
-      if (refreshed) {
-        final retryHeaders = Map<String, String>.from(reqHeaders);
-        retryHeaders['Authorization'] = 'Bearer ${await _getAccessToken()}';
-        resp = await send(upper);
+      // Handle 401 with token refresh
+      if (auth && resp.statusCode == 401) {
         if (logger.isActive) {
-          await logger.log('HTTP REQUEST RETRY: $upper $uri (after token refresh)');
+          await logger.log('HTTP 401 Unauthorized - attempting token refresh');
+        }
+        
+        // Skip refresh for auth endpoints to prevent infinite loops
+        if (path.endsWith('/auth/refresh') || path.endsWith('/login')) {
+          if (logger.isActive) {
+            await logger.log('Skipping refresh for auth endpoint');
+          }
+          return resp;
+        }
+        
+        final refreshed = await _refreshAccessToken();
+        if (refreshed) {
+          // Retry the request with new token
+          resp = await _executeRequest(method, path, headers: headers, body: body, auth: auth);
+          if (logger.isActive) {
+            await logger.log('HTTP REQUEST RETRY: $upper $uri (after token refresh)');
+          }
+        } else {
+          // Refresh failed - this will be handled by the caller
+          if (logger.isActive) {
+            await logger.log('Token refresh failed, returning 401 response');
+          }
         }
       }
+      
+      // Log response if logging session is active
+      if (logger.isActive) {
+        final respBody = resp.body;
+        final respBodyPreview = respBody.length > 2000 
+            ? '${respBody.substring(0, 2000)}...[truncated ${respBody.length - 2000} chars]' 
+            : respBody;
+        await logger.log('HTTP RESPONSE: $upper $uri');
+        await logger.log('  Status: ${resp.statusCode} ${resp.reasonPhrase}');
+        await logger.log('  Headers: ${jsonEncode(resp.headers)}');
+        await logger.log('  Body: $respBodyPreview');
+      }
+      
+      return resp;
+    } on SocketException catch (e) {
+      if (logger.isActive) {
+        await logger.logError('Network error (SocketException)', e);
+      }
+      rethrow;
+    } on TimeoutException catch (e) {
+      if (logger.isActive) {
+        await logger.logError('Request timeout', e);
+      }
+      rethrow;
+    } on http.ClientException catch (e) {
+      if (logger.isActive) {
+        await logger.logError('HTTP client error', e);
+      }
+      rethrow;
+    } catch (e) {
+      if (logger.isActive) {
+        await logger.logError('Unexpected error in request', e);
+      }
+      rethrow;
     }
-    
-    // Log response if logging session is active
-    if (logger.isActive) {
-      final respBody = resp.body;
-      final respBodyPreview = respBody.length > 2000 
-          ? '${respBody.substring(0, 2000)}...[truncated ${respBody.length - 2000} chars]' 
-          : respBody;
-      await logger.log('HTTP RESPONSE: $upper $uri');
-      await logger.log('  Status: ${resp.statusCode} ${resp.reasonPhrase}');
-      await logger.log('  Headers: ${jsonEncode(resp.headers)}');
-      await logger.log('  Body: $respBodyPreview');
-    }
-    
-    return resp;
   }
 
   Future<void> _ensureAccessValid() async {
@@ -210,18 +307,55 @@ class ApiClient {
     }
   }
 
+  /// Process queued requests after token refresh
+  Future<void> _processRefreshQueue({bool success = true, String? error}) async {
+    final queue = List<_QueuedRequest>.from(_refreshQueue);
+    _refreshQueue.clear();
+    
+    for (final queued in queue) {
+      if (success) {
+        // Retry the request with new token
+        try {
+          final response = await _executeRequest(
+            queued.method,
+            queued.path,
+            headers: queued.headers,
+            body: queued.body,
+            auth: queued.auth,
+          );
+          queued.completer.complete(response);
+        } catch (e) {
+          queued.completer.completeError(e);
+        }
+      } else {
+        // Propagate error
+        queued.completer.completeError(
+          error != null ? Exception(error) : Exception('Token refresh failed'),
+        );
+      }
+    }
+  }
+
   Future<bool> _refreshAccessToken() async {
+    // Prevent multiple simultaneous refresh attempts
+    if (_isRefreshing) {
+      return false;
+    }
+    
+    _isRefreshing = true;
     final logger = SessionLoggerService.instance;
     final base = baseUrl;
     final refresh = await _getRefreshToken();
-    if (base == null || refresh == null) {
-      if (logger.isActive) {
-        await logger.log('TOKEN REFRESH: Failed - missing baseUrl or refresh token');
-      }
-      return false;
-    }
-
+    
     try {
+      if (base == null || refresh == null) {
+        if (logger.isActive) {
+          await logger.log('TOKEN REFRESH: Failed - missing baseUrl or refresh token');
+        }
+        await _processRefreshQueue(success: false, error: 'Missing baseUrl or refresh token');
+        return false;
+      }
+
       final refreshHeaders = <String, String>{
         'Content-Type': 'application/json',
         ..._currentCustomHeaders(),
@@ -235,10 +369,12 @@ class ApiClient {
       }
       
       refreshHeaders['x-refresh-token'] = refresh;
-      final resp = await http.post(
-        Uri.parse('$base/auth/refresh'),
-        headers: refreshHeaders,
-      );
+      final resp = await http
+          .post(
+            Uri.parse('$base/auth/refresh'),
+            headers: refreshHeaders,
+          )
+          .timeout(_requestTimeout);
       
       if (logger.isActive) {
         await logger.log('TOKEN REFRESH RESPONSE: Status ${resp.statusCode}');
@@ -248,6 +384,7 @@ class ApiClient {
       }
       
       if (resp.statusCode != 200) {
+        await _processRefreshQueue(success: false, error: 'Refresh returned ${resp.statusCode}');
         return false;
       }
 
@@ -260,11 +397,13 @@ class ApiClient {
         if (logger.isActive) {
           await logger.log('TOKEN REFRESH: Failed - no access token in response');
         }
+        await _processRefreshQueue(success: false, error: 'No access token in response');
         return false;
       }
 
-      final assumedExpiry = DateTime.now().toUtc().add(const Duration(hours: 12));
-      await _setAccessToken(access, assumedExpiry);
+      // Try to parse actual expiry from response, fall back to assumed
+      DateTime expiry = _parseTokenExpiry(data, user);
+      await _setAccessToken(access, expiry);
       if (newRefresh != null && newRefresh.isNotEmpty) {
         await _setRefreshToken(newRefresh);
       }
@@ -272,13 +411,49 @@ class ApiClient {
       if (logger.isActive) {
         await logger.log('TOKEN REFRESH: Success');
       }
+      
+      // Process queued requests
+      await _processRefreshQueue(success: true);
+      
+      // Notify about token refresh (e.g., for socket re-authentication)
+      if (onTokenRefreshed != null) {
+        onTokenRefreshed!(access);
+      }
+      
       return true;
     } catch (e) {
       if (logger.isActive) {
         await logger.logError('TOKEN REFRESH: Failed', e);
       }
+      await _processRefreshQueue(success: false, error: e.toString());
       return false;
+    } finally {
+      _isRefreshing = false;
     }
+  }
+  
+  /// Parse token expiry from response, fall back to assumed expiry
+  DateTime _parseTokenExpiry(Map<String, dynamic> data, Map<String, dynamic>? user) {
+    // Try to get expiry from user object
+    if (user != null) {
+      if (user['tokenExpiry'] is String) {
+        final parsed = DateTime.tryParse(user['tokenExpiry'] as String);
+        if (parsed != null) return parsed.toUtc();
+      }
+      if (user['expiresAt'] is String) {
+        final parsed = DateTime.tryParse(user['expiresAt'] as String);
+        if (parsed != null) return parsed.toUtc();
+      }
+    }
+    
+    // Try top-level
+    if (data['tokenExpiry'] is String) {
+      final parsed = DateTime.tryParse(data['tokenExpiry'] as String);
+      if (parsed != null) return parsed.toUtc();
+    }
+    
+    // Fall back to assumed expiry (12 hours for refresh tokens)
+    return DateTime.now().toUtc().add(const Duration(hours: 12));
   }
 
   Future<bool> refreshAccessToken() => _refreshAccessToken();

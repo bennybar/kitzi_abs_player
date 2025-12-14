@@ -39,11 +39,10 @@ class Series {
     String? coverUrl;
     if (json['cover'] is String && (json['cover'] as String).isNotEmpty && baseUrl != null) {
       final cover = json['cover'] as String;
-      final tokenParam = (token != null && token.isNotEmpty) ? '?token=$token' : '';
       if (cover.startsWith('http')) {
         coverUrl = cover;
       } else {
-        coverUrl = '$baseUrl$cover$tokenParam';
+        coverUrl = '$baseUrl$cover';
       }
     }
 

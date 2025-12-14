@@ -94,9 +94,7 @@ class BooksRepository {
     }
 
     final api = _auth.api;
-    final token = await api.accessToken();
-    final tokenQS = (token != null && token.isNotEmpty) ? '?token=$token' : '';
-    final resp = await api.request('GET', '/api/libraries$tokenQS');
+    final resp = await api.request('GET', '/api/libraries');
     if (resp.statusCode != 200) {
       throw Exception('Failed to list libraries: ${resp.statusCode}');
     }
@@ -175,10 +173,8 @@ class BooksRepository {
     return await NetworkService.withRetry(() async {
       final api = _auth.api;
       final baseUrl = _auth.api.baseUrl ?? '';
-      final token = await _auth.api.accessToken();
-      final tokenQS = (token != null && token.isNotEmpty) ? '?token=$token' : '';
 
-      final resp = await api.request('GET', '/api/items/$id$tokenQS');
+      final resp = await api.request('GET', '/api/items/$id');
       if (resp.statusCode != 200) {
         throw Exception('Failed to load book $id: ${resp.statusCode}');
       }
@@ -190,7 +186,7 @@ class BooksRepository {
           : (body as Map).cast<String, dynamic>();
 
       // Prefer preserving locally cached fields (e.g., sizeBytes/durationMs) when server omits them
-      Book b = Book.fromLibraryItemJson(item, baseUrl: baseUrl, token: token);
+      Book b = Book.fromLibraryItemJson(item, baseUrl: baseUrl, token: null);
       // If server explicitly flags mediaType as 'ebook' or item has no audio tracks, mark non-audiobook
       try {
         final mediaType = (item['mediaType'] ?? item['type'] ?? '').toString().toLowerCase();
@@ -567,12 +563,10 @@ class BooksRepository {
     );
     if (rows.isEmpty) return <Book>[];
     final baseUrl = _auth.api.baseUrl ?? '';
-    final token = await _auth.api.accessToken();
     return rows.map((m) {
       final id = (m['id'] as String);
       final localPath = (m['coverPath'] as String?);
       var coverUrl = '$baseUrl/api/items/$id/cover';
-      if (token != null && token.isNotEmpty) coverUrl = '$coverUrl?token=$token';
       if (localPath != null && File(localPath).existsSync()) {
         coverUrl = 'file://$localPath';
       }
@@ -799,10 +793,8 @@ class BooksRepository {
     if (rows.isEmpty) return null;
     final m = rows.first;
     final baseUrl = _auth.api.baseUrl ?? '';
-    final token = await _auth.api.accessToken();
     final localPath = (m['coverPath'] as String?);
     var coverUrl = '$baseUrl/api/items/$id/cover';
-    if (token != null && token.isNotEmpty) coverUrl = '$coverUrl?token=$token';
     if (localPath != null && File(localPath).existsSync()) {
       coverUrl = 'file://$localPath';
     }
@@ -1012,13 +1004,11 @@ class BooksRepository {
   /// Explicit refresh from server; persists to DB and cache, returns fresh list
   Future<List<Book>> refreshFromServer() async {
     final api = _auth.api;
-    final token = await api.accessToken();
     final libId = await _ensureLibraryId();
-    final tokenQS = (token != null && token.isNotEmpty) ? '&token=$token' : '';
     final etag = _prefs.getString(_etagKey);
     final headers = <String, String>{};
     if (etag != null) headers['If-None-Match'] = etag;
-    final path = '/api/libraries/$libId/items?limit=50&sort=updatedAt:desc$tokenQS';
+    final path = '/api/libraries/$libId/items?limit=50&sort=updatedAt:desc';
     final bool localEmpty = await _isDbEmpty();
     http.Response resp = await api.request('GET', path, headers: headers);
 
@@ -1051,9 +1041,7 @@ class BooksRepository {
   Future<List<Book>> fetchBooksPage({required int page, int limit = 50, String sort = 'updatedAt:desc', String? query}) async {
     return await NetworkService.withRetry(() async {
       final api = _auth.api;
-      final token = await api.accessToken();
       final libId = await _ensureLibraryId();
-      final tokenQS = (token != null && token.isNotEmpty) ? '&token=$token' : '';
       final encodedQ = (query != null && query.trim().isNotEmpty)
           ? Uri.encodeQueryComponent(query.trim())
           : null;
@@ -1098,8 +1086,8 @@ class BooksRepository {
     // 1) Try page-based (API uses 1-based page indexing)
     final basePage = '/api/libraries/$libId/items?limit=$limit&page=$page&sort=$sort';
     final pathPage = (encodedQ != null)
-        ? '$basePage&q=$encodedQ$tokenQS'
-        : '$basePage$tokenQS';
+        ? '$basePage&q=$encodedQ'
+        : basePage;
     final etagKey = _etagPrefsKey(sort, query);
     final cachedEtag = _prefs.getString(etagKey);
     final headers = <String, String>{};
@@ -1109,7 +1097,7 @@ class BooksRepository {
     List<Book> books = await requestAndParse(pathPage, extraHeaders: headers).catchError((e) async {
       // Primary failed, trying fallback
       if (encodedQ != null) {
-        final alt = '$basePage&q=$encodedQ$tokenQS';
+        final alt = '$basePage&q=$encodedQ';
         return requestAndParse(alt);
       }
       return Future.error(e);
@@ -1121,8 +1109,8 @@ class BooksRepository {
       final offset = (page - 1) * limit;
       final baseOffset = '/api/libraries/$libId/items?limit=$limit&offset=$offset&sort=$sort';
       final pathOffset = (encodedQ != null)
-          ? '$baseOffset&q=$encodedQ$tokenQS'
-          : '$baseOffset$tokenQS';
+          ? '$baseOffset&q=$encodedQ'
+          : baseOffset;
       try {
         final altBooks = await requestAndParse(pathOffset);
         if (!await _allIdsExistInDb(altBooks.map((b) => b.id))) {
@@ -1133,8 +1121,8 @@ class BooksRepository {
         // Offset failed, trying skip
         final baseSkip = '/api/libraries/$libId/items?limit=$limit&skip=$offset&sort=$sort';
         final pathSkip = (encodedQ != null)
-            ? '$baseSkip&q=$encodedQ$tokenQS'
-            : '$baseSkip$tokenQS';
+            ? '$baseSkip&q=$encodedQ'
+            : baseSkip;
         try {
           final altBooks2 = await requestAndParse(pathSkip);
           if (!await _allIdsExistInDb(altBooks2.map((b) => b.id))) {
@@ -1165,15 +1153,13 @@ class BooksRepository {
   }) async {
     return await NetworkService.withRetry(() async {
       final api = _auth.api;
-      final token = await api.accessToken();
       final libId = await _ensureLibraryId();
-      final tokenQS = (token != null && token.isNotEmpty) ? '&token=$token' : '';
       
       final descParam = desc ? '1' : '0';
       final minifiedParam = minified ? '1' : '0';
       final includes = 'rssfeed,numEpisodesIncomplete,share';
       
-      final path = '/api/libraries/$libId/series?sort=$sort&desc=$descParam&filter=$filter&limit=$limit&page=$page&minified=$minifiedParam&include=$includes$tokenQS';
+      final path = '/api/libraries/$libId/series?sort=$sort&desc=$descParam&filter=$filter&limit=$limit&page=$page&minified=$minifiedParam&include=$includes';
       
       _log('[BOOKS] fetchSeries: GET $path');
       final resp = await api.request('GET', path, headers: {});
@@ -1410,7 +1396,6 @@ class BooksRepository {
   Book _bookFromDbRow(Map<String, Object?> m, String baseUrl, String? token) {
     final id = (m['id'] as String);
     var coverUrl = '$baseUrl/api/items/$id/cover';
-    if (token != null && token.isNotEmpty) coverUrl = '$coverUrl?token=$token';
     final localPath = m['coverPath'] as String?;
     if (localPath != null && File(localPath).existsSync()) {
       coverUrl = 'file://$localPath';
@@ -1450,13 +1435,11 @@ class BooksRepository {
   Future<Map<String, dynamic>> getServerStatus() async {
     return await NetworkService.withRetry(() async {
       final api = _auth.api;
-      final token = await api.accessToken();
-      final tokenQS = (token != null && token.isNotEmpty) ? '?token=$token' : '';
       
       // Use /status (without /api/) - we know this works and has serverVersion
       try {
         _log('[BOOKS] Getting server version from /status');
-        final resp = await api.request('GET', '/status$tokenQS');
+        final resp = await api.request('GET', '/status', auth: false);
         if (resp.statusCode == 200) {
           final bodyStr = resp.body;
           final body = bodyStr.isNotEmpty ? jsonDecode(bodyStr) : <String, dynamic>{};
@@ -1482,14 +1465,12 @@ class BooksRepository {
   Future<Map<String, dynamic>> getLibraryStats() async {
     return await NetworkService.withRetry(() async {
       final api = _auth.api;
-      final token = await api.accessToken();
       final libId = await _ensureLibraryId();
-      final tokenQS = (token != null && token.isNotEmpty) ? '?token=$token' : '';
       
       // Use /api/libraries/{id}/stats - we know this works and returns library data
       try {
         _log('[BOOKS] Getting library stats from /api/libraries/$libId/stats');
-        final resp = await api.request('GET', '/api/libraries/$libId/stats$tokenQS');
+        final resp = await api.request('GET', '/api/libraries/$libId/stats');
         if (resp.statusCode == 200) {
           final bodyStr = resp.body;
           final body = bodyStr.isNotEmpty ? jsonDecode(bodyStr) : <String, dynamic>{};
@@ -1511,11 +1492,9 @@ class BooksRepository {
   Future<Map<String, dynamic>> _getLibraryStatsFromLibrariesEndpoint() async {
     try {
       final api = _auth.api;
-      final token = await api.accessToken();
       final libId = await _ensureLibraryId();
-      final tokenQS = (token != null && token.isNotEmpty) ? '?token=$token' : '';
       
-      final resp = await api.request('GET', '/api/libraries$tokenQS');
+      final resp = await api.request('GET', '/api/libraries');
       if (resp.statusCode != 200) {
         return <String, dynamic>{};
       }
@@ -1768,9 +1747,7 @@ class BooksRepository {
     String? query,
   }) async {
     final api = _auth.api;
-    final token = await api.accessToken();
     final libId = await _ensureLibraryId();
-    final tokenQS = (token != null && token.isNotEmpty) ? '&token=$token' : '';
     final encodedQ = (query != null && query.trim().isNotEmpty)
         ? Uri.encodeQueryComponent(query.trim())
         : null;
@@ -1792,8 +1769,8 @@ class BooksRepository {
     // Try offset
     final baseOffset = '/api/libraries/$libId/items?limit=$limit&offset=$offset&sort=$sort';
     final pathOffset = (encodedQ != null)
-        ? '$baseOffset&q=$encodedQ$tokenQS'
-        : '$baseOffset$tokenQS';
+        ? '$baseOffset&q=$encodedQ'
+        : baseOffset;
     try {
       final books = await requestAndParse(pathOffset);
       if (offset > 0 && await _allIdsExistInDb(books.map((b) => b.id))) {
@@ -1806,8 +1783,8 @@ class BooksRepository {
     // Try skip
     final baseSkip = '/api/libraries/$libId/items?limit=$limit&skip=$offset&sort=$sort';
     final pathSkip = (encodedQ != null)
-        ? '$baseSkip&q=$encodedQ$tokenQS'
-        : '$baseSkip$tokenQS';
+        ? '$baseSkip&q=$encodedQ'
+        : baseSkip;
     try {
       final books = await requestAndParse(pathSkip);
       if (offset > 0 && await _allIdsExistInDb(books.map((b) => b.id))) {
@@ -1821,8 +1798,8 @@ class BooksRepository {
     final page = (offset ~/ limit) + 1;
     final basePage = '/api/libraries/$libId/items?limit=$limit&page=$page&sort=$sort';
     final pathPage = (encodedQ != null)
-        ? '$basePage&q=$encodedQ$tokenQS'
-        : '$basePage$tokenQS';
+        ? '$basePage&q=$encodedQ'
+        : basePage;
     final etagKey = _etagPrefsKey(sort, query);
     final cachedEtag = _prefs.getString(etagKey);
     final headers = <String, String>{};
@@ -1954,9 +1931,7 @@ class BooksRepository {
     }
     final baseUrl = _auth.api.baseUrl ?? '';
     if (baseUrl.isEmpty) return null;
-    final token = await _auth.api.accessToken();
     src = '$baseUrl/api/items/${book.id}/cover';
-    if (token != null && token.isNotEmpty) src = '$src?token=$token';
     return src;
   }
 

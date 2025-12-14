@@ -72,11 +72,8 @@ class Book {
     final authorStr = (j['author'] ?? meta['authorName'] ?? meta['author'])?.toString() ??
         (authorsList?.join(', '));
 
-    // Construct cover URL, add ?token= only if provided
+    // Construct cover URL (authentication handled via headers)
     var coverUrl = '$baseUrl/api/items/$id/cover';
-    if (token != null && token.isNotEmpty) {
-      coverUrl = '$coverUrl?token=$token';
-    }
 
     final description = (meta['description'] ?? j['description'])?.toString();
     final durationSecs = media['duration'] is num

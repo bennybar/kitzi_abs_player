@@ -2,6 +2,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api_client.dart';
+import 'socket_service.dart';
 import 'package:flutter/foundation.dart';
 
 /// AuthRepository
@@ -10,7 +11,12 @@ import 'package:flutter/foundation.dart';
 /// - Persists/refreshes tokens via ApiClient
 /// - Exposes simple `login`, `logout`, `hasValidSession`
 class AuthRepository {
-  AuthRepository._(this._prefs, this._secure) : _api = ApiClient(_prefs, _secure);
+  AuthRepository._(this._prefs, this._secure) : _api = ApiClient(_prefs, _secure) {
+    // Set up token refresh callback for socket re-authentication
+    _api.onTokenRefreshed = (newToken) {
+      SocketService.instance.reauthenticate(newToken);
+    };
+  }
 
   final SharedPreferences _prefs;
   final FlutterSecureStorage _secure;
@@ -60,11 +66,32 @@ class AuthRepository {
     required String baseUrl,
     required String username,
     required String password,
-  }) {
-    return _api.login(baseUrl: baseUrl, username: username, password: password);
+  }) async {
+    final success = await _api.login(baseUrl: baseUrl, username: username, password: password);
+    if (success) {
+      // Connect socket after successful login
+      final token = await _api.accessToken();
+      if (token != null && baseUrl.isNotEmpty) {
+        try {
+          await SocketService.instance.connect(baseUrl, token);
+        } catch (e) {
+          debugPrint('[AUTH] Failed to connect socket after login: $e');
+          // Don't fail login if socket connection fails
+        }
+      }
+    }
+    return success;
   }
 
-  Future<void> logout() => _api.logout();
+  Future<void> logout() async {
+    // Disconnect socket before logout
+    try {
+      await SocketService.instance.disconnect();
+    } catch (e) {
+      debugPrint('[AUTH] Error disconnecting socket during logout: $e');
+    }
+    await _api.logout();
+  }
 
   ApiClient get api => _api;
 }

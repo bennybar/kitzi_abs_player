@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -17,6 +18,7 @@ import 'ui/main/main_scaffold.dart';
 import 'core/app_warmup_service.dart';
 import 'core/background_sync_service.dart';
 import 'core/streaming_cache_service.dart';
+import 'core/usage_analytics_service.dart';
 
 /// Simple app-wide service container
 class AppServices {
@@ -88,6 +90,15 @@ Future<void> main() async {
   // Ensure AudioService is initialized early so Android Auto can discover the
   // MediaBrowserService without requiring the UI to build first.
   await AudioServiceBinding.instance.bindAudioService(services.playback);
+  
+  // Track daily active user (once per device per day)
+  // Using unawaited so it doesn't block app startup
+  unawaited(UsageAnalyticsService.trackDailyActive().catchError((error) {
+    // Log error but don't break app startup
+    if (kDebugMode) {
+      debugPrint('[Main] Analytics tracking error: $error');
+    }
+  }));
   
   // Start app warmup in background
   AppWarmupService.warmup();

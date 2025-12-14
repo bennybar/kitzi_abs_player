@@ -369,9 +369,7 @@ class _SettingsPageState extends State<SettingsPage> {
     try {
       final services = ServicesScope.of(context).services;
       final api = services.auth.api;
-      final token = await api.accessToken();
-      final tokenQS = (token != null && token.isNotEmpty) ? '?token=$token' : '';
-      final resp = await api.request('GET', '/api/libraries$tokenQS', auth: true);
+      final resp = await api.request('GET', '/api/libraries', auth: true);
       if (resp.statusCode != 200) return;
       final bodyStr = resp.body;
       final body = bodyStr.isNotEmpty ? jsonDecode(bodyStr) : null;
