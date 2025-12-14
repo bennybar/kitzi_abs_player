@@ -1618,10 +1618,16 @@ class PlaybackRepository {
   Timer? _progressTimer;
   double _lastSentSec = -1;
   StreamSubscription<bool>? _playingSub;
+  StreamSubscription<Duration>? _positionSub;
+  DateTime? _lastPositionUpdate;
+  DateTime? _lastDynamicIslandUpdate;
+  static const _positionUpdateThrottle = Duration(milliseconds: 500);
+  static const _dynamicIslandUpdateThrottle = Duration(seconds: 2);
 
   void _startProgressSync(String libraryItemId, {String? episodeId}) {
     _progressTimer?.cancel();
     _playingSub?.cancel();
+    _positionSub?.cancel();
 
     // Start/stop heartbeat based on actual playing state
     _playingSub = player.playingStream.listen((isPlaying) async {
@@ -1637,7 +1643,17 @@ class PlaybackRepository {
       }
     });
 
-    player.positionStream.listen((_) {
+    // Throttle position stream updates to reduce battery drain
+    _positionSub = player.positionStream.listen((pos) {
+      final now = DateTime.now();
+      
+      // Throttle position updates (max once per 500ms)
+      if (_lastPositionUpdate != null && 
+          now.difference(_lastPositionUpdate!) < _positionUpdateThrottle) {
+        return; // Skip if updated too recently
+      }
+      _lastPositionUpdate = now;
+      
       final cur = _computeGlobalPositionSec() ?? _trackOnlyPosSec();
       final total = _computeTotalDurationSec();
       if (cur == null) return;
@@ -1648,7 +1664,7 @@ class PlaybackRepository {
         _sendProgressImmediate(finished: isDone);
       }
       
-      // Update Dynamic Island with current position
+      // Update Dynamic Island with current position (throttled)
       _updateDynamicIsland();
     });
   }
@@ -1658,12 +1674,22 @@ class PlaybackRepository {
     _progressTimer = null;
     _playingSub?.cancel();
     _playingSub = null;
+    _positionSub?.cancel();
+    _positionSub = null;
   }
   
-  /// Update Dynamic Island with current playback state
+  /// Update Dynamic Island with current playback state (throttled to save battery)
   void _updateDynamicIsland() {
     final np = _nowPlaying;
     if (np == null) return;
+    
+    // Throttle Dynamic Island updates (max once per 2 seconds)
+    final now = DateTime.now();
+    if (_lastDynamicIslandUpdate != null && 
+        now.difference(_lastDynamicIslandUpdate!) < _dynamicIslandUpdateThrottle) {
+      return; // Skip if updated less than 2 seconds ago
+    }
+    _lastDynamicIslandUpdate = now;
     
     final position = Duration(milliseconds: (_computeGlobalPositionSec() ?? 0.0).round() * 1000);
     final duration = Duration(milliseconds: (_computeTotalDurationSec() ?? 0.0).round() * 1000);

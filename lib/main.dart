@@ -132,12 +132,13 @@ class AbsApp extends StatefulWidget {
   State<AbsApp> createState() => _AbsAppState();
 }
 
-class _AbsAppState extends State<AbsApp> {
+class _AbsAppState extends State<AbsApp> with WidgetsBindingObserver {
   late final Future<bool> _sessionFuture;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _sessionFuture = AuthRepository.ensure().then((auth) async {
       // Only proceed to app when a valid session exists
       final hasBase = auth.api.baseUrl != null && auth.api.baseUrl!.isNotEmpty;
@@ -162,6 +163,26 @@ class _AbsAppState extends State<AbsApp> {
         // 'Error warming last item: $e');
       }
     });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.paused || 
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.detached) {
+      // App went to background - pause background sync to save battery
+      BackgroundSyncService.pauseForBackground();
+    } else if (state == AppLifecycleState.resumed) {
+      // App came to foreground - resume background sync
+      BackgroundSyncService.resumeForForeground();
+    }
   }
 
   @override

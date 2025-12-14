@@ -49,6 +49,14 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       SchedulerBinding.instance.addPostFrameCallback((_) => _check());
+      // Resume polling when app comes to foreground
+      _poll ??= Timer.periodic(const Duration(minutes: 2), (_) => _check());
+    } else if (state == AppLifecycleState.paused || 
+               state == AppLifecycleState.inactive ||
+               state == AppLifecycleState.detached) {
+      // Pause polling when app goes to background to save battery
+      _poll?.cancel();
+      _poll = null;
     }
   }
 

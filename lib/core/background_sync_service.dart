@@ -8,15 +8,22 @@ import 'auth_repository.dart';
 class BackgroundSyncService {
   static Timer? _syncTimer;
   static bool _isSyncing = false;
+  static bool _isAppInForeground = true;
   static const Duration _syncInterval = Duration(minutes: 15);
   static const String _lastSyncKey = 'last_background_sync';
   static const String _lastFullSyncKey = 'last_full_background_sync';
   
   /// Start background sync timer
   static void start() {
+    if (!_isAppInForeground) {
+      // Don't start if app is in background
+      return;
+    }
     _syncTimer?.cancel();
     _syncTimer = Timer.periodic(_syncInterval, (_) async {
-      await _performBackgroundSync();
+      if (_isAppInForeground) {
+        await _performBackgroundSync();
+      }
     });
     // Background sync started
   }
@@ -26,6 +33,23 @@ class BackgroundSyncService {
     _syncTimer?.cancel();
     _syncTimer = null;
     // Background sync stopped
+  }
+  
+  /// Pause sync when app goes to background (to save battery)
+  static void pauseForBackground() {
+    _isAppInForeground = false;
+    _syncTimer?.cancel();
+    _syncTimer = null;
+    // Background sync paused for battery optimization
+  }
+  
+  /// Resume sync when app comes to foreground
+  static void resumeForForeground() {
+    _isAppInForeground = true;
+    if (_syncTimer == null) {
+      start();
+    }
+    // Background sync resumed
   }
   
   /// Perform background sync

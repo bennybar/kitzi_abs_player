@@ -126,6 +126,12 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
         });
         _saveSearchPref('');
       }
+      // Pause connectivity watch when app goes to background to save battery
+      _connSub?.cancel();
+      _connSub = null;
+    } else if (state == AppLifecycleState.resumed) {
+      // Resume connectivity watch when app comes to foreground
+      _startConnectivityWatch();
     }
   }
 

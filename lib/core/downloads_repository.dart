@@ -1083,9 +1083,9 @@ class DownloadsRepository {
     // Cancel any existing timer for this item
     _progressNotificationTimers[libraryItemId]?.cancel();
     
-    // Start a timer to update progress notifications every 2 seconds
+    // Start a timer to update progress notifications every 5 seconds (reduced from 2 to save battery)
     _progressNotificationTimers[libraryItemId] = Timer.periodic(
-      const Duration(seconds: 2),
+      const Duration(seconds: 5),
       (_) => _updateProgressNotification(libraryItemId),
     );
   }
