@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -91,6 +92,25 @@ Future<void> main() async {
 
   if (await Permission.notification.isDenied) {
     await Permission.notification.request();
+  }
+
+  // Request battery optimization exemption (one-time on first launch)
+  // This helps prevent disconnection issues by preventing Android from killing background services
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final batteryOptRequested = prefs.getBool('battery_opt_requested') ?? false;
+    if (!batteryOptRequested && Platform.isAndroid) {
+      // Check if already ignored, if not, request it
+      final status = await Permission.ignoreBatteryOptimizations.status;
+      if (!status.isGranted) {
+        // Request permission (will show system dialog)
+        await Permission.ignoreBatteryOptimizations.request();
+      }
+      // Mark as requested so we don't ask again
+      await prefs.setBool('battery_opt_requested', true);
+    }
+  } catch (_) {
+    // Ignore errors - battery optimization is optional
   }
 
   // Initialize notifications early

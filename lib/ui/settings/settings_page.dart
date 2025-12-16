@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/services.dart' show SystemNavigator;
+import 'package:permission_handler/permission_handler.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path_provider/path_provider.dart';
 import '../../main.dart'; // ServicesScope
@@ -1095,6 +1096,49 @@ class _SettingsPageState extends State<SettingsPage> {
               setState(() { _wifiOnly = v; });
             },
           ),
+          if (Platform.isAndroid)
+            ListTile(
+              leading: const Icon(Icons.battery_saver_outlined),
+              title: const Text('Disable battery optimization'),
+              subtitle: const Text('Disconnection issues? Disable battery optimization'),
+              trailing: const Icon(Icons.arrow_forward_ios_rounded),
+              onTap: () async {
+                try {
+                  final status = await Permission.ignoreBatteryOptimizations.status;
+                  if (status.isGranted) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Battery optimization is already disabled'),
+                        ),
+                      );
+                    }
+                  } else {
+                    // Request permission (will show system dialog)
+                    final result = await Permission.ignoreBatteryOptimizations.request();
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            result.isGranted
+                                ? 'Battery optimization disabled'
+                                : 'Could not disable battery optimization. Please enable it manually in system settings.',
+                          ),
+                        ),
+                      );
+                    }
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Error: $e'),
+                      ),
+                    );
+                  }
+                }
+              },
+            ),
           ListTile(
             leading: const Icon(Icons.cached_rounded),
             title: const Text('Streaming cache'),
