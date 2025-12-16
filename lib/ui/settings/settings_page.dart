@@ -1117,15 +1117,31 @@ class _SettingsPageState extends State<SettingsPage> {
                     // Request permission (will show system dialog)
                     final result = await Permission.ignoreBatteryOptimizations.request();
                     if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            result.isGranted
-                                ? 'Battery optimization disabled'
-                                : 'Could not disable battery optimization. Please enable it manually in system settings.',
+                      if (result.isGranted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Battery optimization disabled'),
                           ),
-                        ),
-                      );
+                        );
+                      } else if (result.isPermanentlyDenied) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            action: SnackBarAction(
+                              label: 'Open settings',
+                              onPressed: () => openAppSettings(),
+                            ),
+                            content: const Text(
+                              'Could not disable battery optimization. Please allow it in system settings.',
+                            ),
+                          ),
+                        );
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Could not disable battery optimization. Please enable it manually in system settings.'),
+                          ),
+                        );
+                      }
                     }
                   }
                 } catch (e) {
