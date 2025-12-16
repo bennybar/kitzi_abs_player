@@ -1996,7 +1996,16 @@ class PlaybackRepository {
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'deviceInfo': {'clientVersion': 'kitzi-android-0.1.0'},
-          'supportedMimeTypes': ['audio/mpeg', 'audio/mp4', 'audio/aac', 'audio/flac']
+          // Include opus/ogg to match Audiobookshelf defaults and avoid server-side rejection
+          'supportedMimeTypes': [
+            'audio/mpeg',
+            'audio/mp4',
+            'audio/aac',
+            'audio/flac',
+            'audio/ogg',
+            'audio/opus',
+            'audio/webm'
+          ]
         }));
 
     if (resp.statusCode != 200) {
@@ -2044,7 +2053,16 @@ class PlaybackRepository {
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'deviceInfo': {'clientVersion': 'kitzi-android-0.1.0'},
-          'supportedMimeTypes': ['audio/mpeg', 'audio/mp4', 'audio/aac', 'audio/flac']
+          // Include opus/ogg to match Audiobookshelf defaults and avoid server-side rejection
+          'supportedMimeTypes': [
+            'audio/mpeg',
+            'audio/mp4',
+            'audio/aac',
+            'audio/flac',
+            'audio/ogg',
+            'audio/opus',
+            'audio/webm'
+          ]
         }));
 
     if (resp.statusCode != 200) {
@@ -2179,11 +2197,15 @@ class PlaybackRepository {
         final ext = f.path.split('.').last.toLowerCase();
         final mime = ext == 'mp3'
             ? 'audio/mpeg'
-            : (ext == 'm4a' || ext == 'aac')
-            ? 'audio/mp4'
-            : ext == 'flac'
-            ? 'audio/flac'
-            : 'audio/mpeg';
+            : (ext == 'm4a' || ext == 'aac' || ext == 'm4b')
+                ? 'audio/mp4'
+                : ext == 'flac'
+                    ? 'audio/flac'
+                    : (ext == 'ogg' || ext == 'oga')
+                        ? 'audio/ogg'
+                        : ext == 'opus'
+                            ? 'audio/opus'
+                            : 'audio/mpeg';
         list.add(PlaybackTrack(
           index: i,
           url: f.path,
