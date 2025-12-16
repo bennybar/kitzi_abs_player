@@ -1155,6 +1155,45 @@ class _SettingsPageState extends State<SettingsPage> {
                 }
               },
             ),
+          if (Platform.isAndroid)
+            ListTile(
+              leading: const Icon(Icons.open_in_new_rounded),
+              title: const Text('Open battery optimization settings'),
+              subtitle: const Text('Jump to system screen to set “Don’t optimize” manually'),
+              trailing: const Icon(Icons.arrow_forward_ios_rounded),
+              onTap: () async {
+                try {
+                  final ok = await openAppSettings();
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          ok
+                              ? 'In system settings, set this app to “Don’t optimize”.'
+                              : 'Could not open system settings. Please open battery optimization manually.',
+                        ),
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Error opening settings: $e'),
+                      ),
+                    );
+                  }
+                }
+              },
+            ),
+          if (Platform.isAndroid)
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: Text(
+                'Tip: Some devices (Samsung, Xiaomi/POCO, Oppo/Realme, Vivo, Huawei/Honor, OnePlus) require setting “Don’t optimize” manually for stable playback and downloads.',
+                style: TextStyle(fontSize: 13),
+              ),
+            ),
           ListTile(
             leading: const Icon(Icons.cached_rounded),
             title: const Text('Streaming cache'),
