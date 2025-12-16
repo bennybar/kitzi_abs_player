@@ -818,9 +818,14 @@ class PlaybackRepository {
       _log('❌ Failed to update audio service: $e');
     }
 
-    // Check for progress reset scenario and get user confirmation if needed
-    final resumeSec = await _handleProgressResetConfirmation(libraryItemId, prefs, context);
+    // Check for progress reset/mismatch and get user confirmation if needed
+    final decision = await _handleProgressResetConfirmation(libraryItemId, prefs, context);
+    if (decision.cancelled) {
+      _log('Playback cancelled by user during progress confirmation');
+      return false;
+    }
 
+    final resumeSec = decision.position;
     if (resumeSec != null && resumeSec > 0) {
       final map = _mapGlobalSecondsToTrack(resumeSec, tracks);
       await _setTrackAt(map.index, preload: true);
@@ -1019,7 +1024,10 @@ class PlaybackRepository {
   }
 
   /// Handle progress reset confirmation when server progress is reset but local progress exists
-  Future<double?> _handleProgressResetConfirmation(String libraryItemId, SharedPreferences prefs, BuildContext? context) async {
+  /// Decide which position to start from (server/local) and allow cancel.
+  /// Returns a record: position (nullable) and cancelled flag.
+  Future<({double? position, bool cancelled})> _handleProgressResetConfirmation(
+      String libraryItemId, SharedPreferences prefs, BuildContext? context) async {
     try {
       // Get server progress
       double? serverSec;
@@ -1036,7 +1044,9 @@ class PlaybackRepository {
       // - Server progress is 0 or null (reset)
       // - Local progress exists and is > 0
       // - Sync before play is enabled (we'll always warn when server is reset)
-      final serverReset = serverSec == null || serverSec <= 0;
+      // Treat a real server reset only when the server explicitly returns 0 or less.
+      // If serverSec is null (offline/no data), do NOT consider it a reset — prefer local.
+      final serverReset = serverSec != null && serverSec <= 0;
       final hasLocalProgress = localSec != null && localSec > 0;
       final shouldSync = await _shouldSyncProgressBeforePlay();
       
@@ -1049,32 +1059,56 @@ class PlaybackRepository {
         switch (choice) {
           case ProgressResetChoice.useServer:
             _log('User chose to use server position (reset)');
-            return serverSec; // Will be 0 or null, so starts from beginning
+            return (position: serverSec, cancelled: false); // Will be 0 or null, so starts from beginning
           case ProgressResetChoice.useLocal:
             _log('User chose to use local position');
-            return localSec;
+            return (position: localSec, cancelled: false);
           case ProgressResetChoice.cancel:
             _log('User cancelled playback');
-            return null; // This will cause playItem to return false
+            return (position: null, cancelled: true); // This will cause playItem to return false
+        }
+      }
+
+      // If both positions exist and differ significantly, warn and ask which to use
+      if (shouldSync && serverSec != null && localSec != null) {
+        final diff = (serverSec - localSec).abs();
+        if (diff >= 60.0) {
+          final choice = await _showProgressMismatchDialog(
+            libraryItemId,
+            serverSec,
+            localSec,
+            context,
+          );
+          switch (choice) {
+            case ProgressResetChoice.useServer:
+              _log('User chose server position after mismatch warning');
+              return (position: serverSec, cancelled: false);
+            case ProgressResetChoice.useLocal:
+              _log('User chose local position after mismatch warning');
+              return (position: localSec, cancelled: false);
+            case ProgressResetChoice.cancel:
+              _log('User cancelled playback after mismatch warning');
+              return (position: null, cancelled: true);
+          }
         }
       }
       
       // Default behavior: prefer server only if it's > 0; otherwise prefer local when available
-      if (serverSec != null && serverSec > 0) return serverSec;
-      if (localSec != null && localSec > 0) return localSec;
-      return serverSec ?? localSec;
+      if (serverSec != null && serverSec > 0) return (position: serverSec, cancelled: false);
+      if (localSec != null && localSec > 0) return (position: localSec, cancelled: false);
+      return (position: serverSec ?? localSec, cancelled: false);
     } catch (e) {
       _log('Error in progress reset confirmation: $e');
       // Fallback to original behavior
       try {
         final serverSec = await fetchServerProgress(libraryItemId);
         final localSec = prefs.getDouble('$_kLocalProgPrefix$libraryItemId');
-        if (serverSec != null && serverSec > 0) return serverSec;
-        if (localSec != null && localSec > 0) return localSec;
-        return serverSec ?? localSec;
+        if (serverSec != null && serverSec > 0) return (position: serverSec, cancelled: false);
+        if (localSec != null && localSec > 0) return (position: localSec, cancelled: false);
+        return (position: serverSec ?? localSec, cancelled: false);
       } catch (_) {
         final localSec = prefs.getDouble('$_kLocalProgPrefix$libraryItemId');
-        return localSec;
+        return (position: localSec, cancelled: false);
       }
     }
   }
@@ -1082,8 +1116,8 @@ class PlaybackRepository {
   /// Show confirmation dialog for progress reset scenario
   Future<ProgressResetChoice> _showProgressResetDialog(String libraryItemId, double localSec, BuildContext? context, bool syncEnabled) async {
     if (context == null) {
-      _log('No context available for progress reset dialog, defaulting to server position');
-      return ProgressResetChoice.useServer;
+      _log('No context available for progress reset dialog, defaulting to local position');
+      return ProgressResetChoice.useLocal;
     }
 
     // Format the local progress time
@@ -1167,6 +1201,81 @@ class PlaybackRepository {
     } else {
       return '${seconds}s';
     }
+  }
+
+  /// Show dialog when server/local positions differ significantly
+  Future<ProgressResetChoice> _showProgressMismatchDialog(
+      String libraryItemId, double serverSec, double localSec, BuildContext? context) async {
+    if (context == null) {
+      _log('No context for mismatch dialog, defaulting to local position');
+      return ProgressResetChoice.useLocal;
+    }
+
+    String _fmt(double sec) {
+      final d = Duration(milliseconds: (sec * 1000).round());
+      final two = (int v) => v.toString().padLeft(2, '0');
+      final h = d.inHours;
+      final m = two(d.inMinutes.remainder(60));
+      final s = two(d.inSeconds.remainder(60));
+      return h > 0 ? '$h:$m:$s' : '$m:$s';
+    }
+
+    final diff = (serverSec - localSec).abs();
+    final cs = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+
+    final result = await showDialog<ProgressResetChoice>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          'Choose position to start',
+          style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Server and local positions differ by ${diff.toStringAsFixed(0)} seconds. Which one should we use?',
+              style: text.bodyMedium,
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: cs.primaryContainer,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: cs.primary.withOpacity(0.3), width: 1),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Server: ${_fmt(serverSec)}', style: text.bodyMedium?.copyWith(color: cs.onPrimaryContainer)),
+                  const SizedBox(height: 4),
+                  Text('Local: ${_fmt(localSec)}', style: text.bodyMedium?.copyWith(color: cs.onPrimaryContainer)),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(ProgressResetChoice.cancel),
+            child: Text('Cancel', style: TextStyle(color: cs.onSurfaceVariant)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(ProgressResetChoice.useLocal),
+            child: const Text('Use Local'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(ProgressResetChoice.useServer),
+            child: const Text('Use Server'),
+          ),
+        ],
+      ),
+    );
+
+    return result ?? ProgressResetChoice.cancel;
   }
 
   /// When scrubbing, pass `reportNow: false` repeatedly; only call once with true at the end.
