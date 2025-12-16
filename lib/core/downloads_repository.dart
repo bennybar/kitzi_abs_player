@@ -1299,6 +1299,9 @@ class DownloadsRepository {
     if (m.contains('mpeg')) return 'mp3';
     if (m.contains('mp4') || m.contains('aac')) return 'm4a';
     if (m.contains('flac')) return 'flac';
+    if (m.contains('opus')) return 'opus';
+    if (m.contains('ogg')) return 'ogg';
+    if (m.contains('webm')) return 'webm';
     return 'bin';
   }
 
