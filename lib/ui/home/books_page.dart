@@ -132,6 +132,8 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
     } else if (state == AppLifecycleState.resumed) {
       // Resume connectivity watch when app comes to foreground
       _startConnectivityWatch();
+      // Refresh books when app returns to foreground to check for new books
+      _refresh();
     }
   }
 
@@ -400,6 +402,23 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
           _showNoInternetSnack();
         }
         return;
+      }
+      // For manual refresh (pull-to-refresh or app resume), always fetch first page
+      // to ensure new books are detected
+      if (!initial) {
+        try {
+          final repo = await _repoFut;
+          final q = _query.trim();
+          await repo.fetchBooksPage(
+            page: 1,
+            limit: 50,
+            query: q.isEmpty ? null : q,
+          );
+          // Reload from cache after fetching to update UI
+          await _loadBooksFromCache(showSpinner: false);
+        } catch (_) {
+          // If first page fetch fails, continue with incremental sync
+        }
       }
       await _startBackgroundSync(awaitCompletion: !initial);
       if (!initial) {
