@@ -390,7 +390,10 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
   }
 
   Future<void> _refresh({bool initial = false}) async {
+    debugPrint('[REFRESH] Starting refresh (initial=$initial)');
+    // Always start from current cache for snappy UI
     await _loadBooksFromCache(showSpinner: initial && _books.isEmpty);
+    debugPrint('[REFRESH] Loaded ${_books.length} books from cache');
     try {
       final conn = await Connectivity().checkConnectivity();
       final online = conn.contains(ConnectivityResult.mobile) ||
@@ -398,39 +401,51 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
           conn.contains(ConnectivityResult.ethernet) ||
           conn.contains(ConnectivityResult.vpn);
       if (!online) {
-        if (initial && mounted) {
-          _showNoInternetSnack();
-        }
+        debugPrint('[REFRESH] No internet connection');
+        if (initial && mounted) _showNoInternetSnack();
         return;
       }
-      // For manual refresh (pull-to-refresh or app resume), always fetch first page
-      // to ensure new books are detected
-      if (!initial) {
-        try {
-          final repo = await _repoFut;
-          final q = _query.trim();
-          await repo.fetchBooksPage(
-            page: 1,
-            limit: 50,
-            query: q.isEmpty ? null : q,
-          );
-          // Reload from cache after fetching to update UI
-          await _loadBooksFromCache(showSpinner: false);
-        } catch (_) {
-          // If first page fetch fails, continue with incremental sync
-        }
+      debugPrint('[REFRESH] Online, proceeding with server sync');
+
+      final repo = await _repoFut;
+      final q = _query.trim();
+
+      // Always pull fresh data from server (ETag-aware; falls back to full fetch)
+      debugPrint('[REFRESH] Calling refreshFromServer()...');
+      final refreshedBooks = await repo.refreshFromServer();
+      debugPrint('[REFRESH] refreshFromServer returned ${refreshedBooks.length} books');
+      if (refreshedBooks.isNotEmpty) {
+        debugPrint('[REFRESH] First book: ${refreshedBooks.first.title} (id: ${refreshedBooks.first.id}, updatedAt: ${refreshedBooks.first.updatedAt})');
       }
-      await _startBackgroundSync(awaitCompletion: !initial);
-      if (!initial) {
-        _loadRecentBooks();
+      
+      // If searching, hydrate first page of the query too
+      if (q.isNotEmpty) {
+        debugPrint('[REFRESH] Query active: "$q", fetching first page...');
+        final queryBooks = await repo.fetchBooksPage(page: 1, limit: 50, query: q);
+        debugPrint('[REFRESH] Query page returned ${queryBooks.length} books');
       }
-    } catch (e) {
-      if (!initial && mounted) {
+
+      // Force incremental sync to ignore lastSync and traverse a few pages
+      debugPrint('[REFRESH] Starting incremental sync with forceCheck=true...');
+      await _startBackgroundSync(awaitCompletion: true, forceCheck: true);
+      debugPrint('[REFRESH] Incremental sync completed');
+
+      // Reload from DB/cache to reflect any new books
+      debugPrint('[REFRESH] Clearing cache and reloading from DB...');
+      // Force clear the query cache to get fresh data
+      // Clear cache by ensuring DB changes are processed
+      await Future.delayed(const Duration(milliseconds: 100));
+      await _loadBooksFromCache(showSpinner: false);
+      debugPrint('[REFRESH] After reload, have ${_books.length} books in list');
+      if (!initial) _loadRecentBooks();
+      debugPrint('[REFRESH] Refresh complete');
+    } catch (e, stackTrace) {
+      debugPrint('[REFRESH] Error during refresh: $e');
+      debugPrint('[REFRESH] Stack trace: $stackTrace');
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Refresh failed: $e')),
         );
-      } else if (initial && mounted) {
-        _showNoInternetSnack();
       }
     }
   }
@@ -469,6 +484,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
   }
 
   Future<void> _loadBooksFromCache({bool showSpinner = false}) async {
+    debugPrint('[LOAD_FROM_CACHE] Starting (query: "${_query.trim()}")');
     if (showSpinner) {
       setState(() {
         _loading = true;
@@ -483,7 +499,15 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
         limit: 50,
         query: q.isEmpty ? null : q,
       );
-      if (!mounted) return;
+      debugPrint('[LOAD_FROM_CACHE] Loaded ${items.length} books from DB');
+      if (items.isNotEmpty) {
+        debugPrint('[LOAD_FROM_CACHE] First book: "${items.first.title}" (id: ${items.first.id}, updatedAt: ${items.first.updatedAt?.toIso8601String() ?? "null"})');
+        debugPrint('[LOAD_FROM_CACHE] Last book: "${items.last.title}" (id: ${items.last.id}, updatedAt: ${items.last.updatedAt?.toIso8601String() ?? "null"})');
+      }
+      if (!mounted) {
+        debugPrint('[LOAD_FROM_CACHE] Widget not mounted, skipping setState');
+        return;
+      }
       setState(() {
         _books = items;
         _loading = false;
@@ -491,7 +515,10 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
         _currentPage = 1;
         _error = null;
       });
-    } catch (e) {
+      debugPrint('[LOAD_FROM_CACHE] setState completed, _books.length=${_books.length}');
+    } catch (e, stackTrace) {
+      debugPrint('[LOAD_FROM_CACHE] Error: $e');
+      debugPrint('[LOAD_FROM_CACHE] Stack trace: $stackTrace');
       if (!mounted) return;
       setState(() {
         _loading = false;
@@ -626,8 +653,9 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
         break;
       case SortMode.addedDesc:
         list.sort((a, b) {
-          final da = a.updatedAt;
-          final db = b.updatedAt;
+          // Use addedAt if available, fallback to updatedAt for backward compatibility
+          final da = a.addedAt ?? a.updatedAt;
+          final db = b.addedAt ?? b.updatedAt;
           if (da == null && db == null) return 0;
           if (da == null) return 1;
           if (db == null) return -1;
@@ -733,6 +761,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
             elevation: 0,
             title: _query.trim().isEmpty 
                 ? Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
                         Icons.library_music_rounded,
@@ -740,7 +769,12 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                         size: 24,
                       ),
                       const SizedBox(width: 8),
-                      const Text('Audiobooks'),
+                      const Flexible(
+                        child: Text(
+                          'Audiobooks',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
                     ],
                   )
                 : const Text('Library'),
@@ -1286,7 +1320,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _startBackgroundSync({bool awaitCompletion = false}) async {
+  Future<void> _startBackgroundSync({bool awaitCompletion = false, bool forceCheck = false}) async {
     final query = _query.trim();
     final effectiveQuery = query.isEmpty ? null : query;
 
@@ -1297,6 +1331,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
           query: effectiveQuery,
           pageSize: 50,
           maxPages: effectiveQuery == null ? 4 : 2,
+          forceCheck: forceCheck,
         );
       } catch (_) {
       } finally {

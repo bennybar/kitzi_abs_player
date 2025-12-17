@@ -7,6 +7,7 @@ class Book {
   final int? durationMs;
   final int? sizeBytes;
   final DateTime? updatedAt;
+  final DateTime? addedAt; // When the book was added to the library
   // Enriched metadata (optional)
   final List<String>? authors;
   final List<String>? narrators;
@@ -33,6 +34,7 @@ class Book {
     this.durationMs,
     this.sizeBytes,
     this.updatedAt,
+    this.addedAt,
     this.authors,
     this.narrators,
     this.publisher,
@@ -82,11 +84,11 @@ class Book {
     final durationSecs = media['duration'] is num
         ? (media['duration'] as num).toDouble()
         : (meta['duration'] is num ? (meta['duration'] as num).toDouble() : null);
-    // Prefer updatedAt (original behavior), then fall back to added/created
-    DateTime? bestTimestamp;
-    dynamic updatedRaw = j['updatedAt'];
-    dynamic addedRaw = j['addedAt'] ?? j['createdAt'];
-    bestTimestamp = _parseTimestampFlexible(updatedRaw) ?? _parseTimestampFlexible(addedRaw);
+    // Parse updatedAt and addedAt separately
+    DateTime? updatedTimestamp = _parseTimestampFlexible(j['updatedAt']);
+    DateTime? addedTimestamp = _parseTimestampFlexible(j['addedAt'] ?? j['createdAt']);
+    // For backward compatibility, use updatedAt if addedAt is not available
+    final bestTimestamp = updatedTimestamp ?? addedTimestamp;
     final sizeBytes = media['size'] is num ? (media['size'] as num).toInt() : null;
 
     // More metadata
@@ -226,7 +228,8 @@ class Book {
       description: description,
       durationMs: durationSecs != null ? (durationSecs * 1000).round() : null,
       sizeBytes: sizeBytes,
-      updatedAt: bestTimestamp,
+      updatedAt: updatedTimestamp,
+      addedAt: addedTimestamp,
       authors: authorsList,
       narrators: narratorsList,
       publisher: publisher,

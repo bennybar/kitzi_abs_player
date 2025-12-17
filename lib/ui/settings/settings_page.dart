@@ -855,6 +855,107 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  Future<void> _showResyncMetadataDialog() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Resync book metadata'),
+        content: const Text(
+          'This will fetch all books from the server and update their metadata, including the "added date" field.\n\n'
+          'This process may take a while depending on your library size and network speed.\n\n'
+          'This will update all books, not just the first 50.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Resync'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      await _performResyncMetadata();
+    }
+  }
+
+  Future<void> _performResyncMetadata() async {
+    // Show progress dialog
+    if (!mounted) return;
+    
+    final dialogKey = GlobalKey<_CleanupProgressDialogState>();
+    bool cancelled = false;
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => _CleanupProgressDialog(
+        key: dialogKey,
+        onCancel: () {
+          cancelled = true;
+          Navigator.of(context).pop();
+        },
+      ),
+    );
+
+    try {
+      final repo = await BooksRepository.create();
+      int totalSynced = 0;
+      
+      await repo.resyncBookMetadata(
+        onProgress: (page, total) {
+          // Check if cancelled
+          if (cancelled) return;
+          
+          totalSynced = total;
+          // Update progress dialog if it's still showing
+          dialogKey.currentState?.updateProgress(
+            page * 100, // Estimate: assume 100 books per page
+            total,
+            'Syncing page $page...',
+          );
+        },
+      );
+
+      // Close progress dialog if not already closed by cancel
+      if (mounted && !cancelled) {
+        Navigator.of(context).pop();
+        
+        // Show result
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Metadata resync completed. Updated $totalSynced books.'
+            ),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      } else if (mounted && cancelled) {
+        // Show cancellation message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Resync cancelled. $totalSynced books were synced before cancellation.'),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.of(context).pop(); // Close progress dialog
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Metadata resync failed: $e'),
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final services = ServicesScope.of(context).services;
@@ -916,6 +1017,13 @@ class _SettingsPageState extends State<SettingsPage> {
             subtitle: const Text('Check each cached book against server and remove deleted ones'),
             trailing: const Icon(Icons.arrow_forward_ios_rounded),
             onTap: () => _showCleanupDialog(),
+          ),
+          ListTile(
+            leading: const Icon(Icons.sync_rounded),
+            title: const Text('Resync book metadata'),
+            subtitle: const Text('Refresh all book metadata from server (including added date)'),
+            trailing: const Icon(Icons.arrow_forward_ios_rounded),
+            onTap: () => _showResyncMetadataDialog(),
           ),
           ListTile(
             leading: const Icon(Icons.history_rounded),

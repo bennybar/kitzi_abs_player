@@ -20,7 +20,7 @@ class BooksRepository {
   final SharedPreferences _prefs;
   
   // Enable/disable verbose logging  
-  static const bool _verboseLogging = false;
+  static const bool _verboseLogging = true;
   Database? _db;
   String? _dbLibId; // track which library the DB connection belongs to
   
@@ -52,7 +52,9 @@ class BooksRepository {
   
   /// Log debug message only if verbose logging is enabled
   void _log(String message) {
-    // Logging removed for cleaner console output
+    if (_verboseLogging) {
+      debugPrint('[BOOKS_REPO] $message');
+    }
   }
   
   /// Clear expired cache entries
@@ -311,7 +313,7 @@ class BooksRepository {
     final path = p.join(dbPath, 'kitzi_books_$libId.db');
     _db = await openDatabase(
       path,
-      version: 4, // Increment version to trigger migration
+      version: 5, // Increment version to trigger migration
       onCreate: (db, v) async {
         await db.execute('''
           CREATE TABLE books (
@@ -325,6 +327,7 @@ class BooksRepository {
             durationMs INTEGER,
             sizeBytes INTEGER,
             updatedAt INTEGER,
+            addedAt INTEGER,
             series TEXT,
             seriesSequence REAL,
             collection TEXT,
@@ -342,6 +345,7 @@ class BooksRepository {
         
         // Add indexes for better query performance
         await db.execute('CREATE INDEX IF NOT EXISTS idx_books_updatedAt ON books(updatedAt DESC)');
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_books_addedAt ON books(addedAt DESC)');
         await db.execute('CREATE INDEX IF NOT EXISTS idx_books_title ON books(title COLLATE NOCASE)');
         await db.execute('CREATE INDEX IF NOT EXISTS idx_books_author ON books(author COLLATE NOCASE)');
         await db.execute('CREATE INDEX IF NOT EXISTS idx_books_isAudioBook ON books(isAudioBook)');
@@ -364,6 +368,9 @@ class BooksRepository {
         }
         if (oldVersion < 4) {
           await _migrateToVersion4(db);
+        }
+        if (oldVersion < 5) {
+          await _migrateToVersion5(db);
         }
       },
     );
@@ -413,6 +420,16 @@ class BooksRepository {
     await _addColumnIfNotExists(db, 'books', 'publisher', 'TEXT');
     await _addColumnIfNotExists(db, 'books', 'publishYear', 'INTEGER');
     await _addColumnIfNotExists(db, 'books', 'genres', 'TEXT');
+  }
+
+  Future<void> _migrateToVersion5(Database db) async {
+    // Add addedAt column (nullable, so existing rows won't break)
+    await _addColumnIfNotExists(db, 'books', 'addedAt', 'INTEGER');
+    // Add index for addedAt sorting
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_books_addedAt ON books(addedAt DESC)');
+    // Populate addedAt from updatedAt for existing books (best effort migration)
+    // This gives existing books a reasonable addedAt value, but users should resync for accurate data
+    await db.execute('UPDATE books SET addedAt = updatedAt WHERE addedAt IS NULL AND updatedAt IS NOT NULL');
   }
   
   /// Add a column to a table only if it doesn't already exist
@@ -468,7 +485,15 @@ class BooksRepository {
 
   Future<void> _upsertBooks(List<Book> items) async {
     final db = _db;
-    if (db == null) return;
+    if (db == null) {
+      _log('[UPSERT_BOOKS] DB is null, cannot upsert');
+      return;
+    }
+    _log('[UPSERT_BOOKS] Upserting ${items.length} books to DB');
+    if (items.isNotEmpty) {
+      _log('[UPSERT_BOOKS] First book: "${items.first.title}" (id: ${items.first.id}, updatedAt: ${items.first.updatedAt?.toIso8601String() ?? "null"})');
+      _log('[UPSERT_BOOKS] Last book: "${items.last.title}" (id: ${items.last.id}, updatedAt: ${items.last.updatedAt?.toIso8601String() ?? "null"})');
+    }
     
     // Use transaction for better performance and atomicity
     await db.transaction((txn) async {
@@ -492,6 +517,7 @@ class BooksRepository {
             'durationMs': b.durationMs,
             'sizeBytes': b.sizeBytes,
             'updatedAt': b.updatedAt?.millisecondsSinceEpoch,
+            'addedAt': b.addedAt?.millisecondsSinceEpoch ?? b.updatedAt?.millisecondsSinceEpoch,
             'series': b.series,
             'seriesSequence': b.seriesSequence,
             'collection': b.collection,
@@ -511,10 +537,13 @@ class BooksRepository {
       await batch.commit(noResult: true);
     });
     
+    _log('[UPSERT_BOOKS] Transaction committed successfully');
+    
     // Update cache metadata
     await _updateCacheMetadata(items.length);
     _clearAllCache();
     final changedIds = items.map((b) => b.id).where((id) => id.isNotEmpty).toSet();
+    _log('[UPSERT_BOOKS] Notifying ${changedIds.length} changed book IDs');
     _notifyDbChange(BookDbChangeType.upsert, changedIds);
   }
   
@@ -649,6 +678,11 @@ class BooksRepository {
       case 'nameAsc':
         orderBy = 'title COLLATE NOCASE ASC';
         break;
+      case 'addedAt:desc':
+      case 'addedDesc':
+        // Use addedAt, fallback to updatedAt for old books that don't have addedAt
+        orderBy = 'addedAt IS NULL, addedAt DESC, updatedAt DESC';
+        break;
       case 'updatedAt:desc':
       default:
         orderBy = 'updatedAt IS NULL, updatedAt DESC';
@@ -693,6 +727,9 @@ class BooksRepository {
         sizeBytes: m['sizeBytes'] as int?,
         updatedAt: (m['updatedAt'] as int?) != null
             ? DateTime.fromMillisecondsSinceEpoch((m['updatedAt'] as int), isUtc: true)
+            : null,
+        addedAt: (m['addedAt'] as int?) != null
+            ? DateTime.fromMillisecondsSinceEpoch((m['addedAt'] as int), isUtc: true)
             : null,
         series: m['series'] as String?,
         seriesSequence: (m['seriesSequence'] is num)
@@ -748,42 +785,93 @@ class BooksRepository {
     String? query,
     int pageSize = 50,
     int maxPages = 4,
+    bool forceCheck = false,
   }) async {
-    final lastSyncKey = _lastSyncPrefsKey(sort, query);
-    final lastSyncMs = _prefs.getInt(lastSyncKey);
+    // For detecting new books, use addedAt sorting
+    final syncSort = forceCheck ? 'addedAt&desc=1' : sort;
+    final lastSyncKey = _lastSyncPrefsKey(syncSort, query);
+    int? lastSyncMs;
+    DateTime? cutoffTime;
+    if (!forceCheck) {
+      lastSyncMs = _prefs.getInt(lastSyncKey);
+    } else {
+      // When force checking, get the newest book's updatedAt from DB as cutoff
+      // We'll stop when we hit books older than this
+      // Use updatedAt:desc for DB query since that's what we store
+      try {
+        final newestBooks = await listBooksFromDbPaged(page: 1, limit: 1, sort: 'updatedAt:desc', query: query);
+        if (newestBooks.isNotEmpty && newestBooks.first.updatedAt != null) {
+          cutoffTime = newestBooks.first.updatedAt;
+          _log('[INCREMENTAL_SYNC] forceCheck=true, using cutoff time: ${cutoffTime!.toIso8601String()}');
+        }
+      } catch (_) {}
+    }
     final lastSync = lastSyncMs != null
         ? DateTime.fromMillisecondsSinceEpoch(lastSyncMs, isUtc: true)
         : null;
+    _log('[INCREMENTAL_SYNC] Starting (forceCheck=$forceCheck, lastSync=${lastSync?.toIso8601String() ?? "null"}, cutoffTime=${cutoffTime?.toIso8601String() ?? "null"}, query=${query ?? "null"}, maxPages=$maxPages)');
     int page = 1;
     int pagesFetched = 0;
+    int totalBooksFetched = 0;
     while (pagesFetched < maxPages) {
+      _log('[INCREMENTAL_SYNC] Fetching page $page...');
       final books = await fetchBooksPage(
         page: page,
         limit: pageSize,
-        sort: sort,
+        sort: syncSort,
         query: query,
+        forceRefresh: forceCheck,
       );
-      if (books.isEmpty) break;
+      _log('[INCREMENTAL_SYNC] Page $page returned ${books.length} books');
+      if (books.isEmpty) {
+        _log('[INCREMENTAL_SYNC] Empty page, stopping');
+        break;
+      }
+      totalBooksFetched += books.length;
       pagesFetched++;
+      if (books.isNotEmpty) {
+        final firstBook = books.first;
+        final lastBook = books.last;
+        _log('[INCREMENTAL_SYNC] Page $page: first book "${firstBook.title}" (updatedAt: ${firstBook.updatedAt?.toIso8601String() ?? "null"}), last book "${lastBook.title}" (updatedAt: ${lastBook.updatedAt?.toIso8601String() ?? "null"})');
+      }
       if (lastSync != null) {
-        final updatedTimes = books
-            .map((b) => b.updatedAt)
-            .whereType<DateTime>()
-            .toList()
-          ..sort((a, b) => a.compareTo(b));
-        if (updatedTimes.isEmpty) {
+        // Check if the newest book (first in desc-sorted list) is newer than lastSync
+        // Since we sort by updatedAt:desc, if the first book isn't newer, none are
+        final firstBook = books.isNotEmpty ? books.first : null;
+        if (firstBook?.updatedAt == null || !firstBook!.updatedAt!.isAfter(lastSync)) {
+          // No new books on this page, we can stop
+          _log('[INCREMENTAL_SYNC] First book (${firstBook?.updatedAt?.toIso8601String() ?? "null"}) is not newer than lastSync (${lastSync.toIso8601String()}), stopping');
           break;
+        } else {
+          _log('[INCREMENTAL_SYNC] First book is newer than lastSync, continuing');
         }
-        final oldest = updatedTimes.first;
-        if (!oldest.isAfter(lastSync)) {
-          break;
+      } else if (forceCheck && cutoffTime != null) {
+        // When forcing check, stop when the newest book on this page (first in desc-sorted list)
+        // is older than or equal to the cutoff (meaning we've reached old books we already have)
+        // Since books are sorted desc by updatedAt, if the newest on this page is <= cutoff,
+        // all books on this and later pages are old
+        final newestBookOnPage = books.isNotEmpty ? books.first : null;
+        if (newestBookOnPage?.updatedAt != null) {
+          // Stop if newest book is older than or equal to cutoff (we've reached old books)
+          if (!newestBookOnPage!.updatedAt!.isAfter(cutoffTime!)) {
+            _log('[INCREMENTAL_SYNC] Newest book on page (${newestBookOnPage.updatedAt!.toIso8601String()}) is not newer than cutoff (${cutoffTime!.toIso8601String()}), reached old books, stopping');
+            break;
+          }
+          _log('[INCREMENTAL_SYNC] Newest book on page (${newestBookOnPage.updatedAt!.toIso8601String()}) is newer than cutoff, continuing');
+        } else {
+          _log('[INCREMENTAL_SYNC] Newest book has no updatedAt, continuing');
         }
+      } else {
+        _log('[INCREMENTAL_SYNC] No lastSync timestamp or cutoff time, continuing to fetch');
       }
       if (books.length < pageSize) {
+        _log('[INCREMENTAL_SYNC] Page has fewer than $pageSize books, stopping');
         break;
       }
       page++;
     }
+    _log('[INCREMENTAL_SYNC] Completed: fetched $pagesFetched pages, $totalBooksFetched total books');
+    // Save last sync time using the sort key we actually used
     await _prefs.setInt(
       lastSyncKey,
       DateTime.now().toUtc().millisecondsSinceEpoch,
@@ -1011,20 +1099,30 @@ class BooksRepository {
 
   /// Explicit refresh from server; persists to DB and cache, returns fresh list
   Future<List<Book>> refreshFromServer() async {
+    _log('[REFRESH_FROM_SERVER] Starting...');
     final api = _auth.api;
     final token = await api.accessToken();
     final libId = await _ensureLibraryId();
     final tokenQS = (token != null && token.isNotEmpty) ? '&token=$token' : '';
     final etag = _prefs.getString(_etagKey);
     final headers = <String, String>{};
-    if (etag != null) headers['If-None-Match'] = etag;
-    final path = '/api/libraries/$libId/items?limit=50&sort=updatedAt:desc$tokenQS';
+    if (etag != null) {
+      headers['If-None-Match'] = etag;
+      _log('[REFRESH_FROM_SERVER] Using ETag: $etag');
+    } else {
+      _log('[REFRESH_FROM_SERVER] No ETag found');
+    }
+    final path = '/api/libraries/$libId/items?limit=50&sort=addedAt&desc=1$tokenQS';
     final bool localEmpty = await _isDbEmpty();
+    _log('[REFRESH_FROM_SERVER] Requesting: $path (localEmpty=$localEmpty)');
     http.Response resp = await api.request('GET', path, headers: headers);
+    _log('[REFRESH_FROM_SERVER] Response status: ${resp.statusCode}');
 
     if (resp.statusCode == 304) {
+      _log('[REFRESH_FROM_SERVER] 304 Not Modified, forcing refetch without ETag...');
       // Force a network fetch without ETag to get fresh data
       resp = await api.request('GET', path, headers: {});
+      _log('[REFRESH_FROM_SERVER] Forced refetch status: ${resp.statusCode}');
     }
 
     if (resp.statusCode == 200) {
@@ -1035,20 +1133,33 @@ class BooksRepository {
       if (newEtag != null) await _prefs.setString(_etagKey, newEtag);
 
       final items = _extractItems(body);
+      _log('[REFRESH_FROM_SERVER] Extracted ${items.length} items from response');
       List<Book> books = await _toBooks(items);
+      _log('[REFRESH_FROM_SERVER] Converted to ${books.length} books');
       // Keep only audiobooks
       books = books.where((b) => b.isAudioBook).toList();
+      _log('[REFRESH_FROM_SERVER] After filtering audiobooks: ${books.length} books');
+      if (books.isNotEmpty) {
+        _log('[REFRESH_FROM_SERVER] First book: "${books.first.title}" (id: ${books.first.id}, updatedAt: ${books.first.updatedAt?.toIso8601String() ?? "null"})');
+      }
       // Write DB immediately so UI can render without delay
+      _log('[REFRESH_FROM_SERVER] Upserting ${books.length} books to DB...');
       await _upsertBooks(books);
+      _log('[REFRESH_FROM_SERVER] Upsert complete, loading from DB...');
       // Do not prefetch covers here; allow UI to load covers on-demand
-      return await _listBooksFromDb();
+      final dbBooks = await _listBooksFromDb();
+      _log('[REFRESH_FROM_SERVER] Loaded ${dbBooks.length} books from DB');
+      return dbBooks;
     }
     // On error, return local DB
-    return await _listBooksFromDb();
+    _log('[REFRESH_FROM_SERVER] Error or non-200 status, returning local DB');
+    final localBooks = await _listBooksFromDb();
+    _log('[REFRESH_FROM_SERVER] Returning ${localBooks.length} books from local DB');
+    return localBooks;
   }
 
   /// Fetch one page of books from server, persist to DB, and return the page
-  Future<List<Book>> fetchBooksPage({required int page, int limit = 50, String sort = 'updatedAt:desc', String? query}) async {
+  Future<List<Book>> fetchBooksPage({required int page, int limit = 50, String sort = 'updatedAt:desc', String? query, bool forceRefresh = false}) async {
     return await NetworkService.withRetry(() async {
       final api = _auth.api;
       final token = await api.accessToken();
@@ -1059,10 +1170,11 @@ class BooksRepository {
           : null;
 
       Future<List<Book>> requestAndParse(String path, {Map<String, String>? extraHeaders}) async {
-        _log('[BOOKS] fetchBooksPage: GET $path');
+        _log('[BOOKS] fetchBooksPage: GET $path (forceRefresh=$forceRefresh)');
         final headers = extraHeaders ?? const <String, String>{};
         http.Response resp = await api.request('GET', path, headers: headers);
-        if (resp.statusCode == 304) {
+        if (resp.statusCode == 304 && !forceRefresh) {
+          // Only use cached data if not forcing refresh
           final cachedPage = await listBooksFromDbPaged(
             page: page,
             limit: limit,
@@ -1074,6 +1186,10 @@ class BooksRepository {
             return cachedPage;
           }
           _log('[BOOKS] fetchBooksPage: ETag miss but DB empty, forcing refetch');
+          resp = await api.request('GET', path, headers: {});
+        } else if (resp.statusCode == 304 && forceRefresh) {
+          // Force refresh: ignore 304 and fetch fresh data
+          _log('[BOOKS] fetchBooksPage: 304 but forceRefresh=true, forcing fresh fetch');
           resp = await api.request('GET', path, headers: {});
         }
         if (resp.statusCode != 200) {
@@ -1096,14 +1212,26 @@ class BooksRepository {
       }
 
     // 1) Try page-based (API uses 1-based page indexing)
-    final basePage = '/api/libraries/$libId/items?limit=$limit&page=$page&sort=$sort';
+    // Format sort parameter correctly for API
+    String sortParam;
+    if (sort.contains('&desc=')) {
+      // Already in format: addedAt&desc=1
+      sortParam = sort;
+    } else if (sort == 'updatedAt:desc') {
+      // Convert to addedAt format for new book detection
+      sortParam = 'addedAt&desc=1';
+    } else {
+      sortParam = sort;
+    }
+    final basePage = '/api/libraries/$libId/items?limit=$limit&page=$page&sort=$sortParam';
     final pathPage = (encodedQ != null)
         ? '$basePage&q=$encodedQ$tokenQS'
         : '$basePage$tokenQS';
     final etagKey = _etagPrefsKey(sort, query);
     final cachedEtag = _prefs.getString(etagKey);
     final headers = <String, String>{};
-    if (cachedEtag != null && page == 1) {
+    // Only use ETag if not forcing refresh
+    if (cachedEtag != null && page == 1 && !forceRefresh) {
       headers['If-None-Match'] = cachedEtag;
     }
     List<Book> books = await requestAndParse(pathPage, extraHeaders: headers).catchError((e) async {
@@ -1119,7 +1247,7 @@ class BooksRepository {
     if (page > 1 && await _allIdsExistInDb(books.map((b) => b.id))) {
       // Page ignored, trying offset
       final offset = (page - 1) * limit;
-      final baseOffset = '/api/libraries/$libId/items?limit=$limit&offset=$offset&sort=$sort';
+      final baseOffset = '/api/libraries/$libId/items?limit=$limit&offset=$offset&sort=$sortParam';
       final pathOffset = (encodedQ != null)
           ? '$baseOffset&q=$encodedQ$tokenQS'
           : '$baseOffset$tokenQS';
@@ -1131,7 +1259,7 @@ class BooksRepository {
       } catch (_) {
         // Try skip as last resort
         // Offset failed, trying skip
-        final baseSkip = '/api/libraries/$libId/items?limit=$limit&skip=$offset&sort=$sort';
+        final baseSkip = '/api/libraries/$libId/items?limit=$limit&skip=$offset&sort=$sortParam';
         final pathSkip = (encodedQ != null)
             ? '$baseSkip&q=$encodedQ$tokenQS'
             : '$baseSkip$tokenQS';
@@ -1431,6 +1559,9 @@ class BooksRepository {
       updatedAt: (m['updatedAt'] as int?) != null
           ? DateTime.fromMillisecondsSinceEpoch((m['updatedAt'] as int), isUtc: true)
           : null,
+      addedAt: (m['addedAt'] as int?) != null
+          ? DateTime.fromMillisecondsSinceEpoch((m['addedAt'] as int), isUtc: true)
+          : null,
       series: m['series'] as String?,
       seriesSequence: (m['seriesSequence'] is num)
           ? (m['seriesSequence'] as num).toDouble()
@@ -1633,6 +1764,26 @@ class BooksRepository {
     return total;
   }
 
+  /// Resync all book metadata from server (fetches all books sorted by addedAt to populate addedAt field)
+  /// This will update all books with fresh metadata including the addedAt field
+  Future<int> resyncBookMetadata({
+    void Function(int page, int totalSynced)? onProgress,
+  }) async {
+    _log('[RESYNC_METADATA] Starting full metadata resync...');
+    // Use addedAt sorting to get all books and populate the addedAt field
+    final total = await syncAllBooksToDb(
+      pageSize: 100,
+      sort: 'addedAt&desc=1',
+      query: null,
+      onProgress: onProgress,
+      removeDeleted: false, // Don't delete books during metadata resync
+    );
+    _log('[RESYNC_METADATA] Completed: synced $total books');
+    // Clear cache to ensure fresh data is shown
+    _clearAllCache();
+    return total;
+  }
+
   /// Remove books that exist locally but not on the server
   Future<void> _removeDeletedBooks(List<Book> serverBooks) async {
     final db = _db;
@@ -1789,8 +1940,16 @@ class BooksRepository {
       return books;
     }
 
-    // Try offset
-    final baseOffset = '/api/libraries/$libId/items?limit=$limit&offset=$offset&sort=$sort';
+    // Try offset - convert sort parameter format for API
+    String sortParam;
+    if (sort.contains('&desc=')) {
+      sortParam = sort;
+    } else if (sort == 'updatedAt:desc') {
+      sortParam = 'addedAt&desc=1';
+    } else {
+      sortParam = sort;
+    }
+    final baseOffset = '/api/libraries/$libId/items?limit=$limit&offset=$offset&sort=$sortParam';
     final pathOffset = (encodedQ != null)
         ? '$baseOffset&q=$encodedQ$tokenQS'
         : '$baseOffset$tokenQS';
@@ -1804,7 +1963,7 @@ class BooksRepository {
     } catch (_) {}
 
     // Try skip
-    final baseSkip = '/api/libraries/$libId/items?limit=$limit&skip=$offset&sort=$sort';
+    final baseSkip = '/api/libraries/$libId/items?limit=$limit&skip=$offset&sort=$sortParam';
     final pathSkip = (encodedQ != null)
         ? '$baseSkip&q=$encodedQ$tokenQS'
         : '$baseSkip$tokenQS';
