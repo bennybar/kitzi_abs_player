@@ -47,6 +47,11 @@ class BooksRepository {
   String _lastSyncPrefsKey(String sort, String? query) =>
       'books_last_sync_${_normalizedQueryKey(sort, query)}';
 
+  String _lastUpdateCheckPrefsKey() {
+    final libId = _prefs.getString(_libIdKey) ?? 'default';
+    return 'books_last_update_check_$libId';
+  }
+
   Stream<BookDbChange> get dbChanges => _dbChangeCtrl.stream;
   static const Duration _cacheTTL = Duration(minutes: 5);
   
@@ -876,6 +881,103 @@ class BooksRepository {
       lastSyncKey,
       DateTime.now().toUtc().millisecondsSinceEpoch,
     );
+  }
+
+  /// Incremental sync for book updates (changed titles, album art, etc.)
+  /// Fetches books sorted by updatedAt in batches of 10, only books updated after lastUpdateCheck
+  Future<void> incrementalUpdateSync() async {
+    final lastUpdateCheckKey = _lastUpdateCheckPrefsKey();
+    int? lastUpdateCheckMs = _prefs.getInt(lastUpdateCheckKey);
+    
+    DateTime lastUpdateCheck;
+    if (lastUpdateCheckMs != null) {
+      lastUpdateCheck = DateTime.fromMillisecondsSinceEpoch(lastUpdateCheckMs, isUtc: true);
+    } else {
+      // Initial value: 5 days ago
+      lastUpdateCheck = DateTime.now().toUtc().subtract(const Duration(days: 5));
+      _log('[INCREMENTAL_UPDATE_SYNC] No previous check, using initial value: ${lastUpdateCheck.toIso8601String()}');
+    }
+    
+    final startTime = DateTime.now().toUtc();
+    _log('[INCREMENTAL_UPDATE_SYNC] Starting (lastUpdateCheck: ${lastUpdateCheck.toIso8601String()})');
+    
+    int page = 1;
+    int pagesFetched = 0;
+    int totalBooksFetched = 0;
+    const pageSize = 10;
+    const sort = 'updatedAt&desc=1';
+    
+    while (true) {
+      _log('[INCREMENTAL_UPDATE_SYNC] Fetching page $page (batch size: $pageSize)...');
+      
+      try {
+        final books = await fetchBooksPage(
+          page: page,
+          limit: pageSize,
+          sort: sort,
+          query: null,
+          forceRefresh: false,
+        );
+        
+        _log('[INCREMENTAL_UPDATE_SYNC] Page $page returned ${books.length} books');
+        
+        if (books.isEmpty) {
+          _log('[INCREMENTAL_UPDATE_SYNC] Empty page, stopping');
+          break;
+        }
+        
+        // Check if any books on this page are newer than lastUpdateCheck
+        final hasUpdates = books.any((b) => 
+          b.updatedAt != null && b.updatedAt!.isAfter(lastUpdateCheck)
+        );
+        
+        if (!hasUpdates) {
+          // All books on this page are older than lastUpdateCheck, we can stop
+          _log('[INCREMENTAL_UPDATE_SYNC] All books on page $page are older than lastUpdateCheck, stopping');
+          break;
+        }
+        
+        // Filter to only books newer than lastUpdateCheck and upsert them
+        final booksToUpdate = books.where((b) => 
+          b.updatedAt != null && b.updatedAt!.isAfter(lastUpdateCheck)
+        ).toList();
+        
+        if (booksToUpdate.isNotEmpty) {
+          await _upsertBooks(booksToUpdate);
+          totalBooksFetched += booksToUpdate.length;
+          _log('[INCREMENTAL_UPDATE_SYNC] Updated ${booksToUpdate.length} books from page $page');
+        }
+        
+        pagesFetched++;
+        
+        // Check if we should continue (if the newest book on page is still newer than lastUpdateCheck)
+        final newestBookOnPage = books.first;
+        if (newestBookOnPage.updatedAt == null || !newestBookOnPage.updatedAt!.isAfter(lastUpdateCheck)) {
+          _log('[INCREMENTAL_UPDATE_SYNC] Newest book on page (${newestBookOnPage.updatedAt?.toIso8601String() ?? "null"}) is not newer than lastUpdateCheck, stopping');
+          break;
+        }
+        
+        // If we got fewer books than pageSize, we've reached the end
+        if (books.length < pageSize) {
+          _log('[INCREMENTAL_UPDATE_SYNC] Page has fewer than $pageSize books, stopping');
+          break;
+        }
+        
+        page++;
+      } catch (e) {
+        _log('[INCREMENTAL_UPDATE_SYNC] Error fetching page $page: $e');
+        break;
+      }
+    }
+    
+    // Save new lastUpdateCheck as startTime minus 12 hours (to handle timezones)
+    final newLastUpdateCheck = startTime.subtract(const Duration(hours: 12));
+    await _prefs.setInt(
+      lastUpdateCheckKey,
+      newLastUpdateCheck.millisecondsSinceEpoch,
+    );
+    
+    _log('[INCREMENTAL_UPDATE_SYNC] Completed: fetched $pagesFetched pages, $totalBooksFetched total books updated. New lastUpdateCheck: ${newLastUpdateCheck.toIso8601String()}');
   }
 
   /// Get a single book from local database (offline fallback). Returns null if not found.

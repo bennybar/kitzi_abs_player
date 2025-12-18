@@ -430,6 +430,11 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       await _startBackgroundSync(awaitCompletion: true, forceCheck: true);
       debugPrint('[REFRESH] Incremental sync completed');
 
+      // Check for book updates (changed titles, album art, etc.)
+      debugPrint('[REFRESH] Starting incremental update sync...');
+      await repo.incrementalUpdateSync();
+      debugPrint('[REFRESH] Incremental update sync completed');
+
       // Reload from DB/cache to reflect any new books
       debugPrint('[REFRESH] Clearing cache and reloading from DB...');
       // Force clear the query cache to get fresh data
