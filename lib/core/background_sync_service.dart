@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'books_repository.dart';
 import 'auth_repository.dart';
 
@@ -9,7 +10,7 @@ class BackgroundSyncService {
   static Timer? _syncTimer;
   static bool _isSyncing = false;
   static bool _isAppInForeground = true;
-  static const Duration _syncInterval = Duration(minutes: 15);
+  static const Duration _syncInterval = Duration(hours: 3);
   static const String _lastSyncKey = 'last_background_sync';
   static const String _lastFullSyncKey = 'last_full_background_sync';
   
@@ -101,13 +102,13 @@ class BackgroundSyncService {
         return false;
       }
       
-      // Check if enough time has passed since last sync
+      // Check if enough time has passed since last sync (minimum 3 hours)
       final prefs = await SharedPreferences.getInstance();
       final lastSyncMs = prefs.getInt(_lastSyncKey);
       if (lastSyncMs != null) {
         final lastSync = DateTime.fromMillisecondsSinceEpoch(lastSyncMs);
         final timeSinceLastSync = DateTime.now().difference(lastSync);
-        if (timeSinceLastSync < const Duration(minutes: 10)) {
+        if (timeSinceLastSync < const Duration(hours: 3)) {
           // Too soon since last sync, skipping
           return false;
         }
@@ -164,8 +165,13 @@ class BackgroundSyncService {
   /// Check network connectivity
   static Future<bool> _checkConnectivity() async {
     try {
-      // Simple connectivity check - in production, use connectivity_plus
-      return true; // Assume connected for now
+      final connectivity = Connectivity();
+      final result = await connectivity.checkConnectivity();
+      // Check if we have any active connection
+      return result.contains(ConnectivityResult.mobile) ||
+          result.contains(ConnectivityResult.wifi) ||
+          result.contains(ConnectivityResult.ethernet) ||
+          result.contains(ConnectivityResult.vpn);
     } catch (e) {
       return false;
     }
