@@ -34,6 +34,20 @@ subprojects {
         maven { url = uri("https://storage.googleapis.com/download.flutter.io") }
     }
 
+    // Fix for androidx.test:monitor dependency issue in background_downloader
+    // Version 1.6.2 doesn't exist, use 1.6.1 instead
+    configurations.all {
+        resolutionStrategy {
+            eachDependency {
+                if (requested.group == "androidx.test" && requested.name == "monitor") {
+                    if (requested.version == "1.6.2") {
+                        useVersion("1.6.1")
+                    }
+                }
+            }
+        }
+    }
+
     // Ensure Java 11 toolchain for all Android modules to silence source/target 8 warnings
     plugins.withId("com.android.library") {
         extensions.configure<com.android.build.gradle.LibraryExtension>("android") {
