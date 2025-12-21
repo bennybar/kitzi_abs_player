@@ -163,11 +163,24 @@ class _AbsAppState extends State<AbsApp> with WidgetsBindingObserver {
       // Only proceed to app when a valid session exists
       final hasBase = auth.api.baseUrl != null && auth.api.baseUrl!.isNotEmpty;
       if (!hasBase) return false;
+      
+      // Fast-path: if the access token is still fresh, don't block startup on network.
+      if (auth.api.hasFreshAccessToken(leewaySeconds: 60)) {
+        return true;
+      }
       try {
-        final ok = await auth.hasValidSession().timeout(const Duration(seconds: 2));
+        // Give refresh a bit more time; 2s can cause false "logged out" on slow networks.
+        final ok = await auth.hasValidSession().timeout(const Duration(seconds: 8));
         return ok;
       } catch (_) {
-        return false;
+        // If refresh timed out or errored, avoid forcing a re-login when we still have
+        // credentials on-device. ApiClient.request() can refresh on-demand later.
+        try {
+          final token = await auth.api.accessToken();
+          return token != null && token.isNotEmpty;
+        } catch (_) {
+          return false;
+        }
       }
     });
     
