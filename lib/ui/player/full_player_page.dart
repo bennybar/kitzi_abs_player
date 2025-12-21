@@ -1283,6 +1283,64 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                   ),
                 ),
               ),
+              const SizedBox(width: 8),
+              ValueListenableBuilder<ProgressSyncStatus>(
+                valueListenable: playback.progressSyncStatus,
+                builder: (_, status, __) {
+                  final now = DateTime.now();
+                  final lastOk = status.lastSuccessAt;
+                  final recentlySynced =
+                      lastOk != null && now.difference(lastOk) < const Duration(minutes: 2);
+                  final isPending = status.pending;
+
+                  IconData icon;
+                  Color color;
+                  String label;
+                  String tooltip;
+
+                  if (isPending) {
+                    icon = Icons.cloud_upload_rounded;
+                    color = cs.tertiary;
+                    label = 'Pending';
+                    tooltip = status.lastError != null && status.lastError!.isNotEmpty
+                        ? 'Progress pending sync (${status.lastError})'
+                        : 'Progress pending sync';
+                  } else if (recentlySynced) {
+                    icon = Icons.cloud_done_rounded;
+                    color = Colors.green;
+                    label = 'Synced';
+                    tooltip = 'Progress synced recently';
+                  } else if (status.hasEverSynced) {
+                    icon = Icons.cloud_done_rounded;
+                    color = cs.onSurfaceVariant;
+                    label = 'Synced';
+                    tooltip = 'Progress synced';
+                  } else {
+                    icon = Icons.cloud_off_rounded;
+                    color = cs.onSurfaceVariant;
+                    label = '—';
+                    tooltip = 'Progress not synced yet';
+                  }
+
+                  return Tooltip(
+                    message: tooltip,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(icon, size: 18, color: color),
+                        const SizedBox(width: 4),
+                        Text(
+                          label,
+                          style: text.labelMedium?.copyWith(
+                            color: color,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
             ],
           ),
         );

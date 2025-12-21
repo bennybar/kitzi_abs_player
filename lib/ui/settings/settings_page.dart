@@ -22,6 +22,7 @@ import '../../core/downloads_repository.dart';
 import '../../core/streaming_cache_service.dart';
 import '../../core/session_logger_service.dart';
 import '../profile/profile_page.dart';
+import 'storage_page.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -35,6 +36,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool? _syncProgressBeforePlay;
   bool? _pauseCancelsSleepTimer;
   bool? _dualProgressEnabled;
+  bool? _detailedPlayHistoryEnabled;
   bool? _showSeriesTab;
   bool? _authorViewEnabled;
   bool? _bluetoothAutoPlay;
@@ -322,6 +324,7 @@ class _SettingsPageState extends State<SettingsPage> {
         _syncProgressBeforePlay = prefs.getBool('sync_progress_before_play') ?? true;
         _pauseCancelsSleepTimer = prefs.getBool('pause_cancels_sleep_timer') ?? true;
         _dualProgressEnabled = prefs.getBool('ui_dual_progress_enabled') ?? true;
+        _detailedPlayHistoryEnabled = prefs.getBool('detailed_play_history_enabled') ?? false;
         _showSeriesTab = prefs.getBool('ui_show_series_tab') ?? false;
         _authorViewEnabled = prefs.getBool('ui_author_view_enabled') ?? true;
         _bluetoothAutoPlay = prefs.getBool('bluetooth_auto_play') ?? true;
@@ -1319,6 +1322,17 @@ class _SettingsPageState extends State<SettingsPage> {
                         : const Text('Clear'),
                   ),
           ),
+          ListTile(
+            leading: const Icon(Icons.storage_rounded),
+            title: const Text('Storage'),
+            subtitle: const Text('See download + streaming cache usage, and clean per book'),
+            trailing: const Icon(Icons.arrow_forward_ios_rounded),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const StoragePage()),
+              );
+            },
+          ),
           // FutureBuilder<String>(
           //   future: DownloadStorage.getBaseSubfolder(),
           //   builder: (context, snap) {
@@ -1412,6 +1426,19 @@ class _SettingsPageState extends State<SettingsPage> {
               await _setDualProgressEnabled(v);
               if (!mounted) return;
               setState(() { _dualProgressEnabled = v; });
+            },
+          ),
+          SwitchListTile(
+            title: const Text('Detailed listening history (local)'),
+            subtitle: const Text('Record play sessions for stats (top books/authors/narrators)'),
+            value: _detailedPlayHistoryEnabled ?? false,
+            onChanged: (v) async {
+              try {
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.setBool('detailed_play_history_enabled', v);
+              } catch (_) {}
+              if (!mounted) return;
+              setState(() { _detailedPlayHistoryEnabled = v; });
             },
           ),
           ListTile(

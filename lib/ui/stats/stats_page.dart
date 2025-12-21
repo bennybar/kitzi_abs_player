@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import '../../main.dart'; // ServicesScope
+import '../../core/detailed_play_history_service.dart';
 
 class StatsPage extends StatefulWidget {
   const StatsPage({super.key});
@@ -16,6 +17,13 @@ class _StatsPageState extends State<StatsPage> {
   List<Map<String, dynamic>> _finishedItems = [];
   int _totalMinutesListening = 0;
   int _totalDaysListened = 0;
+  int _currentStreakDays = 0;
+  List<_DayBar> _last7Days = const [];
+
+  List<_TopEntry> _topBooks = const [];
+  List<_TopEntry> _topAuthors = const [];
+  List<_TopEntry> _topNarrators = const [];
+  bool _detailedHistoryEnabled = false;
 
   @override
   void initState() {
@@ -61,7 +69,18 @@ class _StatsPageState extends State<StatsPage> {
         
         // Extract stats from listening-stats response
         _totalMinutesListening = ((data['totalTime'] as num?) ?? 0).toInt() ~/ 60;
-        _totalDaysListened = (data['days'] as Map<String, dynamic>?)?.length ?? 0;
+        final daysMap = (data['days'] as Map<String, dynamic>?) ?? const <String, dynamic>{};
+        _totalDaysListened = daysMap.length;
+        _currentStreakDays = _computeCurrentStreakDays(daysMap);
+        _last7Days = _computeLast7Days(daysMap);
+
+        // Local-only “top” stats from detailed play sessions (if enabled).
+        _detailedHistoryEnabled = await DetailedPlayHistoryService.isEnabled();
+        final localSessions = await DetailedPlayHistoryService.getSessions();
+        final tops = _computeTopLists(localSessions);
+        _topBooks = tops.topBooks;
+        _topAuthors = tops.topAuthors;
+        _topNarrators = tops.topNarrators;
         
         setState(() {
           _listeningStats = data;
@@ -163,6 +182,40 @@ class _StatsPageState extends State<StatsPage> {
                           ),
                         ],
                       ),
+
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildStatCard(
+                              value: _currentStreakDays.toString(),
+                              label: 'Current Streak',
+                              icon: Icons.local_fire_department_outlined,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Card(
+                              child: Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Last 7 days',
+                                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    _WeeklyBars(days: _last7Days),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                       
                       const SizedBox(height: 24),
                       
@@ -170,6 +223,10 @@ class _StatsPageState extends State<StatsPage> {
                       if (_listeningStats != null && _listeningStats!['recentSessions'] != null)
                         _buildRecentSessions(),
                       
+                      const SizedBox(height: 24),
+
+                      _buildTopLists(),
+
                       const SizedBox(height: 24),
                       
                       // Additional stats if available
@@ -370,5 +427,339 @@ class _StatsPageState extends State<StatsPage> {
       return 'Just now';
     }
   }
+
+  // --------------------------
+  // Streak + weekly bars helpers
+  // --------------------------
+
+  int _computeCurrentStreakDays(Map<String, dynamic> days) {
+    if (days.isEmpty) return 0;
+    final daySeconds = _normalizeDaySeconds(days);
+    DateTime today = DateTime.now();
+    today = DateTime(today.year, today.month, today.day);
+    int streak = 0;
+    for (int i = 0; i < 3650; i++) {
+      final d = today.subtract(Duration(days: i));
+      final key = _dayKey(d);
+      final sec = daySeconds[key] ?? 0;
+      if (sec > 0) {
+        streak += 1;
+      } else {
+        break;
+      }
+    }
+    return streak;
+  }
+
+  List<_DayBar> _computeLast7Days(Map<String, dynamic> days) {
+    final daySeconds = _normalizeDaySeconds(days);
+    DateTime today = DateTime.now();
+    today = DateTime(today.year, today.month, today.day);
+    final bars = <_DayBar>[];
+    for (int i = 6; i >= 0; i--) {
+      final d = today.subtract(Duration(days: i));
+      final key = _dayKey(d);
+      final sec = (daySeconds[key] ?? 0).clamp(0, 1 << 62);
+      bars.add(_DayBar(date: d, seconds: sec));
+    }
+    return bars;
+  }
+
+  String _dayKey(DateTime d) {
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${d.year}-${two(d.month)}-${two(d.day)}';
+  }
+
+  Map<String, int> _normalizeDaySeconds(Map<String, dynamic> days) {
+    final out = <String, int>{};
+    days.forEach((k, v) {
+      final key = k.toString();
+      final seconds = _extractSeconds(v);
+      out[key] = seconds;
+    });
+    return out;
+  }
+
+  int _extractSeconds(dynamic value) {
+    if (value == null) return 0;
+    if (value is num) return value.toInt();
+    if (value is String) {
+      final n = int.tryParse(value);
+      if (n != null) return n;
+    }
+    if (value is Map) {
+      final m = value.cast<String, dynamic>();
+      final candidates = [
+        m['timeListening'],
+        m['totalTime'],
+        m['seconds'],
+        m['time'],
+        m['duration'],
+      ];
+      for (final c in candidates) {
+        if (c is num) return c.toInt();
+        if (c is String) {
+          final n = int.tryParse(c);
+          if (n != null) return n;
+        }
+      }
+    }
+    return 0;
+  }
+
+  // --------------------------
+  // Top lists (local)
+  // --------------------------
+
+  ({List<_TopEntry> topBooks, List<_TopEntry> topAuthors, List<_TopEntry> topNarrators})
+      _computeTopLists(List<PlaySession> sessions) {
+    final byBook = <String, _Agg>{};
+    final byAuthor = <String, _Agg>{};
+    final byNarrator = <String, _Agg>{};
+
+    for (final s in sessions) {
+      final sec = s.playDurationSeconds;
+      if (sec <= 0) continue;
+
+      byBook.putIfAbsent(
+        s.bookId,
+        () => _Agg(
+          key: s.bookId,
+          title: s.bookTitle,
+          subtitle: s.author,
+          coverUrl: s.coverUrl,
+        ),
+      ).seconds += sec;
+
+      final author = (s.author ?? '').trim();
+      if (author.isNotEmpty) {
+        byAuthor.putIfAbsent(author, () => _Agg(key: author, title: author)).seconds += sec;
+      }
+      final narrator = (s.narrator ?? '').trim();
+      if (narrator.isNotEmpty) {
+        byNarrator.putIfAbsent(narrator, () => _Agg(key: narrator, title: narrator)).seconds += sec;
+      }
+    }
+
+    List<_TopEntry> topFrom(Map<String, _Agg> m, {int limit = 5}) {
+      final list = m.values.toList()
+        ..sort((a, b) => b.seconds.compareTo(a.seconds));
+      return list.take(limit).map((a) {
+        return _TopEntry(
+          title: a.title,
+          subtitle: a.subtitle,
+          coverUrl: a.coverUrl,
+          seconds: a.seconds,
+        );
+      }).toList(growable: false);
+    }
+
+    return (
+      topBooks: topFrom(byBook),
+      topAuthors: topFrom(byAuthor),
+      topNarrators: topFrom(byNarrator),
+    );
+  }
+
+  Widget _buildTopLists() {
+    final text = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+
+    if (!_detailedHistoryEnabled) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Icon(Icons.insights_rounded, color: cs.primary),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Enable “Detailed listening history (local)” in Settings to see top books/authors/narrators.',
+                  style: text.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    Widget section(String title, List<_TopEntry> items, {bool showCovers = false}) {
+      if (items.isEmpty) return const SizedBox.shrink();
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: text.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 10),
+              ...items.map((e) {
+                final time = _formatElapsed(e.seconds.round());
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Row(
+                    children: [
+                      if (showCovers)
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: Container(
+                            width: 36,
+                            height: 36,
+                            color: cs.surfaceContainerHighest,
+                            child: (e.coverUrl == null || e.coverUrl!.isEmpty)
+                                ? Icon(Icons.menu_book_outlined, color: cs.onSurfaceVariant, size: 18)
+                                : Image.network(
+                                    e.coverUrl!,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) =>
+                                        Icon(Icons.menu_book_outlined, color: cs.onSurfaceVariant, size: 18),
+                                  ),
+                          ),
+                        ),
+                      if (showCovers) const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              e.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: text.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                            ),
+                            if ((e.subtitle ?? '').trim().isNotEmpty)
+                              Text(
+                                e.subtitle!,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                              ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        time,
+                        style: text.bodySmall?.copyWith(fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Top (local)', style: text.titleMedium),
+        const SizedBox(height: 8),
+        if (_topBooks.isEmpty && _topAuthors.isEmpty && _topNarrators.isEmpty)
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                'No listening sessions recorded yet.',
+                style: text.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+              ),
+            ),
+          )
+        else ...[
+          section('Books', _topBooks, showCovers: true),
+          if (_topAuthors.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            section('Authors', _topAuthors),
+          ],
+          if (_topNarrators.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            section('Narrators', _topNarrators),
+          ],
+        ],
+      ],
+    );
+  }
+}
+
+class _DayBar {
+  final DateTime date;
+  final int seconds;
+  const _DayBar({required this.date, required this.seconds});
+}
+
+class _WeeklyBars extends StatelessWidget {
+  const _WeeklyBars({required this.days});
+  final List<_DayBar> days;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final maxSec = days.isEmpty ? 1 : days.map((d) => d.seconds).reduce((a, b) => a > b ? a : b);
+    final denom = maxSec <= 0 ? 1 : maxSec;
+    String weekdayLabel(DateTime d) {
+      const labels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+      // Dart: Monday=1..Sunday=7
+      return labels[(d.weekday - 1).clamp(0, 6)];
+    }
+
+    return Row(
+      children: days.map((d) {
+        final frac = (d.seconds / denom).clamp(0.0, 1.0);
+        return Expanded(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 2),
+            child: Column(
+              children: [
+                SizedBox(
+                  height: 46,
+                  child: Align(
+                    alignment: Alignment.bottomCenter,
+                    child: Container(
+                      height: (8 + 38 * frac).clamp(8.0, 46.0),
+                      decoration: BoxDecoration(
+                        color: d.seconds > 0 ? cs.primary : cs.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  weekdayLabel(d.date),
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(color: cs.onSurfaceVariant),
+                ),
+              ],
+            ),
+          ),
+        );
+      }).toList(growable: false),
+    );
+  }
+}
+
+class _TopEntry {
+  final String title;
+  final String? subtitle;
+  final String? coverUrl;
+  final double seconds;
+  const _TopEntry({required this.title, this.subtitle, this.coverUrl, required this.seconds});
+}
+
+class _Agg {
+  final String key;
+  final String title;
+  final String? subtitle;
+  final String? coverUrl;
+  double seconds = 0;
+  _Agg({
+    required this.key,
+    required this.title,
+    this.subtitle,
+    this.coverUrl,
+  });
 }
 

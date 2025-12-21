@@ -116,6 +116,47 @@ class StreamingCacheService {
     return total;
   }
 
+  /// Returns bytes currently used by cached streamed audio for a specific item.
+  Future<int> usageBytesForItem(String libraryItemId) async {
+    await init();
+    final dir = _cacheDir ??= await _ensureDir();
+    final safe = _sanitizeId(libraryItemId);
+    int total = 0;
+    final entries = await dir.list(followLinks: false).toList();
+    for (final entity in entries) {
+      if (entity is! File) continue;
+      final name = p.basename(entity.path);
+      if (!name.startsWith('$safe-')) continue;
+      try {
+        total += await entity.length();
+      } catch (_) {}
+    }
+    return total;
+  }
+
+  /// Best-effort: list cached item ids currently present in the streaming cache.
+  ///
+  /// Note: ids are inferred from file names in the cache directory. This assumes
+  /// item ids are safe to appear in file names (typical for Audiobookshelf ids).
+  Future<Set<String>> listCachedItemIds() async {
+    await init();
+    final dir = _cacheDir ??= await _ensureDir();
+    final entries = await dir.list(followLinks: false).toList();
+    final ids = <String>{};
+    final re = RegExp(r'^(.*)-(\d+)-([0-9a-f]{40})\.cache$');
+    for (final entity in entries) {
+      if (entity is! File) continue;
+      final name = p.basename(entity.path);
+      final m = re.firstMatch(name);
+      if (m == null) continue;
+      final id = m.group(1);
+      if (id != null && id.isNotEmpty) {
+        ids.add(id);
+      }
+    }
+    return ids;
+  }
+
   Future<Directory> _ensureDir() async {
     final base = await getTemporaryDirectory();
     final dir = Directory(p.join(base.path, 'stream_cache'));

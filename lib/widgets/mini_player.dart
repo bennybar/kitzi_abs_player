@@ -184,6 +184,24 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                               fontWeight: FontWeight.w500,
                                             ),
                                           ),
+                                          const SizedBox(width: 6),
+                                          ValueListenableBuilder<ProgressSyncStatus>(
+                                            valueListenable: playback.progressSyncStatus,
+                                            builder: (_, status, __) {
+                                              final pending = status.pending;
+                                              final icon = pending
+                                                  ? Icons.cloud_upload_rounded
+                                                  : (status.hasEverSynced ? Icons.cloud_done_rounded : Icons.cloud_off_rounded);
+                                              final color = pending ? cs.tertiary : cs.onSurfaceVariant;
+                                              final tooltip = pending
+                                                  ? 'Progress pending sync'
+                                                  : (status.hasEverSynced ? 'Progress synced' : 'Progress not synced yet');
+                                              return Tooltip(
+                                                message: tooltip,
+                                                child: Icon(icon, size: 14, color: color),
+                                              );
+                                            },
+                                          ),
                                         ],
                                       );
                                     }
@@ -202,6 +220,24 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                             color: cs.onSurfaceVariant,
                                             fontWeight: FontWeight.w500,
                                           ),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        ValueListenableBuilder<ProgressSyncStatus>(
+                                          valueListenable: playback.progressSyncStatus,
+                                          builder: (_, status, __) {
+                                            final pending = status.pending;
+                                            final icon = pending
+                                                ? Icons.cloud_upload_rounded
+                                                : (status.hasEverSynced ? Icons.cloud_done_rounded : Icons.cloud_off_rounded);
+                                            final color = pending ? cs.tertiary : cs.onSurfaceVariant;
+                                            final tooltip = pending
+                                                ? 'Progress pending sync'
+                                                : (status.hasEverSynced ? 'Progress synced' : 'Progress not synced yet');
+                                            return Tooltip(
+                                              message: tooltip,
+                                              child: Icon(icon, size: 14, color: color),
+                                            );
+                                          },
                                         ),
                                       ],
                                     );

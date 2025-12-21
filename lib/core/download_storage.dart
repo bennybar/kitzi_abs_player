@@ -187,4 +187,40 @@ class DownloadStorage {
       return const [];
     }
   }
+
+  /// Total bytes used by all downloaded audio files for the current library.
+  static Future<int> totalDownloadedBytes() async {
+    try {
+      final base = await baseDir();
+      if (!await base.exists()) return 0;
+      return await _directorySizeBytes(base);
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  /// Bytes used by downloaded audio files for a single item.
+  static Future<int> downloadedBytesForItem(String libraryItemId) async {
+    try {
+      final dir = await itemDir(libraryItemId);
+      if (!await dir.exists()) return 0;
+      return await _directorySizeBytes(dir);
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  static Future<int> _directorySizeBytes(Directory dir) async {
+    int total = 0;
+    try {
+      await for (final entity in dir.list(recursive: true, followLinks: false)) {
+        if (entity is File) {
+          try {
+            total += await entity.length();
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
+    return total;
+  }
 }

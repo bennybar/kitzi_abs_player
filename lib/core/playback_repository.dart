@@ -26,6 +26,7 @@ import '../models/book.dart';
 import 'books_repository.dart';
 import 'smart_rewind_service.dart';
 import 'streaming_cache_service.dart';
+import 'detailed_play_history_service.dart';
 
 enum ProgressResetChoice {
   useServer,
@@ -36,6 +37,41 @@ enum ProgressResetChoice {
 const _kProgressPing = Duration(seconds: 26);
 const _kLocalProgPrefix = 'abs_progress:';      // local fallback per item
 const _kLastItemKey = 'abs_last_item_id';       // last played item id
+
+/// UI-facing indicator for whether progress was synced recently, or is pending sync.
+class ProgressSyncStatus {
+  final DateTime? lastAttemptAt;
+  final DateTime? lastSuccessAt;
+  final bool pending;
+  final int consecutiveFailures;
+  final String? lastError;
+
+  const ProgressSyncStatus({
+    this.lastAttemptAt,
+    this.lastSuccessAt,
+    this.pending = false,
+    this.consecutiveFailures = 0,
+    this.lastError,
+  });
+
+  bool get hasEverSynced => lastSuccessAt != null;
+
+  ProgressSyncStatus copyWith({
+    DateTime? lastAttemptAt,
+    DateTime? lastSuccessAt,
+    bool? pending,
+    int? consecutiveFailures,
+    String? lastError,
+  }) {
+    return ProgressSyncStatus(
+      lastAttemptAt: lastAttemptAt ?? this.lastAttemptAt,
+      lastSuccessAt: lastSuccessAt ?? this.lastSuccessAt,
+      pending: pending ?? this.pending,
+      consecutiveFailures: consecutiveFailures ?? this.consecutiveFailures,
+      lastError: lastError,
+    );
+  }
+}
 
 class PlaybackTrack {
   final int index;
@@ -142,6 +178,10 @@ class PlaybackRepository {
   final AuthRepository _auth;
   final AudioPlayer player = AudioPlayer();
 
+  /// Emits current progress sync status for UI (player / mini-player).
+  final ValueNotifier<ProgressSyncStatus> progressSyncStatus =
+      ValueNotifier<ProgressSyncStatus>(const ProgressSyncStatus());
+
   final StreamController<NowPlaying?> _nowPlayingCtr =
   StreamController.broadcast();
   NowPlaying? _nowPlaying;
@@ -167,6 +207,96 @@ class PlaybackRepository {
   final Map<String, DateTime> _completionTimestamps = <String, DateTime>{};
   static const _progressCacheTtl = Duration(seconds: 20);
   static const _completionCacheTtl = Duration(seconds: 30);
+
+  // Detailed listening session tracking (local-only, optional).
+  DateTime? _listeningStartedAt;
+  double? _listeningStartPositionSeconds;
+  String? _listeningItemId;
+  String? _listeningTitle;
+  String? _listeningAuthor;
+  String? _listeningNarrator;
+  String? _listeningCoverUrl;
+
+  void _beginListeningSession({double? startPositionSeconds}) {
+    final np = _nowPlaying;
+    if (np == null) return;
+    _listeningStartedAt = DateTime.now();
+    _listeningStartPositionSeconds = startPositionSeconds ?? (_computeGlobalPositionSec() ?? 0.0);
+    _listeningItemId = np.libraryItemId;
+    _listeningTitle = np.title;
+    _listeningAuthor = np.author;
+    _listeningNarrator = np.narrator;
+    _listeningCoverUrl = np.coverUrl;
+  }
+
+  void _clearListeningSession() {
+    _listeningStartedAt = null;
+    _listeningStartPositionSeconds = null;
+    _listeningItemId = null;
+    _listeningTitle = null;
+    _listeningAuthor = null;
+    _listeningNarrator = null;
+    _listeningCoverUrl = null;
+  }
+
+  void _endListeningSession() {
+    final startedAt = _listeningStartedAt;
+    final itemId = _listeningItemId;
+    if (startedAt == null || itemId == null || itemId.isEmpty) {
+      _clearListeningSession();
+      return;
+    }
+    final elapsed = DateTime.now().difference(startedAt);
+    if (elapsed < const Duration(seconds: 5)) {
+      _clearListeningSession();
+      return;
+    }
+    final session = PlaySession(
+      bookId: itemId,
+      bookTitle: _listeningTitle ?? 'Audiobook',
+      author: _listeningAuthor,
+      narrator: _listeningNarrator,
+      coverUrl: _listeningCoverUrl,
+      startPositionSeconds: (_listeningStartPositionSeconds ?? 0.0).clamp(0.0, double.infinity),
+      playDurationSeconds: elapsed.inMilliseconds / 1000.0,
+      timestamp: DateTime.now(),
+    );
+    _clearListeningSession();
+    unawaited(DetailedPlayHistoryService.addSession(session));
+  }
+
+  void _markSyncAttempt() {
+    final now = DateTime.now();
+    final prev = progressSyncStatus.value;
+    progressSyncStatus.value = prev.copyWith(
+      lastAttemptAt: now,
+      consecutiveFailures: prev.consecutiveFailures,
+      lastError: prev.lastError,
+    );
+  }
+
+  void _markSyncSuccess() {
+    final now = DateTime.now();
+    progressSyncStatus.value = ProgressSyncStatus(
+      lastAttemptAt: now,
+      lastSuccessAt: now,
+      pending: false,
+      consecutiveFailures: 0,
+      lastError: null,
+    );
+  }
+
+  void _markSyncFailure(String message) {
+    final now = DateTime.now();
+    final prev = progressSyncStatus.value;
+    progressSyncStatus.value = ProgressSyncStatus(
+      lastAttemptAt: now,
+      lastSuccessAt: prev.lastSuccessAt,
+      pending: true,
+      consecutiveFailures: (prev.consecutiveFailures + 1).clamp(0, 999999),
+      lastError: message,
+    );
+  }
 
   late final WidgetsBindingObserver _lifecycleHook = _LifecycleHook(
     onPauseOrDetach: () async {
@@ -855,6 +985,7 @@ class PlaybackRepository {
           await _sendProgressImmediate();
         } else {
           // Completed last track; mark finished and close session to stop transcodes
+          _endListeningSession();
           await _sendProgressImmediate(finished: true);
           await _closeActiveSession();
           unawaited(StreamingCacheService.instance.evictForItem(cur.libraryItemId));
@@ -862,6 +993,8 @@ class PlaybackRepository {
       }
     });
 
+    // Begin local listening session tracking (optional, enabled in settings).
+    _beginListeningSession(startPositionSeconds: resumeSec ?? (_computeGlobalPositionSec() ?? 0.0));
     await player.play();
     
     // Apply saved playback speed
@@ -889,6 +1022,7 @@ class PlaybackRepository {
       }
     } catch (_) {}
     await player.pause();
+    _endListeningSession();
     await _sendProgressImmediate(paused: true);
     await _closeActiveSession();
     try { await SmartRewindService.instance.recordPauseNow(); } catch (_) {}
@@ -969,6 +1103,8 @@ class PlaybackRepository {
       }
     } catch (_) {}
 
+    // Begin local listening session tracking (optional, enabled in settings).
+    _beginListeningSession(startPositionSeconds: _computeGlobalPositionSec() ?? (_trackOnlyPosSec() ?? 0.0));
     await player.play();
     
     // Apply saved playback speed
@@ -1569,6 +1705,7 @@ class PlaybackRepository {
   Future<void> stop() async {
     // Also stop any active sleep timer
     try { SleepTimerService.instance.stopTimer(); } catch (_) {}
+    _endListeningSession();
     await player.stop();
     await _sendProgressImmediate(finished: true);
     _stopProgressSync();
@@ -1838,8 +1975,12 @@ class PlaybackRepository {
     _lastSentSec = cur;
 
     // Prefer syncing an active streaming session when available
+    _markSyncAttempt();
     final synced = await _syncSession(cur: cur, total: total, finished: finished, paused: paused);
-    if (synced) return;
+    if (synced) {
+      _markSyncSuccess();
+      return;
+    }
 
     // Fallback: legacy progress update endpoint
     final api = _auth.api;
@@ -1864,7 +2005,10 @@ class PlaybackRepository {
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode(bodyMap));
       _log("PATCH ${resp.statusCode} ${resp.body}");
-      if (resp.statusCode == 200 || resp.statusCode == 204) return;
+      if (resp.statusCode == 200 || resp.statusCode == 204) {
+        _markSyncSuccess();
+        return;
+      }
     } catch (e) {
       _log("PATCH error: $e");
     }
@@ -1875,7 +2019,10 @@ class PlaybackRepository {
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode(bodyMap));
       _log("PUT ${resp.statusCode} ${resp.body}");
-      if (resp.statusCode == 200 || resp.statusCode == 204) return;
+      if (resp.statusCode == 200 || resp.statusCode == 204) {
+        _markSyncSuccess();
+        return;
+      }
     } catch (e) {
       _log("PUT error: $e");
     }
@@ -1885,9 +2032,16 @@ class PlaybackRepository {
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode(bodyMap));
       _log("POST ${resp.statusCode} ${resp.body}");
+      if (resp.statusCode == 200 || resp.statusCode == 204) {
+        _markSyncSuccess();
+        return;
+      }
     } catch (e) {
       _log("POST error: $e");
     }
+
+    final code = resp?.statusCode;
+    _markSyncFailure(code != null ? 'HTTP $code' : 'No response');
   }
 
   Future<void> _patchProgressCompletion({
