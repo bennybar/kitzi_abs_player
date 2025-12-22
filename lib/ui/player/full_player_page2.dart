@@ -123,18 +123,18 @@ class _ResumeFromHistoryButton extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     return Tooltip(
       message: 'Resume previous play position',
-      child: OutlinedButton(
-        style: OutlinedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      child: FilledButton(
+        style: FilledButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           minimumSize: const Size(0, 0),
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          foregroundColor: cs.onSurface,
-          backgroundColor: cs.surface.withOpacity(0.82),
-          side: BorderSide(color: cs.primary, width: 1.2),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          foregroundColor: Colors.white,
+          backgroundColor: Colors.green.shade600,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          elevation: 2,
         ),
         onPressed: () => _handleResume(context),
-        child: const Icon(Icons.history_rounded, size: 16),
+        child: const Icon(Icons.history_rounded, size: 18),
       ),
     );
   }
@@ -1971,10 +1971,6 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                               Container(
                                                 decoration: BoxDecoration(
                                                   borderRadius: BorderRadius.circular(24),
-                                                  border: Border.all(
-                                                    color: cs.outline.withOpacity(0.6),
-                                                    width: 2.0,
-                                                  ),
                                                   boxShadow: [
                                                     BoxShadow(
                                                       color: cs.shadow.withOpacity(0.25),
@@ -1993,13 +1989,32 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                               ),
                                               ClipRRect(
                                                 borderRadius: BorderRadius.circular(24),
-                                                child: np.coverUrl != null && np.coverUrl!.isNotEmpty
-                                                    ? CachedNetworkImage(
-                                                        imageUrl: np.coverUrl!,
-                                                        fit: BoxFit.cover,
-                                                        fadeInDuration: const Duration(milliseconds: 200),
-                                                        fadeOutDuration: const Duration(milliseconds: 100),
-                                                        placeholder: (_, __) => Container(
+                                                child: Transform.scale(
+                                                  scale: 1.03,
+                                                  child: np.coverUrl != null && np.coverUrl!.isNotEmpty
+                                                      ? CachedNetworkImage(
+                                                          imageUrl: np.coverUrl!,
+                                                          fit: BoxFit.cover,
+                                                          fadeInDuration: const Duration(milliseconds: 200),
+                                                          fadeOutDuration: const Duration(milliseconds: 100),
+                                                          placeholder: (_, __) => Container(
+                                                            color: cs.surfaceContainerHighest,
+                                                            child: Icon(
+                                                              Icons.menu_book_outlined,
+                                                              size: 88,
+                                                              color: cs.onSurfaceVariant,
+                                                            ),
+                                                          ),
+                                                          errorWidget: (_, __, ___) => Container(
+                                                            color: cs.surfaceContainerHighest,
+                                                            child: Icon(
+                                                              Icons.menu_book_outlined,
+                                                              size: 88,
+                                                              color: cs.onSurfaceVariant,
+                                                            ),
+                                                          ),
+                                                        )
+                                                      : Container(
                                                           color: cs.surfaceContainerHighest,
                                                           child: Icon(
                                                             Icons.menu_book_outlined,
@@ -2007,23 +2022,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                                             color: cs.onSurfaceVariant,
                                                           ),
                                                         ),
-                                                        errorWidget: (_, __, ___) => Container(
-                                                          color: cs.surfaceContainerHighest,
-                                                          child: Icon(
-                                                            Icons.menu_book_outlined,
-                                                            size: 88,
-                                                            color: cs.onSurfaceVariant,
-                                                          ),
-                                                        ),
-                                                      )
-                                                    : Container(
-                                                        color: cs.surfaceContainerHighest,
-                                                        child: Icon(
-                                                          Icons.menu_book_outlined,
-                                                          size: 88,
-                                                          color: cs.onSurfaceVariant,
-                                                        ),
-                                                      ),
+                                                ),
                                               ),
                                               Positioned(
                                                 left: 10,
