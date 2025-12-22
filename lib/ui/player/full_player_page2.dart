@@ -98,16 +98,21 @@ class _ResumeFromHistoryButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return TextButton(
-      style: TextButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        minimumSize: const Size(0, 0),
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        foregroundColor: cs.primary,
-        textStyle: Theme.of(context).textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w600),
+    return Tooltip(
+      message: 'Resume previous play position',
+      child: OutlinedButton(
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          minimumSize: const Size(0, 0),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          foregroundColor: cs.onSurface,
+          backgroundColor: cs.surface.withOpacity(0.82),
+          side: BorderSide(color: cs.primary, width: 1.2),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+        onPressed: () => _handleResume(context),
+        child: const Icon(Icons.history_rounded, size: 16),
       ),
-      onPressed: () => _handleResume(context),
-      child: const Text('Resume previous play position'),
     );
   }
 }
@@ -1936,64 +1941,73 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                     child: Center(
                                       child: SizedBox(
                                         width: MediaQuery.of(context).size.width * 0.7, // larger cover for stronger focus
-                                        child: Container(
-                                          decoration: BoxDecoration(
-                                            borderRadius: BorderRadius.circular(24),
-                                            border: Border.all(
-                                              color: cs.outlineVariant.withOpacity(0.35),
-                                              width: 1.0,
-                                            ),
-                                            boxShadow: [
-                                              BoxShadow(
-                                                color: cs.shadow.withOpacity(0.25),
-                                                blurRadius: 24,
-                                                spreadRadius: 2,
-                                                offset: const Offset(0, 8),
+                                        child: AspectRatio(
+                                          aspectRatio: 1,
+                                          child: Stack(
+                                            children: [
+                                              Container(
+                                                decoration: BoxDecoration(
+                                                  borderRadius: BorderRadius.circular(24),
+                                                  border: Border.all(
+                                                    color: cs.outline.withOpacity(0.6),
+                                                    width: 2.0,
+                                                  ),
+                                                  boxShadow: [
+                                                    BoxShadow(
+                                                      color: cs.shadow.withOpacity(0.25),
+                                                      blurRadius: 24,
+                                                      spreadRadius: 2,
+                                                      offset: const Offset(0, 8),
+                                                    ),
+                                                    BoxShadow(
+                                                      color: cs.primary.withOpacity(0.1),
+                                                      blurRadius: 40,
+                                                      spreadRadius: -4,
+                                                      offset: const Offset(0, 12),
+                                                    ),
+                                                  ],
+                                                ),
                                               ),
-                                              BoxShadow(
-                                                color: cs.primary.withOpacity(0.1),
-                                                blurRadius: 40,
-                                                spreadRadius: -4,
-                                                offset: const Offset(0, 12),
+                                              ClipRRect(
+                                                borderRadius: BorderRadius.circular(24),
+                                                child: np.coverUrl != null && np.coverUrl!.isNotEmpty
+                                                    ? CachedNetworkImage(
+                                                        imageUrl: np.coverUrl!,
+                                                        fit: BoxFit.cover,
+                                                        fadeInDuration: const Duration(milliseconds: 200),
+                                                        fadeOutDuration: const Duration(milliseconds: 100),
+                                                        placeholder: (_, __) => Container(
+                                                          color: cs.surfaceContainerHighest,
+                                                          child: Icon(
+                                                            Icons.menu_book_outlined,
+                                                            size: 88,
+                                                            color: cs.onSurfaceVariant,
+                                                          ),
+                                                        ),
+                                                        errorWidget: (_, __, ___) => Container(
+                                                          color: cs.surfaceContainerHighest,
+                                                          child: Icon(
+                                                            Icons.menu_book_outlined,
+                                                            size: 88,
+                                                            color: cs.onSurfaceVariant,
+                                                          ),
+                                                        ),
+                                                      )
+                                                    : Container(
+                                                        color: cs.surfaceContainerHighest,
+                                                        child: Icon(
+                                                          Icons.menu_book_outlined,
+                                                          size: 88,
+                                                          color: cs.onSurfaceVariant,
+                                                        ),
+                                                      ),
+                                              ),
+                                              Positioned(
+                                                left: 10,
+                                                bottom: 10,
+                                                child: _ResumeFromHistoryButton(),
                                               ),
                                             ],
-                                          ),
-                                          child: ClipRRect(
-                                            borderRadius: BorderRadius.circular(24),
-                                            child: AspectRatio(
-                                              aspectRatio: 1,
-                                              child: np.coverUrl != null && np.coverUrl!.isNotEmpty
-                                                  ? CachedNetworkImage(
-                                                      imageUrl: np.coverUrl!,
-                                                      fit: BoxFit.cover,
-                                                      fadeInDuration: const Duration(milliseconds: 200),
-                                                      fadeOutDuration: const Duration(milliseconds: 100),
-                                                      placeholder: (_, __) => Container(
-                                                        color: cs.surfaceContainerHighest,
-                                                        child: Icon(
-                                                          Icons.menu_book_outlined,
-                                                          size: 88,
-                                                          color: cs.onSurfaceVariant,
-                                                        ),
-                                                      ),
-                                                      errorWidget: (_, __, ___) => Container(
-                                                        color: cs.surfaceContainerHighest,
-                                                        child: Icon(
-                                                          Icons.menu_book_outlined,
-                                                          size: 88,
-                                                          color: cs.onSurfaceVariant,
-                                                        ),
-                                                      ),
-                                                    )
-                                                  : Container(
-                                                      color: cs.surfaceContainerHighest,
-                                                      child: Icon(
-                                                        Icons.menu_book_outlined,
-                                                        size: 88,
-                                                        color: cs.onSurfaceVariant,
-                                                      ),
-                                                    ),
-                                            ),
                                           ),
                                         ),
                                       ),
@@ -2001,11 +2015,6 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                   ),
                                 );
                               },
-                            ),
-                            const SizedBox(height: 8),
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: _ResumeFromHistoryButton(),
                             ),
                             const SizedBox(height: 16),
 
