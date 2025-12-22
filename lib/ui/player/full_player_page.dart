@@ -49,6 +49,72 @@ class _EdgeToEdgeSliderTrackShape extends RoundedRectSliderTrackShape {
   }
 }
 
+class _ResumeFromHistoryButton extends StatelessWidget {
+  const _ResumeFromHistoryButton();
+
+  Future<void> _handleResume(BuildContext context) async {
+    final playback = ServicesScope.of(context).services.playback;
+    final prefs = await SharedPreferences.getInstance();
+    final enabled = prefs.getBool('ui_resume_from_history_enabled') ?? true;
+    if (!enabled) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Resume previous position is disabled in Settings')),
+      );
+      return;
+    }
+    final needConfirm = prefs.getBool('ui_sync_from_server_confirm') ?? true;
+
+    bool proceed = true;
+    if (needConfirm) {
+      proceed = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Resume previous position?'),
+              content: const Text('Replace the current play position with the last saved pause position?'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('Resume'),
+                ),
+              ],
+            ),
+          ) ??
+          false;
+    }
+
+    if (!proceed) return;
+
+    final ok = await playback.resumeFromHistory();
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(ok ? 'Resumed previous position' : 'No previous position found'),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return TextButton(
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        minimumSize: const Size(0, 0),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        foregroundColor: cs.primary,
+        textStyle: Theme.of(context).textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w600),
+      ),
+      onPressed: () => _handleResume(context),
+      child: const Text('Resume previous play position'),
+    );
+  }
+}
+
 /// Cached network image widget with cache validation
 /// Checks if cached image is valid, and clears cache if not
 class _ValidatedCachedNetworkImage extends StatefulWidget {
@@ -2554,6 +2620,10 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                       child: Container(
                                         decoration: BoxDecoration(
                                           borderRadius: BorderRadius.circular(dims.radius),
+                                          border: Border.all(
+                                            color: cs.outlineVariant.withOpacity(0.35),
+                                            width: 1.0,
+                                          ),
                                           boxShadow: dims.shadows(cs),
                                         ),
                                         child: ClipRRect(
@@ -2607,6 +2677,11 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                   ),
                                 );
                               },
+                            ),
+                            const SizedBox(height: 8),
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: _ResumeFromHistoryButton(),
                             ),
                             const SizedBox(height: 16),
 

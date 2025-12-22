@@ -37,6 +37,8 @@ class _SettingsPageState extends State<SettingsPage> {
   bool? _pauseCancelsSleepTimer;
   bool? _dualProgressEnabled;
   bool? _detailedPlayHistoryEnabled;
+  bool? _resumeFromHistoryEnabled;
+  bool? _confirmResumeFromHistory;
   bool? _showSeriesTab;
   bool? _authorViewEnabled;
   bool? _bluetoothAutoPlay;
@@ -75,6 +77,8 @@ class _SettingsPageState extends State<SettingsPage> {
     'ui_letter_scroll_enabled',
     'ui_letter_scroll_books_alpha',
     'ui_legacy_full_screen_player',
+    'ui_resume_from_history_enabled',
+    'ui_sync_from_server_confirm',
     'ui_progress_primary',
     'ui_player_gradient_background',
     'ui_player_cover_size',
@@ -325,6 +329,8 @@ class _SettingsPageState extends State<SettingsPage> {
         _pauseCancelsSleepTimer = prefs.getBool('pause_cancels_sleep_timer') ?? true;
         _dualProgressEnabled = prefs.getBool('ui_dual_progress_enabled') ?? true;
         _detailedPlayHistoryEnabled = prefs.getBool('detailed_play_history_enabled') ?? false;
+        _resumeFromHistoryEnabled = prefs.getBool('ui_resume_from_history_enabled') ?? true;
+        _confirmResumeFromHistory = prefs.getBool('ui_sync_from_server_confirm') ?? true;
         _showSeriesTab = prefs.getBool('ui_show_series_tab') ?? false;
         _authorViewEnabled = prefs.getBool('ui_author_view_enabled') ?? true;
         _bluetoothAutoPlay = prefs.getBool('bluetooth_auto_play') ?? true;
@@ -1426,6 +1432,32 @@ class _SettingsPageState extends State<SettingsPage> {
               await _setDualProgressEnabled(v);
               if (!mounted) return;
               setState(() { _dualProgressEnabled = v; });
+            },
+          ),
+          SwitchListTile(
+            title: const Text('Resume previous position button'),
+            subtitle: const Text('Show “Resume previous play position” under the cover'),
+            value: _resumeFromHistoryEnabled ?? true,
+            onChanged: (v) async {
+              try {
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.setBool('ui_resume_from_history_enabled', v);
+              } catch (_) {}
+              if (!mounted) return;
+              setState(() { _resumeFromHistoryEnabled = v; });
+            },
+          ),
+          SwitchListTile(
+            title: const Text('Ask before resuming previous position'),
+            subtitle: const Text('Show a confirmation dialog before jumping'),
+            value: _confirmResumeFromHistory ?? true,
+            onChanged: (v) async {
+              try {
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.setBool('ui_sync_from_server_confirm', v);
+              } catch (_) {}
+              if (!mounted) return;
+              setState(() { _confirmResumeFromHistory = v; });
             },
           ),
           SwitchListTile(

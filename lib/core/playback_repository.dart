@@ -1119,19 +1119,19 @@ class PlaybackRepository {
   }
 
   /// New method: Sync position from server before playing
-  Future<void> _syncPositionFromServer() async {
+  Future<bool> _syncPositionFromServer({bool forceRefresh = false}) async {
     final itemId = _progressItemId;
     final np = _nowPlaying;
-    if (itemId == null || np == null) return;
+    if (itemId == null || np == null) return false;
 
     try {
       _log('Checking server position before resume...');
-      final serverSec = await fetchServerProgress(itemId);
-      if (serverSec == null) return;
+      final serverSec = await fetchServerProgress(itemId, forceRefresh: forceRefresh);
+      if (serverSec == null) return false;
 
       // Get current local position
       final currentSec = _computeGlobalPositionSec() ?? _trackOnlyPosSec();
-      if (currentSec == null) return;
+      if (currentSec == null) return false;
 
       // If server position differs by more than 5 seconds, sync to server position
       const threshold = 5.0;
@@ -1151,12 +1151,14 @@ class PlaybackRepository {
         await player.seek(Duration(milliseconds: (map.offsetSec * 1000).round()));
 
         _log('Synced to server position: track ${map.index}, offset ${map.offsetSec.toStringAsFixed(1)}s');
-      } else {
-        _log('Server position matches local position (diff: ${diff.toStringAsFixed(1)}s)');
+        return true;
       }
+      _log('Server position matches local position (diff: ${diff.toStringAsFixed(1)}s)');
+      return true;
     } catch (e) {
       _log('Error syncing position from server: $e');
     }
+    return false;
   }
 
   /// Handle progress reset confirmation when server progress is reset but local progress exists
@@ -1445,6 +1447,29 @@ class PlaybackRepository {
     final sec = _computeGlobalPositionSec();
     if (sec == null) return null;
     return Duration(milliseconds: (sec * 1000).round());
+  }
+
+  /// Manually sync and jump to the server-reported position.
+  /// Returns true if a server position was applied (or matched).
+  Future<bool> syncFromServerPosition({bool forceRefresh = true}) async {
+    return await _syncPositionFromServer(forceRefresh: forceRefresh);
+  }
+
+  /// Resume from the most recent locally recorded pause in playback history
+  /// (per book). Returns true if a history entry was found and applied.
+  Future<bool> resumeFromHistory() async {
+    final itemId = _progressItemId;
+    if (itemId == null || itemId.isEmpty) return false;
+    try {
+      final history = await PlaybackJournalService.instance.historyFor(itemId, limit: 1);
+      if (history.isEmpty) return false;
+      final entry = history.first;
+      final pos = Duration(milliseconds: entry.positionMs);
+      await seekGlobal(pos, reportNow: true);
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Seek using a global position from the start of the book across tracks.
