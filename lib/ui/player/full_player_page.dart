@@ -52,6 +52,13 @@ class _EdgeToEdgeSliderTrackShape extends RoundedRectSliderTrackShape {
 class _ResumeFromHistoryButton extends StatelessWidget {
   const _ResumeFromHistoryButton();
 
+  String _fmt(Duration d) {
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return h > 0 ? '$h:$m:$s' : '$m:$s';
+  }
+
   Future<void> _handleResume(BuildContext context) async {
     final playback = ServicesScope.of(context).services.playback;
     final prefs = await SharedPreferences.getInstance();
@@ -64,13 +71,29 @@ class _ResumeFromHistoryButton extends StatelessWidget {
     }
     final needConfirm = prefs.getBool('ui_sync_from_server_confirm') ?? true;
 
+    Duration? lastPosition;
+    final nowPlaying = playback.nowPlaying;
+    if (nowPlaying != null) {
+      try {
+        final history =
+            await PlaybackJournalService.instance.historyFor(nowPlaying.libraryItemId, limit: 1);
+        if (history.isNotEmpty) {
+          lastPosition = Duration(milliseconds: history.first.positionMs);
+        }
+      } catch (_) {}
+    }
+
     bool proceed = true;
     if (needConfirm) {
       proceed = await showDialog<bool>(
             context: context,
             builder: (ctx) => AlertDialog(
               title: const Text('Resume previous position?'),
-              content: const Text('Replace the current play position with the last saved pause position?'),
+              content: Text(
+                lastPosition != null
+                    ? 'Resume to ${_fmt(lastPosition!)} from your last pause point?'
+                    : 'Replace the current play position with the last saved pause position?',
+              ),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(ctx, false),
