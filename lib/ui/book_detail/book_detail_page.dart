@@ -608,27 +608,33 @@ class _BookDetailPageState extends State<BookDetailPage> {
                               if (uri != null && uri.scheme == 'file') {
                                 coverImage = ClipRRect(
                                   borderRadius: radius,
-                                  child: Image.file(
-                                    File(uri.toFilePath()),
-                                    width: 160,
-                                    height: coverHeight,
-                                    fit: BoxFit.cover,
+                                  child: Transform.scale(
+                                    scale: 1.024,
+                                    child: Image.file(
+                                      File(uri.toFilePath()),
+                                      width: 160,
+                                      height: coverHeight,
+                                      fit: BoxFit.cover,
+                                    ),
                                   ),
                                 );
                               } else {
                                 coverImage = ClipRRect(
                                   borderRadius: radius,
-                                  child: CachedNetworkImage(
-                                    imageUrl: b.coverUrl,
-                                    width: 160,
-                                    height: coverHeight,
-                                    fit: BoxFit.cover,
-                                    errorWidget: (_, __, ___) => Container(
+                                  child: Transform.scale(
+                                    scale: 1.024,
+                                    child: CachedNetworkImage(
+                                      imageUrl: b.coverUrl,
                                       width: 160,
                                       height: coverHeight,
-                                      alignment: Alignment.center,
-                                      color: cs.surfaceContainerHighest,
-                                      child: const Icon(Icons.menu_book_outlined, size: 48),
+                                      fit: BoxFit.cover,
+                                      errorWidget: (_, __, ___) => Container(
+                                        width: 160,
+                                        height: coverHeight,
+                                        alignment: Alignment.center,
+                                        color: cs.surfaceContainerHighest,
+                                        child: const Icon(Icons.menu_book_outlined, size: 48),
+                                      ),
                                     ),
                                   ),
                                 );

@@ -1188,10 +1188,10 @@ class _CoverThumb extends StatelessWidget {
     if (uri != null && uri.scheme == 'file') {
       final f = File(uri.toFilePath());
       if (f.existsSync()) {
-        return Image.file(f, fit: BoxFit.cover);
+        return Transform.scale(scale: 1.024, child: Image.file(f, fit: BoxFit.cover));
       }
     }
-    return Image.network(url, fit: BoxFit.cover);
+    return Transform.scale(scale: 1.024, child: Image.network(url, fit: BoxFit.cover));
   }
 }
 

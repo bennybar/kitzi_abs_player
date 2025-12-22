@@ -118,7 +118,10 @@ class _MiniPlayerState extends State<MiniPlayer> {
                         ),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(12),
-                          child: _MiniCover(url: np.coverUrl, size: widget.height - 16),
+                          child: Transform.scale(
+                            scale: 1.024,
+                            child: _MiniCover(url: np.coverUrl, size: widget.height - 16),
+                          ),
                         ),
                       ),
                       const SizedBox(width: 12),

@@ -1990,7 +1990,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                               ClipRRect(
                                                 borderRadius: BorderRadius.circular(24),
                                                 child: Transform.scale(
-                                                  scale: 1.03,
+                                                  scale: 1.024,
                                                   child: np.coverUrl != null && np.coverUrl!.isNotEmpty
                                                       ? CachedNetworkImage(
                                                           imageUrl: np.coverUrl!,

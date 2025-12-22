@@ -2652,13 +2652,17 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                             Container(
                                               decoration: BoxDecoration(
                                                 borderRadius: BorderRadius.circular(dims.radius),
+                                                border: Border.all(
+                                                  color: cs.outline.withOpacity(0.6),
+                                                  width: 2.0,
+                                                ),
                                                 boxShadow: dims.shadows(cs),
                                               ),
                                             ),
                                             ClipRRect(
                                               borderRadius: BorderRadius.circular(dims.radius),
                                               child: Transform.scale(
-                                                scale: 1.03,
+                                                scale: 1.024,
                                                 child: np.coverUrl != null && np.coverUrl!.isNotEmpty
                                                     ? _ValidatedCachedNetworkImage(
                                                         imageUrl: np.coverUrl!,
