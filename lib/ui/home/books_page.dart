@@ -1448,7 +1448,10 @@ class _BookCard extends StatelessWidget {
                         colorFilter: disabled
                             ? ColorFilter.mode(cs.surface.withOpacity(0.12), BlendMode.saturation)
                             : const ColorFilter.mode(Colors.transparent, BlendMode.srcOver),
-                        child: EnhancedCoverImage(url: book.coverUrl),
+                        child: Transform.scale(
+                          scale: 1.024,
+                          child: EnhancedCoverImage(url: book.coverUrl),
+                        ),
                       ),
                     ),
                   ),
@@ -1555,7 +1558,10 @@ class _ResumeBookCardState extends State<_ResumeBookCard> {
                   child: Stack(
                     children: [
                       Positioned.fill(
-                        child: EnhancedCoverImage(url: widget.book.coverUrl),
+                        child: Transform.scale(
+                          scale: 1.024,
+                          child: EnhancedCoverImage(url: widget.book.coverUrl),
+                        ),
                       ),
                       // Play/Pause button overlay - top left
                       Positioned(
@@ -1808,7 +1814,10 @@ class _BookListTileState extends State<_BookListTile> {
                       tag: 'home-cover-${widget.book.id}',
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(12),
+                      child: Transform.scale(
+                        scale: 1.024,
                         child: EnhancedCoverImage(url: widget.book.coverUrl, width: 72, height: 72),
+                      ),
                       ),
                     ),
                   ),
