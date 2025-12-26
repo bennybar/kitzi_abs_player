@@ -1573,6 +1573,7 @@ class PlaybackRepository {
         total: total,
         finished: finished,
         paused: true,
+        timeListened: null,
       );
       if (synced) {
         await updateBookCompletionStatus(libraryItemId, finished);
@@ -1997,13 +1998,28 @@ class PlaybackRepository {
       await prefs.setDouble('$_kLocalProgPrefix$itemId', cur);
     } catch (_) {}
 
-    _lastSentSec = cur;
+    final previousSent = _lastSentSec >= 0 ? _lastSentSec : null;
+    double? timeListened;
+    if (previousSent != null) {
+      final delta = cur - previousSent;
+      if (delta.isFinite && delta > 0) {
+        // Cap to avoid huge jumps when resuming after long gaps.
+        timeListened = delta.clamp(0, 1800).toDouble(); // seconds
+      }
+    }
 
     // Prefer syncing an active streaming session when available
     _markSyncAttempt();
-    final synced = await _syncSession(cur: cur, total: total, finished: finished, paused: paused);
+    final synced = await _syncSession(
+      cur: cur,
+      total: total,
+      finished: finished,
+      paused: paused,
+      timeListened: timeListened,
+    );
     if (synced) {
       _markSyncSuccess();
+      _lastSentSec = cur;
       return;
     }
 
@@ -2021,6 +2037,9 @@ class PlaybackRepository {
       bodyMap['duration'] = total;
       bodyMap['progress'] = (cur / total).clamp(0.0, 1.0);
     }
+    if (timeListened != null) {
+      bodyMap['timeListened'] = timeListened;
+    }
 
     http.Response? resp;
     _log("Sending progress via PATCH fallback: cur=$cur, total=$total, finished=$finished");
@@ -2032,6 +2051,7 @@ class PlaybackRepository {
       _log("PATCH ${resp.statusCode} ${resp.body}");
       if (resp.statusCode == 200 || resp.statusCode == 204) {
         _markSyncSuccess();
+        _lastSentSec = cur;
         return;
       }
     } catch (e) {
@@ -2046,6 +2066,7 @@ class PlaybackRepository {
       _log("PUT ${resp.statusCode} ${resp.body}");
       if (resp.statusCode == 200 || resp.statusCode == 204) {
         _markSyncSuccess();
+        _lastSentSec = cur;
         return;
       }
     } catch (e) {
@@ -2059,6 +2080,7 @@ class PlaybackRepository {
       _log("POST ${resp.statusCode} ${resp.body}");
       if (resp.statusCode == 200 || resp.statusCode == 204) {
         _markSyncSuccess();
+        _lastSentSec = cur;
         return;
       }
     } catch (e) {
@@ -2067,6 +2089,7 @@ class PlaybackRepository {
 
     final code = resp?.statusCode;
     _markSyncFailure(code != null ? 'HTTP $code' : 'No response');
+    _lastSentSec = cur;
   }
 
   Future<void> _patchProgressCompletion({
@@ -2386,7 +2409,13 @@ class PlaybackRepository {
     return StreamTracksResult(tracks: list, sessionId: sessionId);
   }
 
-  Future<bool> _syncSession({required double cur, double? total, required bool finished, required bool paused}) async {
+  Future<bool> _syncSession({
+    required double cur,
+    double? total,
+    required bool finished,
+    required bool paused,
+    double? timeListened,
+  }) async {
     final sessionId = _activeSessionId;
     if (sessionId == null || sessionId.isEmpty) return false;
     try {
@@ -2401,6 +2430,9 @@ class PlaybackRepository {
         payload['duration'] = total;
         payload['progress'] = (cur / total).clamp(0.0, 1.0);
       }
+      if (timeListened != null) {
+        payload['timeListened'] = timeListened;
+      }
 
       // Try a few likely endpoints; ignore failures and fall back to legacy progress
       final candidates = <List<String>>[
@@ -2408,6 +2440,8 @@ class PlaybackRepository {
         ['PATCH', '/api/me/sessions/$sessionId'],
         ['POST', '/api/sessions/$sessionId/sync'],
         ['PATCH', '/api/sessions/$sessionId'],
+        ['POST', '/api/session/$sessionId/sync'],
+        ['PATCH', '/api/session/$sessionId'],
       ];
       for (final c in candidates) {
         try {
@@ -2558,15 +2592,31 @@ class PlaybackRepository {
   // ----- Mapping / helpers -----
 
   double? _computeTotalDurationSec() {
-    final tracks = _nowPlaying?.tracks ?? const <PlaybackTrack>[];
-    double sum = 0.0;
-    for (final t in tracks) {
-      if (t.duration <= 0) {
-        return null;
+    final np = _nowPlaying;
+    if (np == null) return null;
+
+    double sumTracks = 0.0;
+    int validTracks = 0;
+    for (final t in np.tracks) {
+      if (t.duration > 0) {
+        sumTracks += t.duration;
+        validTracks++;
       }
-      sum += t.duration;
     }
-    return sum > 0 ? sum : null;
+    if (validTracks > 0) return sumTracks;
+
+    double sumChapters = 0.0;
+    int validChapters = 0;
+    for (final c in np.chapters) {
+      final d = c.duration;
+      if (d != null && d > 0) {
+        sumChapters += d;
+        validChapters++;
+      }
+    }
+    if (validChapters > 0) return sumChapters;
+
+    return null;
   }
 
   // track-only pos in seconds (fallback when global mapping impossible)
