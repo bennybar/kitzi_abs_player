@@ -2605,17 +2605,6 @@ class PlaybackRepository {
     }
     if (validTracks > 0) return sumTracks;
 
-    double sumChapters = 0.0;
-    int validChapters = 0;
-    for (final c in np.chapters) {
-      final d = c.duration;
-      if (d != null && d > 0) {
-        sumChapters += d;
-        validChapters++;
-      }
-    }
-    if (validChapters > 0) return sumChapters;
-
     return null;
   }
 
