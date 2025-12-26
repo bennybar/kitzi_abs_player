@@ -1078,7 +1078,8 @@ class PlaybackRepository {
     }
     
     if (itemId != null && np != null && !skipSync) {
-      await _syncPositionFromServer();
+      // Force refresh from server to avoid using cached progress when resuming in-place.
+      await _syncPositionFromServer(forceRefresh: true);
       if ((_activeSessionId == null || _activeSessionId!.isEmpty) && np.tracks.isNotEmpty && !np.tracks.first.isLocal) {
         // Re-open streaming session after pause/close
         try {
