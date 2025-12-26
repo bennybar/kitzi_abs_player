@@ -128,6 +128,7 @@ class NowPlaying {
   final String? author;
   final String? narrator;
   final String? coverUrl;
+  final double? durationSec;
   final List<PlaybackTrack> tracks;
   final int currentIndex;
   final List<Chapter> chapters;
@@ -139,6 +140,7 @@ class NowPlaying {
     required this.tracks,
     required this.currentIndex,
     required this.chapters,
+    this.durationSec,
     this.author,
     this.narrator,
     this.coverUrl,
@@ -149,6 +151,7 @@ class NowPlaying {
     int? currentIndex,
     List<PlaybackTrack>? tracks,
     String? coverUrl,
+    double? durationSec,
   }) =>
       NowPlaying(
         libraryItemId: libraryItemId,
@@ -159,6 +162,7 @@ class NowPlaying {
         tracks: tracks ?? this.tracks,
         currentIndex: currentIndex ?? this.currentIndex,
         chapters: chapters,
+        durationSec: durationSec ?? this.durationSec,
         episodeId: episodeId,
       );
 }
@@ -168,7 +172,8 @@ class PlaybackRepository {
   Stream<String> get debugLogStream => _debugLogCtr.stream;
 
   void _log(String msg) {
-    // Logging removed for cleaner console output
+    // Keep playback logging lightweight; enable selectively when needed.
+    // debugPrint('[PLAYBACK] $msg');
   }
 
   PlaybackRepository(this._auth) {
@@ -430,6 +435,7 @@ class PlaybackRepository {
           tracks: localTracks,
           currentIndex: 0,
           chapters: chapters,
+          durationSec: null,
         );
         _log('Warm load: setting nowPlaying for downloaded book: ${np.title}, tracks: ${np.tracks.length}, playAfterLoad: $playAfterLoad');
         _setNowPlaying(np);
@@ -506,6 +512,7 @@ class PlaybackRepository {
         tracks: tracksWithDur,
         currentIndex: 0,
         chapters: chapters,
+        durationSec: _durationFromMeta(meta),
       );
       _setNowPlaying(np);
       _progressItemId = last;
@@ -920,6 +927,7 @@ class PlaybackRepository {
       currentIndex: 0,
       chapters: chapters,
       episodeId: episodeId,
+      durationSec: _durationFromMeta(meta),
     );
     
     // Add to play history
@@ -1992,6 +2000,7 @@ class PlaybackRepository {
         : (_computeGlobalPositionSec() ?? _trackOnlyPosSec());
 
     if (cur == null) return;
+    _log('Progress sync start: item=$itemId cur=$cur total=$total finished=$finished paused=$paused session=$_activeSessionId');
 
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -2032,6 +2041,8 @@ class PlaybackRepository {
     final bodyMap = <String, dynamic>{
       'currentTime': cur,
       'isFinished': finished,
+      'libraryItemId': itemId,
+      'lastUpdate': DateTime.now().millisecondsSinceEpoch,
     };
     if (total != null && total > 0) {
       bodyMap['duration'] = total;
@@ -2042,7 +2053,7 @@ class PlaybackRepository {
     }
 
     http.Response? resp;
-    _log("Sending progress via PATCH fallback: cur=$cur, total=$total, finished=$finished");
+    _log("Sending progress via PATCH/PUT/POST fallback: cur=$cur, total=$total, finished=$finished");
 
     try {
       resp = await api.request('PATCH', path,
@@ -2416,8 +2427,26 @@ class PlaybackRepository {
     required bool paused,
     double? timeListened,
   }) async {
-    final sessionId = _activeSessionId;
-    if (sessionId == null || sessionId.isEmpty) return false;
+    var sessionId = _activeSessionId;
+    if (sessionId == null || sessionId.isEmpty) {
+      // Try to open a lightweight session for syncing (even for local files)
+      final np = _nowPlaying;
+      if (np != null) {
+        try {
+          _log('Session sync: opening session for ${np.libraryItemId} (no active session)');
+          final opened = await _openSessionAndGetTracks(np.libraryItemId, episodeId: np.episodeId);
+          sessionId = opened.sessionId;
+          _activeSessionId = sessionId;
+          _log('Session sync: obtained session $sessionId for ${np.libraryItemId}');
+        } catch (e) {
+          _log('Session sync: failed to open session for ${np.libraryItemId}: $e');
+        }
+      }
+      if (sessionId == null || sessionId.isEmpty) {
+        _log('Session sync: no session available, skipping session sync');
+        return false;
+      }
+    }
     try {
       final api = _auth.api;
       final payload = <String, dynamic>{
@@ -2425,6 +2454,8 @@ class PlaybackRepository {
         'position': (cur * 1000).round(),
         'isPaused': paused,
         'isFinished': finished,
+        'libraryItemId': _progressItemId,
+        'lastUpdate': DateTime.now().millisecondsSinceEpoch,
       };
       if (total != null && total > 0) {
         payload['duration'] = total;
@@ -2605,6 +2636,27 @@ class PlaybackRepository {
     }
     if (validTracks > 0) return sumTracks;
 
+    if (np.durationSec != null && np.durationSec! > 0) return np.durationSec;
+
+    return null;
+  }
+
+  double? _durationFromMeta(Map<String, dynamic> meta) {
+    try {
+      final media = meta['media'];
+      if (media is Map && media['duration'] is num) {
+        final d = (media['duration'] as num).toDouble();
+        if (d > 0) return d;
+      }
+      if (meta['duration'] is num) {
+        final d = (meta['duration'] as num).toDouble();
+        if (d > 0) return d;
+      }
+      if (meta['durationMs'] is num) {
+        final d = (meta['durationMs'] as num).toDouble() / 1000.0;
+        if (d > 0) return d;
+      }
+    } catch (_) {}
     return null;
   }
 
