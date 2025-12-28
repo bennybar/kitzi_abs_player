@@ -205,6 +205,7 @@ class PlayHistoryService {
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
+          'User-Agent': 'Kitzi-ABS-Player/1.0 (Flutter)',
         },
       ).timeout(
         const Duration(seconds: 10),

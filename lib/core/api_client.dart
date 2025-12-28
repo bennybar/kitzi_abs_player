@@ -122,6 +122,7 @@ class ApiClient {
     final uri = Uri.parse('$base$path');
     final reqHeaders = <String, String>{
       'Content-Type': 'application/json',
+      'User-Agent': 'Kitzi-ABS-Player/1.0 (Flutter)',
       ..._currentCustomHeaders(),
       ...?headers,
     };
@@ -224,6 +225,7 @@ class ApiClient {
     try {
       final refreshHeaders = <String, String>{
         'Content-Type': 'application/json',
+        'User-Agent': 'Kitzi-ABS-Player/1.0 (Flutter)',
         ..._currentCustomHeaders(),
       };
       
@@ -302,6 +304,7 @@ class ApiClient {
     try {
       final loginHeaders = <String, String>{
         'Content-Type': 'application/json',
+        'User-Agent': 'Kitzi-ABS-Player/1.0 (Flutter)',
         ..._currentCustomHeaders(),
       };
       loginHeaders['x-return-tokens'] = 'true';

@@ -2587,7 +2587,10 @@ class PlaybackRepository {
       });
     }
 
-    final r = await http.get(meta);
+    final r = await http.get(
+      meta,
+      headers: {'User-Agent': 'Kitzi-ABS-Player/1.0 (Flutter)'},
+    );
     try {
       final j = jsonDecode(r.body) as Map<String, dynamic>;
       return (j['item'] as Map?)?.cast<String, dynamic>() ?? j.cast<String, dynamic>();

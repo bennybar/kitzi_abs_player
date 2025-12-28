@@ -921,6 +921,11 @@ class BooksRepository {
         
         _log('[INCREMENTAL_UPDATE_SYNC] Page $page returned ${books.length} books');
         
+        // Add delay between page requests to avoid rate limiting
+        if (books.isNotEmpty) {
+          await Future.delayed(const Duration(milliseconds: 200));
+        }
+        
         if (books.isEmpty) {
           _log('[INCREMENTAL_UPDATE_SYNC] Empty page, stopping');
           break;
@@ -1119,7 +1124,10 @@ class BooksRepository {
           if (!await file.exists()) file = File(p.join(dir.path, '$name.gif'));
           if (!await file.exists()) file = File(p.join(dir.path, '$name.img'));
           if (await file.exists()) continue;
-          final resp = await client.get(Uri.parse(u));
+          final resp = await client.get(
+            Uri.parse(u),
+            headers: {'User-Agent': 'Kitzi-ABS-Player/1.0 (Flutter)'},
+          );
           if (resp.statusCode == 200 && resp.bodyBytes.isNotEmpty) {
             final ct = resp.headers['content-type'];
             final extCt = _extensionFromContentType(ct);
@@ -2166,7 +2174,10 @@ class BooksRepository {
         final src = await _resolveCoverUrl(b);
         if (src == null) continue;
         try {
-          final resp = await client.get(Uri.parse(src));
+          final resp = await client.get(
+            Uri.parse(src),
+            headers: {'User-Agent': 'Kitzi-ABS-Player/1.0 (Flutter)'},
+          );
           if (resp.statusCode != 200 || resp.bodyBytes.isEmpty) {
             throw Exception('cover status ${resp.statusCode}');
           }
@@ -2197,6 +2208,12 @@ class BooksRepository {
             );
           }
           _coverRetryAttempts.remove(b.id);
+          
+          // Add delay between cover downloads to avoid rate limiting
+          final entryIndex = unique.entries.toList().indexOf(entry);
+          if (entryIndex < unique.entries.length - 1) {
+            await Future.delayed(const Duration(milliseconds: 100));
+          }
         } catch (e) {
           _scheduleCoverRetry(b);
         }

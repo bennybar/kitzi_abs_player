@@ -128,6 +128,8 @@ class BackgroundSyncService {
       
       // Sync only the first few pages to keep it lightweight
       await repo.fetchBooksPage(page: 1, limit: 50);
+      // Add delay between page requests to avoid rate limiting
+      await Future.delayed(const Duration(milliseconds: 200));
       await repo.fetchBooksPage(page: 2, limit: 50);
       
       // Incremental sync completed
