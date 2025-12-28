@@ -720,12 +720,38 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
                   ? ValueListenableBuilder<int>(
                       valueListenable: UiPrefs.seriesItemsPerRow,
                       builder: (context, itemsPerRow, _) {
+                        // Use SliverList for single column (old layout), SliverGrid for multiple columns
+                        if (itemsPerRow == 1) {
+                          return SliverList.separated(
+                            itemCount: filteredSeries.length,
+                            separatorBuilder: (_, __) => const SizedBox(height: 12),
+                            itemBuilder: (context, i) {
+                              final series = filteredSeries[i];
+                              return _NewSeriesCard(
+                                key: ValueKey('series-${series.id}'),
+                                series: series,
+                                itemsPerRow: itemsPerRow,
+                                onTap: () {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (context) => SeriesBooksPage(
+                                        series: series,
+                                        getBooksForSeries: _getBooksForSeries,
+                                      ),
+                                    ),
+                                  );
+                                },
+                                getBooksForSeries: _getBooksForSeries,
+                              );
+                            },
+                          );
+                        }
                         return SliverGrid(
                           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                             crossAxisCount: itemsPerRow,
                             mainAxisSpacing: 12,
                             crossAxisSpacing: 12,
-                            childAspectRatio: 0.85,
+                            childAspectRatio: 0.75,
                           ),
                           delegate: SliverChildBuilderDelegate(
                             (context, i) {
@@ -733,6 +759,7 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
                               return _NewSeriesCard(
                                 key: ValueKey('series-${series.id}'),
                                 series: series,
+                                itemsPerRow: itemsPerRow,
                                 onTap: () {
                                   Navigator.of(context).push(
                                     MaterialPageRoute(
@@ -861,11 +888,13 @@ class _NewSeriesCard extends StatefulWidget {
     required this.series,
     required this.onTap,
     required this.getBooksForSeries,
+    this.itemsPerRow = 2,
   });
   
   final Series series;
   final VoidCallback onTap;
   final Future<List<Book>> Function(Series) getBooksForSeries;
+  final int itemsPerRow;
 
   @override
   State<_NewSeriesCard> createState() => _NewSeriesCardState();
@@ -916,6 +945,85 @@ class _NewSeriesCardState extends State<_NewSeriesCard> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    
+    // Use old full-width layout when itemsPerRow is 1
+    if (widget.itemsPerRow == 1) {
+      return Card(
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: cs.outline.withOpacity(0.1), width: 1),
+        ),
+        margin: const EdgeInsets.symmetric(vertical: 6),
+        child: InkWell(
+          onTap: widget.onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.collections_bookmark_rounded, size: 20, color: cs.primary),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              widget.series.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            '(${widget.series.numBooks})',
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w400,
+                              color: cs.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                // Show first 4 covers in a horizontal scrollable row
+                _loading
+                    ? const SizedBox(
+                        height: 120,
+                        child: Center(child: CircularProgressIndicator()),
+                      )
+                    : _books == null || _books!.isEmpty
+                        ? SizedBox(
+                            height: 120,
+                            child: Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.book_outlined, color: cs.onSurfaceVariant),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'No books loaded',
+                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          )
+                        : _buildCoverGridOld(_books!.take(4).toList()),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+    
+    // New compact grid layout for itemsPerRow > 1
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
@@ -929,27 +1037,32 @@ class _NewSeriesCardState extends State<_NewSeriesCard> {
           padding: const EdgeInsets.all(12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
+              // Series name and count
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.collections_bookmark_rounded, size: 20, color: cs.primary),
+                  Icon(Icons.collections_bookmark_rounded, size: 18, color: cs.primary),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Row(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Flexible(
-                          child: Text(
-                            widget.series.name, 
-                            maxLines: 1, 
-                            overflow: TextOverflow.ellipsis, 
-                            style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)
+                        Text(
+                          widget.series.name,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            height: 1.2,
                           ),
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(height: 4),
                         Text(
-                          '(${widget.series.numBooks})',
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w400,
+                          '${widget.series.numBooks} ${widget.series.numBooks == 1 ? 'book' : 'books'}',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: cs.onSurfaceVariant,
                           ),
                         ),
@@ -958,31 +1071,30 @@ class _NewSeriesCardState extends State<_NewSeriesCard> {
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
-              // Show first 3 covers in a grid
-              _loading
-                  ? const SizedBox(
-                      height: 120,
-                      child: Center(child: CircularProgressIndicator()),
-                    )
-                  : _books == null || _books!.isEmpty
-                      ? SizedBox(
-                          height: 120,
-                          child: Center(
+              const SizedBox(height: 10),
+              // Book covers - show up to 3 covers, smaller size
+              Expanded(
+                child: _loading
+                    ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
+                    : _books == null || _books!.isEmpty
+                        ? Center(
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.book_outlined, color: cs.onSurfaceVariant),
+                                Icon(Icons.book_outlined, size: 32, color: cs.onSurfaceVariant.withOpacity(0.6)),
                                 const SizedBox(height: 4),
                                 Text(
-                                  'No books loaded',
-                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                                  'No books',
+                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: cs.onSurfaceVariant.withOpacity(0.6),
+                                  ),
                                 ),
                               ],
                             ),
-                          ),
-                        )
-                      : _buildCoverGrid(_books!.take(4).toList()),
+                          )
+                        : _buildCoverGrid(_books!.take(3).toList()),
+              ),
             ],
           ),
         ),
@@ -993,18 +1105,54 @@ class _NewSeriesCardState extends State<_NewSeriesCard> {
   Widget _buildCoverGrid(List<Book> books) {
     if (books.isEmpty) return const SizedBox.shrink();
     
-    // Show up to 4 covers in a single scrollable row, left-aligned
-    final displayBooks = books.take(4).toList();
+    // Show up to 3 covers in a row, evenly spaced
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: books.map((book) {
+        return Expanded(
+          child: Padding(
+            padding: EdgeInsets.only(
+              right: book == books.last ? 0 : 6,
+            ),
+            child: AspectRatio(
+              aspectRatio: 0.7, // Taller aspect ratio for book covers
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    _CoverThumb(url: book.coverUrl),
+                    Positioned(
+                      top: 4,
+                      left: 4,
+                      child: _BookStatusIndicator(
+                        book: book,
+                        compact: true,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+  
+  Widget _buildCoverGridOld(List<Book> books) {
+    if (books.isEmpty) return const SizedBox.shrink();
     
+    // Old layout: horizontal scrollable list of covers
     return SizedBox(
       height: 120,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         physics: const BouncingScrollPhysics(),
-        itemCount: displayBooks.length,
+        itemCount: books.length,
         separatorBuilder: (_, __) => const SizedBox(width: 8),
         itemBuilder: (context, i) {
-          final book = displayBooks[i];
+          final book = books[i];
           return SizedBox(
             width: 120,
             child: AspectRatio(

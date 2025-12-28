@@ -703,18 +703,40 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       showModalBottomSheet(
         context: context,
         isScrollControlled: true,
+        isDismissible: true,
+        enableDrag: true,
         useSafeArea: true,
         backgroundColor: Colors.transparent,
-        builder: (context) => Container(
-          height: MediaQuery.of(context).size.height * 0.95,
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: SeriesBooksPage(
-            series: seriesWithBooks,
-            getBooksForSeries: (s) => repo.getBooksForSeries(s),
+        builder: (context) => DraggableScrollableSheet(
+          initialChildSize: 0.95,
+          minChildSize: 0.3,
+          maxChildSize: 0.95,
+          builder: (context, scrollController) => Container(
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                // Drag handle indicator
+                Container(
+                  margin: const EdgeInsets.only(top: 8, bottom: 4),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.4),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                Expanded(
+                  child: SeriesBooksPage(
+                    series: seriesWithBooks,
+                    getBooksForSeries: (s) => repo.getBooksForSeries(s),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       );

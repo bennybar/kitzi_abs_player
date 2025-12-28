@@ -23,7 +23,7 @@ class UiPrefs {
   static final ValueNotifier<PlayerCoverSize> playerCoverSize =
       ValueNotifier<PlayerCoverSize>(PlayerCoverSize.large);
   static final ValueNotifier<bool> hideSeriesWhenSameAsAuthor = ValueNotifier<bool>(true); // Default to true
-  static final ValueNotifier<int> seriesItemsPerRow = ValueNotifier<int>(3); // Default to 3
+  static final ValueNotifier<int> seriesItemsPerRow = ValueNotifier<int>(2); // Default to 2
 
   static const String _kSeries = 'ui_show_series_tab';
   static const String _kAuthorView = 'ui_author_view_enabled';
@@ -79,7 +79,7 @@ class UiPrefs {
       squigglyProgressBar.value = prefs.getBool(_kSquigglyProgressBar) ?? true;
       playerCoverSize.value = _parseCoverSize(prefs.getString(_kPlayerCoverSize));
       hideSeriesWhenSameAsAuthor.value = prefs.getBool(_kHideSeriesWhenSameAsAuthor) ?? true;
-      seriesItemsPerRow.value = prefs.getInt(_kSeriesItemsPerRow) ?? 3;
+      seriesItemsPerRow.value = prefs.getInt(_kSeriesItemsPerRow) ?? 2;
     } catch (_) {}
   }
   
@@ -101,7 +101,7 @@ class UiPrefs {
       squigglyProgressBar.value = prefs.getBool(_kSquigglyProgressBar) ?? true;
       playerCoverSize.value = _parseCoverSize(prefs.getString(_kPlayerCoverSize));
       hideSeriesWhenSameAsAuthor.value = prefs.getBool(_kHideSeriesWhenSameAsAuthor) ?? true;
-      seriesItemsPerRow.value = prefs.getInt(_kSeriesItemsPerRow) ?? 3;
+      seriesItemsPerRow.value = prefs.getInt(_kSeriesItemsPerRow) ?? 2;
     } catch (_) {}
   }
 

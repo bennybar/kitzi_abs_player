@@ -342,7 +342,7 @@ class _SettingsPageState extends State<SettingsPage> {
         _waveformAnimationEnabled = prefs.getBool('ui_waveform_animation_enabled') ?? true;
         _squigglyProgressBar = prefs.getBool('ui_squiggly_progress_bar') ?? true;
         _hideSeriesWhenSameAsAuthor = prefs.getBool('ui_hide_series_when_same_as_author') ?? true;
-        _seriesItemsPerRow = prefs.getInt('ui_series_items_per_row') ?? 3;
+        _seriesItemsPerRow = prefs.getInt('ui_series_items_per_row') ?? 2;
         _letterScrollEnabled = prefs.getBool('ui_letter_scroll_enabled') ?? false;
         _letterScrollBooksAlpha = prefs.getBool('ui_letter_scroll_books_alpha') ?? false;
         _legacyFullScreenPlayer = prefs.getBool('ui_legacy_full_screen_player') ?? false;
@@ -1096,7 +1096,7 @@ class _SettingsPageState extends State<SettingsPage> {
             title: const Text('Series items per row'),
             subtitle: const Text('Number of series cards to display in each row'),
             trailing: DropdownButton<int>(
-              value: _seriesItemsPerRow ?? 3,
+              value: _seriesItemsPerRow ?? 2,
               items: [1, 2, 3, 4, 5, 6].map((value) {
                 return DropdownMenuItem<int>(
                   value: value,
