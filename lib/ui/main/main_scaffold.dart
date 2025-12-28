@@ -104,9 +104,19 @@ class _MainScaffoldState extends State<MainScaffold> {
         final hasMini = snap.data != null && safeIndex != hideOnSettingsIndex; // hide on Settings
         const double navHeight = 72;
 
-        return Scaffold(
-          backgroundColor: cs.surface,
-          body: IndexedStack(index: safeIndex, children: pages),
+        return PopScope(
+          canPop: safeIndex == 0, // Only allow pop if on Books tab
+          onPopInvoked: (didPop) {
+            if (!didPop && safeIndex != 0) {
+              // Navigate to Books tab instead of exiting
+              setState(() {
+                _index = 0;
+              });
+            }
+          },
+          child: Scaffold(
+            backgroundColor: cs.surface,
+            body: IndexedStack(index: safeIndex, children: pages),
           bottomNavigationBar: ValueListenableBuilder<bool>(
             valueListenable: FullPlayerOverlay.isVisible,
             builder: (_, fullPlayerVisible, __) {
@@ -161,6 +171,7 @@ class _MainScaffoldState extends State<MainScaffold> {
                 ),
               );
             },
+          ),
           ),
         );
       },
