@@ -9,8 +9,11 @@ import 'package:flutter_html/flutter_html.dart';
 
 import '../../core/books_repository.dart';
 import '../../models/book.dart';
+import '../../models/series.dart';
 import '../../core/playback_repository.dart';
 import '../../widgets/download_button.dart';
+import '../../widgets/author_card.dart';
+import '../../ui/home/series_page.dart';
 import '../../main.dart'; // ServicesScope
 import '../../ui/player/full_player_page.dart'; // Added import for FullPlayerPage
 import '../../core/books_repository.dart' as repo_helpers;
@@ -290,6 +293,89 @@ class _BookDetailPageState extends State<BookDetailPage> {
     );
     
     return confirmed ?? false;
+  }
+
+  Future<void> _showAuthorBooks(BuildContext context, String authorName) async {
+    try {
+      final repo = await _repoFut;
+      final allAuthors = await repo.getAllAuthors();
+      final authorInfo = allAuthors.firstWhere(
+        (a) => a.name == authorName,
+        orElse: () => AuthorInfo(name: authorName, books: []),
+      );
+      if (authorInfo.books.isEmpty) {
+        // Try to get books by filtering from current book's author
+        if (_cachedBook?.author == authorName) {
+          // If we have the current book, we can at least show that
+          AuthorCard.show(
+            context: context,
+            authorName: authorName,
+            books: [_cachedBook!],
+          );
+          return;
+        }
+      } else {
+        AuthorCard.show(
+          context: context,
+          authorName: authorName,
+          books: authorInfo.books,
+        );
+        return;
+      }
+    } catch (e) {
+      // Fallback: if we have the current book with this author, show it
+      if (_cachedBook?.author == authorName) {
+        AuthorCard.show(
+          context: context,
+          authorName: authorName,
+          books: [_cachedBook!],
+        );
+      }
+    }
+  }
+
+  Future<void> _showSeriesBooks(BuildContext context, String seriesName) async {
+    try {
+      final repo = await _repoFut;
+      // Create a minimal Series object - getBooksForSeries will load books by name if bookIds is empty
+      final series = Series(
+        id: seriesName, // Use series name as ID for lookup
+        name: seriesName,
+        numBooks: 0, // Will be updated when books are loaded
+        bookIds: const [], // Empty - will trigger loading by series name
+      );
+      final books = await repo.getBooksForSeries(series);
+      if (books.isEmpty) return;
+      
+      // Create a proper Series object with the loaded books
+      final seriesWithBooks = Series(
+        id: seriesName,
+        name: seriesName,
+        numBooks: books.length,
+        bookIds: books.map((b) => b.id).toList(),
+      );
+      
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        backgroundColor: Colors.transparent,
+        builder: (context) => Container(
+          height: MediaQuery.of(context).size.height * 0.95,
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: SeriesBooksPage(
+            series: seriesWithBooks,
+            getBooksForSeries: (s) => repo.getBooksForSeries(s),
+          ),
+        ),
+      );
+    } catch (e) {
+      // Silently fail if series can't be loaded
+    }
   }
 
   Future<Duration?> _showMarkAsUnfinishedDialog(BuildContext context, Book book) async {
@@ -667,7 +753,20 @@ class _BookDetailPageState extends State<BookDetailPage> {
                               children: [
                                 Text(b.title, style: text.titleLarge, maxLines: 3, overflow: TextOverflow.ellipsis),
                                 const SizedBox(height: 8),
-                                Text(b.author ?? 'Unknown author', style: text.titleMedium?.copyWith(color: cs.onSurfaceVariant)),
+                                GestureDetector(
+                                  onTap: b.author != null && b.author!.isNotEmpty
+                                      ? () => _showAuthorBooks(context, b.author!)
+                                      : null,
+                                  child: Text(
+                                    b.author ?? 'Unknown author',
+                                    style: text.titleMedium?.copyWith(
+                                      color: cs.onSurfaceVariant,
+                                      decoration: b.author != null && b.author!.isNotEmpty
+                                          ? TextDecoration.underline
+                                          : null,
+                                    ),
+                                  ),
+                                ),
                                 if ((b.narrators ?? const []).isNotEmpty) ...[
                                   const SizedBox(height: 4),
                                   Text(
@@ -708,6 +807,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
                                 value: b.seriesSequence != null && !b.seriesSequence!.isNaN
                                     ? '${b.series} (#${b.seriesSequence!.toStringAsFixed(0)})'
                                     : b.series!,
+                                onTap: () => _showSeriesBooks(context, b.series!),
                               ),
                             ),
                           // Publisher and Genres in one row
@@ -1057,17 +1157,23 @@ class _InfoChip extends StatelessWidget {
 }
 
 class _MetaChip extends StatelessWidget {
-  const _MetaChip({required this.icon, required this.label, required this.value});
+  const _MetaChip({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.onTap,
+  });
   final IconData icon;
   final String label;
   final String value;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
     
-    return Container(
+    final chip = Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: cs.surfaceContainerLow,
@@ -1113,6 +1219,13 @@ class _MetaChip extends StatelessWidget {
         ],
         ),
       ),
+    );
+    
+    if (onTap == null) return chip;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: chip,
     );
   }
 }
