@@ -14,10 +14,13 @@ import '../../core/ui_prefs.dart';
 import '../../models/book.dart';
 import '../../widgets/skeleton_widgets.dart';
 import '../../widgets/letter_scrollbar.dart';
+import '../../widgets/author_card.dart';
 import '../../utils/alphabet_utils.dart';
 import '../book_detail/book_detail_page.dart';
 import '../player/full_player_page.dart';
 import '../profile/profile_page.dart';
+import '../home/series_page.dart';
+import '../../models/series.dart';
 import '../../main.dart';
 
 // For unawaited background tasks
@@ -636,6 +639,90 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
     );
   }
 
+  Future<void> _showAuthorBooks(BuildContext context, String authorName) async {
+    try {
+      final repo = await _repoFut;
+      final allAuthors = await repo.getAllAuthors();
+      final authorInfo = allAuthors.firstWhere(
+        (a) => a.name == authorName,
+        orElse: () => AuthorInfo(name: authorName, books: []),
+      );
+      if (authorInfo.books.isEmpty) {
+        // Try to get books by filtering current list
+        final booksByAuthor = _books.where((b) => b.author == authorName).toList();
+        if (booksByAuthor.isNotEmpty) {
+          AuthorCard.show(
+            context: context,
+            authorName: authorName,
+            books: booksByAuthor,
+          );
+          return;
+        }
+      } else {
+        AuthorCard.show(
+          context: context,
+          authorName: authorName,
+          books: authorInfo.books,
+        );
+        return;
+      }
+    } catch (e) {
+      // Fallback: try to get books from current list
+      final booksByAuthor = _books.where((b) => b.author == authorName).toList();
+      if (booksByAuthor.isNotEmpty) {
+        AuthorCard.show(
+          context: context,
+          authorName: authorName,
+          books: booksByAuthor,
+        );
+      }
+    }
+  }
+
+  Future<void> _showSeriesBooks(BuildContext context, String seriesName) async {
+    try {
+      final repo = await _repoFut;
+      // Create a minimal Series object - getBooksForSeries will load books by name if bookIds is empty
+      final series = Series(
+        id: seriesName, // Use series name as ID for lookup
+        name: seriesName,
+        numBooks: 0, // Will be updated when books are loaded
+        bookIds: const [], // Empty - will trigger loading by series name
+      );
+      final books = await repo.getBooksForSeries(series);
+      if (books.isEmpty) return;
+      
+      // Create a proper Series object with the loaded books
+      final seriesWithBooks = Series(
+        id: seriesName,
+        name: seriesName,
+        numBooks: books.length,
+        bookIds: books.map((b) => b.id).toList(),
+      );
+      
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        backgroundColor: Colors.transparent,
+        builder: (context) => Container(
+          height: MediaQuery.of(context).size.height * 0.95,
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: SeriesBooksPage(
+            series: seriesWithBooks,
+            getBooksForSeries: (s) => repo.getBooksForSeries(s),
+          ),
+        ),
+      );
+    } catch (e) {
+      // Silently fail if series can't be loaded
+    }
+  }
+
   List<Book> _visibleBooks() {
     if (_isEbookLibrary) return const <Book>[];
     final q = _query.trim().toLowerCase();
@@ -1101,6 +1188,12 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
               key: ValueKey(b.id),
               book: b,
               onTap: b.isAudioBook ? () => _openDetails(b) : null,
+              onAuthorTap: b.author != null && b.author!.isNotEmpty
+                  ? () => _showAuthorBooks(context, b.author!)
+                  : null,
+              onSeriesTap: b.series != null && b.series!.isNotEmpty
+                  ? () => _showSeriesBooks(context, b.series!)
+                  : null,
             );
           },
           childCount: list.length,
@@ -1160,6 +1253,12 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                           key: ValueKey(book.id),
                           book: book,
                           onTap: () => _openDetails(book),
+                          onAuthorTap: book.author != null && book.author!.isNotEmpty
+                              ? () => _showAuthorBooks(context, book.author!)
+                              : null,
+                          onSeriesTap: book.series != null && book.series!.isNotEmpty
+                              ? () => _showSeriesBooks(context, book.series!)
+                              : null,
                         ),
                       );
                     },
@@ -1278,6 +1377,12 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
               book: b,
               onTap: b.isAudioBook ? () => _openDetails(b) : null,
               checkIfCompleted: _checkIfCompleted,
+              onAuthorTap: b.author != null && b.author!.isNotEmpty
+                  ? () => _showAuthorBooks(context, b.author!)
+                  : null,
+              onSeriesTap: b.series != null && b.series!.isNotEmpty
+                  ? () => _showSeriesBooks(context, b.series!)
+                  : null,
             ),
           );
         },
@@ -1400,9 +1505,17 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
 }
 
 class _BookCard extends StatelessWidget {
-  const _BookCard({super.key, required this.book, required this.onTap});
+  const _BookCard({
+    super.key,
+    required this.book,
+    required this.onTap,
+    this.onAuthorTap,
+    this.onSeriesTap,
+  });
   final Book book;
   final VoidCallback? onTap;
+  final VoidCallback? onAuthorTap;
+  final VoidCallback? onSeriesTap;
 
   @override
   Widget build(BuildContext context) {
@@ -1476,15 +1589,42 @@ class _BookCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 2),
+              // Series (if available) - between title and author
+              if (book.series != null && book.series!.isNotEmpty) ...[
+                SizedBox(
+                  height: 14,
+                  child: GestureDetector(
+                    onTap: onSeriesTap,
+                    child: Text(
+                      book.series!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: disabled 
+                            ? cs.onSurfaceVariant.withOpacity(0.4)
+                            : cs.primary.withOpacity(0.8),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 2),
+              ],
+              // Author
               SizedBox(
                 height: 14,
                 child: (book.author != null && book.author!.isNotEmpty)
-                    ? Text(
-                        book.author!,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: disabled ? cs.onSurfaceVariant.withOpacity(0.4) : cs.onSurfaceVariant,
+                    ? GestureDetector(
+                        onTap: onAuthorTap,
+                        child: Text(
+                          book.author!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: disabled 
+                                ? cs.onSurfaceVariant.withOpacity(0.4)
+                                : cs.onSurfaceVariant,
+                          ),
                         ),
                       )
                     : const SizedBox.shrink(),
@@ -1517,9 +1657,17 @@ class _BookCard extends StatelessWidget {
 }
 
 class _ResumeBookCard extends StatefulWidget {
-  const _ResumeBookCard({super.key, required this.book, required this.onTap});
+  const _ResumeBookCard({
+    super.key,
+    required this.book,
+    required this.onTap,
+    this.onAuthorTap,
+    this.onSeriesTap,
+  });
   final Book book;
   final VoidCallback onTap;
+  final VoidCallback? onAuthorTap;
+  final VoidCallback? onSeriesTap;
 
   @override
   State<_ResumeBookCard> createState() => _ResumeBookCardState();
@@ -1664,14 +1812,33 @@ class _ResumeBookCardState extends State<_ResumeBookCard> {
                   fontWeight: FontWeight.w600,
                 ),
               ),
+              // Series (if available) - between title and author
+              if (widget.book.series != null && widget.book.series!.isNotEmpty) ...[
+                const SizedBox(height: 2),
+                GestureDetector(
+                  onTap: widget.onSeriesTap,
+                  child: Text(
+                    widget.book.series!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.primary.withOpacity(0.8),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
               if (widget.book.author != null && widget.book.author!.isNotEmpty) ...[
                 const SizedBox(height: 2),
-                Text(
-                  widget.book.author!,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                GestureDetector(
+                  onTap: widget.onAuthorTap,
+                  child: Text(
+                    widget.book.author!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ),
               ],
@@ -1737,10 +1904,19 @@ class _ResumeBookCardState extends State<_ResumeBookCard> {
 }
 
 class _BookListTile extends StatefulWidget {
-  const _BookListTile({super.key, required this.book, required this.onTap, required this.checkIfCompleted});
+  const _BookListTile({
+    super.key,
+    required this.book,
+    required this.onTap,
+    required this.checkIfCompleted,
+    this.onAuthorTap,
+    this.onSeriesTap,
+  });
   final Book book;
   final VoidCallback? onTap;
   final Future<bool> Function(String) checkIfCompleted;
+  final VoidCallback? onAuthorTap;
+  final VoidCallback? onSeriesTap;
 
   @override
   State<_BookListTile> createState() => _BookListTileState();
@@ -1882,14 +2058,35 @@ class _BookListTileState extends State<_BookListTile> {
                         color: disabled ? cs.onSurface.withOpacity(0.4) : null,
                       ),
                     ),
+                    // Series (if available) - between title and author
+                    if (widget.book.series != null && widget.book.series!.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      GestureDetector(
+                        onTap: widget.onSeriesTap,
+                        child: Text(
+                          widget.book.series!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: disabled 
+                                ? cs.onSurfaceVariant.withOpacity(0.4)
+                                : cs.primary.withOpacity(0.8),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
                     if (widget.book.author != null && widget.book.author!.isNotEmpty) ...[
                       const SizedBox(height: 4),
-                      Text(
-                        widget.book.author!,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: disabled ? cs.onSurfaceVariant.withOpacity(0.4) : cs.onSurfaceVariant,
+                      GestureDetector(
+                        onTap: widget.onAuthorTap,
+                        child: Text(
+                          widget.book.author!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: disabled ? cs.onSurfaceVariant.withOpacity(0.4) : cs.onSurfaceVariant,
+                          ),
                         ),
                       ),
                     ],

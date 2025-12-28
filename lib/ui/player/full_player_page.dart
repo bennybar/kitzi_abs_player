@@ -2636,7 +2636,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                   builder: (context, child) {
                                     final t = _coverAnimation.value;
                                     final fade = Curves.easeOut.transform(t);
-                                    final scale = 0.975 + 0.0352 * Curves.easeOut.transform(t); // subtle zoom-in to 101.02%
+                                    final scale = 0.975 + 0.0325 * Curves.easeOut.transform(t); // subtle zoom-in to 100.75%
                                     final translateY = 14 * (1 - t); // reduce lift for less wobble
                                     return Transform.translate(
                                       offset: Offset(0, translateY),
