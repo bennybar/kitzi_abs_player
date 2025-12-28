@@ -105,13 +105,16 @@ class _MainScaffoldState extends State<MainScaffold> {
         const double navHeight = 72;
 
         return PopScope(
-          canPop: safeIndex == 0, // Only allow pop if on Books tab
+          canPop: false, // Never allow pop - prevent app exit
           onPopInvoked: (didPop) {
-            if (!didPop && safeIndex != 0) {
-              // Navigate to Books tab instead of exiting
-              setState(() {
-                _index = 0;
-              });
+            if (!didPop) {
+              if (safeIndex != 0) {
+                // Navigate to Books tab instead of exiting
+                setState(() {
+                  _index = 0;
+                });
+              }
+              // If already on Books tab, do nothing (prevent exit)
             }
           },
           child: Scaffold(
