@@ -1471,6 +1471,9 @@ class BooksRepository {
         // If we got less than the page size, we've reached the end
         if (seriesChunk.length < pageSize) break;
         
+        // Add delay between page requests to avoid rate limiting
+        await Future.delayed(const Duration(milliseconds: 200));
+        
         page++;
       } catch (e) {
         _log('[BOOKS] fetchAllSeries: error at page=$page: $e');
