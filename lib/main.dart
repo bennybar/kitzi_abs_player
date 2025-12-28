@@ -123,6 +123,7 @@ Future<void> main() async {
   final playback = PlaybackRepository(auth);
   final downloads = DownloadsRepository(auth, playback, booksRepo: booksRepo);
   final theme = ThemeService();
+  await theme.init();
   await downloads.init();
 
   final services = AppServices(

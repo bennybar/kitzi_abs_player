@@ -2383,9 +2383,16 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
             palettePrimary: _palettePrimary,
             paletteSecondary: _paletteSecondary,
           ),
-          child: Scaffold(
-            backgroundColor: Colors.transparent,
-            body: SafeArea(
+          child: PopScope(
+            canPop: false,
+            onPopInvoked: (didPop) {
+              if (!didPop) {
+                Navigator.of(context).pop();
+              }
+            },
+            child: Scaffold(
+              backgroundColor: Colors.transparent,
+              body: SafeArea(
               child: StreamBuilder<NowPlaying?>(
               stream: playback.nowPlayingStream,
               initialData: playback.nowPlaying,
@@ -2629,7 +2636,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                   builder: (context, child) {
                                     final t = _coverAnimation.value;
                                     final fade = Curves.easeOut.transform(t);
-                                    final scale = 0.975 + 0.025 * Curves.easeOut.transform(t); // subtle zoom-in
+                                    final scale = 0.975 + 0.0352 * Curves.easeOut.transform(t); // subtle zoom-in to 101.02%
                                     final translateY = 14 * (1 - t); // reduce lift for less wobble
                                     return Transform.translate(
                                       offset: Offset(0, translateY),
@@ -3073,7 +3080,8 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
               },
             ),
           ),
-        ),
+          ),
+          ),
         );
       },
     );
