@@ -717,24 +717,37 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
               sliver: _viewType == SeriesViewType.series
-                  ? SliverList.builder(
-                      itemCount: filteredSeries.length,
-                      itemBuilder: (context, i) {
-                        final series = filteredSeries[i];
-                        return _NewSeriesCard(
-                          key: ValueKey('series-${series.id}'),
-                          series: series,
-                          onTap: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (context) => SeriesBooksPage(
-                                  series: series,
-                                  getBooksForSeries: _getBooksForSeries,
-                                ),
-                              ),
-                            );
-                          },
-                          getBooksForSeries: _getBooksForSeries,
+                  ? ValueListenableBuilder<int>(
+                      valueListenable: UiPrefs.seriesItemsPerRow,
+                      builder: (context, itemsPerRow, _) {
+                        return SliverGrid(
+                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: itemsPerRow,
+                            mainAxisSpacing: 12,
+                            crossAxisSpacing: 12,
+                            childAspectRatio: 0.85,
+                          ),
+                          delegate: SliverChildBuilderDelegate(
+                            (context, i) {
+                              final series = filteredSeries[i];
+                              return _NewSeriesCard(
+                                key: ValueKey('series-${series.id}'),
+                                series: series,
+                                onTap: () {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (context) => SeriesBooksPage(
+                                        series: series,
+                                        getBooksForSeries: _getBooksForSeries,
+                                      ),
+                                    ),
+                                  );
+                                },
+                                getBooksForSeries: _getBooksForSeries,
+                              );
+                            },
+                            childCount: filteredSeries.length,
+                          ),
                         );
                       },
                     )
@@ -909,7 +922,6 @@ class _NewSeriesCardState extends State<_NewSeriesCard> {
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(color: cs.outline.withOpacity(0.1), width: 1),
       ),
-      margin: const EdgeInsets.symmetric(vertical: 6),
       child: InkWell(
         onTap: widget.onTap,
         borderRadius: BorderRadius.circular(16),

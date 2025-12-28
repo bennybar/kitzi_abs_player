@@ -1590,26 +1590,35 @@ class _BookCard extends StatelessWidget {
               ),
               const SizedBox(height: 2),
               // Series (if available) - between title and author
-              if (book.series != null && book.series!.isNotEmpty) ...[
-                SizedBox(
-                  height: 14,
-                  child: GestureDetector(
-                    onTap: onSeriesTap,
-                    child: Text(
-                      book.series!,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: disabled 
-                            ? cs.onSurfaceVariant.withOpacity(0.4)
-                            : cs.primary.withOpacity(0.8),
-                        fontWeight: FontWeight.w500,
+              // Hide series if it's the same as author name (when preference is enabled)
+              ValueListenableBuilder<bool>(
+                valueListenable: UiPrefs.hideSeriesWhenSameAsAuthor,
+                builder: (context, hideWhenSame, _) {
+                  final shouldShowSeries = book.series != null && 
+                      book.series!.isNotEmpty && 
+                      (!hideWhenSame || book.series != book.author);
+                  if (!shouldShowSeries) return const SizedBox.shrink();
+                  
+                  return SizedBox(
+                    height: 14,
+                    child: GestureDetector(
+                      onTap: onSeriesTap,
+                      child: Text(
+                        book.series!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: disabled 
+                              ? cs.onSurfaceVariant.withOpacity(0.4)
+                              : cs.primary.withOpacity(0.8),
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                     ),
-                  ),
-                ),
-                const SizedBox(height: 2),
-              ],
+                  );
+                },
+              ),
+              const SizedBox(height: 2),
               // Author
               SizedBox(
                 height: 14,
@@ -1813,21 +1822,34 @@ class _ResumeBookCardState extends State<_ResumeBookCard> {
                 ),
               ),
               // Series (if available) - between title and author
-              if (widget.book.series != null && widget.book.series!.isNotEmpty) ...[
-                const SizedBox(height: 2),
-                GestureDetector(
-                  onTap: widget.onSeriesTap,
-                  child: Text(
-                    widget.book.series!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.primary.withOpacity(0.8),
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ],
+              // Hide series if it's the same as author name (when preference is enabled)
+              ValueListenableBuilder<bool>(
+                valueListenable: UiPrefs.hideSeriesWhenSameAsAuthor,
+                builder: (context, hideWhenSame, _) {
+                  final shouldShowSeries = widget.book.series != null && 
+                      widget.book.series!.isNotEmpty && 
+                      (!hideWhenSame || widget.book.series != widget.book.author);
+                  if (!shouldShowSeries) return const SizedBox.shrink();
+                  
+                  return Column(
+                    children: [
+                      const SizedBox(height: 2),
+                      GestureDetector(
+                        onTap: widget.onSeriesTap,
+                        child: Text(
+                          widget.book.series!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context).colorScheme.primary.withOpacity(0.8),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
               if (widget.book.author != null && widget.book.author!.isNotEmpty) ...[
                 const SizedBox(height: 2),
                 GestureDetector(
@@ -2059,23 +2081,34 @@ class _BookListTileState extends State<_BookListTile> {
                       ),
                     ),
                     // Series (if available) - between title and author
-                    if (widget.book.series != null && widget.book.series!.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      GestureDetector(
-                        onTap: widget.onSeriesTap,
-                        child: Text(
-                          widget.book.series!,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: disabled 
-                                ? cs.onSurfaceVariant.withOpacity(0.4)
-                                : cs.primary.withOpacity(0.8),
-                            fontWeight: FontWeight.w500,
+                    // Hide series if it's the same as author name (when preference is enabled)
+                    ValueListenableBuilder<bool>(
+                      valueListenable: UiPrefs.hideSeriesWhenSameAsAuthor,
+                      builder: (context, hideWhenSame, _) {
+                        final shouldShowSeries = widget.book.series != null && 
+                            widget.book.series!.isNotEmpty && 
+                            (!hideWhenSame || widget.book.series != widget.book.author);
+                        if (!shouldShowSeries) return const SizedBox.shrink();
+                        
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: GestureDetector(
+                            onTap: widget.onSeriesTap,
+                            child: Text(
+                              widget.book.series!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                color: disabled 
+                                    ? cs.onSurfaceVariant.withOpacity(0.4)
+                                    : cs.primary.withOpacity(0.8),
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
                           ),
-                        ),
-                      ),
-                    ],
+                        );
+                      },
+                    ),
                     if (widget.book.author != null && widget.book.author!.isNotEmpty) ...[
                       const SizedBox(height: 4),
                       GestureDetector(

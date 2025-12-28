@@ -44,6 +44,8 @@ class _SettingsPageState extends State<SettingsPage> {
   bool? _bluetoothAutoPlay;
   bool? _waveformAnimationEnabled;
   bool? _squigglyProgressBar;
+  bool? _hideSeriesWhenSameAsAuthor;
+  int? _seriesItemsPerRow;
   bool? _letterScrollEnabled;
   bool? _letterScrollBooksAlpha;
   bool? _smartRewindEnabled;
@@ -339,6 +341,8 @@ class _SettingsPageState extends State<SettingsPage> {
         // Load waveform animation setting (default already set above)
         _waveformAnimationEnabled = prefs.getBool('ui_waveform_animation_enabled') ?? true;
         _squigglyProgressBar = prefs.getBool('ui_squiggly_progress_bar') ?? true;
+        _hideSeriesWhenSameAsAuthor = prefs.getBool('ui_hide_series_when_same_as_author') ?? true;
+        _seriesItemsPerRow = prefs.getInt('ui_series_items_per_row') ?? 3;
         _letterScrollEnabled = prefs.getBool('ui_letter_scroll_enabled') ?? false;
         _letterScrollBooksAlpha = prefs.getBool('ui_letter_scroll_books_alpha') ?? false;
         _legacyFullScreenPlayer = prefs.getBool('ui_legacy_full_screen_player') ?? false;
@@ -1078,6 +1082,34 @@ class _SettingsPageState extends State<SettingsPage> {
               await UiPrefs.setAuthorViewEnabled(v, pinToSettingsOnChange: true);
               if (mounted) setState(() { _authorViewEnabled = v; });
             },
+          ),
+          SwitchListTile(
+            title: const Text('Hide duplicate series names'),
+            subtitle: const Text('Hide series name in books list when it matches the author name'),
+            value: _hideSeriesWhenSameAsAuthor ?? true,
+            onChanged: (v) async {
+              await UiPrefs.setHideSeriesWhenSameAsAuthor(v, pinToSettingsOnChange: true);
+              if (mounted) setState(() { _hideSeriesWhenSameAsAuthor = v; });
+            },
+          ),
+          ListTile(
+            title: const Text('Series items per row'),
+            subtitle: const Text('Number of series cards to display in each row'),
+            trailing: DropdownButton<int>(
+              value: _seriesItemsPerRow ?? 3,
+              items: [1, 2, 3, 4, 5, 6].map((value) {
+                return DropdownMenuItem<int>(
+                  value: value,
+                  child: Text('$value'),
+                );
+              }).toList(),
+              onChanged: (v) async {
+                if (v != null) {
+                  await UiPrefs.setSeriesItemsPerRow(v, pinToSettingsOnChange: true);
+                  if (mounted) setState(() { _seriesItemsPerRow = v; });
+                }
+              },
+            ),
           ),
           SwitchListTile(
             title: const Text('Waveform animation'),

@@ -22,6 +22,8 @@ class UiPrefs {
   static final ValueNotifier<bool> squigglyProgressBar = ValueNotifier<bool>(true); // Default to true
   static final ValueNotifier<PlayerCoverSize> playerCoverSize =
       ValueNotifier<PlayerCoverSize>(PlayerCoverSize.large);
+  static final ValueNotifier<bool> hideSeriesWhenSameAsAuthor = ValueNotifier<bool>(true); // Default to true
+  static final ValueNotifier<int> seriesItemsPerRow = ValueNotifier<int>(3); // Default to 3
 
   static const String _kSeries = 'ui_show_series_tab';
   static const String _kAuthorView = 'ui_author_view_enabled';
@@ -32,6 +34,8 @@ class UiPrefs {
   static const String _kPlayerGradient = 'ui_player_gradient_background';
   static const String _kSquigglyProgressBar = 'ui_squiggly_progress_bar';
   static const String _kPlayerCoverSize = 'ui_player_cover_size';
+  static const String _kHideSeriesWhenSameAsAuthor = 'ui_hide_series_when_same_as_author';
+  static const String _kSeriesItemsPerRow = 'ui_series_items_per_row';
 
   /// Calculate screen diagonal size in inches
   static double getScreenDiagonalInches(BuildContext context) {
@@ -74,6 +78,8 @@ class UiPrefs {
       playerGradientBackground.value = prefs.getBool(_kPlayerGradient) ?? true;
       squigglyProgressBar.value = prefs.getBool(_kSquigglyProgressBar) ?? true;
       playerCoverSize.value = _parseCoverSize(prefs.getString(_kPlayerCoverSize));
+      hideSeriesWhenSameAsAuthor.value = prefs.getBool(_kHideSeriesWhenSameAsAuthor) ?? true;
+      seriesItemsPerRow.value = prefs.getInt(_kSeriesItemsPerRow) ?? 3;
     } catch (_) {}
   }
   
@@ -94,6 +100,8 @@ class UiPrefs {
       playerGradientBackground.value = prefs.getBool(_kPlayerGradient) ?? playerGradientBackground.value;
       squigglyProgressBar.value = prefs.getBool(_kSquigglyProgressBar) ?? true;
       playerCoverSize.value = _parseCoverSize(prefs.getString(_kPlayerCoverSize));
+      hideSeriesWhenSameAsAuthor.value = prefs.getBool(_kHideSeriesWhenSameAsAuthor) ?? true;
+      seriesItemsPerRow.value = prefs.getInt(_kSeriesItemsPerRow) ?? 3;
     } catch (_) {}
   }
 
@@ -176,6 +184,24 @@ class UiPrefs {
       await prefs.setString(_kPlayerCoverSize, value.name);
     } catch (_) {}
     playerCoverSize.value = value;
+    if (pinToSettingsOnChange) pinSettings.value = true;
+  }
+
+  static Future<void> setHideSeriesWhenSameAsAuthor(bool value, {bool pinToSettingsOnChange = false}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_kHideSeriesWhenSameAsAuthor, value);
+    } catch (_) {}
+    hideSeriesWhenSameAsAuthor.value = value;
+    if (pinToSettingsOnChange) pinSettings.value = true;
+  }
+
+  static Future<void> setSeriesItemsPerRow(int value, {bool pinToSettingsOnChange = false}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_kSeriesItemsPerRow, value);
+    } catch (_) {}
+    seriesItemsPerRow.value = value;
     if (pinToSettingsOnChange) pinSettings.value = true;
   }
 
