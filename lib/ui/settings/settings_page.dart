@@ -327,6 +327,7 @@ class _SettingsPageState extends State<SettingsPage> {
       final headerMap = services.auth.api.customHeaders;
       
       final prefs = await SharedPreferences.getInstance();
+      if (!mounted) return;
       setState(() {
         _wifiOnly = prefs.getBool('downloads_wifi_only') ?? false;
         _syncProgressBeforePlay = prefs.getBool('sync_progress_before_play') ?? true;
@@ -367,19 +368,23 @@ class _SettingsPageState extends State<SettingsPage> {
       
       // Check logging session status
       final logger = SessionLoggerService.instance;
-      setState(() {
-        _loggingSessionActive = logger.isActive;
-      });
+      if (mounted) {
+        setState(() {
+          _loggingSessionActive = logger.isActive;
+        });
+      }
       if (_loggingSessionActive) {
         _startLoggingSessionTimer();
       }
     } catch (_) {
-      setState(() { 
-        _wifiOnly = false;
-        _syncProgressBeforePlay = true;
-        _pauseCancelsSleepTimer = true;
-        _bluetoothAutoPlay = true;
-      });
+      if (mounted) {
+        setState(() { 
+          _wifiOnly = false;
+          _syncProgressBeforePlay = true;
+          _pauseCancelsSleepTimer = true;
+          _bluetoothAutoPlay = true;
+        });
+      }
     }
   }
 

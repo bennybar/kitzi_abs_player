@@ -723,25 +723,25 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
                         // Use SliverList for single column (old layout), SliverGrid for multiple columns
                         if (itemsPerRow == 1) {
                           return SliverList.separated(
-                            itemCount: filteredSeries.length,
+                      itemCount: filteredSeries.length,
                             separatorBuilder: (_, __) => const SizedBox(height: 12),
-                            itemBuilder: (context, i) {
-                              final series = filteredSeries[i];
-                              return _NewSeriesCard(
-                                key: ValueKey('series-${series.id}'),
-                                series: series,
+                      itemBuilder: (context, i) {
+                        final series = filteredSeries[i];
+                        return _NewSeriesCard(
+                          key: ValueKey('series-${series.id}'),
+                          series: series,
                                 itemsPerRow: itemsPerRow,
-                                onTap: () {
-                                  Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      builder: (context) => SeriesBooksPage(
-                                        series: series,
-                                        getBooksForSeries: _getBooksForSeries,
-                                      ),
-                                    ),
-                                  );
-                                },
-                                getBooksForSeries: _getBooksForSeries,
+                          onTap: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) => SeriesBooksPage(
+                                  series: series,
+                                  getBooksForSeries: _getBooksForSeries,
+                                ),
+                              ),
+                            );
+                          },
+                          getBooksForSeries: _getBooksForSeries,
                               );
                             },
                           );
@@ -948,73 +948,73 @@ class _NewSeriesCardState extends State<_NewSeriesCard> {
     
     // Use old full-width layout when itemsPerRow is 1
     if (widget.itemsPerRow == 1) {
-      return Card(
-        elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: cs.outline.withOpacity(0.1), width: 1),
-        ),
-        margin: const EdgeInsets.symmetric(vertical: 6),
-        child: InkWell(
-          onTap: widget.onTap,
-          borderRadius: BorderRadius.circular(16),
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.collections_bookmark_rounded, size: 20, color: cs.primary),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              widget.series.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)
-                            ),
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: cs.outline.withOpacity(0.1), width: 1),
+      ),
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      child: InkWell(
+        onTap: widget.onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.collections_bookmark_rounded, size: 20, color: cs.primary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            widget.series.name, 
+                            maxLines: 1, 
+                            overflow: TextOverflow.ellipsis, 
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)
                           ),
-                          const SizedBox(width: 8),
-                          Text(
-                            '(${widget.series.numBooks})',
-                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w400,
-                              color: cs.onSurfaceVariant,
-                            ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '(${widget.series.numBooks})',
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w400,
+                            color: cs.onSurfaceVariant,
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-                const SizedBox(height: 12),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
                 // Show first 4 covers in a horizontal scrollable row
-                _loading
-                    ? const SizedBox(
-                        height: 120,
-                        child: Center(child: CircularProgressIndicator()),
-                      )
-                    : _books == null || _books!.isEmpty
-                        ? SizedBox(
-                            height: 120,
-                            child: Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.book_outlined, color: cs.onSurfaceVariant),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    'No books loaded',
-                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
-                                  ),
-                                ],
-                              ),
+              _loading
+                  ? const SizedBox(
+                      height: 120,
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  : _books == null || _books!.isEmpty
+                      ? SizedBox(
+                          height: 120,
+                          child: Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.book_outlined, color: cs.onSurfaceVariant),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'No books loaded',
+                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                                ),
+                              ],
                             ),
-                          )
+                          ),
+                        )
                         : _buildCoverGridOld(_books!.take(4).toList()),
               ],
             ),

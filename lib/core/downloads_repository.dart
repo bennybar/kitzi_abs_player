@@ -559,6 +559,11 @@ class DownloadsRepository {
     return ctrl.stream;
   }
 
+  /// Quick, local-only snapshot of progress for a library item (no network).
+  Future<ItemProgress> getQuickProgress(String libraryItemId) {
+    return _computeItemProgressQuick(libraryItemId);
+  }
+
   /// Compute item progress using local data only (no server calls).
   Future<ItemProgress> _computeItemProgressQuick(String libraryItemId) async {
     try {
@@ -1122,7 +1127,12 @@ class DownloadsRepository {
     final all = await _getAllRecordsCached();
     for (final r in all) {
       final meta = r.task.metaData ?? '';
-      final id = _extractItemId(meta);
+      String? id = _extractItemId(meta);
+      // Also consider task group (often book-<id> or <id>)
+      final grp = r.task.group;
+      if ((id == null || id.isEmpty) && grp != null && grp.isNotEmpty) {
+        id = grp.startsWith('book-') && grp.length > 5 ? grp.substring(5) : grp;
+      }
       if (id != null && id.isNotEmpty) ids.add(id);
     }
     // From local downloads via storage helper
@@ -1130,6 +1140,9 @@ class DownloadsRepository {
       final localIds = await DownloadStorage.listItemIdsWithLocalDownloads();
       ids.addAll(localIds);
     } catch (_) {}
+    // From progress cache (in-flight tasks)
+    ids.addAll(_lastRunningProgress.keys);
+
     final list = ids.toList()..sort();
     return list;
   }
@@ -1197,70 +1210,8 @@ class DownloadsRepository {
   // === Internal aggregation ===
 
   Future<ItemProgress> _computeItemProgress(String libraryItemId) async {
-    // First check if local files exist - this is the most reliable indicator
-    final hasLocal = await hasLocalDownloads(libraryItemId);
-    final recs = await _recordsForItem(libraryItemId);
-    int totalTracks = await _getTotalTracksWithoutSession(
-      libraryItemId,
-      allowSessionFallback: false,
-    );
-    final completedLocal = await _countLocalFiles(libraryItemId);
-
-    // Determine per-file running progress using live cache for stability
-    double runningProgress = _lastRunningProgress[libraryItemId] ?? 0.0;
-
-    final denom = totalTracks == 0 ? 1 : totalTracks;
-    double value = ((completedLocal.toDouble()) + runningProgress) / denom;
-    // If item is blocked/canceled, force 0 to avoid stale '2%'
-    if (_blockedItems.contains(libraryItemId) && !hasLocal) {
-      value = 0.0;
-    } else if (value > 0.0 && value < 0.01) {
-      value = 0.01;
-    }
-
-    String status = 'none';
-    // CRITICAL: Check local files first - if they exist and we have files, consider download status
-    // This ensures downloaded books show "Downloaded" even if track count doesn't match exactly
-    if (hasLocal && completedLocal > 0) {
-      final bool hasActiveTasks =
-          recs.any((r) => r.status == TaskStatus.running || r.status == TaskStatus.enqueued) ||
-          _uiActive[libraryItemId] == true ||
-          _itemsInGlobalQueue.contains(libraryItemId) ||
-          _activeItems.contains(libraryItemId);
-      // If we have local files, check if we have enough files OR if total tracks is unknown
-      // This handles cases where track count might be slightly off or unknown
-      if (totalTracks > 0) {
-        // If we know the total, check if we have all files
-        if (completedLocal >= totalTracks) {
-          status = 'complete';
-        } else {
-          // Partially downloaded - remain in running/queued state until all files are done
-          status = hasActiveTasks ? 'running' : 'queued';
-        }
-      } else {
-        // Total tracks unknown but we have local files - consider complete
-        status = 'complete';
-      }
-    } else if (recs.any((r) => r.status == TaskStatus.failed)) status = 'failed';
-    else if (recs.any((r) => r.status == TaskStatus.running)) status = 'running';
-    else if (recs.any((r) => r.status == TaskStatus.enqueued)) status = 'queued';
-    else if (_pendingQueuedUntil[libraryItemId]?.isAfter(DateTime.now()) == true) status = 'queued';
-    else if (_itemsInGlobalQueue.contains(libraryItemId) || _activeItems.contains(libraryItemId)) status = 'queued';
-    else if (_blockedItems.contains(libraryItemId) && !hasLocal) status = 'none';
-    else if (_uiActive[libraryItemId] == true) status = 'running';
-    else if (completedLocal > 0 && completedLocal < totalTracks) status = 'running';
-    else if (hasLocal && completedLocal > 0) {
-      // Has some local files but not complete - treat as in progress or complete based on count
-      status = completedLocal >= totalTracks ? 'complete' : 'running';
-    }
-
-    return ItemProgress(
-      libraryItemId: libraryItemId,
-      status: status,
-      progress: value.clamp(0.0, 1.0),
-      totalTasks: totalTracks,
-      completed: completedLocal,
-    );
+    // Use the local-only computation to avoid network calls from UI listeners.
+    return _computeItemProgressQuick(libraryItemId);
   }
 
   // Cache for database records to reduce locking

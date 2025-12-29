@@ -1648,10 +1648,10 @@ class _BookCard extends StatelessWidget {
                     ? GestureDetector(
                         onTap: onAuthorTap,
                         child: Text(
-                          book.author!,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        book.author!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: disabled 
                                 ? cs.onSurfaceVariant.withOpacity(0.4)
                                 : cs.onSurfaceVariant,
@@ -1877,11 +1877,11 @@ class _ResumeBookCardState extends State<_ResumeBookCard> {
                 GestureDetector(
                   onTap: widget.onAuthorTap,
                   child: Text(
-                    widget.book.author!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  widget.book.author!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ),
@@ -2136,11 +2136,11 @@ class _BookListTileState extends State<_BookListTile> {
                       GestureDetector(
                         onTap: widget.onAuthorTap,
                         child: Text(
-                          widget.book.author!,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: disabled ? cs.onSurfaceVariant.withOpacity(0.4) : cs.onSurfaceVariant,
+                        widget.book.author!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: disabled ? cs.onSurfaceVariant.withOpacity(0.4) : cs.onSurfaceVariant,
                           ),
                         ),
                       ),

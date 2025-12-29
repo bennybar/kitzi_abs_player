@@ -145,6 +145,8 @@ class _MainScaffoldState extends State<MainScaffold> {
     _downloadProgressSub?.cancel();
     _progressTimer?.cancel();
     _debounceTimer?.cancel();
+    _taskProgress.clear();
+    _taskActive.clear();
     UiPrefs.seriesTabVisible.removeListener(_onTabPrefsChanged);
     UiPrefs.authorViewEnabled.removeListener(_onTabPrefsChanged);
     super.dispose();

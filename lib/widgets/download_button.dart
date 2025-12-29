@@ -39,6 +39,7 @@ class _DownloadButtonState extends State<DownloadButton> {
   StreamSubscription<ItemProgress>? _sub;
   ItemProgress? _snap;
   bool _busy = false;
+  bool _mounted = false;
 
   @override
   void didChangeDependencies() {
@@ -49,16 +50,62 @@ class _DownloadButtonState extends State<DownloadButton> {
       // switch subscriptions safely
       _sub?.cancel();
       _downloads = repo;
+      // Ensure repo is initialized
+      _downloads!.init();
       _sub = _downloads!
           .watchItemProgress(widget.libraryItemId)
-          .listen((p) => setState(() => _snap = p));
+          .listen((p) {
+            if (_mounted) {
+              setState(() => _snap = p);
+            }
+          });
+      // Pull a fresh snapshot immediately when attaching to a (possibly new) repo
+      _refreshSnap();
     }
   }
 
   @override
   void dispose() {
     _sub?.cancel();
+    _mounted = false;
     super.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _mounted = true;
+    // Pull an initial snapshot on first build
+    WidgetsBinding.instance.addPostFrameCallback((_) => _refreshSnap());
+  }
+
+  @override
+  void didUpdateWidget(covariant DownloadButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // When navigating back to details, refresh current status
+    if (_downloads != null && oldWidget.libraryItemId != widget.libraryItemId) {
+      _refreshSnap();
+    } else {
+      _refreshSnap();
+    }
+  }
+
+  Future<void> _refreshSnap() async {
+    if (!_mounted || _downloads == null) return;
+    try {
+      // Use a quick local snapshot; if that fails, fall back to the stream first value.
+      ItemProgress snap;
+      try {
+        snap = await _downloads!.getQuickProgress(widget.libraryItemId);
+      } catch (_) {
+        snap = await _downloads!.watchItemProgress(widget.libraryItemId).first;
+      }
+      if (_mounted) {
+        setState(() {
+          _snap = snap;
+        });
+      }
+    } catch (_) {}
   }
 
   Future<void> _enqueue() async {

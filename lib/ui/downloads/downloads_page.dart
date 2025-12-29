@@ -51,19 +51,12 @@ class _DownloadsPageState extends State<DownloadsPage> {
     try {
       final allRecords = await widget.repo.listAll();
       for (final record in allRecords) {
-        final meta = record.task.metaData ?? '';
-        if (meta.isNotEmpty) {
-          try {
-            final decoded = jsonDecode(meta);
-            if (decoded is Map && decoded['libraryItemId'] is String) {
-              final itemId = decoded['libraryItemId'] as String;
-              // Include if it has active tasks (running or enqueued)
-              if ((record.status == TaskStatus.running || record.status == TaskStatus.enqueued) &&
-                  !trackedSet.contains(itemId)) {
-                trackedSet.add(itemId);
-              }
-            }
-          } catch (_) {}
+        final itemId = _deriveItemId(record, trackedSet);
+        final isActive = record.status == TaskStatus.running || record.status == TaskStatus.enqueued;
+        final isPartial = record.status == TaskStatus.complete || record.status == TaskStatus.enqueued || record.status == TaskStatus.running;
+        // Always include active; include partial only if we already have local
+        if (itemId.isNotEmpty && (isActive || isPartial || _latest.containsKey(record.task.taskId))) {
+          trackedSet.add(itemId);
         }
       }
     } catch (_) {}
@@ -71,9 +64,49 @@ class _DownloadsPageState extends State<DownloadsPage> {
     return trackedSet.toList();
   }
 
+  /// Extract libraryItemId from task metadata or group, with generous fallbacks.
+  String? _extractItemId(String meta, Set<String> knownIds, {String? group}) {
+    // Primary: JSON meta with common keys
+    if (meta.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(meta);
+        if (decoded is Map) {
+          final keys = ['libraryItemId', 'itemId', 'id'];
+          for (final k in keys) {
+            final v = decoded[k];
+            if (v is String && v.isNotEmpty) return v;
+          }
+        }
+      } catch (_) {}
+    }
+    // Secondary: task group; often "book-<id>" or just the id
+    if (group != null && group.isNotEmpty) {
+      if (group.startsWith('book-') && group.length > 5) {
+        return group.substring(5);
+      }
+      return group;
+    }
+    // Tertiary: meta contains a known id
+    for (final id in knownIds) {
+      if (meta.contains(id)) return id;
+    }
+    return null;
+  }
+
+  /// Derive an item id from a TaskRecord with generous fallbacks.
+  String _deriveItemId(TaskRecord record, Set<String> knownIds) {
+    final meta = record.task.metaData ?? '';
+    final id = _extractItemId(meta, knownIds, group: record.task.group);
+    if (id != null && id.isNotEmpty) return id;
+    if (record.task.group != null && record.task.group!.isNotEmpty) return record.task.group!;
+    // Fallback to taskId to keep it visible if nothing else matches
+    return record.task.taskId;
+  }
+
   @override
   Widget build(BuildContext context) {
     // We rebuild on each stream event via setState above.
+    final cs = Theme.of(context).colorScheme;
     return FutureBuilder<List<String>>(
       future: _getAllDownloadItemIds(),
       builder: (context, idsSnap) {
@@ -82,14 +115,13 @@ class _DownloadsPageState extends State<DownloadsPage> {
           future: BooksRepository.create(),
           builder: (context, repoSnap) {
             if (!repoSnap.hasData) {
-              return const Center(child: CircularProgressIndicator());
+              return const Scaffold(body: Center(child: CircularProgressIndicator()));
             }
             final repo = repoSnap.data!;
             return FutureBuilder<List<Widget>>(
               future: _buildTiles(repo, allIds),
               builder: (context, tilesSnap) {
                 final tiles = tilesSnap.data ?? const <Widget>[];
-                final cs = Theme.of(context).colorScheme;
                 return Scaffold(
                   appBar: AppBar(
                     title: Row(
@@ -106,29 +138,29 @@ class _DownloadsPageState extends State<DownloadsPage> {
                     left: false,
                     right: false,
                     child: Column(
-                    children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          'Swipe left on an item to remove downloaded files',
-                          style: Theme.of(context).textTheme.labelMedium?.copyWith(color: cs.onSurfaceVariant),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Expanded(
-                      child: tiles.isEmpty
-                          ? const Center(child: Text('No downloads yet'))
-                          : ListView.separated(
-                              itemCount: tiles.length,
-                              separatorBuilder: (_, __) => const Divider(height: 1),
-                              itemBuilder: (_, i) => tiles[i],
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'Swipe left on an item to remove downloaded files',
+                              style: Theme.of(context).textTheme.labelMedium?.copyWith(color: cs.onSurfaceVariant),
                             ),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Expanded(
+                          child: tiles.isEmpty
+                              ? const Center(child: Text('No downloads yet'))
+                              : ListView.separated(
+                                  itemCount: tiles.length,
+                                  separatorBuilder: (_, __) => const Divider(height: 1),
+                                  itemBuilder: (_, i) => tiles[i],
+                                ),
+                        ),
+                      ],
                     ),
-                  ],
-                  ),
                   ),
                 );
               },
@@ -143,13 +175,47 @@ class _DownloadsPageState extends State<DownloadsPage> {
     final tileInfos = <_DownloadTileInfo>[];
     for (final itemId in ids) {
       final recs = await widget.repo.listAll();
-      final records = recs.where((r) => (r.task.metaData ?? '').contains(itemId)).toList()
+      final records = recs.where((r) {
+        final mid = _deriveItemId(r, ids.toSet());
+        return mid == itemId;
+      }).toList()
         ..sort((a, b) => (a.task.filename ?? '').compareTo(b.task.filename ?? ''));
       final total = records.length;
       final done = records.where((r) => r.status == TaskStatus.complete).length;
       final hasLocal = await widget.repo.hasLocalDownloads(itemId);
 
-      final book = await repo.getBook(itemId);
+      final book = await repo.getBookFromDb(itemId);
+      final firstTask = records.isNotEmpty ? records.first.task : null;
+      final titleFallback = book?.title ?? firstTask?.filename ?? 'Downloading…';
+      final authorFallback = book?.author ?? (firstTask?.group ?? '');
+
+      // Check latest stream updates for active tasks even if DB has no records yet
+      bool hasLatestActive = false;
+      _latest.forEach((_, update) {
+        String? itemIdFromMeta;
+        final meta = update.task.metaData ?? '';
+        if (meta.isNotEmpty) {
+          try {
+            final decoded = jsonDecode(meta);
+            if (decoded is Map && decoded['libraryItemId'] is String) {
+              itemIdFromMeta = decoded['libraryItemId'] as String;
+            }
+          } catch (_) {}
+        }
+        // Fallback: group may be book-<id> or just <id>
+        itemIdFromMeta ??= (update.task.group != null && update.task.group!.startsWith('book-') && update.task.group!.length > 5)
+            ? update.task.group!.substring(5)
+            : update.task.group;
+        if (itemIdFromMeta == itemId) {
+          if (update is TaskProgressUpdate) {
+            hasLatestActive = true;
+          } else if (update is TaskStatusUpdate) {
+            if (update.status == TaskStatus.running || update.status == TaskStatus.enqueued) {
+              hasLatestActive = true;
+            }
+          }
+        }
+      });
       final w = Dismissible(
         key: ValueKey('dl-$itemId'),
         direction: DismissDirection.endToStart,
@@ -170,11 +236,13 @@ class _DownloadsPageState extends State<DownloadsPage> {
         },
         child: _BookDownloadTile(
           itemId: itemId,
-          title: book.title,
-          author: book.author,
-          coverUrl: book.coverUrl,
-           durationMs: book.durationMs,
-           sizeBytes: book.sizeBytes,
+          title: titleFallback,
+          author: authorFallback,
+          coverUrl: book?.coverUrl,
+           durationMs: book?.durationMs,
+           sizeBytes: book?.sizeBytes,
+          taskGroup: firstTask?.group,
+          taskFilename: firstTask?.filename,
           repo: widget.repo,
           latest: _latest,
           hasLocalPrefetched: hasLocal,
@@ -182,9 +250,9 @@ class _DownloadsPageState extends State<DownloadsPage> {
       );
 
       // Show tiles:
-      final hasActive = records.any((r) => r.status == TaskStatus.running || r.status == TaskStatus.enqueued);
+      final hasActive = records.any((r) => r.status == TaskStatus.running || r.status == TaskStatus.enqueued) || hasLatestActive;
       final isComplete = hasLocal || (total > 0 && done == total);
-      final isInProgress = hasActive || (done > 0 && done < total);
+      final isInProgress = hasActive || hasLatestActive || (done > 0 && done < total);
       
       if (isComplete || isInProgress) {
         tileInfos.add(_DownloadTileInfo(
@@ -231,6 +299,8 @@ class _BookDownloadTile extends StatefulWidget {
     required this.repo,
     required this.latest,
     this.hasLocalPrefetched = false,
+    this.taskGroup,
+    this.taskFilename,
   });
   final String itemId;
   final String title;
@@ -241,6 +311,8 @@ class _BookDownloadTile extends StatefulWidget {
   final DownloadsRepository repo;
   final Map<String, TaskUpdate> latest;
   final bool hasLocalPrefetched;
+  final String? taskGroup;
+  final String? taskFilename;
 
   @override
   State<_BookDownloadTile> createState() => _BookDownloadTileState();
@@ -250,6 +322,9 @@ class _BookDownloadTileState extends State<_BookDownloadTile> {
   List<TaskRecord> _records = const [];
   bool _hasLocal = false;
   int _localBytes = 0;
+  Map<String, TaskUpdate> get _latest => widget.latest;
+  String? get _taskGroup => widget.taskGroup;
+  String? get _taskFilename => widget.taskFilename;
 
   @override
   void initState() {
@@ -296,8 +371,52 @@ class _BookDownloadTileState extends State<_BookDownloadTile> {
 
     final total = _records.length;
     final done = _records.where((r) => r.status == TaskStatus.complete).length;
+    final hasActive = _records.any((r) =>
+        r.status == TaskStatus.running || r.status == TaskStatus.enqueued);
 
-    // Find the active task (running or enqueued)
+    // Latest progress from stream (more accurate/continuous)
+    double latestProgress = 0.0;
+    bool hasLatestActive = false;
+    bool latestComplete = false;
+    bool latestQueued = false;
+    int latestCount = 0;
+    _latest.forEach((_, update) {
+      final meta = update.task.metaData ?? '';
+      String? itemId;
+      if (meta.isNotEmpty) {
+        try {
+          final decoded = jsonDecode(meta);
+          if (decoded is Map && decoded['libraryItemId'] is String) {
+            itemId = decoded['libraryItemId'] as String;
+          }
+        } catch (_) {}
+      }
+      itemId ??= widget.itemId; // fallback if meta missing
+      if (itemId == widget.itemId) {
+        if (update is TaskProgressUpdate) {
+          latestProgress += (update.progress ?? 0.0).clamp(0.0, 1.0);
+          latestCount++;
+          hasLatestActive = true;
+          // Do NOT mark complete on progress alone; wait for status update or local files
+        } else if (update is TaskStatusUpdate) {
+          if (update.status == TaskStatus.running || update.status == TaskStatus.enqueued) {
+            hasLatestActive = true;
+            if (update.status == TaskStatus.enqueued) {
+              latestQueued = true;
+            }
+          }
+          if (update.status == TaskStatus.complete) {
+            latestComplete = true;
+            hasLatestActive = false;
+          }
+        }
+      }
+    });
+    if (latestCount > 0) {
+      latestProgress = (latestProgress / latestCount).clamp(0.0, 1.0);
+    }
+
+    // Fallback to DB-based progress if no latest info
     TaskRecord? active;
     if (_records.isNotEmpty) {
       try {
@@ -315,13 +434,19 @@ class _BookDownloadTileState extends State<_BookDownloadTile> {
       filePct = (active.progress ?? 0.0).clamp(0.0, 1.0);
     }
 
-    final overallPct = (total == 0 && _hasLocal)
-        ? 1.0
-        : total == 0
-            ? 0.0
-            : ((done.toDouble()) + filePct) / total.toDouble();
+    double overallPct;
+    if (hasLatestActive && latestCount > 0) {
+      overallPct = latestProgress;
+    } else {
+      overallPct = (total == 0 && _hasLocal)
+          ? 1.0
+          : total == 0
+              ? 0.0
+              : ((done.toDouble()) + filePct) / total.toDouble();
+    }
 
-    final isComplete = _hasLocal || (total > 0 && done == total);
+    final isComplete = _hasLocal || latestComplete || (total > 0 && done == total);
+    final isInProgress = hasActive || hasLatestActive || (done > 0 && done < total);
 
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -371,13 +496,31 @@ class _BookDownloadTileState extends State<_BookDownloadTile> {
               ),
             ),
             const SizedBox(height: 4),
-            if (total > 0)
-              Text(
-                'Overall ${(overallPct * 100).toStringAsFixed(0)}% • File ${fileIndex.clamp(1, total)} of $total',
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      color: cs.onSurfaceVariant,
-                    ),
-              ),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    total > 0
+                        ? 'Overall ${(overallPct * 100).toStringAsFixed(0)}% • File ${fileIndex.clamp(1, total)} of $total'
+                        : 'Queued…',
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          color: cs.onSurfaceVariant,
+                        ),
+                  ),
+                ),
+                if (hasActive)
+                  TextButton.icon(
+                    onPressed: () async {
+                      try {
+                        await widget.repo.cancelForItem(widget.itemId);
+                        await _load();
+                      } catch (_) {}
+                    },
+                    icon: const Icon(Icons.close_rounded, size: 16),
+                    label: const Text('Cancel'),
+                  ),
+              ],
+            ),
           ] else ...[
             const SizedBox(height: 4),
             Text(_metaLine(), style: Theme.of(context).textTheme.labelLarge?.copyWith(color: cs.onSurfaceVariant)),
