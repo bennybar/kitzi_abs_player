@@ -2950,11 +2950,16 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                               },
                                             ),
                                             SizedBox(width: spacing),
-                                            _ControlButton(
-                                              tooltip: 'Back 30s',
-                                              icon: Icons.replay_30_rounded,
-                                              size: side,
-                                              onTap: () => playback.nudgeSeconds(-30),
+                                            ValueListenableBuilder<int>(
+                                              valueListenable: UiPrefs.seekBackwardSeconds,
+                                              builder: (context, seekSeconds, _) {
+                                                return _ControlButton(
+                                                  tooltip: 'Back ${seekSeconds}s',
+                                                  icon: Icons.replay_30_rounded,
+                                                  size: side,
+                                                  onTap: () => playback.nudgeSeconds(-seekSeconds),
+                                                );
+                                              },
                                             ),
                                             SizedBox(width: spacing),
                                             StreamBuilder<bool>(
@@ -2998,11 +3003,16 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                               },
                                             ),
                                             SizedBox(width: spacing),
-                                            _ControlButton(
-                                              tooltip: 'Forward 30s',
-                                              icon: Icons.forward_30_rounded,
-                                              size: side,
-                                              onTap: () => playback.nudgeSeconds(30),
+                                            ValueListenableBuilder<int>(
+                                              valueListenable: UiPrefs.seekForwardSeconds,
+                                              builder: (context, seekSeconds, _) {
+                                                return _ControlButton(
+                                                  tooltip: 'Forward ${seekSeconds}s',
+                                                  icon: Icons.forward_30_rounded,
+                                                  size: side,
+                                                  onTap: () => playback.nudgeSeconds(seekSeconds),
+                                                );
+                                              },
                                             ),
                                             SizedBox(width: spacing),
                                             _ControlButton(

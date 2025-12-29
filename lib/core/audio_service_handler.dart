@@ -287,10 +287,10 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
   }
 
   @override
-  Future<void> fastForward() => _playback.nudgeSeconds(30);
+  Future<void> fastForward() => _playback.nudgeSeconds(UiPrefs.seekForwardSeconds.value);
 
   @override
-  Future<void> rewind() => _playback.nudgeSeconds(-30);
+  Future<void> rewind() => _playback.nudgeSeconds(-UiPrefs.seekBackwardSeconds.value);
 
   @override
   Future<void> skipToNext() async {

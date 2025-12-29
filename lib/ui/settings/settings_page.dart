@@ -46,6 +46,8 @@ class _SettingsPageState extends State<SettingsPage> {
   bool? _squigglyProgressBar;
   bool? _hideSeriesWhenSameAsAuthor;
   int? _seriesItemsPerRow;
+  int? _seekBackwardSeconds;
+  int? _seekForwardSeconds;
   bool? _letterScrollEnabled;
   bool? _letterScrollBooksAlpha;
   bool? _smartRewindEnabled;
@@ -343,6 +345,8 @@ class _SettingsPageState extends State<SettingsPage> {
         _squigglyProgressBar = prefs.getBool('ui_squiggly_progress_bar') ?? true;
         _hideSeriesWhenSameAsAuthor = prefs.getBool('ui_hide_series_when_same_as_author') ?? true;
         _seriesItemsPerRow = prefs.getInt('ui_series_items_per_row') ?? 2;
+        _seekBackwardSeconds = prefs.getInt('ui_seek_backward_seconds') ?? 30;
+        _seekForwardSeconds = prefs.getInt('ui_seek_forward_seconds') ?? 30;
         _letterScrollEnabled = prefs.getBool('ui_letter_scroll_enabled') ?? false;
         _letterScrollBooksAlpha = prefs.getBool('ui_letter_scroll_books_alpha') ?? false;
         _legacyFullScreenPlayer = prefs.getBool('ui_legacy_full_screen_player') ?? false;
@@ -1526,6 +1530,70 @@ class _SettingsPageState extends State<SettingsPage> {
                   child: Text('Current chapter'),
                 ),
               ],
+            ),
+          ),
+          ListTile(
+            title: const Text('Seek backward duration'),
+            subtitle: Text('${_seekBackwardSeconds ?? 30} seconds'),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Slider(
+              value: (_seekBackwardSeconds ?? 30).toDouble(),
+              min: 5,
+              max: 60,
+              divisions: 11, // 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60
+              label: '${_seekBackwardSeconds ?? 30}s',
+              onChanged: (value) {
+                // Round to nearest valid value (5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60)
+                final validValues = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60];
+                final rounded = validValues.reduce((a, b) => (value - a).abs() < (value - b).abs() ? a : b);
+                setState(() {
+                  _seekBackwardSeconds = rounded;
+                });
+              },
+              onChangeEnd: (value) async {
+                final validValues = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60];
+                final rounded = validValues.reduce((a, b) => (value - a).abs() < (value - b).abs() ? a : b);
+                await UiPrefs.setSeekBackwardSeconds(rounded, pinToSettingsOnChange: true);
+                if (!mounted) return;
+                setState(() {
+                  _seekBackwardSeconds = rounded;
+                });
+              },
+            ),
+          ),
+          ListTile(
+            title: const Text('Seek forward duration'),
+            subtitle: Text('${_seekForwardSeconds ?? 30} seconds'),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Slider(
+              value: (_seekForwardSeconds ?? 30).toDouble(),
+              min: 5,
+              max: 60,
+              divisions: 11, // 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60
+              label: '${_seekForwardSeconds ?? 30}s',
+              onChanged: (value) {
+                // Round to nearest valid value (5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60)
+                final validValues = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60];
+                final rounded = validValues.reduce((a, b) => (value - a).abs() < (value - b).abs() ? a : b);
+                setState(() {
+                  _seekForwardSeconds = rounded;
+                });
+              },
+              onChangeEnd: (value) async {
+                final validValues = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60];
+                final rounded = validValues.reduce((a, b) => (value - a).abs() < (value - b).abs() ? a : b);
+                await UiPrefs.setSeekForwardSeconds(rounded, pinToSettingsOnChange: true);
+                if (!mounted) return;
+                setState(() {
+                  _seekForwardSeconds = rounded;
+                });
+              },
             ),
           ),
           SwitchListTile(

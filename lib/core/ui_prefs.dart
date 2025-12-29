@@ -24,6 +24,8 @@ class UiPrefs {
       ValueNotifier<PlayerCoverSize>(PlayerCoverSize.large);
   static final ValueNotifier<bool> hideSeriesWhenSameAsAuthor = ValueNotifier<bool>(true); // Default to true
   static final ValueNotifier<int> seriesItemsPerRow = ValueNotifier<int>(2); // Default to 2
+  static final ValueNotifier<int> seekBackwardSeconds = ValueNotifier<int>(30); // Default to 30 seconds
+  static final ValueNotifier<int> seekForwardSeconds = ValueNotifier<int>(30); // Default to 30 seconds
 
   static const String _kSeries = 'ui_show_series_tab';
   static const String _kAuthorView = 'ui_author_view_enabled';
@@ -36,6 +38,8 @@ class UiPrefs {
   static const String _kPlayerCoverSize = 'ui_player_cover_size';
   static const String _kHideSeriesWhenSameAsAuthor = 'ui_hide_series_when_same_as_author';
   static const String _kSeriesItemsPerRow = 'ui_series_items_per_row';
+  static const String _kSeekBackwardSeconds = 'ui_seek_backward_seconds';
+  static const String _kSeekForwardSeconds = 'ui_seek_forward_seconds';
 
   /// Calculate screen diagonal size in inches
   static double getScreenDiagonalInches(BuildContext context) {
@@ -80,6 +84,8 @@ class UiPrefs {
       playerCoverSize.value = _parseCoverSize(prefs.getString(_kPlayerCoverSize));
       hideSeriesWhenSameAsAuthor.value = prefs.getBool(_kHideSeriesWhenSameAsAuthor) ?? true;
       seriesItemsPerRow.value = prefs.getInt(_kSeriesItemsPerRow) ?? 2;
+      seekBackwardSeconds.value = prefs.getInt(_kSeekBackwardSeconds) ?? 30;
+      seekForwardSeconds.value = prefs.getInt(_kSeekForwardSeconds) ?? 30;
     } catch (_) {}
   }
   
@@ -102,6 +108,8 @@ class UiPrefs {
       playerCoverSize.value = _parseCoverSize(prefs.getString(_kPlayerCoverSize));
       hideSeriesWhenSameAsAuthor.value = prefs.getBool(_kHideSeriesWhenSameAsAuthor) ?? true;
       seriesItemsPerRow.value = prefs.getInt(_kSeriesItemsPerRow) ?? 2;
+      seekBackwardSeconds.value = prefs.getInt(_kSeekBackwardSeconds) ?? 30;
+      seekForwardSeconds.value = prefs.getInt(_kSeekForwardSeconds) ?? 30;
     } catch (_) {}
   }
 
@@ -202,6 +210,24 @@ class UiPrefs {
       await prefs.setInt(_kSeriesItemsPerRow, value);
     } catch (_) {}
     seriesItemsPerRow.value = value;
+    if (pinToSettingsOnChange) pinSettings.value = true;
+  }
+
+  static Future<void> setSeekBackwardSeconds(int value, {bool pinToSettingsOnChange = false}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_kSeekBackwardSeconds, value);
+    } catch (_) {}
+    seekBackwardSeconds.value = value;
+    if (pinToSettingsOnChange) pinSettings.value = true;
+  }
+
+  static Future<void> setSeekForwardSeconds(int value, {bool pinToSettingsOnChange = false}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_kSeekForwardSeconds, value);
+    } catch (_) {}
+    seekForwardSeconds.value = value;
     if (pinToSettingsOnChange) pinSettings.value = true;
   }
 
