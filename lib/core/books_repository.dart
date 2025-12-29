@@ -2404,8 +2404,10 @@ class BooksRepository {
     
     final baseUrl = _auth.api.baseUrl ?? '';
     final token = await _auth.api.accessToken();
+    final libId = _prefs.getString(_libIdKey);
+    if (libId == null || libId.isEmpty) return <AuthorInfo>[];
 
-    // Get all unique authors with their book counts
+    // Get all unique authors with their book counts from local DB
     final rows = await db.rawQuery('''
       SELECT author, COUNT(*) as book_count
       FROM books 
@@ -2416,9 +2418,49 @@ class BooksRepository {
 
     if (rows.isEmpty) return <AuthorInfo>[];
 
+    // Fetch author metadata (images, descriptions) from API
+    Map<String, Map<String, dynamic>> authorMetadata = {};
+    try {
+      final tokenQS = (token != null && token.isNotEmpty) ? '?token=$token' : '';
+      // Try both possible endpoint patterns
+      var resp = await _auth.api.request('GET', '/api/libraries/$libId/authors$tokenQS');
+      if (resp.statusCode != 200) {
+        // Fallback to bookshelf pattern
+        resp = await _auth.api.request('GET', '/api/libraries/$libId/bookshelf/authors$tokenQS');
+      }
+      if (resp.statusCode == 200) {
+        final body = jsonDecode(resp.body);
+        // Handle both list and object with authors array
+        List<dynamic> authorsList = [];
+        if (body is List) {
+          authorsList = body;
+        } else if (body is Map && body['authors'] is List) {
+          authorsList = body['authors'] as List;
+        } else if (body is Map && body['results'] is List) {
+          authorsList = body['results'] as List;
+        }
+        
+        for (final authorJson in authorsList) {
+          if (authorJson is Map) {
+            final name = (authorJson['name'] ?? '').toString();
+            if (name.isNotEmpty) {
+              final authorId = (authorJson['id'] ?? authorJson['_id'] ?? '').toString();
+              authorMetadata[name] = {
+                'id': authorId.isNotEmpty ? authorId : null,
+                'description': (authorJson['description'] ?? authorJson['desc'] ?? '').toString(),
+              };
+            }
+          }
+        }
+      }
+    } catch (e) {
+      _log('[GET_ALL_AUTHORS] Failed to fetch author metadata: $e');
+    }
+
     final authors = <AuthorInfo>[];
     for (final row in rows) {
       final authorName = row['author'] as String;
+      final meta = authorMetadata[authorName] ?? {};
       
       // Get all books for this author
       final bookRows = await db.query(
@@ -2466,7 +2508,24 @@ class BooksRepository {
         );
       }).toList();
 
-      authors.add(AuthorInfo(name: authorName, books: books));
+      // Build author image URL if available
+      String? imageUrl;
+      final authorId = meta['id'] as String?;
+      if (authorId != null && authorId.isNotEmpty) {
+        // Try common image endpoint patterns
+        imageUrl = '$baseUrl/api/authors/$authorId/image';
+        if (token != null && token.isNotEmpty) {
+          imageUrl = '$imageUrl?token=$token';
+        }
+      }
+
+      authors.add(AuthorInfo(
+        name: authorName,
+        books: books,
+        id: authorId,
+        imageUrl: imageUrl,
+        description: meta['description'] as String?,
+      ));
     }
 
     return authors;
@@ -2489,10 +2548,16 @@ class AuthorInfo {
   final String name;
   final List<Book> books;
   final int bookCount;
+  final String? id;
+  final String? imageUrl;
+  final String? description;
 
   AuthorInfo({
     required this.name,
     required this.books,
+    this.id,
+    this.imageUrl,
+    this.description,
   }) : bookCount = books.length;
 }
 

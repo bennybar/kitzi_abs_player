@@ -1,30 +1,28 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../models/book.dart';
+import '../core/books_repository.dart';
 import '../core/image_cache_manager.dart';
 import '../ui/book_detail/book_detail_page.dart';
 
 class AuthorCard extends StatefulWidget {
   const AuthorCard({
     super.key,
-    required this.authorName,
-    required this.books,
+    required this.author,
   });
 
-  final String authorName;
-  final List<Book> books;
+  final AuthorInfo author;
 
   static Future<void> show({
     required BuildContext context,
-    required String authorName,
-    required List<Book> books,
+    required AuthorInfo author,
   }) {
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => AuthorCard(
-        authorName: authorName,
-        books: books,
+        author: author,
       ),
     );
   }
@@ -65,43 +63,88 @@ class _AuthorCardState extends State<AuthorCard> {
           // Header
           Padding(
             padding: const EdgeInsets.all(20),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(
-                  Icons.person_rounded,
-                  color: cs.primary,
-                  size: 24,
+                Row(
+                  children: [
+                    // Author image or icon
+                    Container(
+                      width: 64,
+                      height: 64,
+                      decoration: BoxDecoration(
+                        color: cs.primaryContainer.withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(32),
+                      ),
+                      child: widget.author.imageUrl != null && widget.author.imageUrl!.isNotEmpty
+                          ? ClipRRect(
+                              borderRadius: BorderRadius.circular(32),
+                              child: CachedNetworkImage(
+                                imageUrl: widget.author.imageUrl!,
+                                cacheManager: ImageCacheManager.instance,
+                                fit: BoxFit.cover,
+                                placeholder: (context, url) => Icon(
+                                  Icons.person_rounded,
+                                  color: cs.primary,
+                                  size: 32,
+                                ),
+                                errorWidget: (context, url, error) => Icon(
+                                  Icons.person_rounded,
+                                  color: cs.primary,
+                                  size: 32,
+                                ),
+                              ),
+                            )
+                          : Icon(
+                              Icons.person_rounded,
+                              color: cs.primary,
+                              size: 32,
+                            ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            widget.author.name,
+                            style: theme.textTheme.headlineSmall?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          Text(
+                            '${widget.author.books.length} book${widget.author.books.length == 1 ? '' : 's'}',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: cs.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        widget.authorName,
-                        style: theme.textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      Text(
-                        '${widget.books.length} book${widget.books.length == 1 ? '' : 's'}',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: cs.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
+                // Author description
+                if (widget.author.description != null && widget.author.description!.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  Text(
+                    widget.author.description!,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: cs.onSurfaceVariant,
+                    ),
+                    maxLines: 4,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                ),
-                IconButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  icon: const Icon(Icons.close_rounded),
-                ),
+                ],
               ],
             ),
           ),
           // Books list
           Expanded(
-            child: widget.books.isEmpty
+            child: widget.author.books.isEmpty
                 ? Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -123,9 +166,9 @@ class _AuthorCardState extends State<AuthorCard> {
                   )
                 : ListView.builder(
                     padding: const EdgeInsets.symmetric(horizontal: 20),
-                    itemCount: widget.books.length,
+                    itemCount: widget.author.books.length,
                     itemBuilder: (context, index) {
-                      final book = widget.books[index];
+                      final book = widget.author.books[index];
                       return _AuthorBookTile(
                         book: book,
                         onTap: () {

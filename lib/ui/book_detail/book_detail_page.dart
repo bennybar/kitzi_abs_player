@@ -309,16 +309,14 @@ class _BookDetailPageState extends State<BookDetailPage> {
           // If we have the current book, we can at least show that
           AuthorCard.show(
             context: context,
-            authorName: authorName,
-            books: [_cachedBook!],
+            author: AuthorInfo(name: authorName, books: [_cachedBook!]),
           );
           return;
         }
       } else {
         AuthorCard.show(
           context: context,
-          authorName: authorName,
-          books: authorInfo.books,
+          author: authorInfo,
         );
         return;
       }
@@ -327,8 +325,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
       if (_cachedBook?.author == authorName) {
         AuthorCard.show(
           context: context,
-          authorName: authorName,
-          books: [_cachedBook!],
+          author: AuthorInfo(name: authorName, books: [_cachedBook!]),
         );
       }
     }

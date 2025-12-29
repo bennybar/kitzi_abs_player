@@ -653,16 +653,14 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
         if (booksByAuthor.isNotEmpty) {
           AuthorCard.show(
             context: context,
-            authorName: authorName,
-            books: booksByAuthor,
+            author: AuthorInfo(name: authorName, books: booksByAuthor),
           );
           return;
         }
       } else {
         AuthorCard.show(
           context: context,
-          authorName: authorName,
-          books: authorInfo.books,
+          author: authorInfo,
         );
         return;
       }
@@ -672,8 +670,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       if (booksByAuthor.isNotEmpty) {
         AuthorCard.show(
           context: context,
-          authorName: authorName,
-          books: booksByAuthor,
+          author: AuthorInfo(name: authorName, books: booksByAuthor),
         );
       }
     }

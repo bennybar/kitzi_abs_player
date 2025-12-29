@@ -29,6 +29,9 @@ class ImageCacheManager {
     return _cacheManager!;
   }
   
+  /// Public getter for the cache manager instance
+  static CacheManager get instance => _instance;
+  
   /// Preload images for better user experience
   static Future<void> preloadImages(List<String> urls, BuildContext context) async {
     final futures = <Future<void>>[];

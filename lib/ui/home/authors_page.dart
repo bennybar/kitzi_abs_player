@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../core/books_repository.dart';
 import '../../core/ui_prefs.dart';
+import '../../core/image_cache_manager.dart';
 import '../../utils/alphabet_utils.dart';
 import '../../widgets/author_card.dart';
 import '../../widgets/letter_scrollbar.dart';
@@ -191,8 +193,7 @@ class _AuthorsPageState extends State<AuthorsPage> {
   void _showAuthorBooks(BuildContext context, AuthorInfo author) {
     AuthorCard.show(
       context: context,
-      authorName: author.name,
-      books: author.books,
+      author: author,
     );
   }
 
@@ -359,11 +360,30 @@ class _AuthorTile extends StatelessWidget {
                   color: cs.primaryContainer.withOpacity(0.3),
                   borderRadius: BorderRadius.circular(24),
                 ),
-                child: Icon(
-                  Icons.person_rounded,
-                  color: cs.primary,
-                  size: 24,
-                ),
+                child: author.imageUrl != null && author.imageUrl!.isNotEmpty
+                    ? ClipRRect(
+                        borderRadius: BorderRadius.circular(24),
+                        child: CachedNetworkImage(
+                          imageUrl: author.imageUrl!,
+                          cacheManager: ImageCacheManager.instance,
+                          fit: BoxFit.cover,
+                          placeholder: (context, url) => Icon(
+                            Icons.person_rounded,
+                            color: cs.primary,
+                            size: 24,
+                          ),
+                          errorWidget: (context, url, error) => Icon(
+                            Icons.person_rounded,
+                            color: cs.primary,
+                            size: 24,
+                          ),
+                        ),
+                      )
+                    : Icon(
+                        Icons.person_rounded,
+                        color: cs.primary,
+                        size: 24,
+                      ),
               ),
               const SizedBox(width: 16),
               // Author info
