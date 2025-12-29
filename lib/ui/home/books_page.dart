@@ -437,6 +437,11 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       debugPrint('[REFRESH] Starting incremental update sync...');
       await repo.incrementalUpdateSync();
       debugPrint('[REFRESH] Incremental update sync completed');
+      
+      // Sync author metadata (images, descriptions)
+      debugPrint('[REFRESH] Syncing author metadata...');
+      await repo.syncAuthorMetadata();
+      debugPrint('[REFRESH] Author metadata sync completed');
 
       // Reload from DB/cache to reflect any new books
       debugPrint('[REFRESH] Clearing cache and reloading from DB...');

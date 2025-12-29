@@ -13,6 +13,7 @@ import '../models/series.dart';
 import 'auth_repository.dart';
 import 'network_service.dart';
 import 'offline_first_repository.dart';
+import 'image_cache_manager.dart';
 
 class BooksRepository {
   BooksRepository(this._auth, this._prefs);
@@ -318,7 +319,7 @@ class BooksRepository {
     final path = p.join(dbPath, 'kitzi_books_$libId.db');
     _db = await openDatabase(
       path,
-      version: 5, // Increment version to trigger migration
+      version: 6, // Increment version to trigger migration (added authors table)
       onCreate: (db, v) async {
         await db.execute('''
           CREATE TABLE books (
@@ -363,6 +364,18 @@ class BooksRepository {
         await db.execute('CREATE INDEX IF NOT EXISTS idx_books_recent ON books(updatedAt DESC, isAudioBook)');
         await db.execute('CREATE INDEX IF NOT EXISTS idx_books_series_collection ON books(series, collection, seriesSequence)');
         await db.execute('CREATE INDEX IF NOT EXISTS idx_books_audio_updated ON books(isAudioBook, updatedAt DESC)');
+        
+        // Create authors table for caching author metadata
+        await db.execute('''
+          CREATE TABLE authors (
+            name TEXT PRIMARY KEY,
+            id TEXT,
+            description TEXT,
+            updatedAt INTEGER,
+            lastSyncedAt INTEGER
+          )
+        ''');
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_authors_name ON authors(name COLLATE NOCASE)');
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -376,6 +389,9 @@ class BooksRepository {
         }
         if (oldVersion < 5) {
           await _migrateToVersion5(db);
+        }
+        if (oldVersion < 6) {
+          await _migrateToVersion6(db);
         }
       },
     );
@@ -435,6 +451,24 @@ class BooksRepository {
     // Populate addedAt from updatedAt for existing books (best effort migration)
     // This gives existing books a reasonable addedAt value, but users should resync for accurate data
     await db.execute('UPDATE books SET addedAt = updatedAt WHERE addedAt IS NULL AND updatedAt IS NOT NULL');
+  }
+  
+  Future<void> _migrateToVersion6(Database db) async {
+    // Create authors table for caching author metadata
+    try {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS authors (
+          name TEXT PRIMARY KEY,
+          id TEXT,
+          description TEXT,
+          updatedAt INTEGER,
+          lastSyncedAt INTEGER
+        )
+      ''');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_authors_name ON authors(name COLLATE NOCASE)');
+    } catch (e) {
+      _log('[MIGRATE_V6] Error creating authors table: $e');
+    }
   }
   
   /// Add a column to a table only if it doesn't already exist
@@ -2418,43 +2452,14 @@ class BooksRepository {
 
     if (rows.isEmpty) return <AuthorInfo>[];
 
-    // Fetch author metadata (images, descriptions) from API
-    Map<String, Map<String, dynamic>> authorMetadata = {};
-    try {
-      final tokenQS = (token != null && token.isNotEmpty) ? '?token=$token' : '';
-      // Try both possible endpoint patterns
-      var resp = await _auth.api.request('GET', '/api/libraries/$libId/authors$tokenQS');
-      if (resp.statusCode != 200) {
-        // Fallback to bookshelf pattern
-        resp = await _auth.api.request('GET', '/api/libraries/$libId/bookshelf/authors$tokenQS');
-      }
-      if (resp.statusCode == 200) {
-        final body = jsonDecode(resp.body);
-        // Handle both list and object with authors array
-        List<dynamic> authorsList = [];
-        if (body is List) {
-          authorsList = body;
-        } else if (body is Map && body['authors'] is List) {
-          authorsList = body['authors'] as List;
-        } else if (body is Map && body['results'] is List) {
-          authorsList = body['results'] as List;
-        }
-        
-        for (final authorJson in authorsList) {
-          if (authorJson is Map) {
-            final name = (authorJson['name'] ?? '').toString();
-            if (name.isNotEmpty) {
-              final authorId = (authorJson['id'] ?? authorJson['_id'] ?? '').toString();
-              authorMetadata[name] = {
-                'id': authorId.isNotEmpty ? authorId : null,
-                'description': (authorJson['description'] ?? authorJson['desc'] ?? '').toString(),
-              };
-            }
-          }
-        }
-      }
-    } catch (e) {
-      _log('[GET_ALL_AUTHORS] Failed to fetch author metadata: $e');
+    // Load author metadata from cache (with periodic refresh)
+    final authorMetadata = await _getCachedAuthorMetadata();
+    
+    // Check if we need to refresh author metadata (every 24 hours or if cache is empty)
+    final shouldRefresh = await _shouldRefreshAuthorMetadata();
+    if (shouldRefresh) {
+      // Refresh in background without blocking UI
+      unawaited(syncAuthorMetadata());
     }
 
     final authors = <AuthorInfo>[];
@@ -2529,6 +2534,156 @@ class BooksRepository {
     }
 
     return authors;
+  }
+  
+  /// Sync author metadata from server and cache it
+  Future<void> syncAuthorMetadata() async {
+    await _ensureDbForCurrentLib();
+    final db = _db;
+    if (db == null) return;
+    
+    final baseUrl = _auth.api.baseUrl ?? '';
+    final token = await _auth.api.accessToken();
+    final libId = _prefs.getString(_libIdKey);
+    if (libId == null || libId.isEmpty) return;
+    
+    try {
+      final tokenQS = (token != null && token.isNotEmpty) ? '?token=$token' : '';
+      // Try both possible endpoint patterns
+      var resp = await _auth.api.request('GET', '/api/libraries/$libId/authors$tokenQS');
+      if (resp.statusCode != 200) {
+        // Fallback to bookshelf pattern
+        resp = await _auth.api.request('GET', '/api/libraries/$libId/bookshelf/authors$tokenQS');
+      }
+      if (resp.statusCode == 200) {
+        final body = jsonDecode(resp.body);
+        // Handle both list and object with authors array
+        List<dynamic> authorsList = [];
+        if (body is List) {
+          authorsList = body;
+        } else if (body is Map && body['authors'] is List) {
+          authorsList = body['authors'] as List;
+        } else if (body is Map && body['results'] is List) {
+          authorsList = body['results'] as List;
+        }
+        
+        final now = DateTime.now().toUtc().millisecondsSinceEpoch;
+        final updatedAuthorIds = <String>[];
+        await db.transaction((txn) async {
+          for (final authorJson in authorsList) {
+            if (authorJson is Map) {
+              final name = (authorJson['name'] ?? '').toString();
+              if (name.isNotEmpty) {
+                final authorId = (authorJson['id'] ?? authorJson['_id'] ?? '').toString();
+                final description = (authorJson['description'] ?? authorJson['desc'] ?? '').toString();
+                final updatedAt = authorJson['updatedAt'] != null
+                    ? (authorJson['updatedAt'] is num
+                        ? (authorJson['updatedAt'] as num).toInt()
+                        : DateTime.tryParse(authorJson['updatedAt'].toString())?.millisecondsSinceEpoch)
+                    : null;
+                
+                // Check if author metadata changed (for cache invalidation)
+                final existing = await txn.query('authors', where: 'name = ?', whereArgs: [name], limit: 1);
+                final existingUpdatedAt = existing.isNotEmpty ? existing.first['updatedAt'] as int? : null;
+                final metadataChanged = existingUpdatedAt == null || updatedAt != null && updatedAt > existingUpdatedAt;
+                
+                if (metadataChanged && authorId.isNotEmpty) {
+                  updatedAuthorIds.add(authorId);
+                }
+                
+                await txn.insert(
+                  'authors',
+                  {
+                    'name': name,
+                    'id': authorId.isNotEmpty ? authorId : null,
+                    'description': description.isNotEmpty ? description : null,
+                    'updatedAt': updatedAt,
+                    'lastSyncedAt': now,
+                  },
+                  conflictAlgorithm: ConflictAlgorithm.replace,
+                );
+              }
+            }
+          }
+        });
+        
+        // Invalidate image cache for updated authors
+        if (updatedAuthorIds.isNotEmpty) {
+          await _invalidateAuthorImageCache(updatedAuthorIds);
+        }
+        
+        _log('[SYNC_AUTHOR_METADATA] Synced ${authorsList.length} authors');
+      }
+    } catch (e) {
+      _log('[SYNC_AUTHOR_METADATA] Failed to sync author metadata: $e');
+    }
+  }
+  
+  /// Get cached author metadata from DB
+  Future<Map<String, Map<String, dynamic>>> _getCachedAuthorMetadata() async {
+    await _ensureDbForCurrentLib();
+    final db = _db;
+    if (db == null) return {};
+    
+    try {
+      final rows = await db.query('authors');
+      final metadata = <String, Map<String, dynamic>>{};
+      for (final row in rows) {
+        final name = row['name'] as String;
+        metadata[name] = {
+          'id': row['id'] as String?,
+          'description': row['description'] as String?,
+        };
+      }
+      return metadata;
+    } catch (e) {
+      _log('[GET_CACHED_AUTHOR_METADATA] Error: $e');
+      return {};
+    }
+  }
+  
+  /// Check if author metadata should be refreshed (every 24 hours)
+  Future<bool> _shouldRefreshAuthorMetadata() async {
+    await _ensureDbForCurrentLib();
+    final db = _db;
+    if (db == null) return true;
+    
+    try {
+      final rows = await db.query('authors', limit: 1);
+      if (rows.isEmpty) return true; // No cached data, refresh
+      
+      final lastSynced = rows.first['lastSyncedAt'] as int?;
+      if (lastSynced == null) return true;
+      
+      final lastSyncedTime = DateTime.fromMillisecondsSinceEpoch(lastSynced, isUtc: true);
+      final now = DateTime.now().toUtc();
+      final hoursSinceSync = now.difference(lastSyncedTime).inHours;
+      
+      return hoursSinceSync >= 24; // Refresh if older than 24 hours
+    } catch (e) {
+      return true; // On error, refresh
+    }
+  }
+  
+  /// Invalidate cached author images when metadata changes
+  Future<void> _invalidateAuthorImageCache(List<String> authorIds) async {
+    try {
+      final baseUrl = _auth.api.baseUrl ?? '';
+      final token = await _auth.api.accessToken();
+      final cacheManager = ImageCacheManager.instance;
+      
+      for (final authorId in authorIds) {
+        final imageUrl = '$baseUrl/api/authors/$authorId/image${token != null && token.isNotEmpty ? '?token=$token' : ''}';
+        try {
+          await cacheManager.removeFile(imageUrl);
+        } catch (_) {
+          // Best effort - ignore errors
+        }
+      }
+      _log('[INVALIDATE_AUTHOR_IMAGES] Invalidated ${authorIds.length} author images');
+    } catch (e) {
+      _log('[INVALIDATE_AUTHOR_IMAGES] Error: $e');
+    }
   }
 
   Future<void> dispose() async {
