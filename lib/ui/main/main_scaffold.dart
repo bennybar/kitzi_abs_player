@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../settings/settings_page.dart';
@@ -14,6 +15,8 @@ import '../../core/ui_prefs.dart';
 import '../../core/downloads_repository.dart';
 import '../../core/playback_repository.dart';
 import '../../main.dart';
+import 'dart:convert';
+import 'package:background_downloader/background_downloader.dart';
 
 class MainScaffold extends StatefulWidget {
   const MainScaffold({super.key, required this.downloadsRepo});
@@ -27,6 +30,9 @@ class _MainScaffoldState extends State<MainScaffold> {
   int _index = 0;
   bool _showSeries = false;
   bool _showAuthors = false;
+  StreamSubscription<dynamic>? _downloadProgressSub;
+  double _overallDownloadProgress = 0.0;
+  bool _hasActiveDownloads = false;
 
   @override
   void initState() {
@@ -47,6 +53,83 @@ class _MainScaffoldState extends State<MainScaffold> {
     });
     UiPrefs.seriesTabVisible.addListener(_onTabPrefsChanged);
     UiPrefs.authorViewEnabled.addListener(_onTabPrefsChanged);
+    _watchDownloadProgress();
+  }
+
+  Timer? _progressTimer;
+  Timer? _debounceTimer;
+  final Map<String, double> _taskProgress = {};
+  final Map<String, bool> _taskActive = {};
+
+  void _watchDownloadProgress() {
+    // Listen for download progress events and aggregate progress across tasks.
+    _downloadProgressSub = widget.downloadsRepo.progressStream().listen((update) {
+      _debounceTimer?.cancel();
+      _debounceTimer = Timer(const Duration(milliseconds: 200), () {
+        _handleDownloadUpdate(update);
+      });
+    });
+  }
+
+  void _handleDownloadUpdate(dynamic update) {
+    if (!mounted) return;
+    try {
+      // update can be TaskProgressUpdate or TaskStatusUpdate from background_downloader
+      final task = update.task;
+      final meta = task.metaData ?? '';
+      final itemId = _extractItemId(meta);
+      if (itemId == null || itemId.isEmpty) return;
+
+      if (update is TaskProgressUpdate) {
+        final p = (update.progress ?? 0.0).clamp(0.0, 1.0);
+        _taskProgress[itemId] = p;
+        _taskActive[itemId] = true;
+      } else if (update is TaskStatusUpdate) {
+        final status = update.status;
+        if (status == TaskStatus.running || status == TaskStatus.enqueued) {
+          _taskActive[itemId] = true;
+          _taskProgress[itemId] = _taskProgress[itemId] ?? 0.0;
+        } else if (status == TaskStatus.complete || status == TaskStatus.canceled || status == TaskStatus.failed) {
+          _taskActive.remove(itemId);
+          _taskProgress.remove(itemId);
+        }
+      }
+
+      _recalculateAggregatedProgress();
+    } catch (_) {
+      // ignore
+    }
+  }
+
+  String? _extractItemId(String meta) {
+    try {
+      final m = jsonDecode(meta);
+      if (m is Map && m['libraryItemId'] is String) {
+        return m['libraryItemId'] as String;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  void _recalculateAggregatedProgress() {
+    if (!mounted) return;
+    final activeIds = _taskActive.keys.where((id) => _taskActive[id] == true).toList();
+    if (activeIds.isEmpty) {
+      setState(() {
+        _hasActiveDownloads = false;
+        _overallDownloadProgress = 0.0;
+      });
+      return;
+    }
+    double sum = 0.0;
+    for (final id in activeIds) {
+      sum += _taskProgress[id] ?? 0.0;
+    }
+    final avg = (sum / activeIds.length).clamp(0.0, 1.0);
+    setState(() {
+      _hasActiveDownloads = true;
+      _overallDownloadProgress = avg;
+    });
   }
 
   void _onTabPrefsChanged() {
@@ -59,6 +142,9 @@ class _MainScaffoldState extends State<MainScaffold> {
 
   @override
   void dispose() {
+    _downloadProgressSub?.cancel();
+    _progressTimer?.cancel();
+    _debounceTimer?.cancel();
     UiPrefs.seriesTabVisible.removeListener(_onTabPrefsChanged);
     UiPrefs.authorViewEnabled.removeListener(_onTabPrefsChanged);
     super.dispose();
@@ -119,7 +205,29 @@ class _MainScaffoldState extends State<MainScaffold> {
           },
           child: Scaffold(
             backgroundColor: cs.surface,
-            body: IndexedStack(index: safeIndex, children: pages),
+            body: Stack(
+              children: [
+                // Content
+                Positioned.fill(
+                  child: IndexedStack(index: safeIndex, children: pages),
+                ),
+                // Global download progress indicator below the top app bar
+                if (_hasActiveDownloads)
+                  Positioned(
+                    top: MediaQuery.of(context).padding.top + kToolbarHeight,
+                    left: 0,
+                    right: 0,
+                    child: IgnorePointer(
+                      child: LinearProgressIndicator(
+                        value: _overallDownloadProgress > 0 ? _overallDownloadProgress : null,
+                        minHeight: 3,
+                        backgroundColor: cs.surfaceContainerHighest,
+                        valueColor: AlwaysStoppedAnimation<Color>(cs.primary),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           bottomNavigationBar: ValueListenableBuilder<bool>(
             valueListenable: FullPlayerOverlay.isVisible,
             builder: (_, fullPlayerVisible, __) {

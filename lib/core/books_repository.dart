@@ -500,12 +500,38 @@ class BooksRepository {
       _log('[UPSERT_BOOKS] Last book: "${items.last.title}" (id: ${items.last.id}, updatedAt: ${items.last.updatedAt?.toIso8601String() ?? "null"})');
     }
     
+    // Skip upserts when data is unchanged (same or older updatedAt).
+    // Build a set of ids and fetch their current updatedAt in one query.
+    final ids = items.map((e) => e.id).where((id) => id.isNotEmpty).toList();
+    final Map<String, int?> existingUpdatedAt = {};
+    if (ids.isNotEmpty) {
+      final placeholders = List.filled(ids.length, '?').join(',');
+      final rows = await db.query(
+        'books',
+        columns: ['id', 'updatedAt'],
+        where: 'id IN ($placeholders)',
+        whereArgs: ids,
+      );
+      for (final r in rows) {
+        final id = (r['id'] as String?) ?? '';
+        final ts = r['updatedAt'] as int?;
+        existingUpdatedAt[id] = ts;
+      }
+    }
+
     // Use transaction for better performance and atomicity
     await db.transaction((txn) async {
       final batch = txn.batch();
       final libId = _prefs.getString(_libIdKey) ?? 'default';
       
       for (final b in items) {
+        final existingTs = existingUpdatedAt[b.id];
+        final newTs = b.updatedAt?.millisecondsSinceEpoch;
+        // If we have an existing row and the new updatedAt is null or not newer, skip.
+        if (existingTs != null && (newTs == null || newTs <= existingTs)) {
+          continue;
+        }
+
         final coverFile = await _coverFileForId(b.id);
         final hasLocal = await coverFile.exists();
         

@@ -500,11 +500,13 @@ class DownloadsRepository {
   }
 
   /// Start (or get) an aggregated progress stream for a specific book.
+  /// Uses a quick, local-only progress snapshot on listen to avoid hitting
+  /// the server (which can trigger book upserts).
   Stream<ItemProgress> watchItemProgress(String libraryItemId) {
     final ctrl = _itemCtrls.putIfAbsent(
       libraryItemId,
-          () => StreamController<ItemProgress>.broadcast(onListen: () async {
-        final snap = await _computeItemProgress(libraryItemId);
+      () => StreamController<ItemProgress>.broadcast(onListen: () async {
+        final snap = await _computeItemProgressQuick(libraryItemId);
         (_itemCtrls[libraryItemId]!).add(snap);
       }),
     );
@@ -548,13 +550,70 @@ class DownloadsRepository {
         }
       } catch (_) {}
       if (_itemCtrls.containsKey(id)) {
-        final snap = await _computeItemProgress(id);
+        final snap = await _computeItemProgressQuick(id);
         final c = _itemCtrls[id];
         if (c != null && !c.isClosed) c.add(snap);
       }
     });
 
     return ctrl.stream;
+  }
+
+  /// Compute item progress using local data only (no server calls).
+  Future<ItemProgress> _computeItemProgressQuick(String libraryItemId) async {
+    try {
+      final hasLocal = await hasLocalDownloads(libraryItemId);
+      final recs = await _recordsForItem(libraryItemId);
+      final completedLocal = await _countLocalFiles(libraryItemId);
+
+      final runningProgress = _lastRunningProgress[libraryItemId] ?? 0.0;
+      final totalTracks = recs.length;
+
+      double value;
+      if (totalTracks > 0) {
+        final completedTracks = recs.where((r) => r.status == TaskStatus.complete).length;
+        value = ((completedTracks.toDouble()) + runningProgress).clamp(0.0, totalTracks.toDouble()) /
+            totalTracks.toDouble();
+      } else {
+        value = runningProgress;
+        if (value == 0.0 && completedLocal > 0) value = 1.0;
+      }
+
+      String status = 'none';
+      final hasRunning = recs.any((r) => r.status == TaskStatus.running);
+      final hasQueued = recs.any((r) => r.status == TaskStatus.enqueued);
+      final hasFailed = recs.any((r) => r.status == TaskStatus.failed);
+      if (hasRunning) {
+        status = 'running';
+      } else if (hasQueued || _uiActive[libraryItemId] == true || _itemsInGlobalQueue.contains(libraryItemId)) {
+        status = 'queued';
+      } else if (hasFailed) {
+        status = 'failed';
+      } else if (hasLocal && completedLocal > 0) {
+        status = 'complete';
+        value = 1.0;
+      }
+
+      if ((status == 'running' || status == 'queued') && value < 0.01) {
+        value = 0.01;
+      }
+
+      return ItemProgress(
+        libraryItemId: libraryItemId,
+        status: status,
+        progress: value.clamp(0.0, 1.0),
+        totalTasks: totalTracks,
+        completed: completedLocal,
+      );
+    } catch (_) {
+      return ItemProgress(
+        libraryItemId: libraryItemId,
+        status: 'none',
+        progress: 0.0,
+        totalTasks: 0,
+        completed: 0,
+      );
+    }
   }
 
   /// Queue all tracks of an item for download (Wi-Fi rule from prefs).
