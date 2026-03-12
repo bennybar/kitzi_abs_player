@@ -23,7 +23,14 @@ import 'full_player_overlay.dart';
 import '../../core/playback_journal_service.dart';
 import 'journal_sheets.dart';
 
-enum _TopMenuAction { toggleCompletion, toggleGradient, cast, playHistory, bookmarks, coverSize }
+enum _TopMenuAction {
+  toggleCompletion,
+  toggleGradient,
+  cast,
+  playHistory,
+  bookmarks,
+  coverSize,
+}
 
 /// Custom slider track shape that allows tighter horizontal padding than the
 /// default Material slider track.
@@ -65,7 +72,9 @@ class _ResumeFromHistoryButton extends StatelessWidget {
     final enabled = prefs.getBool('ui_resume_from_history_enabled') ?? true;
     if (!enabled) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Resume previous position is disabled in Settings')),
+        const SnackBar(
+          content: Text('Resume previous position is disabled in Settings'),
+        ),
       );
       return;
     }
@@ -75,8 +84,10 @@ class _ResumeFromHistoryButton extends StatelessWidget {
     final nowPlaying = playback.nowPlaying;
     if (nowPlaying != null) {
       try {
-        final history =
-            await PlaybackJournalService.instance.historyFor(nowPlaying.libraryItemId, limit: 1);
+        final history = await PlaybackJournalService.instance.historyFor(
+          nowPlaying.libraryItemId,
+          limit: 1,
+        );
         if (history.isNotEmpty) {
           lastPosition = Duration(milliseconds: history.first.positionMs);
         }
@@ -85,26 +96,28 @@ class _ResumeFromHistoryButton extends StatelessWidget {
 
     bool proceed = true;
     if (needConfirm) {
-      proceed = await showDialog<bool>(
+      proceed =
+          await showDialog<bool>(
             context: context,
-            builder: (ctx) => AlertDialog(
-              title: const Text('Resume previous position?'),
-              content: Text(
-                lastPosition != null
-                    ? 'Resume to ${_fmt(lastPosition!)} from your last pause point?'
-                    : 'Replace the current play position with the last saved pause position?',
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('Cancel'),
+            builder:
+                (ctx) => AlertDialog(
+                  title: const Text('Resume previous position?'),
+                  content: Text(
+                    lastPosition != null
+                        ? 'Resume to ${_fmt(lastPosition!)} from your last pause point?'
+                        : 'Replace the current play position with the last saved pause position?',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: const Text('Cancel'),
+                    ),
+                    FilledButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: const Text('Resume'),
+                    ),
+                  ],
                 ),
-                FilledButton(
-                  onPressed: () => Navigator.pop(ctx, true),
-                  child: const Text('Resume'),
-                ),
-              ],
-            ),
           ) ??
           false;
     }
@@ -115,7 +128,9 @@ class _ResumeFromHistoryButton extends StatelessWidget {
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(ok ? 'Resumed previous position' : 'No previous position found'),
+        content: Text(
+          ok ? 'Resumed previous position' : 'No previous position found',
+        ),
         duration: const Duration(seconds: 2),
       ),
     );
@@ -133,7 +148,9 @@ class _ResumeFromHistoryButton extends StatelessWidget {
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           foregroundColor: Colors.white,
           backgroundColor: Colors.green.shade600,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           elevation: 2,
         ),
         onPressed: () => _handleResume(context),
@@ -163,10 +180,12 @@ class _ValidatedCachedNetworkImage extends StatefulWidget {
   });
 
   @override
-  State<_ValidatedCachedNetworkImage> createState() => _ValidatedCachedNetworkImageState();
+  State<_ValidatedCachedNetworkImage> createState() =>
+      _ValidatedCachedNetworkImageState();
 }
 
-class _ValidatedCachedNetworkImageState extends State<_ValidatedCachedNetworkImage> {
+class _ValidatedCachedNetworkImageState
+    extends State<_ValidatedCachedNetworkImage> {
   String? _currentUrl;
   bool _hasValidated = false;
   int _retryKey = 0; // Key to force rebuild when cache is cleared
@@ -194,11 +213,11 @@ class _ValidatedCachedNetworkImageState extends State<_ValidatedCachedNetworkIma
   Future<void> _validateCache() async {
     if (_hasValidated) return;
     _hasValidated = true;
-    
+
     try {
       final cacheManager = DefaultCacheManager();
       final fileInfo = await cacheManager.getFileFromCache(_currentUrl!);
-      
+
       if (fileInfo != null) {
         final file = fileInfo.file;
         // Check if file exists and has valid size (> 0 bytes)
@@ -232,7 +251,7 @@ class _ValidatedCachedNetworkImageState extends State<_ValidatedCachedNetworkIma
           // File doesn't exist, clear cache entry
           shouldClear = true;
         }
-        
+
         if (shouldClear) {
           await cacheManager.removeFile(_currentUrl!);
           if (mounted) {
@@ -247,11 +266,15 @@ class _ValidatedCachedNetworkImageState extends State<_ValidatedCachedNetworkIma
     }
   }
 
-  Future<void> _handleImageError(BuildContext context, String url, dynamic error) async {
+  Future<void> _handleImageError(
+    BuildContext context,
+    String url,
+    dynamic error,
+  ) async {
     // Only retry once to prevent infinite loop
     if (_hasRetried) return;
     _hasRetried = true;
-    
+
     // Clear cache on error and retry
     try {
       final cacheManager = DefaultCacheManager();
@@ -269,7 +292,9 @@ class _ValidatedCachedNetworkImageState extends State<_ValidatedCachedNetworkIma
   @override
   Widget build(BuildContext context) {
     return CachedNetworkImage(
-      key: ValueKey('${_currentUrl}_$_retryKey'), // Force rebuild when retry key changes
+      key: ValueKey(
+        '${_currentUrl}_$_retryKey',
+      ), // Force rebuild when retry key changes
       imageUrl: _currentUrl!,
       fit: widget.fit,
       fadeInDuration: widget.fadeInDuration,
@@ -283,15 +308,15 @@ class _ValidatedCachedNetworkImageState extends State<_ValidatedCachedNetworkIma
           });
         }
         // Show error widget
-        return widget.errorWidget?.call(context, url, error) ?? 
-          Container(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            child: Icon(
-              Icons.menu_book_outlined,
-              size: 88,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-          );
+        return widget.errorWidget?.call(context, url, error) ??
+            Container(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              child: Icon(
+                Icons.menu_book_outlined,
+                size: 88,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            );
       },
     );
   }
@@ -302,19 +327,19 @@ class FullPlayerPage extends StatefulWidget {
 
   // Prevent duplicate openings of the FullPlayerPage within the same session.
   static bool _isOpen = false;
-  
+
   /// Validate and prewarm cover image cache before opening player
   static Future<void> _validateAndPrewarmCover(BuildContext context) async {
     try {
       final playback = ServicesScope.of(context).services.playback;
       final np = playback.nowPlaying;
       final coverUrl = np?.coverUrl;
-      
+
       if (coverUrl == null || coverUrl.isEmpty) return;
-      
+
       final cacheManager = DefaultCacheManager();
       final fileInfo = await cacheManager.getFileFromCache(coverUrl);
-      
+
       bool shouldClear = false;
       if (fileInfo != null) {
         final file = fileInfo.file;
@@ -344,17 +369,14 @@ class FullPlayerPage extends StatefulWidget {
           shouldClear = true;
         }
       }
-      
+
       if (shouldClear && fileInfo != null) {
         await cacheManager.removeFile(coverUrl);
       }
-      
+
       // Prewarm the image after validation/clearing
       try {
-        await precacheImage(
-          CachedNetworkImageProvider(coverUrl),
-          context,
-        );
+        await precacheImage(CachedNetworkImageProvider(coverUrl), context);
       } catch (_) {
         // If prewarming fails, continue anyway
       }
@@ -362,7 +384,7 @@ class FullPlayerPage extends StatefulWidget {
       // If validation fails, continue anyway
     }
   }
-  
+
   static Future<void> openOnce(BuildContext context) async {
     if (_isOpen) return;
     _isOpen = true;
@@ -379,14 +401,16 @@ class FullPlayerPage extends StatefulWidget {
       } catch (_) {
         // Continue even if validation fails
       }
-      
+
       // Check if legacy full screen player is enabled
       final prefs = await SharedPreferences.getInstance();
       final legacyMode = prefs.getBool('ui_legacy_full_screen_player') ?? false;
-      
+
       if (legacyMode) {
         // Legacy mode: use Navigator.push (original behavior)
-        await Navigator.of(context).push(_FullPlayerRoute(const FullPlayerPage()));
+        await Navigator.of(
+          context,
+        ).push(_FullPlayerRoute(const FullPlayerPage()));
       } else {
         // New mode: show as drawer (like book details) - use exact same approach
         await showModalBottomSheet(
@@ -394,15 +418,18 @@ class FullPlayerPage extends StatefulWidget {
           isScrollControlled: true,
           useSafeArea: true,
           backgroundColor: Colors.transparent,
-          builder: (context) => Container(
-            height: MediaQuery.of(context).size.height * 0.95,
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: const FullPlayerPage(),
-          ),
+          builder:
+              (context) => Container(
+                height: MediaQuery.of(context).size.height * 0.95,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface,
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(24),
+                  ),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: const FullPlayerPage(),
+              ),
         );
       }
     } finally {
@@ -417,34 +444,32 @@ class FullPlayerPage extends StatefulWidget {
 
 class _FullPlayerRoute extends PageRouteBuilder<void> {
   _FullPlayerRoute(Widget child)
-      : super(
-          pageBuilder: (context, animation, secondaryAnimation) => child,
-          transitionDuration: const Duration(milliseconds: 260),
-          reverseTransitionDuration: const Duration(milliseconds: 220),
-          fullscreenDialog: true,
-          transitionsBuilder: (context, animation, secondaryAnimation, child) {
-            final curved = CurvedAnimation(
-              parent: animation,
-              curve: Curves.easeOutCubic,
-              reverseCurve: Curves.easeInCubic,
-            );
-            final slide = Tween<Offset>(
-              begin: const Offset(0, 0.06),
-              end: Offset.zero,
-            ).animate(curved);
-            final fade = Tween<double>(begin: 0, end: 1).animate(curved);
-            return FadeTransition(
-              opacity: fade,
-              child: SlideTransition(
-                position: slide,
-                child: child,
-              ),
-            );
-          },
-        );
+    : super(
+        pageBuilder: (context, animation, secondaryAnimation) => child,
+        transitionDuration: const Duration(milliseconds: 260),
+        reverseTransitionDuration: const Duration(milliseconds: 220),
+        fullscreenDialog: true,
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          final curved = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+            reverseCurve: Curves.easeInCubic,
+          );
+          final slide = Tween<Offset>(
+            begin: const Offset(0, 0.06),
+            end: Offset.zero,
+          ).animate(curved);
+          final fade = Tween<double>(begin: 0, end: 1).animate(curved);
+          return FadeTransition(
+            opacity: fade,
+            child: SlideTransition(position: slide, child: child),
+          );
+        },
+      );
 }
 
-class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStateMixin, WidgetsBindingObserver {
+class _FullPlayerPageState extends State<FullPlayerPage>
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   static const double _metadataTextScale = 0.85;
   static const double _progressThumbScale = 0.75;
   bool _dualProgressEnabled = true;
@@ -488,7 +513,10 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
   Future<void> _restoreNowPlayingIfNeeded({bool force = false}) async {
     if (!mounted) return;
     final playback = ServicesScope.of(context).services.playback;
-    if (!force && (playback.nowPlaying != null || _warmLoadInProgress || _warmLoadAttempted)) {
+    if (!force &&
+        (playback.nowPlaying != null ||
+            _warmLoadInProgress ||
+            _warmLoadAttempted)) {
       return;
     }
 
@@ -536,29 +564,26 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
       vsync: this,
     );
 
-    _coverAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _contentAnimationController,
-      curve: Curves.easeOut,
-    ));
+    _coverAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _contentAnimationController,
+        curve: Curves.easeOut,
+      ),
+    );
 
-    _titleAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _contentAnimationController,
-      curve: Curves.easeInOut,
-    ));
+    _titleAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _contentAnimationController,
+        curve: Curves.easeInOut,
+      ),
+    );
 
-    _controlsAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _contentAnimationController,
-      curve: Curves.easeInOut,
-    ));
+    _controlsAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _contentAnimationController,
+        curve: Curves.easeInOut,
+      ),
+    );
 
     // Start the content animation after a short delay
     Future.delayed(const Duration(milliseconds: 100), () {
@@ -594,7 +619,9 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     }
 
     if (cover == null || cover.isEmpty) {
-      if (_paletteCoverUrl != null || _palettePrimary != null || _paletteSecondary != null) {
+      if (_paletteCoverUrl != null ||
+          _palettePrimary != null ||
+          _paletteSecondary != null) {
         setState(() {
           _paletteCoverUrl = null;
           _palettePrimary = null;
@@ -619,8 +646,10 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
       if (!mounted) return;
       setState(() {
         _paletteCoverUrl = cover;
-        _palettePrimary = palette.dominantColor?.color ?? palette.darkVibrantColor?.color;
-        _paletteSecondary = palette.vibrantColor?.color ??
+        _palettePrimary =
+            palette.dominantColor?.color ?? palette.darkVibrantColor?.color;
+        _paletteSecondary =
+            palette.vibrantColor?.color ??
             palette.lightVibrantColor?.color ??
             palette.mutedColor?.color ??
             _palettePrimary;
@@ -651,19 +680,28 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     try {
       final prefs = await SharedPreferences.getInstance();
       setState(() {
-        _dualProgressEnabled = prefs.getBool('ui_dual_progress_enabled') ?? true;
+        _dualProgressEnabled =
+            prefs.getBool('ui_dual_progress_enabled') ?? true;
       });
     } catch (_) {}
   }
 
-  PopupMenuItem<double> _speedItem(BuildContext context, double current, double value) {
+  PopupMenuItem<double> _speedItem(
+    BuildContext context,
+    double current,
+    double value,
+  ) {
     final sel = (current - value).abs() < 0.001;
     return PopupMenuItem<double>(
       value: value,
       child: Row(
         children: [
           if (sel) ...[
-            Icon(Icons.check_rounded, size: 18, color: Theme.of(context).colorScheme.primary),
+            Icon(
+              Icons.check_rounded,
+              size: 18,
+              color: Theme.of(context).colorScheme.primary,
+            ),
             const SizedBox(width: 6),
           ] else ...[
             const SizedBox(width: 24),
@@ -676,21 +714,14 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
 
   Widget _speedIndicator(double current, ColorScheme cs, TextTheme text) {
     if ((current - 1.0).abs() < 0.001) {
-      return Icon(
-        Icons.speed_rounded,
-        color: cs.onSurfaceVariant,
-        size: 24,
-      );
+      return Icon(Icons.speed_rounded, color: cs.onSurfaceVariant, size: 24);
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
         color: cs.primaryContainer,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: cs.primary.withOpacity(0.3),
-          width: 1.5,
-        ),
+        border: Border.all(color: cs.primary.withOpacity(0.3), width: 1.5),
       ),
       child: Text(
         '${current.toStringAsFixed(2)}×',
@@ -718,7 +749,9 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                 children: [
                   ListTile(
                     title: const Text('Cover size'),
-                    subtitle: const Text('Adjust the book cover size in the full player'),
+                    subtitle: const Text(
+                      'Adjust the book cover size in the full player',
+                    ),
                   ),
                   ...PlayerCoverSize.values.map((size) {
                     final label = switch (size) {
@@ -749,7 +782,10 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     );
   }
 
-  _CoverDims _coverDimensionsForSize(BuildContext context, PlayerCoverSize size) {
+  _CoverDims _coverDimensionsForSize(
+    BuildContext context,
+    PlayerCoverSize size,
+  ) {
     final widthFactor = switch (size) {
       PlayerCoverSize.small => 0.54,
       PlayerCoverSize.medium => 0.62,
@@ -778,20 +814,22 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     final max = total.inMilliseconds.toDouble();
     final sliderMax = max > 0 ? max : 1.0;
     final value = position.inMilliseconds.toDouble().clamp(0.0, sliderMax);
-    final remaining = (total - position).isNegative ? Duration.zero : total - position;
+    final remaining =
+        (total - position).isNegative ? Duration.zero : total - position;
     final primaryThumbRadius = 15 * _progressThumbScale;
     final secondaryThumbRadius = 12 * _progressThumbScale;
     final primaryOverlayRadius = 30 * _progressThumbScale;
     final secondaryOverlayRadius = 26 * _progressThumbScale;
 
-
     final sliderTheme = SliderTheme.of(context).copyWith(
       trackHeight: isPrimary ? 14 : 10,
       thumbShape: RoundSliderThumbShape(
-        enabledThumbRadius: isPrimary ? primaryThumbRadius : secondaryThumbRadius,
+        enabledThumbRadius:
+            isPrimary ? primaryThumbRadius : secondaryThumbRadius,
       ),
       overlayShape: RoundSliderOverlayShape(
-        overlayRadius: isPrimary ? primaryOverlayRadius : secondaryOverlayRadius,
+        overlayRadius:
+            isPrimary ? primaryOverlayRadius : secondaryOverlayRadius,
       ),
       activeTrackColor: cs.primary,
       inactiveTrackColor: cs.surfaceContainerHighest,
@@ -804,7 +842,10 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
         color: cs.onPrimary,
         fontWeight: FontWeight.w600,
       ),
-      showValueIndicator: isPrimary ? ShowValueIndicator.onlyForDiscrete : ShowValueIndicator.never,
+      showValueIndicator:
+          isPrimary
+              ? ShowValueIndicator.onlyForDiscrete
+              : ShowValueIndicator.never,
     );
 
     return RepaintBoundary(
@@ -837,10 +878,16 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                             min: 0.0,
                             max: sliderMax,
                             onChanged: (v) async {
-                              await playback.seekGlobal(Duration(milliseconds: v.round()), reportNow: false);
+                              await playback.seekGlobal(
+                                Duration(milliseconds: v.round()),
+                                reportNow: false,
+                              );
                             },
                             onChangeEnd: (v) async {
-                              await playback.seekGlobal(Duration(milliseconds: v.round()), reportNow: true);
+                              await playback.seekGlobal(
+                                Duration(milliseconds: v.round()),
+                                reportNow: true,
+                              );
                             },
                             squiggleAmplitude: animatedAmplitude,
                             squiggleWavelength: isPrimary ? 7.0 : 8.0,
@@ -859,10 +906,16 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                     max: sliderMax,
                     value: value,
                     onChanged: (v) async {
-                      await playback.seekGlobal(Duration(milliseconds: v.round()), reportNow: false);
+                      await playback.seekGlobal(
+                        Duration(milliseconds: v.round()),
+                        reportNow: false,
+                      );
                     },
                     onChangeEnd: (v) async {
-                      await playback.seekGlobal(Duration(milliseconds: v.round()), reportNow: true);
+                      await playback.seekGlobal(
+                        Duration(milliseconds: v.round()),
+                        reportNow: true,
+                      );
                     },
                   ),
                 );
@@ -876,28 +929,34 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
               children: [
                 Text(
                   _fmt(position),
-                  style: (isPrimary ? text.labelLarge : text.bodyMedium)?.copyWith(
-                    color: cs.onSurface,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: (isPrimary ? text.labelLarge : text.bodyMedium)
+                      ?.copyWith(
+                        color: cs.onSurface,
+                        fontWeight: FontWeight.w600,
+                      ),
                 ),
                 StreamBuilder<double>(
                   stream: playback.player.speedStream,
                   initialData: playback.player.speed,
                   builder: (_, speedSnap) {
                     final speed = speedSnap.data ?? 1.0;
-                    final adjustedRemaining = speed != 1.0
-                        ? Duration(milliseconds: (remaining.inMilliseconds / speed).round())
-                        : remaining;
+                    final adjustedRemaining =
+                        speed != 1.0
+                            ? Duration(
+                              milliseconds:
+                                  (remaining.inMilliseconds / speed).round(),
+                            )
+                            : remaining;
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Text(
                           '-${_fmt(adjustedRemaining)}',
-                          style: (isPrimary ? text.labelLarge : text.bodyMedium)?.copyWith(
-                            color: cs.onSurface,
-                            fontWeight: FontWeight.w600,
-                          ),
+                          style: (isPrimary ? text.labelLarge : text.bodyMedium)
+                              ?.copyWith(
+                                color: cs.onSurface,
+                                fontWeight: FontWeight.w600,
+                              ),
                         ),
                         if (speed != 1.0 && isPrimary) ...[
                           const SizedBox(height: 2),
@@ -983,7 +1042,9 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                             inactiveTrackColor: cs.surfaceContainerHighest,
                             thumbColor: cs.primary,
                             overlayColor: cs.primary.withOpacity(0.16),
-                            trackShape: const _EdgeToEdgeSliderTrackShape(horizontalInset: 6),
+                            trackShape: const _EdgeToEdgeSliderTrackShape(
+                              horizontalInset: 6,
+                            ),
                           ),
                           child: SquigglySlider(
                             value: value,
@@ -991,13 +1052,15 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                             max: max > 0 ? max : 1.0,
                             onChanged: (v) async {
                               await playback.seekGlobal(
-                                metrics.start + Duration(milliseconds: v.round()),
+                                metrics.start +
+                                    Duration(milliseconds: v.round()),
                                 reportNow: false,
                               );
                             },
                             onChangeEnd: (v) async {
                               await playback.seekGlobal(
-                                metrics.start + Duration(milliseconds: v.round()),
+                                metrics.start +
+                                    Duration(milliseconds: v.round()),
                                 reportNow: true,
                               );
                             },
@@ -1026,7 +1089,9 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                     inactiveTrackColor: cs.surfaceContainerHighest,
                     thumbColor: cs.primary,
                     overlayColor: cs.primary.withOpacity(0.16),
-                    trackShape: const _EdgeToEdgeSliderTrackShape(horizontalInset: 6),
+                    trackShape: const _EdgeToEdgeSliderTrackShape(
+                      horizontalInset: 6,
+                    ),
                   ),
                   child: Slider(
                     min: 0.0,
@@ -1185,7 +1250,10 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     required Duration position,
   }) {
     final max = total.inMilliseconds.toDouble().clamp(0.0, double.infinity);
-    final value = position.inMilliseconds.toDouble().clamp(0.0, max > 0 ? max : 1.0);
+    final value = position.inMilliseconds.toDouble().clamp(
+      0.0,
+      max > 0 ? max : 1.0,
+    );
     final thumbRadius = 15 * _progressThumbScale;
     final overlayRadius = 30 * _progressThumbScale;
 
@@ -1225,7 +1293,9 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                             inactiveTrackColor: cs.surfaceContainerHighest,
                             thumbColor: cs.primary,
                             overlayColor: cs.primary.withOpacity(0.16),
-                            trackShape: const _EdgeToEdgeSliderTrackShape(horizontalInset: 6),
+                            trackShape: const _EdgeToEdgeSliderTrackShape(
+                              horizontalInset: 6,
+                            ),
                           ),
                           child: SquigglySlider(
                             value: value,
@@ -1268,7 +1338,9 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                     inactiveTrackColor: cs.surfaceContainerHighest,
                     thumbColor: cs.primary,
                     overlayColor: cs.primary.withOpacity(0.16),
-                    trackShape: const _EdgeToEdgeSliderTrackShape(horizontalInset: 6),
+                    trackShape: const _EdgeToEdgeSliderTrackShape(
+                      horizontalInset: 6,
+                    ),
                   ),
                   child: Slider(
                     min: 0.0,
@@ -1310,9 +1382,13 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                     final speed = speedSnap.data ?? 1.0;
                     final remaining = total - position;
                     if (total == Duration.zero) return const SizedBox.shrink();
-                    final adjustedRemaining = speed != 1.0
-                        ? Duration(milliseconds: (remaining.inMilliseconds / speed).round())
-                        : remaining;
+                    final adjustedRemaining =
+                        speed != 1.0
+                            ? Duration(
+                              milliseconds:
+                                  (remaining.inMilliseconds / speed).round(),
+                            )
+                            : remaining;
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
@@ -1352,118 +1428,6 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     return h > 0 ? '$h:$m:$s' : '$m:$s';
   }
 
-  Widget _buildPercentCompleteLabel({
-    required PlaybackRepository playback,
-    required TextTheme text,
-    required ColorScheme cs,
-  }) {
-    return StreamBuilder<Duration>(
-      stream: playback.positionStream,
-      initialData: playback.player.position,
-      builder: (_, __) {
-        final total = playback.totalBookDuration;
-        final global = playback.globalBookPosition;
-        String headline;
-        if (total != null && total > Duration.zero && global != null) {
-          final percent = (global.inMilliseconds / total.inMilliseconds * 100).clamp(0.0, 100.0);
-          headline = '${percent.toStringAsFixed(1)}% complete';
-        } else {
-          headline = 'Syncing progress…';
-        }
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: cs.surfaceContainerHighest.withOpacity(0.85),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: cs.outline.withOpacity(0.08)),
-          ),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: cs.primary.withOpacity(0.12),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(Icons.auto_graph_rounded, size: 18, color: cs.primary),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  headline,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: text.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: cs.onSurface,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              ValueListenableBuilder<ProgressSyncStatus>(
-                valueListenable: playback.progressSyncStatus,
-                builder: (_, status, __) {
-                  final now = DateTime.now();
-                  final lastOk = status.lastSuccessAt;
-                  final recentlySynced =
-                      lastOk != null && now.difference(lastOk) < const Duration(minutes: 2);
-                  final isPending = status.pending;
-
-                  IconData icon;
-                  Color color;
-                  String label;
-                  String tooltip;
-
-                  if (isPending) {
-                    icon = Icons.cloud_upload_rounded;
-                    color = cs.tertiary;
-                    label = 'Pending';
-                    tooltip = status.lastError != null && status.lastError!.isNotEmpty
-                        ? 'Progress pending sync (${status.lastError})'
-                        : 'Progress pending sync';
-                  } else if (recentlySynced) {
-                    icon = Icons.cloud_done_rounded;
-                    color = Colors.green;
-                    label = 'Synced';
-                    tooltip = 'Progress synced recently';
-                  } else if (status.hasEverSynced) {
-                    icon = Icons.cloud_done_rounded;
-                    color = cs.onSurfaceVariant;
-                    label = 'Synced';
-                    tooltip = 'Progress synced';
-                  } else {
-                    icon = Icons.cloud_off_rounded;
-                    color = cs.onSurfaceVariant;
-                    label = '—';
-                    tooltip = 'Progress not synced yet';
-                  }
-
-                  return Tooltip(
-                    message: tooltip,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(icon, size: 18, color: color),
-                        const SizedBox(width: 4),
-                        Text(
-                          label,
-                          style: text.labelMedium?.copyWith(
-                            color: color,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
   BoxDecoration _playerBackgroundDecoration(
     bool gradientEnabled,
     ColorScheme cs,
@@ -1476,17 +1440,21 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     }
     final primary = palettePrimary ?? cs.primary;
     final secondary = paletteSecondary ?? cs.secondary;
-    final colors = brightness == Brightness.dark
-        ? [
-            Color.alphaBlend(primary.withOpacity(0.4), cs.surface),
-            Color.alphaBlend(secondary.withOpacity(0.28), cs.surfaceContainerHighest),
-            Colors.black,
-          ]
-        : [
-            Color.alphaBlend(primary.withOpacity(0.48), cs.surface),
-            Color.alphaBlend(secondary.withOpacity(0.35), cs.surface),
-            Colors.white,
-          ];
+    final colors =
+        brightness == Brightness.dark
+            ? [
+              Color.alphaBlend(primary.withOpacity(0.4), cs.surface),
+              Color.alphaBlend(
+                secondary.withOpacity(0.28),
+                cs.surfaceContainerHighest,
+              ),
+              Colors.black,
+            ]
+            : [
+              Color.alphaBlend(primary.withOpacity(0.48), cs.surface),
+              Color.alphaBlend(secondary.withOpacity(0.35), cs.surface),
+              Colors.white,
+            ];
     return BoxDecoration(
       gradient: LinearGradient(
         begin: Alignment.topCenter,
@@ -1517,13 +1485,13 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     final safeCurrent = currentChapter.clamp(1, totalChapters);
 
     Widget _line(double width) => Container(
-          width: width,
-          height: 3,
-          decoration: BoxDecoration(
-            color: baseColor,
-            borderRadius: BorderRadius.circular(2),
-          ),
-        );
+      width: width,
+      height: 3,
+      decoration: BoxDecoration(
+        color: baseColor,
+        borderRadius: BorderRadius.circular(2),
+      ),
+    );
 
     return Stack(
       clipBehavior: Clip.none,
@@ -1555,9 +1523,9 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
               child: Text(
                 '$safeCurrent/$totalChapters',
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: cs.onPrimary,
-                      fontWeight: FontWeight.w700,
-                    ),
+                  color: cs.onPrimary,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           ),
@@ -1576,19 +1544,22 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     final playback = ServicesScope.of(context).services.playback;
     return playback.nowPlayingStream.asyncExpand((np) {
       if (np == null) return Stream.value(false);
-      
+
       // Use the new completion status stream from PlaybackRepository
       return playback.getBookCompletionStream(np.libraryItemId);
     });
   }
 
-  Future<void> _toggleBookCompletion(BuildContext context, bool isCurrentlyCompleted) async {
+  Future<void> _toggleBookCompletion(
+    BuildContext context,
+    bool isCurrentlyCompleted,
+  ) async {
     final playback = ServicesScope.of(context).services.playback;
     final np = playback.nowPlaying;
     if (np == null) return;
 
     final newCompletionStatus = !isCurrentlyCompleted;
-    
+
     // Show confirmation dialog(s)
     Duration? unfinishChoice; // null => cancel, 0 => restart, >0 => resume
     if (newCompletionStatus) {
@@ -1611,24 +1582,31 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     try {
       // Log the request for troubleshooting
       // Toggling book completion
-      
+
       // Send the request to server
       double? overrideSeconds;
       if (!newCompletionStatus && unfinishChoice != null) {
         overrideSeconds = unfinishChoice.inSeconds.toDouble();
       }
-      await _markBookAsFinished(np.libraryItemId, newCompletionStatus, overrideCurrentTimeSeconds: overrideSeconds);
-      
+      await _markBookAsFinished(
+        np.libraryItemId,
+        newCompletionStatus,
+        overrideCurrentTimeSeconds: overrideSeconds,
+      );
+
       // Update the global completion status cache and notify all listeners
-      await playback.updateBookCompletionStatus(np.libraryItemId, newCompletionStatus);
-      
+      await playback.updateBookCompletionStatus(
+        np.libraryItemId,
+        newCompletionStatus,
+      );
+
       // If marking as finished, stop playback and navigate to book details
       if (newCompletionStatus) {
         // Book marked as finished, stopping playback
-        
+
         // Stop the current playback
         await playback.stop();
-        
+
         // Show feedback to user
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -1638,7 +1616,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
             ),
           );
         }
-        
+
         // Navigate back to book details page
         if (mounted) {
           Navigator.of(context).pop(); // Close the full player
@@ -1677,7 +1655,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
             // Error seeking to saved position
           }
         }
-        
+
         // Show feedback for unmarking as finished
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -1688,10 +1666,9 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
           );
         }
       }
-      
     } catch (e) {
       // Error toggling completion
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1703,7 +1680,10 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     }
   }
 
-  Future<void> _addBookmark(BuildContext context, PlaybackRepository playback) async {
+  Future<void> _addBookmark(
+    BuildContext context,
+    PlaybackRepository playback,
+  ) async {
     final np = playback.nowPlaying;
     final globalPos = playback.globalBookPosition;
     if (np == null || globalPos == null) {
@@ -1714,7 +1694,9 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
       return;
     }
     final metrics = playback.currentChapterProgress;
-    final chapterTitle = metrics?.title ?? (metrics != null ? 'Chapter ${metrics.index + 1}' : null);
+    final chapterTitle =
+        metrics?.title ??
+        (metrics != null ? 'Chapter ${metrics.index + 1}' : null);
     try {
       await PlaybackJournalService.instance.addBookmark(
         libraryItemId: np.libraryItemId,
@@ -1724,18 +1706,21 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
         chapterIndex: metrics?.index,
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Bookmark saved')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Bookmark saved')));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to save bookmark: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to save bookmark: $e')));
     }
   }
 
-  Future<void> _openHistorySheet(BuildContext context, PlaybackRepository playback) async {
+  Future<void> _openHistorySheet(
+    BuildContext context,
+    PlaybackRepository playback,
+  ) async {
     final np = playback.nowPlaying;
     if (np == null) {
       if (!mounted) return;
@@ -1748,10 +1733,11 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
       context: context,
       useSafeArea: true,
       isScrollControlled: true,
-      builder: (_) => PlayHistorySheet(
-        libraryItemId: np.libraryItemId,
-        bookTitle: np.title,
-      ),
+      builder:
+          (_) => PlayHistorySheet(
+            libraryItemId: np.libraryItemId,
+            bookTitle: np.title,
+          ),
     );
     if (entry == null) return;
     final confirmed = await _confirmPositionJump(
@@ -1764,7 +1750,10 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     await playback.player.play();
   }
 
-  Future<void> _openBookmarksSheet(BuildContext context, PlaybackRepository playback) async {
+  Future<void> _openBookmarksSheet(
+    BuildContext context,
+    PlaybackRepository playback,
+  ) async {
     final np = playback.nowPlaying;
     if (np == null) {
       if (!mounted) return;
@@ -1777,43 +1766,49 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
       context: context,
       useSafeArea: true,
       isScrollControlled: true,
-      builder: (_) => BookmarksSheet(
-        libraryItemId: np.libraryItemId,
-        bookTitle: np.title,
-        playback: playback,
-      ),
+      builder:
+          (_) => BookmarksSheet(
+            libraryItemId: np.libraryItemId,
+            bookTitle: np.title,
+            playback: playback,
+          ),
     );
   }
 
-  Future<bool> _confirmPositionJump(BuildContext context, String title, Duration position) async {
+  Future<bool> _confirmPositionJump(
+    BuildContext context,
+    String title,
+    Duration position,
+  ) async {
     final text = Theme.of(context).textTheme;
     final cs = Theme.of(context).colorScheme;
     final result = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(
-          'Resume from bookmark?',
-          style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600),
-        ),
-        content: Text(
-          'Jump to "$title" at ${_fmt(position)}?',
-          style: text.bodyMedium,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            style: FilledButton.styleFrom(
-              backgroundColor: cs.primary,
-              foregroundColor: cs.onPrimary,
+      builder:
+          (ctx) => AlertDialog(
+            title: Text(
+              'Resume from bookmark?',
+              style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600),
             ),
-            child: const Text('Resume'),
+            content: Text(
+              'Jump to "$title" at ${_fmt(position)}?',
+              style: text.bodyMedium,
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(ctx).pop(true),
+                style: FilledButton.styleFrom(
+                  backgroundColor: cs.primary,
+                  foregroundColor: cs.onPrimary,
+                ),
+                child: const Text('Resume'),
+              ),
+            ],
           ),
-        ],
-      ),
     );
     return result ?? false;
   }
@@ -1821,34 +1816,35 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
   Future<bool> _showMarkAsFinishedDialog(BuildContext context) async {
     final cs = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
-    
+
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(
-          'Mark as Finished',
-          style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600),
-        ),
-        content: Text(
-          'Are you sure you want to mark this book as finished? This will stop playback and return you to the book details.',
-          style: text.bodyMedium,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text(
-              'Cancel',
-              style: TextStyle(color: cs.onSurfaceVariant),
+      builder:
+          (context) => AlertDialog(
+            title: Text(
+              'Mark as Finished',
+              style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600),
             ),
+            content: Text(
+              'Are you sure you want to mark this book as finished? This will stop playback and return you to the book details.',
+              style: text.bodyMedium,
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: Text(
+                  'Cancel',
+                  style: TextStyle(color: cs.onSurfaceVariant),
+                ),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Mark as Finished'),
+              ),
+            ],
           ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Mark as Finished'),
-          ),
-        ],
-      ),
     );
-    
+
     return confirmed ?? false;
   }
 
@@ -1858,111 +1854,114 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     final playback = ServicesScope.of(context).services.playback;
     final np = playback.nowPlaying;
     if (np == null) return null;
-    
+
     // Get current position from server (more reliable than local player position)
-    final currentPositionSeconds = await playback.fetchServerProgress(np.libraryItemId);
-    final currentPosition = currentPositionSeconds != null 
-        ? Duration(seconds: currentPositionSeconds.round())
-        : playback.player.position;
+    final currentPositionSeconds = await playback.fetchServerProgress(
+      np.libraryItemId,
+    );
+    final currentPosition =
+        currentPositionSeconds != null
+            ? Duration(seconds: currentPositionSeconds.round())
+            : playback.player.position;
     final positionText = _formatDuration(currentPosition);
-    
+
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(
-          'Mark as Unfinished',
-          style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Are you sure you want to mark this book as unfinished?',
-              style: text.bodyMedium,
+      builder:
+          (context) => AlertDialog(
+            title: Text(
+              'Mark as Unfinished',
+              style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600),
             ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: cs.primaryContainer,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: cs.primary.withOpacity(0.3),
-                  width: 1,
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Are you sure you want to mark this book as unfinished?',
+                  style: text.bodyMedium,
                 ),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.access_time_rounded,
-                    size: 16,
-                    color: cs.onPrimaryContainer,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Current position: $positionText',
-                    style: text.bodyMedium?.copyWith(
-                      color: cs.onPrimaryContainer,
-                      fontWeight: FontWeight.w600,
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: cs.primaryContainer,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: cs.primary.withOpacity(0.3),
+                      width: 1,
                     ),
                   ),
-                ],
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.access_time_rounded,
+                        size: 16,
+                        color: cs.onPrimaryContainer,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Current position: $positionText',
+                        style: text.bodyMedium?.copyWith(
+                          color: cs.onPrimaryContainer,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'This position will be preserved.',
+                  style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: Text(
+                  'Cancel',
+                  style: TextStyle(color: cs.onSurfaceVariant),
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'This position will be preserved.',
-              style: text.bodySmall?.copyWith(
-                color: cs.onSurfaceVariant,
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Mark as Unfinished'),
               ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text(
-              'Cancel',
-              style: TextStyle(color: cs.onSurfaceVariant),
-            ),
+            ],
           ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Mark as Unfinished'),
-          ),
-        ],
-      ),
     );
     if (confirmed != true) return null;
 
     // Second choice: resume or restart
     final choice = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(
-          'Choose where to resume',
-          style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600),
-        ),
-        content: Text(
-          'Resume from saved position or start from the beginning.',
-          style: text.bodyMedium,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop('cancel'),
-            child: const Text('Cancel'),
+      builder:
+          (context) => AlertDialog(
+            title: Text(
+              'Choose where to resume',
+              style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+            ),
+            content: Text(
+              'Resume from saved position or start from the beginning.',
+              style: text.bodyMedium,
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop('cancel'),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop('restart'),
+                child: const Text('Start from beginning'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop('resume'),
+                child: Text('Return to $positionText'),
+              ),
+            ],
           ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop('restart'),
-            child: const Text('Start from beginning'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop('resume'),
-            child: Text('Return to $positionText'),
-          ),
-        ],
-      ),
     );
 
     if (choice == 'restart') return Duration.zero;
@@ -1974,7 +1973,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     final hours = duration.inHours;
     final minutes = duration.inMinutes.remainder(60);
     final seconds = duration.inSeconds.remainder(60);
-    
+
     if (hours > 0) {
       return '${hours}h ${minutes}m ${seconds}s';
     } else if (minutes > 0) {
@@ -1984,41 +1983,52 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     }
   }
 
-  Future<void> _markBookAsFinished(String libraryItemId, bool finished, {double? overrideCurrentTimeSeconds}) async {
+  Future<void> _markBookAsFinished(
+    String libraryItemId,
+    bool finished, {
+    double? overrideCurrentTimeSeconds,
+  }) async {
     final playback = ServicesScope.of(context).services.playback;
     final api = ServicesScope.of(context).services.auth.api;
-    
+
     // Prepare the request body
     Map<String, dynamic> requestBody = {'isFinished': finished};
-    
-         // If unfinishing, include current progress to preserve position
-         if (!finished) {
-           // Get position from server (more reliable than local player position)
-           double? currentPositionSeconds = await playback.fetchServerProgress(libraryItemId);
-           if (overrideCurrentTimeSeconds != null) {
-             currentPositionSeconds = overrideCurrentTimeSeconds;
-           }
-           final currentTimeSeconds = currentPositionSeconds ?? playback.player.position.inSeconds.toDouble();
 
-           if (currentTimeSeconds > 0) {
-             requestBody['currentTime'] = currentTimeSeconds;
-             
-             // Include duration and progress like regular progress updates
-             final totalDuration = playback.totalBookDuration;
-             if (totalDuration != null && totalDuration.inSeconds > 0) {
-               final totalSeconds = totalDuration.inSeconds.toDouble();
-               requestBody['duration'] = totalSeconds;
-               requestBody['progress'] = (currentTimeSeconds / totalSeconds).clamp(0.0, 1.0);
-               // Including full progress
-             } else {
-               // Including currentTime to preserve position
-             }
-           }
-         }
-    
+    // If unfinishing, include current progress to preserve position
+    if (!finished) {
+      // Get position from server (more reliable than local player position)
+      double? currentPositionSeconds = await playback.fetchServerProgress(
+        libraryItemId,
+      );
+      if (overrideCurrentTimeSeconds != null) {
+        currentPositionSeconds = overrideCurrentTimeSeconds;
+      }
+      final currentTimeSeconds =
+          currentPositionSeconds ??
+          playback.player.position.inSeconds.toDouble();
+
+      if (currentTimeSeconds > 0) {
+        requestBody['currentTime'] = currentTimeSeconds;
+
+        // Include duration and progress like regular progress updates
+        final totalDuration = playback.totalBookDuration;
+        if (totalDuration != null && totalDuration.inSeconds > 0) {
+          final totalSeconds = totalDuration.inSeconds.toDouble();
+          requestBody['duration'] = totalSeconds;
+          requestBody['progress'] = (currentTimeSeconds / totalSeconds).clamp(
+            0.0,
+            1.0,
+          );
+          // Including full progress
+        } else {
+          // Including currentTime to preserve position
+        }
+      }
+    }
+
     // Log the API request for troubleshooting
     // API Request for updating progress
-    
+
     try {
       final response = await api.request(
         'PATCH',
@@ -2026,13 +2036,15 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(requestBody),
       );
-      
+
       // API Response received
-      
+
       if (response.statusCode == 200 || response.statusCode == 204) {
         // Successfully updated book completion status
       } else {
-        throw Exception('Server returned ${response.statusCode}: ${response.body}');
+        throw Exception(
+          'Server returned ${response.statusCode}: ${response.body}',
+        );
       }
     } catch (e) {
       // API Error
@@ -2041,23 +2053,29 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
   }
 
   Future<void> _showChaptersSheet(
-      BuildContext context,
-      PlaybackRepository playback,
-      NowPlaying np,
-      ) async {
+    BuildContext context,
+    PlaybackRepository playback,
+    NowPlaying np,
+  ) async {
     final chapters = np.chapters;
     if (chapters.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No chapters available')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('No chapters available')));
       return;
     }
 
     // Determine the current chapter index once when opening
     final globalTotal = playback.totalBookDuration;
-    final useGlobal = _dualProgressEnabled && globalTotal != null && globalTotal > Duration.zero;
-    final globalPos = useGlobal ? (playback.globalBookPosition ?? Duration.zero) : playback.player.position;
-    
+    final useGlobal =
+        _dualProgressEnabled &&
+        globalTotal != null &&
+        globalTotal > Duration.zero;
+    final globalPos =
+        useGlobal
+            ? (playback.globalBookPosition ?? Duration.zero)
+            : playback.player.position;
+
     int currentIdx = 0;
     for (int i = 0; i < chapters.length; i++) {
       if (globalPos >= chapters[i].start) {
@@ -2084,7 +2102,10 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
             final estimatedItemHeight = 72.0;
             final targetOffset = currentIdx * estimatedItemHeight;
             scrollController.animateTo(
-              targetOffset.clamp(0.0, scrollController.position.maxScrollExtent),
+              targetOffset.clamp(
+                0.0,
+                scrollController.position.maxScrollExtent,
+              ),
               duration: const Duration(milliseconds: 300),
               curve: Curves.easeOut,
             );
@@ -2092,122 +2113,158 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
         });
 
         return Container(
-              decoration: BoxDecoration(
-                color: Theme.of(ctx).colorScheme.surface,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.list_alt_rounded,
-                          color: Theme.of(ctx).colorScheme.primary,
-                        ),
-                        const SizedBox(width: 12),
-                        Text(
-                          'Chapters',
-                          style: Theme.of(ctx).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
+          decoration: BoxDecoration(
+            color: Theme.of(ctx).colorScheme.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.list_alt_rounded,
+                      color: Theme.of(ctx).colorScheme.primary,
                     ),
-                  ),
-                  Flexible(
-                    child: StreamBuilder<Duration>(
-                      stream: ServicesScope.of(context).services.playback.positionStream,
-                      initialData: ServicesScope.of(context).services.playback.player.position,
-                      builder: (_, posSnap) {
-                        final pos = posSnap.data ?? Duration.zero;
-                        final currentGlobalPos = useGlobal ? (playback.globalBookPosition ?? Duration.zero) : pos;
-                        int liveIdx = 0;
-                        for (int i = 0; i < chapters.length; i++) {
-                          if (currentGlobalPos >= chapters[i].start) {
-                            liveIdx = i;
-                          } else {
-                            break;
-                          }
-                        }
-                        return ListView.separated(
-                          controller: scrollController,
-                          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-                          itemCount: chapters.length,
-                          separatorBuilder: (_, __) => Divider(
+                    const SizedBox(width: 12),
+                    Text(
+                      'Chapters',
+                      style: Theme.of(ctx).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Flexible(
+                child: StreamBuilder<Duration>(
+                  stream:
+                      ServicesScope.of(
+                        context,
+                      ).services.playback.positionStream,
+                  initialData:
+                      ServicesScope.of(
+                        context,
+                      ).services.playback.player.position,
+                  builder: (_, posSnap) {
+                    final pos = posSnap.data ?? Duration.zero;
+                    final currentGlobalPos =
+                        useGlobal
+                            ? (playback.globalBookPosition ?? Duration.zero)
+                            : pos;
+                    int liveIdx = 0;
+                    for (int i = 0; i < chapters.length; i++) {
+                      if (currentGlobalPos >= chapters[i].start) {
+                        liveIdx = i;
+                      } else {
+                        break;
+                      }
+                    }
+                    return ListView.separated(
+                      controller: scrollController,
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                      itemCount: chapters.length,
+                      separatorBuilder:
+                          (_, __) => Divider(
                             height: 1,
-                            color: Theme.of(ctx).colorScheme.outline.withOpacity(0.2),
+                            color: Theme.of(
+                              ctx,
+                            ).colorScheme.outline.withOpacity(0.2),
                           ),
-                          itemBuilder: (_, i) {
-                            final c = chapters[i];
-                            final isCurrent = i == liveIdx;
-                            return ListTile(
-                              dense: false,
-                              contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                              title: Text(
-                                c.title.isEmpty ? 'Chapter ${i + 1}' : c.title,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(ctx).textTheme.bodyLarge?.copyWith(
-                                  fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w500,
-                                  color: isCurrent
+                      itemBuilder: (_, i) {
+                        final c = chapters[i];
+                        final isCurrent = i == liveIdx;
+                        return ListTile(
+                          dense: false,
+                          contentPadding: const EdgeInsets.symmetric(
+                            vertical: 8,
+                          ),
+                          title: Text(
+                            c.title.isEmpty ? 'Chapter ${i + 1}' : c.title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(ctx).textTheme.bodyLarge?.copyWith(
+                              fontWeight:
+                                  isCurrent ? FontWeight.w700 : FontWeight.w500,
+                              color:
+                                  isCurrent
                                       ? Theme.of(ctx).colorScheme.primary
                                       : Theme.of(ctx).colorScheme.onSurface,
-                                ),
-                              ),
-                              // Show raw time for debugging when long-pressing a row
-                              onLongPress: () {
-                                // Chapter tap
-                              },
-                              subtitle: Text(
-                                _fmt(c.start),
-                                style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
-                                  color: isCurrent
+                            ),
+                          ),
+                          // Show raw time for debugging when long-pressing a row
+                          onLongPress: () {
+                            // Chapter tap
+                          },
+                          subtitle: Text(
+                            _fmt(c.start),
+                            style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
+                              color:
+                                  isCurrent
                                       ? Theme.of(ctx).colorScheme.primary
-                                      : Theme.of(ctx).colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                              leading: Container(
-                                width: 40,
-                                height: 40,
-                                decoration: BoxDecoration(
-                                  color: isCurrent
+                                      : Theme.of(
+                                        ctx,
+                                      ).colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                          leading: Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color:
+                                  isCurrent
                                       ? Theme.of(ctx).colorScheme.primary
-                                      : Theme.of(ctx).colorScheme.primaryContainer,
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Center(
-                                  child: Text(
-                                    '${i + 1}',
-                                    style: Theme.of(ctx).textTheme.labelLarge?.copyWith(
-                                      color: isCurrent
+                                      : Theme.of(
+                                        ctx,
+                                      ).colorScheme.primaryContainer,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Center(
+                              child: Text(
+                                '${i + 1}',
+                                style: Theme.of(
+                                  ctx,
+                                ).textTheme.labelLarge?.copyWith(
+                                  color:
+                                      isCurrent
                                           ? Theme.of(ctx).colorScheme.onPrimary
-                                          : Theme.of(ctx).colorScheme.onPrimaryContainer,
-                                      fontWeight: isCurrent ? FontWeight.w800 : FontWeight.w600,
-                                    ),
-                                  ),
+                                          : Theme.of(
+                                            ctx,
+                                          ).colorScheme.onPrimaryContainer,
+                                  fontWeight:
+                                      isCurrent
+                                          ? FontWeight.w800
+                                          : FontWeight.w600,
                                 ),
                               ),
-                              trailing: isCurrent
-                                  ? Icon(Icons.play_arrow_rounded,
-                                      color: Theme.of(ctx).colorScheme.primary)
+                            ),
+                          ),
+                          trailing:
+                              isCurrent
+                                  ? Icon(
+                                    Icons.play_arrow_rounded,
+                                    color: Theme.of(ctx).colorScheme.primary,
+                                  )
                                   : null,
-                              onTap: () async {
-                                SleepTimerService.instance.cancelChapterSleepIfActive();
-                                Navigator.of(ctx).pop();
-                                await ServicesScope.of(context).services.playback.seek(c.start, reportNow: true);
-                              },
-                            );
+                          onTap: () async {
+                            SleepTimerService.instance
+                                .cancelChapterSleepIfActive();
+                            Navigator.of(ctx).pop();
+                            await ServicesScope.of(
+                              context,
+                            ).services.playback.seek(c.start, reportNow: true);
                           },
                         );
                       },
-                    ),
-                  ),
-                ],
+                    );
+                  },
+                ),
               ),
-            );
+            ],
+          ),
+        );
       },
     ).then((_) {
       // Dispose scroll controller when sheet is closed
@@ -2248,8 +2305,13 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                   label,
                   style: text.labelLarge?.copyWith(fontWeight: FontWeight.w600),
                 ),
-                labelPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                labelPadding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 8,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
                 selected: sel,
                 onSelected: (_) {
                   setState(() {
@@ -2270,7 +2332,12 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                     children: [
                       Icon(Icons.nights_stay_rounded, color: cs.primary),
                       const SizedBox(width: 12),
-                      Text('Sleep timer', style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600)),
+                      Text(
+                        'Sleep timer',
+                        style: text.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                       const Spacer(),
                       if (timer.isActive)
                         TextButton(
@@ -2296,10 +2363,17 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                         ChoiceChip(
                           label: Text(
                             'Chapter end',
-                            style: text.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+                            style: text.labelLarge?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
-                          labelPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          labelPadding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 8,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
                           selected: eoc,
                           onSelected: (_) {
                             setState(() {
@@ -2316,7 +2390,9 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                       child: Text(
                         'Stops playback when the current chapter ends. '
                         'Changing chapters will cancel the sleep timer, but quick seek buttons will not.',
-                        style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                        style: text.bodySmall?.copyWith(
+                          color: cs.onSurfaceVariant,
+                        ),
                       ),
                     ),
                   const SizedBox(height: 8),
@@ -2325,15 +2401,28 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                     initialData: timer.remainingTime,
                     builder: (ctx, snap) {
                       final rem = snap.data;
-                      if (!timer.isActive || rem == null) return const SizedBox.shrink();
-                      final modeLabel = timer.isChapterMode ? 'Until chapter ends' : 'Time remaining';
+                      if (!timer.isActive || rem == null)
+                        return const SizedBox.shrink();
+                      final modeLabel =
+                          timer.isChapterMode
+                              ? 'Until chapter ends'
+                              : 'Time remaining';
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 8),
                         child: Row(
                           children: [
-                            Icon(Icons.timer_rounded, size: 18, color: cs.onSurfaceVariant),
+                            Icon(
+                              Icons.timer_rounded,
+                              size: 18,
+                              color: cs.onSurfaceVariant,
+                            ),
                             const SizedBox(width: 8),
-                            Text('$modeLabel: ${fmt(rem)}', style: text.bodyMedium?.copyWith(color: cs.onSurfaceVariant)),
+                            Text(
+                              '$modeLabel: ${fmt(rem)}',
+                              style: text.bodyMedium?.copyWith(
+                                color: cs.onSurfaceVariant,
+                              ),
+                            ),
                           ],
                         ),
                       );
@@ -2344,24 +2433,32 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                     children: [
                       Expanded(
                         child: FilledButton(
-                          onPressed: (selected == null && !eoc)
-                              ? null
-                              : () async {
-                                  var started = true;
-                                  if (eoc) {
-                                    started = timer.startSleepUntilChapterEnd();
-                                    if (!started) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text('Unable to start chapter sleep. Try again later.')),
-                                      );
+                          onPressed:
+                              (selected == null && !eoc)
+                                  ? null
+                                  : () async {
+                                    var started = true;
+                                    if (eoc) {
+                                      started =
+                                          timer.startSleepUntilChapterEnd();
+                                      if (!started) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          const SnackBar(
+                                            content: Text(
+                                              'Unable to start chapter sleep. Try again later.',
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    } else if (selected != null) {
+                                      timer.startTimer(selected!);
                                     }
-                                  } else if (selected != null) {
-                              timer.startTimer(selected!);
-                            }
-                                  if (started) {
-                            Navigator.of(ctx).pop();
-                                  }
-                          },
+                                    if (started) {
+                                      Navigator.of(ctx).pop();
+                                    }
+                                  },
                           child: const Text('Start'),
                         ),
                       ),
@@ -2376,7 +2473,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                         ),
                       ),
                     ],
-                  )
+                  ),
                 ],
               ),
             );
@@ -2415,734 +2512,1002 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
             child: Scaffold(
               backgroundColor: Colors.transparent,
               body: SafeArea(
-              child: StreamBuilder<NowPlaying?>(
-              stream: playback.nowPlayingStream,
-              initialData: playback.nowPlaying,
-              builder: (context, snap) {
-                final np = snap.data;
-                if (np == null) {
-                  return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        if (_warmLoadInProgress) ...[
-                          const CircularProgressIndicator(),
-                          const SizedBox(height: 16),
-                          Text(
-                            'Reconnecting to your last session...',
-                            style: text.titleMedium?.copyWith(
-                              color: cs.onSurfaceVariant,
-                            ),
-                          ),
-                        ] else ...[
-                          Icon(
-                            Icons.podcasts_rounded,
-                            size: 48,
-                            color: cs.onSurfaceVariant,
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            'Player needs a quick reload',
-                            style: text.titleMedium?.copyWith(
-                              color: cs.onSurfaceVariant,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          FilledButton.icon(
-                            onPressed: () => _restoreNowPlayingIfNeeded(force: true),
-                            icon: const Icon(Icons.refresh_rounded),
-                            label: const Text('Reload last session'),
-                          ),
-                          if (_warmLoadError != null) ...[
-                            const SizedBox(height: 8),
-                            Text(
-                              'Retrying failed: $_warmLoadError',
-                              textAlign: TextAlign.center,
-                              style: text.bodySmall?.copyWith(color: cs.error),
-                            ),
-                          ],
-                        ],
-                      ],
-                    ),
-                  );
-                }
-
-                _schedulePaletteUpdate(np);
-
-                return Column(
-                  children: [
-                    // Custom App Bar
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          IconButton.filledTonal(
-                            onPressed: () => Navigator.of(context).pop(),
-                            icon: const Icon(Icons.keyboard_arrow_down_rounded),
-                            style: IconButton.styleFrom(
-                              backgroundColor: cs.surfaceContainerHighest,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _buildPercentCompleteLabel(
-                              playback: playback,
-                              text: text,
-                              cs: cs,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                tooltip: 'Add bookmark',
-                                onPressed: np == null ? null : () => _addBookmark(context, playback),
-                                icon: const Icon(Icons.bookmark_add_rounded),
+                child: StreamBuilder<NowPlaying?>(
+                  stream: playback.nowPlayingStream,
+                  initialData: playback.nowPlaying,
+                  builder: (context, snap) {
+                    final np = snap.data;
+                    if (np == null) {
+                      return Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            if (_warmLoadInProgress) ...[
+                              const CircularProgressIndicator(),
+                              const SizedBox(height: 16),
+                              Text(
+                                'Reconnecting to your last session...',
+                                style: text.titleMedium?.copyWith(
+                                  color: cs.onSurfaceVariant,
+                                ),
                               ),
-                              StreamBuilder<bool>(
-                                stream: _getBookCompletionStream(),
-                                initialData: false,
-                                builder: (_, completionSnap) {
-                                  final isCompleted = completionSnap.data ?? false;
-        final menuBg = gradientEnabled
-            ? Color.alphaBlend(
-                (_palettePrimary ?? cs.primary).withOpacity(0.1),
-                cs.surface,
-              )
-            : cs.surface;
-                                  return PopupMenuButton<_TopMenuAction>(
-                                    tooltip: 'More options',
-                                    icon: const Icon(Icons.more_vert_rounded),
-                                    color: menuBg,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(18),
-                                      side: BorderSide(
-                                        color: cs.outlineVariant.withOpacity(0.2),
-                                      ),
+                            ] else ...[
+                              Icon(
+                                Icons.podcasts_rounded,
+                                size: 48,
+                                color: cs.onSurfaceVariant,
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                'Player needs a quick reload',
+                                style: text.titleMedium?.copyWith(
+                                  color: cs.onSurfaceVariant,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              FilledButton.icon(
+                                onPressed:
+                                    () =>
+                                        _restoreNowPlayingIfNeeded(force: true),
+                                icon: const Icon(Icons.refresh_rounded),
+                                label: const Text('Reload last session'),
+                              ),
+                              if (_warmLoadError != null) ...[
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Retrying failed: $_warmLoadError',
+                                  textAlign: TextAlign.center,
+                                  style: text.bodySmall?.copyWith(
+                                    color: cs.error,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ],
+                        ),
+                      );
+                    }
+
+                    _schedulePaletteUpdate(np);
+
+                    return Column(
+                      children: [
+                        // Custom App Bar
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              IconButton.filledTonal(
+                                onPressed: () => Navigator.of(context).pop(),
+                                icon: const Icon(
+                                  Icons.keyboard_arrow_down_rounded,
+                                ),
+                                style: IconButton.styleFrom(
+                                  backgroundColor: cs.surfaceContainerHighest,
+                                ),
+                              ),
+                              const Spacer(),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    tooltip: 'Add bookmark',
+                                    onPressed:
+                                        np == null
+                                            ? null
+                                            : () =>
+                                                _addBookmark(context, playback),
+                                    icon: const Icon(
+                                      Icons.bookmark_add_rounded,
                                     ),
-                                  onSelected: (action) {
-                                    switch (action) {
-                                      case _TopMenuAction.toggleCompletion:
-                                        _toggleBookCompletion(context, isCompleted);
-                                        break;
-                                      case _TopMenuAction.toggleGradient:
-                                        final next = !gradientEnabled;
-                                        UiPrefs.setPlayerGradientBackground(next);
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(
-                                            content: Text(
-                                              next
-                                                  ? 'Gradient background enabled'
-                                                  : 'Gradient background disabled',
-                                            ),
-                                            duration: const Duration(seconds: 2),
+                                  ),
+                                  StreamBuilder<bool>(
+                                    stream: _getBookCompletionStream(),
+                                    initialData: false,
+                                    builder: (_, completionSnap) {
+                                      final isCompleted =
+                                          completionSnap.data ?? false;
+                                      final menuBg =
+                                          gradientEnabled
+                                              ? Color.alphaBlend(
+                                                (_palettePrimary ?? cs.primary)
+                                                    .withOpacity(0.1),
+                                                cs.surface,
+                                              )
+                                              : cs.surface;
+                                      return PopupMenuButton<_TopMenuAction>(
+                                        tooltip: 'More options',
+                                        icon: const Icon(
+                                          Icons.more_vert_rounded,
+                                        ),
+                                        color: menuBg,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            18,
                                           ),
-                                        );
-                                        break;
-                                      case _TopMenuAction.cast:
-                                        _showCastingComingSoon(context);
-                                        break;
-                                      case _TopMenuAction.playHistory:
-                                        _openHistorySheet(context, playback);
-                                        break;
-                                      case _TopMenuAction.bookmarks:
-                                        _openBookmarksSheet(context, playback);
-                                        break;
-                                      case _TopMenuAction.coverSize:
-                                        _showCoverSizeSheet(context);
-                                        break;
-                                    }
-                                  },
-                                    itemBuilder: (context) => [
-                                      PopupMenuItem(
-                                        value: _TopMenuAction.toggleCompletion,
-                                        child: Row(
-                                          children: [
-                                            Icon(
-                                              isCompleted ? Icons.undo_rounded : Icons.check_rounded,
-                                              size: 18,
-                                              color: cs.primary,
-                                            ),
-                                            const SizedBox(width: 12),
-                                            Expanded(
-                                              child: Text(
-                                                isCompleted ? 'Mark as unfinished' : 'Mark as finished',
+                                          side: BorderSide(
+                                            color: cs.outlineVariant
+                                                .withOpacity(0.2),
+                                          ),
+                                        ),
+                                        onSelected: (action) {
+                                          switch (action) {
+                                            case _TopMenuAction
+                                                .toggleCompletion:
+                                              _toggleBookCompletion(
+                                                context,
+                                                isCompleted,
+                                              );
+                                              break;
+                                            case _TopMenuAction.toggleGradient:
+                                              final next = !gradientEnabled;
+                                              UiPrefs.setPlayerGradientBackground(
+                                                next,
+                                              );
+                                              ScaffoldMessenger.of(
+                                                context,
+                                              ).showSnackBar(
+                                                SnackBar(
+                                                  content: Text(
+                                                    next
+                                                        ? 'Gradient background enabled'
+                                                        : 'Gradient background disabled',
+                                                  ),
+                                                  duration: const Duration(
+                                                    seconds: 2,
+                                                  ),
+                                                ),
+                                              );
+                                              break;
+                                            case _TopMenuAction.cast:
+                                              _showCastingComingSoon(context);
+                                              break;
+                                            case _TopMenuAction.playHistory:
+                                              _openHistorySheet(
+                                                context,
+                                                playback,
+                                              );
+                                              break;
+                                            case _TopMenuAction.bookmarks:
+                                              _openBookmarksSheet(
+                                                context,
+                                                playback,
+                                              );
+                                              break;
+                                            case _TopMenuAction.coverSize:
+                                              _showCoverSizeSheet(context);
+                                              break;
+                                          }
+                                        },
+                                        itemBuilder:
+                                            (context) => [
+                                              PopupMenuItem(
+                                                value:
+                                                    _TopMenuAction
+                                                        .toggleCompletion,
+                                                child: Row(
+                                                  children: [
+                                                    Icon(
+                                                      isCompleted
+                                                          ? Icons.undo_rounded
+                                                          : Icons.check_rounded,
+                                                      size: 18,
+                                                      color: cs.primary,
+                                                    ),
+                                                    const SizedBox(width: 12),
+                                                    Expanded(
+                                                      child: Text(
+                                                        isCompleted
+                                                            ? 'Mark as unfinished'
+                                                            : 'Mark as finished',
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
                                               ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      PopupMenuItem(
-                                        value: _TopMenuAction.toggleGradient,
-                                        child: Row(
-                                          children: [
-                                            Icon(
-                                              gradientEnabled ? Icons.gradient : Icons.gradient_outlined,
-                                              size: 18,
-                                              color: cs.primary,
-                                            ),
-                                            const SizedBox(width: 12),
-                                            Expanded(
-                                              child: Text(
-                                                gradientEnabled
-                                                    ? 'Disable gradient background'
-                                                    : 'Enable gradient background',
+                                              PopupMenuItem(
+                                                value:
+                                                    _TopMenuAction
+                                                        .toggleGradient,
+                                                child: Row(
+                                                  children: [
+                                                    Icon(
+                                                      gradientEnabled
+                                                          ? Icons.gradient
+                                                          : Icons
+                                                              .gradient_outlined,
+                                                      size: 18,
+                                                      color: cs.primary,
+                                                    ),
+                                                    const SizedBox(width: 12),
+                                                    Expanded(
+                                                      child: Text(
+                                                        gradientEnabled
+                                                            ? 'Disable gradient background'
+                                                            : 'Enable gradient background',
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
                                               ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      PopupMenuItem(
-                                        value: _TopMenuAction.playHistory,
-                                        child: Row(
-                                          children: [
-                                            Icon(Icons.history_rounded, size: 18, color: cs.primary),
-                                            const SizedBox(width: 12),
-                                            const Expanded(
-                                              child: Text('Play history'),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      PopupMenuItem(
-                                        value: _TopMenuAction.bookmarks,
-                                        child: Row(
-                                          children: [
-                                            Icon(Icons.bookmark_rounded, size: 18, color: cs.primary),
-                                            const SizedBox(width: 12),
-                                            const Expanded(
-                                              child: Text('Bookmarks'),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      PopupMenuItem(
-                                        value: _TopMenuAction.coverSize,
-                                        child: Row(
-                                          children: [
-                                            Icon(Icons.photo_size_select_large_rounded, size: 18, color: cs.primary),
-                                            const SizedBox(width: 12),
-                                            const Expanded(
-                                              child: Text('Cover size'),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                  );
-                                },
+                                              PopupMenuItem(
+                                                value:
+                                                    _TopMenuAction.playHistory,
+                                                child: Row(
+                                                  children: [
+                                                    Icon(
+                                                      Icons.history_rounded,
+                                                      size: 18,
+                                                      color: cs.primary,
+                                                    ),
+                                                    const SizedBox(width: 12),
+                                                    const Expanded(
+                                                      child: Text(
+                                                        'Play history',
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                              PopupMenuItem(
+                                                value: _TopMenuAction.bookmarks,
+                                                child: Row(
+                                                  children: [
+                                                    Icon(
+                                                      Icons.bookmark_rounded,
+                                                      size: 18,
+                                                      color: cs.primary,
+                                                    ),
+                                                    const SizedBox(width: 12),
+                                                    const Expanded(
+                                                      child: Text('Bookmarks'),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                              PopupMenuItem(
+                                                value: _TopMenuAction.coverSize,
+                                                child: Row(
+                                                  children: [
+                                                    Icon(
+                                                      Icons
+                                                          .photo_size_select_large_rounded,
+                                                      size: 18,
+                                                      color: cs.primary,
+                                                    ),
+                                                    const SizedBox(width: 12),
+                                                    const Expanded(
+                                                      child: Text('Cover size'),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
+                                      );
+                                    },
+                                  ),
+                                ],
                               ),
                             ],
                           ),
-                        ],
-                      ),
-                    ),
+                        ),
 
-                    // ARTWORK + TITLE
-                    Expanded(
-                      child: RepaintBoundary(
-                        child: SingleChildScrollView(
-                          physics: const BouncingScrollPhysics(),
-                          padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
-                          child: Column(
-                            children: [
-                            // Cover with adjustable size
-                            ValueListenableBuilder<PlayerCoverSize>(
-                              valueListenable: UiPrefs.playerCoverSize,
-                              builder: (context, coverSize, _) {
-                                final dims = _coverDimensionsForSize(context, coverSize);
-                                return AnimatedBuilder(
-                                  animation: _coverAnimation,
-                                  builder: (context, child) {
-                                    final t = _coverAnimation.value;
-                                    final fade = Curves.easeOut.transform(t);
-                                    final scale = 0.975 + 0.0325 * Curves.easeOut.transform(t); // subtle zoom-in to 100.75%
-                                    final translateY = 14 * (1 - t); // reduce lift for less wobble
-                                    return Transform.translate(
-                                      offset: Offset(0, translateY),
-                                      child: Opacity(
-                                        opacity: fade,
-                                        child: Transform.scale(
-                                          scale: scale,
-                                          child: child,
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                  child: Center(
-                                    child: SizedBox(
-                                      width: dims.width,
-                                      child: AspectRatio(
-                                        aspectRatio: 1,
-                                        child: Stack(
-                                          children: [
-                                            Container(
-                                              decoration: BoxDecoration(
-                                                borderRadius: BorderRadius.circular(dims.radius),
-                                                border: Border.all(
-                                                  color: cs.outline.withOpacity(0.6),
-                                                  width: 2.0,
-                                                ),
-                                                boxShadow: dims.shadows(cs),
-                                              ),
-                                            ),
-                                            ClipRRect(
-                                              borderRadius: BorderRadius.circular(dims.radius),
+                        // ARTWORK + TITLE
+                        Expanded(
+                          child: RepaintBoundary(
+                            child: SingleChildScrollView(
+                              physics: const BouncingScrollPhysics(),
+                              padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
+                              child: Column(
+                                children: [
+                                  // Cover with adjustable size
+                                  ValueListenableBuilder<PlayerCoverSize>(
+                                    valueListenable: UiPrefs.playerCoverSize,
+                                    builder: (context, coverSize, _) {
+                                      final dims = _coverDimensionsForSize(
+                                        context,
+                                        coverSize,
+                                      );
+                                      return AnimatedBuilder(
+                                        animation: _coverAnimation,
+                                        builder: (context, child) {
+                                          final t = _coverAnimation.value;
+                                          final fade = Curves.easeOut.transform(
+                                            t,
+                                          );
+                                          final scale =
+                                              0.975 +
+                                              0.0325 *
+                                                  Curves.easeOut.transform(
+                                                    t,
+                                                  ); // subtle zoom-in to 100.75%
+                                          final translateY =
+                                              14 *
+                                              (1 -
+                                                  t); // reduce lift for less wobble
+                                          return Transform.translate(
+                                            offset: Offset(0, translateY),
+                                            child: Opacity(
+                                              opacity: fade,
                                               child: Transform.scale(
-                                                scale: 1.024,
-                                                child: np.coverUrl != null && np.coverUrl!.isNotEmpty
-                                                    ? _ValidatedCachedNetworkImage(
-                                                        imageUrl: np.coverUrl!,
-                                                        fit: BoxFit.cover,
-                                                        fadeInDuration: const Duration(milliseconds: 220),
-                                                        fadeOutDuration: const Duration(milliseconds: 120),
-                                                        placeholder: (_, __) => Container(
-                                                          decoration: BoxDecoration(
-                                                            gradient: LinearGradient(
-                                                              colors: [
-                                                                cs.surfaceContainerHighest,
-                                                                cs.surfaceContainerHigh.withOpacity(0.9),
-                                                              ],
-                                                              begin: Alignment.topLeft,
-                                                              end: Alignment.bottomRight,
-                                                            ),
-                                                          ),
-                                                          child: Icon(
-                                                            Icons.menu_book_outlined,
-                                                            size: 88,
-                                                            color: cs.onSurfaceVariant.withOpacity(0.75),
-                                                          ),
-                                                        ),
-                                                        errorWidget: (_, __, ___) => Container(
-                                                          color: cs.surfaceContainerHighest,
-                                                          child: Icon(
-                                                            Icons.menu_book_outlined,
-                                                            size: 88,
-                                                            color: cs.onSurfaceVariant,
-                                                          ),
-                                                        ),
-                                                      )
-                                                    : Container(
-                                                        color: cs.surfaceContainerHighest,
-                                                        child: Icon(
-                                                          Icons.menu_book_outlined,
-                                                          size: 88,
-                                                          color: cs.onSurfaceVariant,
-                                                        ),
-                                                      ),
+                                                scale: scale,
+                                                child: child,
                                               ),
                                             ),
-                                            Positioned(
-                                              left: 10,
-                                              bottom: 10,
-                                              child: _ResumeFromHistoryButton(),
+                                          );
+                                        },
+                                        child: Center(
+                                          child: SizedBox(
+                                            width: dims.width,
+                                            child: AspectRatio(
+                                              aspectRatio: 1,
+                                              child: Stack(
+                                                children: [
+                                                  Container(
+                                                    decoration: BoxDecoration(
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            dims.radius,
+                                                          ),
+                                                      border: Border.all(
+                                                        color: cs.outline
+                                                            .withOpacity(0.6),
+                                                        width: 2.0,
+                                                      ),
+                                                      boxShadow: dims.shadows(
+                                                        cs,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  ClipRRect(
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          dims.radius,
+                                                        ),
+                                                    child: Transform.scale(
+                                                      scale: 1.024,
+                                                      child:
+                                                          np.coverUrl != null &&
+                                                                  np
+                                                                      .coverUrl!
+                                                                      .isNotEmpty
+                                                              ? _ValidatedCachedNetworkImage(
+                                                                imageUrl:
+                                                                    np.coverUrl!,
+                                                                fit:
+                                                                    BoxFit
+                                                                        .cover,
+                                                                fadeInDuration:
+                                                                    const Duration(
+                                                                      milliseconds:
+                                                                          220,
+                                                                    ),
+                                                                fadeOutDuration:
+                                                                    const Duration(
+                                                                      milliseconds:
+                                                                          120,
+                                                                    ),
+                                                                placeholder:
+                                                                    (
+                                                                      _,
+                                                                      __,
+                                                                    ) => Container(
+                                                                      decoration: BoxDecoration(
+                                                                        gradient: LinearGradient(
+                                                                          colors: [
+                                                                            cs.surfaceContainerHighest,
+                                                                            cs.surfaceContainerHigh.withOpacity(
+                                                                              0.9,
+                                                                            ),
+                                                                          ],
+                                                                          begin:
+                                                                              Alignment.topLeft,
+                                                                          end:
+                                                                              Alignment.bottomRight,
+                                                                        ),
+                                                                      ),
+                                                                      child: Icon(
+                                                                        Icons
+                                                                            .menu_book_outlined,
+                                                                        size:
+                                                                            88,
+                                                                        color: cs
+                                                                            .onSurfaceVariant
+                                                                            .withOpacity(
+                                                                              0.75,
+                                                                            ),
+                                                                      ),
+                                                                    ),
+                                                                errorWidget:
+                                                                    (
+                                                                      _,
+                                                                      __,
+                                                                      ___,
+                                                                    ) => Container(
+                                                                      color:
+                                                                          cs.surfaceContainerHighest,
+                                                                      child: Icon(
+                                                                        Icons
+                                                                            .menu_book_outlined,
+                                                                        size:
+                                                                            88,
+                                                                        color:
+                                                                            cs.onSurfaceVariant,
+                                                                      ),
+                                                                    ),
+                                                              )
+                                                              : Container(
+                                                                color:
+                                                                    cs.surfaceContainerHighest,
+                                                                child: Icon(
+                                                                  Icons
+                                                                      .menu_book_outlined,
+                                                                  size: 88,
+                                                                  color:
+                                                                      cs.onSurfaceVariant,
+                                                                ),
+                                                              ),
+                                                    ),
+                                                  ),
+                                                  Positioned(
+                                                    left: 10,
+                                                    bottom: 10,
+                                                    child:
+                                                        _ResumeFromHistoryButton(),
+                                                  ),
+                                                ],
+                                              ),
                                             ),
-                                          ],
+                                          ),
                                         ),
-                                      ),
-                                    ),
+                                      );
+                                    },
                                   ),
+                                  const SizedBox(height: 8),
+                                  const SizedBox(height: 16),
+
+                                  // Title / author / narrator with enhanced typography
+                                  AnimatedBuilder(
+                                    animation: _titleAnimation,
+                                    builder: (context, child) {
+                                      return Transform.translate(
+                                        offset: Offset(
+                                          0,
+                                          20 * (1 - _titleAnimation.value),
+                                        ),
+                                        child: Opacity(
+                                          opacity: _titleAnimation.value,
+                                          child: Column(
+                                            children: [
+                                              ValueListenableBuilder<bool>(
+                                                valueListenable:
+                                                    UiPrefs
+                                                        .playerScrollingSingleLineTitle,
+                                                builder: (
+                                                  context,
+                                                  singleLineScrollingTitle,
+                                                  _,
+                                                ) {
+                                                  final titleStyle = text
+                                                      .headlineMedium
+                                                      ?.copyWith(
+                                                        fontSize:
+                                                            (text
+                                                                    .headlineMedium
+                                                                    ?.fontSize ??
+                                                                28) *
+                                                            _metadataTextScale,
+                                                        fontWeight:
+                                                            FontWeight.w800,
+                                                        height: 1.15,
+                                                        letterSpacing: -0.5,
+                                                      );
+                                                  if (!singleLineScrollingTitle) {
+                                                    return Text(
+                                                      np.title,
+                                                      textAlign:
+                                                          TextAlign.center,
+                                                      style: titleStyle,
+                                                      maxLines: 3,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                    );
+                                                  }
+                                                  return _LoopingMarqueeText(
+                                                    text: np.title,
+                                                    style: titleStyle,
+                                                    gap: 40,
+                                                    pause: const Duration(
+                                                      milliseconds: 900,
+                                                    ),
+                                                    pixelsPerSecond: 36,
+                                                  );
+                                                },
+                                              ),
+                                              if (np.author != null &&
+                                                  np.author!.isNotEmpty) ...[
+                                                const SizedBox(height: 12),
+                                                Text(
+                                                  np.author!,
+                                                  textAlign: TextAlign.center,
+                                                  style: text.titleLarge
+                                                      ?.copyWith(
+                                                        fontSize:
+                                                            (text
+                                                                    .titleLarge
+                                                                    ?.fontSize ??
+                                                                22) *
+                                                            _metadataTextScale,
+                                                        color:
+                                                            cs.onSurfaceVariant,
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                        letterSpacing: 0.15,
+                                                      ),
+                                                  maxLines: 2,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
+                                              ],
+                                            ],
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                  if (np.narrator != null &&
+                                      np.narrator!.isNotEmpty) ...[
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Narrated by ${np.narrator!}',
+                                      textAlign: TextAlign.center,
+                                      style: text.bodyLarge?.copyWith(
+                                        fontSize:
+                                            (text.bodyLarge?.fontSize ?? 16) *
+                                            _metadataTextScale,
+                                        color: cs.onSurfaceVariant.withOpacity(
+                                          0.85,
+                                        ),
+                                        fontWeight: FontWeight.w500,
+                                        fontStyle: FontStyle.italic,
+                                        letterSpacing: 0.25,
+                                      ),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                  const SizedBox(height: 4), // Reduced padding
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        // Waveform visualization (only visible when playing and enabled in settings)
+                        ValueListenableBuilder<bool>(
+                          valueListenable: UiPrefs.waveformAnimationEnabled,
+                          builder: (_, waveformEnabled, __) {
+                            if (!waveformEnabled) {
+                              return const SizedBox(height: 4);
+                            }
+
+                            return StreamBuilder<bool>(
+                              stream: playback.playingStream,
+                              initialData: playback.player.playing,
+                              builder: (_, playSnap) {
+                                final playing = playSnap.data ?? false;
+                                return AnimatedSize(
+                                  duration: const Duration(milliseconds: 350),
+                                  curve: Curves.easeInOut,
+                                  child:
+                                      playing
+                                          ? Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                              vertical: 12,
+                                            ),
+                                            child: Center(
+                                              child: AudioWaveform(
+                                                isPlaying: playing,
+                                                barCount: 7,
+                                                height: 28,
+                                                spacing: 3.5,
+                                                color: cs.primary.withOpacity(
+                                                  0.8,
+                                                ),
+                                                animationSpeed: const Duration(
+                                                  milliseconds: 300,
+                                                ),
+                                              ),
+                                            ),
+                                          )
+                                          : const SizedBox(height: 4),
                                 );
                               },
-                            ),
-                            const SizedBox(height: 8),
-                            const SizedBox(height: 16),
+                            );
+                          },
+                        ),
 
-                            // Title / author / narrator with enhanced typography
-                            AnimatedBuilder(
-                              animation: _titleAnimation,
-                              builder: (context, child) {
-                                return Transform.translate(
-                                  offset: Offset(0, 20 * (1 - _titleAnimation.value)),
-                                  child: Opacity(
-                                    opacity: _titleAnimation.value,
+                        // POSITION + SLIDER - Material Design 3 Enhanced
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                          child: StreamBuilder<Duration>(
+                            stream: playback.positionStream,
+                            initialData: playback.player.position,
+                            builder: (_, posSnap) {
+                              final globalTotal = playback.totalBookDuration;
+                              final hasGlobal =
+                                  _dualProgressEnabled &&
+                                  globalTotal != null &&
+                                  globalTotal > Duration.zero;
+                              final chapterMetrics =
+                                  hasGlobal
+                                      ? playback.currentChapterProgress
+                                      : null;
+                              final preferChapter =
+                                  hasGlobal &&
+                                  chapterMetrics != null &&
+                                  _progressPrimary == ProgressPrimary.chapter;
+
+                              if (preferChapter) {
+                                final globalPos =
+                                    playback.globalBookPosition ??
+                                    Duration.zero;
+                                return Column(
+                                  children: [
+                                    _buildChapterProgressPrimary(
+                                      context: context,
+                                      text: text,
+                                      cs: cs,
+                                      playback: playback,
+                                      metrics: chapterMetrics!,
+                                    ),
+                                    if (globalTotal != null)
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 12),
+                                        child: _buildBookSummaryRow(
+                                          text: text,
+                                          cs: cs,
+                                          position: globalPos,
+                                          total: globalTotal,
+                                        ),
+                                      ),
+                                  ],
+                                );
+                              }
+
+                              if (hasGlobal) {
+                                final globalPos =
+                                    playback.globalBookPosition ??
+                                    Duration.zero;
+                                return Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    _buildBookProgressSection(
+                                      context: context,
+                                      text: text,
+                                      cs: cs,
+                                      playback: playback,
+                                      position: globalPos,
+                                      total: globalTotal!,
+                                      isPrimary: true,
+                                    ),
+                                    if (chapterMetrics != null)
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 8),
+                                        child: _buildChapterSummaryRow(
+                                          text: text,
+                                          cs: cs,
+                                          metrics: chapterMetrics,
+                                        ),
+                                      ),
+                                  ],
+                                );
+                              }
+
+                              final total =
+                                  playback.player.duration ?? Duration.zero;
+                              final pos = posSnap.data ?? Duration.zero;
+                              return _buildTrackProgressFallback(
+                                context: context,
+                                cs: cs,
+                                text: text,
+                                playback: playback,
+                                total: total,
+                                position: pos,
+                              );
+                            },
+                          ),
+                        ),
+
+                        const SizedBox(height: 12),
+
+                        // CONTROLS + CHAPTERS
+                        AnimatedBuilder(
+                          animation: _controlsAnimation,
+                          builder: (context, child) {
+                            return Transform.translate(
+                              offset: Offset(
+                                0,
+                                30 * (1 - _controlsAnimation.value),
+                              ),
+                              child: Opacity(
+                                opacity: _controlsAnimation.value,
+                                child: RepaintBoundary(
+                                  child: Padding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      16,
+                                      8,
+                                      16,
+                                      20,
+                                    ),
                                     child: Column(
                                       children: [
-                                        ValueListenableBuilder<bool>(
-                                          valueListenable: UiPrefs.playerScrollingSingleLineTitle,
-                                          builder: (context, singleLineScrollingTitle, _) {
-                                            final titleStyle = text.headlineMedium?.copyWith(
-                                              fontSize:
-                                                  (text.headlineMedium?.fontSize ?? 28) *
-                                                  _metadataTextScale,
-                                              fontWeight: FontWeight.w800,
-                                              height: 1.15,
-                                              letterSpacing: -0.5,
-                                            );
-                                            if (!singleLineScrollingTitle) {
-                                              return Text(
-                                                np.title,
-                                                textAlign: TextAlign.center,
-                                                style: titleStyle,
-                                                maxLines: 3,
-                                                overflow: TextOverflow.ellipsis,
+                                        // Large transport controls (Material 3) - single row, auto-sized
+                                        LayoutBuilder(
+                                          builder: (context, constraints) {
+                                            final maxW = constraints.maxWidth;
+                                            double spacing = 12;
+                                            double side =
+                                                56; // base side buttons
+                                            double center =
+                                                61.2; // play/pause reduced by 15%
+                                            final needed =
+                                                4 * side + center + 4 * spacing;
+                                            if (needed > maxW) {
+                                              final scale =
+                                                  (maxW - 4 * spacing) /
+                                                  (4 * side + center);
+                                              final clamped = scale.clamp(
+                                                0.6,
+                                                1.0,
                                               );
+                                              side = side * clamped;
+                                              center = center * clamped;
                                             }
-                                            return _LoopingMarqueeText(
-                                              text: np.title,
-                                              style: titleStyle,
-                                              gap: 40,
-                                              pause: const Duration(milliseconds: 900),
-                                              pixelsPerSecond: 36,
+                                            return Row(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.center,
+                                              children: [
+                                                _ControlButton(
+                                                  tooltip: 'Previous track',
+                                                  icon:
+                                                      Icons
+                                                          .skip_previous_rounded,
+                                                  size: side,
+                                                  onTap: () async {
+                                                    if (playback.hasSmartPrev) {
+                                                      await playback
+                                                          .smartPrev();
+                                                    }
+                                                  },
+                                                ),
+                                                SizedBox(width: spacing),
+                                                ValueListenableBuilder<int>(
+                                                  valueListenable:
+                                                      UiPrefs
+                                                          .seekBackwardSeconds,
+                                                  builder: (
+                                                    context,
+                                                    seekSeconds,
+                                                    _,
+                                                  ) {
+                                                    return _ControlButton(
+                                                      tooltip:
+                                                          'Back ${seekSeconds}s',
+                                                      icon:
+                                                          Icons
+                                                              .replay_30_rounded,
+                                                      size: side,
+                                                      onTap:
+                                                          () => playback
+                                                              .nudgeSeconds(
+                                                                -seekSeconds,
+                                                              ),
+                                                    );
+                                                  },
+                                                ),
+                                                SizedBox(width: spacing),
+                                                StreamBuilder<bool>(
+                                                  stream:
+                                                      playback.playingStream,
+                                                  initialData:
+                                                      playback.player.playing,
+                                                  builder: (_, playSnap) {
+                                                    final playing =
+                                                        playSnap.data ?? false;
+                                                    return _ControlButton(
+                                                      tooltip:
+                                                          playing
+                                                              ? 'Pause'
+                                                              : 'Play',
+                                                      icon:
+                                                          playing
+                                                              ? Icons
+                                                                  .pause_rounded
+                                                              : Icons
+                                                                  .play_arrow_rounded,
+                                                      isPrimary: true,
+                                                      isCircular:
+                                                          !playing, // keep round when showing Play triangle
+                                                      size: center,
+                                                      onTap: () async {
+                                                        // Check if we have a valid nowPlaying item and it's actually playing
+                                                        final hasValidNowPlaying =
+                                                            np != null &&
+                                                            playing;
+                                                        if (hasValidNowPlaying) {
+                                                          await playback
+                                                              .pause();
+                                                        } else {
+                                                          // Try to resume first, but if that fails (no current item),
+                                                          // warm load the last item and play it
+                                                          bool success =
+                                                              await playback
+                                                                  .resume(
+                                                                    context:
+                                                                        context,
+                                                                  );
+                                                          if (!success) {
+                                                            try {
+                                                              await playback
+                                                                  .warmLoadLastItem(
+                                                                    playAfterLoad:
+                                                                        true,
+                                                                  );
+                                                            } catch (e) {
+                                                              // If warm load fails, show error message
+                                                              if (context
+                                                                  .mounted) {
+                                                                ScaffoldMessenger.of(
+                                                                  context,
+                                                                ).showSnackBar(
+                                                                  const SnackBar(
+                                                                    content: Text(
+                                                                      'Cannot play: server unavailable and sync progress is required',
+                                                                    ),
+                                                                    duration:
+                                                                        Duration(
+                                                                          seconds:
+                                                                              4,
+                                                                        ),
+                                                                  ),
+                                                                );
+                                                              }
+                                                            }
+                                                          }
+                                                        }
+                                                      },
+                                                    );
+                                                  },
+                                                ),
+                                                SizedBox(width: spacing),
+                                                ValueListenableBuilder<int>(
+                                                  valueListenable:
+                                                      UiPrefs
+                                                          .seekForwardSeconds,
+                                                  builder: (
+                                                    context,
+                                                    seekSeconds,
+                                                    _,
+                                                  ) {
+                                                    return _ControlButton(
+                                                      tooltip:
+                                                          'Forward ${seekSeconds}s',
+                                                      icon:
+                                                          Icons
+                                                              .forward_30_rounded,
+                                                      size: side,
+                                                      onTap:
+                                                          () => playback
+                                                              .nudgeSeconds(
+                                                                seekSeconds,
+                                                              ),
+                                                    );
+                                                  },
+                                                ),
+                                                SizedBox(width: spacing),
+                                                _ControlButton(
+                                                  tooltip: 'Next track',
+                                                  icon: Icons.skip_next_rounded,
+                                                  size: side,
+                                                  onTap: () async {
+                                                    if (playback.hasSmartNext) {
+                                                      await playback
+                                                          .smartNext();
+                                                    }
+                                                  },
+                                                ),
+                                              ],
                                             );
                                           },
                                         ),
-                                        if (np.author != null && np.author!.isNotEmpty) ...[
-                                          const SizedBox(height: 12),
-                                          Text(
-                                            np.author!,
-                                            textAlign: TextAlign.center,
-                                            style: text.titleLarge?.copyWith(
-                                              fontSize:
-                                                  (text.titleLarge?.fontSize ?? 22) *
-                                                  _metadataTextScale,
-                                              color: cs.onSurfaceVariant,
-                                              fontWeight: FontWeight.w600,
-                                              letterSpacing: 0.15,
-                                            ),
-                                            maxLines: 2,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ],
-                                      ],
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                            if (np.narrator != null && np.narrator!.isNotEmpty) ...[
-                              const SizedBox(height: 8),
-                              Text(
-                                'Narrated by ${np.narrator!}',
-                                textAlign: TextAlign.center,
-                                style: text.bodyLarge?.copyWith(
-                                  fontSize:
-                                      (text.bodyLarge?.fontSize ?? 16) *
-                                      _metadataTextScale,
-                                  color: cs.onSurfaceVariant.withOpacity(0.85),
-                                  fontWeight: FontWeight.w500,
-                                  fontStyle: FontStyle.italic,
-                                  letterSpacing: 0.25,
-                                ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                            const SizedBox(height: 4), // Reduced padding
-                          ],
-                          ),
-                        ),
-                      ),
-                    ),
 
-                    // Waveform visualization (only visible when playing and enabled in settings)
-                    ValueListenableBuilder<bool>(
-                      valueListenable: UiPrefs.waveformAnimationEnabled,
-                      builder: (_, waveformEnabled, __) {
-                        if (!waveformEnabled) {
-                          return const SizedBox(height: 4);
-                        }
-                        
-                        return StreamBuilder<bool>(
-                          stream: playback.playingStream,
-                          initialData: playback.player.playing,
-                          builder: (_, playSnap) {
-                            final playing = playSnap.data ?? false;
-                            return AnimatedSize(
-                              duration: const Duration(milliseconds: 350),
-                              curve: Curves.easeInOut,
-                              child: playing
-                                  ? Padding(
-                                      padding: const EdgeInsets.symmetric(vertical: 12),
-                                      child: Center(
-                                        child: AudioWaveform(
-                                          isPlaying: playing,
-                                          barCount: 7,
-                                          height: 28,
-                                          spacing: 3.5,
-                                          color: cs.primary.withOpacity(0.8),
-                                          animationSpeed: const Duration(milliseconds: 300),
-                                        ),
-                                      ),
-                                    )
-                                  : const SizedBox(height: 4),
-                            );
-                          },
-                        );
-                      },
-                    ),
+                                        const SizedBox(height: 40),
 
-                    // POSITION + SLIDER - Material Design 3 Enhanced
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-                      child: StreamBuilder<Duration>(
-                        stream: playback.positionStream,
-                        initialData: playback.player.position,
-                        builder: (_, posSnap) {
-                          final globalTotal = playback.totalBookDuration;
-                          final hasGlobal = _dualProgressEnabled && globalTotal != null && globalTotal > Duration.zero;
-                          final chapterMetrics = hasGlobal ? playback.currentChapterProgress : null;
-                          final preferChapter =
-                              hasGlobal && chapterMetrics != null && _progressPrimary == ProgressPrimary.chapter;
-
-                          if (preferChapter) {
-                            final globalPos = playback.globalBookPosition ?? Duration.zero;
-                            return Column(
-                              children: [
-                                _buildChapterProgressPrimary(
-                                  context: context,
-                                  text: text,
-                                  cs: cs,
-                                  playback: playback,
-                                  metrics: chapterMetrics!,
-                                ),
-                                if (globalTotal != null)
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 12),
-                                    child: _buildBookSummaryRow(
-                                      text: text,
-                                      cs: cs,
-                                      position: globalPos,
-                                      total: globalTotal,
-                                    ),
-                                  ),
-                              ],
-                            );
-                          }
-
-                          if (hasGlobal) {
-                            final globalPos = playback.globalBookPosition ?? Duration.zero;
-                            return Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                _buildBookProgressSection(
-                                  context: context,
-                                  text: text,
-                                  cs: cs,
-                                  playback: playback,
-                                  position: globalPos,
-                                  total: globalTotal!,
-                                  isPrimary: true,
-                                ),
-                                if (chapterMetrics != null)
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 8),
-                                    child: _buildChapterSummaryRow(
-                                      text: text,
-                                      cs: cs,
-                                      metrics: chapterMetrics,
-                                    ),
-                                  ),
-                              ],
-                            );
-                          }
-
-                          final total = playback.player.duration ?? Duration.zero;
-                          final pos = posSnap.data ?? Duration.zero;
-                          return _buildTrackProgressFallback(
-                            context: context,
-                            cs: cs,
-                            text: text,
-                            playback: playback,
-                            total: total,
-                            position: pos,
-                          );
-                        },
-                      ),
-                    ),
-
-                    const SizedBox(height: 12),
-
-                    // CONTROLS + CHAPTERS
-                    AnimatedBuilder(
-                      animation: _controlsAnimation,
-                      builder: (context, child) {
-                        return Transform.translate(
-                          offset: Offset(0, 30 * (1 - _controlsAnimation.value)),
-                          child: Opacity(
-                            opacity: _controlsAnimation.value,
-                            child: RepaintBoundary(
-                              child: Padding(
-                                padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
-                                child: Column(
-                                  children: [
-                                    // Large transport controls (Material 3) - single row, auto-sized
-                                    LayoutBuilder(
-                                      builder: (context, constraints) {
-                                        final maxW = constraints.maxWidth;
-                                        double spacing = 12;
-                                        double side = 56;   // base side buttons
-                                        double center = 61.2; // play/pause reduced by 15%
-                                        final needed = 4 * side + center + 4 * spacing;
-                                        if (needed > maxW) {
-                                          final scale = (maxW - 4 * spacing) / (4 * side + center);
-                                          final clamped = scale.clamp(0.6, 1.0);
-                                          side = side * clamped;
-                                          center = center * clamped;
-                                        }
-                                        return Row(
-                                          mainAxisAlignment: MainAxisAlignment.center,
+                                        // Quick access controls - four rounded buttons
+                                        Row(
                                           children: [
-                                            _ControlButton(
-                                              tooltip: 'Previous track',
-                                              icon: Icons.skip_previous_rounded,
-                                              size: side,
-                                              onTap: () async {
-                                                if (playback.hasSmartPrev) {
-                                                  await playback.smartPrev();
-                                                }
-                                              },
+                                            Expanded(
+                                              child: _PlayerActionTile(
+                                                icon: _buildChaptersQuickIcon(
+                                                  context: context,
+                                                  cs: cs,
+                                                  totalChapters:
+                                                      np.chapters.length,
+                                                  currentChapter:
+                                                      np.chapters.length > 1
+                                                          ? (playback
+                                                                      .currentChapterProgress
+                                                                      ?.index ??
+                                                                  0) +
+                                                              1
+                                                          : 1,
+                                                ),
+                                                label: '',
+                                                onTap:
+                                                    np.chapters.length > 1
+                                                        ? () =>
+                                                            _showChaptersSheet(
+                                                              context,
+                                                              playback,
+                                                              np,
+                                                            )
+                                                        : null,
+                                                tooltip:
+                                                    np.chapters.length > 1
+                                                        ? 'Open chapters'
+                                                        : 'Single chapter – no chapters list',
+                                                enabled: np.chapters.length > 1,
+                                                heightScale: 0.7,
+                                              ),
                                             ),
-                                            SizedBox(width: spacing),
-                                            ValueListenableBuilder<int>(
-                                              valueListenable: UiPrefs.seekBackwardSeconds,
-                                              builder: (context, seekSeconds, _) {
-                                                return _ControlButton(
-                                                  tooltip: 'Back ${seekSeconds}s',
-                                                  icon: Icons.replay_30_rounded,
-                                                  size: side,
-                                                  onTap: () => playback.nudgeSeconds(-seekSeconds),
-                                                );
-                                              },
+                                            const SizedBox(width: 12),
+                                            Expanded(
+                                              child: _ChaptersDownloadButton(
+                                                libraryItemId: np.libraryItemId,
+                                                episodeId: np.episodeId,
+                                                title: np.title,
+                                                iconOnly: true,
+                                                heightScale: 0.7,
+                                              ),
                                             ),
-                                            SizedBox(width: spacing),
-                                            StreamBuilder<bool>(
-                                              stream: playback.playingStream,
-                                              initialData: playback.player.playing,
-                                              builder: (_, playSnap) {
-                                                final playing = playSnap.data ?? false;
-                                                return _ControlButton(
-                                                  tooltip: playing ? 'Pause' : 'Play',
-                                                  icon: playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                                                  isPrimary: true,
-                                                  isCircular: !playing, // keep round when showing Play triangle
-                                                  size: center,
-                                                  onTap: () async {
-                                                    // Check if we have a valid nowPlaying item and it's actually playing
-                                                    final hasValidNowPlaying = np != null && playing;
-                                                    if (hasValidNowPlaying) {
-                                                      await playback.pause();
-                                                    } else {
-                                                      // Try to resume first, but if that fails (no current item), 
-                                                      // warm load the last item and play it
-                                                      bool success = await playback.resume(context: context);
-                                                      if (!success) {
-                                                        try {
-                                                          await playback.warmLoadLastItem(playAfterLoad: true);
-                                                        } catch (e) {
-                                                          // If warm load fails, show error message
-                                                          if (context.mounted) {
-                                                            ScaffoldMessenger.of(context).showSnackBar(
-                                                              const SnackBar(
-                                                                content: Text('Cannot play: server unavailable and sync progress is required'),
-                                                                duration: Duration(seconds: 4),
-                                                              ),
-                                                            );
-                                                          }
-                                                        }
-                                                      }
-                                                    }
-                                                  },
-                                                );
-                                              },
+                                            const SizedBox(width: 12),
+                                            Expanded(
+                                              child: _SleepQuickAction(
+                                                onTap:
+                                                    () => _showSleepTimerSheet(
+                                                      context,
+                                                      np,
+                                                    ),
+                                                heightScale: 0.7,
+                                              ),
                                             ),
-                                            SizedBox(width: spacing),
-                                            ValueListenableBuilder<int>(
-                                              valueListenable: UiPrefs.seekForwardSeconds,
-                                              builder: (context, seekSeconds, _) {
-                                                return _ControlButton(
-                                                  tooltip: 'Forward ${seekSeconds}s',
-                                                  icon: Icons.forward_30_rounded,
-                                                  size: side,
-                                                  onTap: () => playback.nudgeSeconds(seekSeconds),
-                                                );
-                                              },
-                                            ),
-                                            SizedBox(width: spacing),
-                                            _ControlButton(
-                                              tooltip: 'Next track',
-                                              icon: Icons.skip_next_rounded,
-                                              size: side,
-                                              onTap: () async {
-                                                if (playback.hasSmartNext) {
-                                                  await playback.smartNext();
-                                                }
-                                              },
+                                            const SizedBox(width: 12),
+                                            Expanded(
+                                              child: _SpeedQuickAction(
+                                                playback: playback,
+                                                heightScale: 0.7,
+                                              ),
                                             ),
                                           ],
-                                        );
-                                      },
-                                    ),
-
-                                    const SizedBox(height: 40),
-
-                                    // Quick access controls - four rounded buttons
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: _PlayerActionTile(
-                                            icon: _buildChaptersQuickIcon(
-                                              context: context,
-                                              cs: cs,
-                                              totalChapters: np.chapters.length,
-                                              currentChapter: np.chapters.length > 1
-                                                  ? (playback.currentChapterProgress?.index ?? 0) + 1
-                                                  : 1,
-                                            ),
-                                            label: '',
-                                            onTap: np.chapters.length > 1
-                                                ? () => _showChaptersSheet(context, playback, np)
-                                                : null,
-                                            tooltip: np.chapters.length > 1
-                                                ? 'Open chapters'
-                                                : 'Single chapter – no chapters list',
-                                            enabled: np.chapters.length > 1,
-                                            heightScale: 0.7,
-                                          ),
                                         ),
-                                        const SizedBox(width: 12),
-                                        Expanded(
-                                          child: _ChaptersDownloadButton(
-                                            libraryItemId: np.libraryItemId,
-                                            episodeId: np.episodeId,
-                                            title: np.title,
-                                            iconOnly: true,
-                                            heightScale: 0.7,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 12),
-                                        Expanded(
-                                          child: _SleepQuickAction(
-                                            onTap: () => _showSleepTimerSheet(context, np),
-                                            heightScale: 0.7,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 12),
-                                        Expanded(
-                                          child: _SpeedQuickAction(
-                                            playback: playback,
-                                            heightScale: 0.7,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
                                         // Removed redundant countdown widget (countdown shown on Sleep button only)
                                       ],
                                     ),
                                   ),
-                                                  ),
-                                                ),
-                                              );
-                                            },
-                                        ),
-                                      ],
-                );
-              },
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
             ),
-          ),
-          ),
           ),
         );
       },
@@ -3245,16 +3610,14 @@ class _PlayerActionTile extends StatelessWidget {
       ),
     );
 
-    final wrapped = tooltip != null ? Tooltip(message: tooltip!, child: tile) : tile;
+    final wrapped =
+        tooltip != null ? Tooltip(message: tooltip!, child: tile) : tile;
     return Opacity(opacity: enabled ? 1.0 : 0.6, child: wrapped);
   }
 }
 
 class _SleepQuickAction extends StatelessWidget {
-  const _SleepQuickAction({
-    required this.onTap,
-    this.heightScale = 1.0,
-  });
+  const _SleepQuickAction({required this.onTap, this.heightScale = 1.0});
 
   final VoidCallback onTap;
   final double heightScale;
@@ -3270,7 +3633,9 @@ class _SleepQuickAction extends StatelessWidget {
         final active = timer.isActive;
         final isChapterMode = timer.isChapterMode;
         return _PlayerActionTile(
-          icon: Icon(isChapterMode ? Icons.menu_book_rounded : Icons.nights_stay_rounded),
+          icon: Icon(
+            isChapterMode ? Icons.menu_book_rounded : Icons.nights_stay_rounded,
+          ),
           label: '',
           onTap: onTap,
           tooltip: active ? 'Adjust sleep timer' : 'Set sleep timer',
@@ -3284,10 +3649,7 @@ class _SleepQuickAction extends StatelessWidget {
 }
 
 class _SpeedQuickAction extends StatelessWidget {
-  const _SpeedQuickAction({
-    required this.playback,
-    this.heightScale = 1.0,
-  });
+  const _SpeedQuickAction({required this.playback, this.heightScale = 1.0});
 
   final PlaybackRepository playback;
   final double heightScale;
@@ -3312,9 +3674,13 @@ class _SpeedQuickAction extends StatelessWidget {
           label: '',
           tooltip: 'Playback speed',
           onTap: () => _showSpeedSheet(context, cur),
-          backgroundColor: isNormal
-              ? null
-              : Color.alphaBlend(accentColor.withOpacity(0.08), cs.surfaceContainerHighest),
+          backgroundColor:
+              isNormal
+                  ? null
+                  : Color.alphaBlend(
+                    accentColor.withOpacity(0.08),
+                    cs.surfaceContainerHighest,
+                  ),
           heightScale: heightScale,
         );
       },
@@ -3337,8 +3703,11 @@ class _SpeedQuickAction extends StatelessWidget {
             final speed = speeds[i];
             final selected = (current - speed).abs() < 0.001;
             return ListTile(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              tileColor: selected ? Theme.of(ctx).colorScheme.primaryContainer : null,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              tileColor:
+                  selected ? Theme.of(ctx).colorScheme.primaryContainer : null,
               title: Text('${speed.toStringAsFixed(2)}×'),
               trailing: selected ? const Icon(Icons.check_rounded) : null,
               onTap: () async {
@@ -3385,9 +3754,9 @@ class _SpeedIcon extends StatelessWidget {
               child: Text(
                 '${value.toStringAsFixed(2)}×',
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: Theme.of(context).colorScheme.onPrimary,
-                    ),
+                  fontWeight: FontWeight.w700,
+                  color: Theme.of(context).colorScheme.onPrimary,
+                ),
               ),
             ),
           ),
@@ -3412,7 +3781,8 @@ class _ChaptersDownloadButton extends StatefulWidget {
   final double heightScale;
 
   @override
-  State<_ChaptersDownloadButton> createState() => _ChaptersDownloadButtonState();
+  State<_ChaptersDownloadButton> createState() =>
+      _ChaptersDownloadButtonState();
 }
 
 class _ChaptersDownloadButtonState extends State<_ChaptersDownloadButton> {
@@ -3452,7 +3822,8 @@ class _ChaptersDownloadButtonState extends State<_ChaptersDownloadButton> {
   Future<void> _enqueue() async {
     if (_downloads == null) return;
     try {
-      if (_snap != null && (_snap!.status == 'running' || _snap!.status == 'queued')) {
+      if (_snap != null &&
+          (_snap!.status == 'running' || _snap!.status == 'queued')) {
         return;
       }
 
@@ -3461,7 +3832,9 @@ class _ChaptersDownloadButtonState extends State<_ChaptersDownloadButton> {
       if (othersActive) {
         try {
           final tracked = await _downloads!.listTrackedItemIds();
-          final onlyThis = tracked.isNotEmpty && tracked.every((id) => id == widget.libraryItemId);
+          final onlyThis =
+              tracked.isNotEmpty &&
+              tracked.every((id) => id == widget.libraryItemId);
           if (!onlyThis) requireCancelOthers = true;
         } catch (_) {
           requireCancelOthers = true;
@@ -3473,20 +3846,23 @@ class _ChaptersDownloadButtonState extends State<_ChaptersDownloadButton> {
       if (requireCancelOthers) {
         final ans = await showDialog<bool>(
           context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Single download at a time'),
-            content: const Text('Another book is downloading. Cancel it and download this book now?'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('No'),
+          builder:
+              (context) => AlertDialog(
+                title: const Text('Single download at a time'),
+                content: const Text(
+                  'Another book is downloading. Cancel it and download this book now?',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('No'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    child: const Text('Yes, switch downloads'),
+                  ),
+                ],
               ),
-              FilledButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('Yes, switch downloads'),
-              ),
-            ],
-          ),
         );
         proceed = ans == true;
         cancelOthers = ans == true;
@@ -3506,7 +3882,9 @@ class _ChaptersDownloadButtonState extends State<_ChaptersDownloadButton> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Download started – follow progress from Downloads tab.'),
+            content: Text(
+              'Download started – follow progress from Downloads tab.',
+            ),
             duration: Duration(seconds: 3),
           ),
         );
@@ -3577,7 +3955,9 @@ class _ChaptersDownloadButtonState extends State<_ChaptersDownloadButton> {
             final dialogCs = Theme.of(dialogContext).colorScheme;
             return AlertDialog(
               title: const Text('Remove Download'),
-              content: const Text('Are you sure you want to remove this downloaded book? You will need to download it again to listen offline.'),
+              content: const Text(
+                'Are you sure you want to remove this downloaded book? You will need to download it again to listen offline.',
+              ),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(dialogContext).pop(false),
@@ -3602,7 +3982,8 @@ class _ChaptersDownloadButtonState extends State<_ChaptersDownloadButton> {
           _removeLocal();
         }
       };
-    } else if (snap != null && (snap.status == 'running' || snap.status == 'queued')) {
+    } else if (snap != null &&
+        (snap.status == 'running' || snap.status == 'queued')) {
       iconWidget = SizedBox(
         width: 28,
         height: 28,
@@ -3662,15 +4043,15 @@ class _ControlButton extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
 
     // PixelPlay-inspired Material 3 Expressive styling
-    final bg = isPrimary 
-        ? cs.primary 
-        : cs.surfaceContainerHighest.withOpacity(0.85);
+    final bg =
+        isPrimary ? cs.primary : cs.surfaceContainerHighest.withOpacity(0.85);
     final fg = isPrimary ? cs.onPrimary : cs.onSurface;
 
     // More rounded corners for modern Material 3 look
-    final shape = isCircular
-        ? const CircleBorder()
-        : RoundedRectangleBorder(borderRadius: BorderRadius.circular(20));
+    final shape =
+        isCircular
+            ? const CircleBorder()
+            : RoundedRectangleBorder(borderRadius: BorderRadius.circular(20));
 
     final child = SizedBox(
       width: size,
@@ -3683,9 +4064,8 @@ class _ControlButton extends StatelessWidget {
       color: bg,
       shape: shape,
       elevation: isPrimary ? 6 : 1,
-      shadowColor: isPrimary 
-          ? cs.primary.withOpacity(0.4) 
-          : cs.shadow.withOpacity(0.1),
+      shadowColor:
+          isPrimary ? cs.primary.withOpacity(0.4) : cs.shadow.withOpacity(0.1),
       child: InkWell(
         customBorder: shape,
         onTap: onTap,
@@ -3768,7 +4148,9 @@ class _LoopingMarqueeTextState extends State<_LoopingMarqueeText> {
       await Future.delayed(widget.pause);
       if (!mounted || token != _runToken || !_controller.hasClients) return;
 
-      final durationMs = (maxExtent / widget.pixelsPerSecond * 1000).round().clamp(250, 30000);
+      final durationMs = (maxExtent / widget.pixelsPerSecond * 1000)
+          .round()
+          .clamp(250, 30000);
       await _controller.animateTo(
         maxExtent,
         duration: Duration(milliseconds: durationMs),
@@ -3826,17 +4208,17 @@ class _CoverDims {
   final double radius;
 
   List<BoxShadow> shadows(ColorScheme cs) => [
-        BoxShadow(
-          color: cs.shadow.withOpacity(0.18),
-          blurRadius: 22,
-          spreadRadius: 0,
-          offset: const Offset(0, 10),
-        ),
-        BoxShadow(
-          color: cs.primary.withOpacity(0.1),
-          blurRadius: 30,
-          spreadRadius: -2,
-          offset: const Offset(0, 12),
-        ),
-      ];
+    BoxShadow(
+      color: cs.shadow.withOpacity(0.18),
+      blurRadius: 22,
+      spreadRadius: 0,
+      offset: const Offset(0, 10),
+    ),
+    BoxShadow(
+      color: cs.primary.withOpacity(0.1),
+      blurRadius: 30,
+      spreadRadius: -2,
+      offset: const Offset(0, 12),
+    ),
+  ];
 }
