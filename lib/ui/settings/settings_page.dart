@@ -48,6 +48,7 @@ class _SettingsPageState extends State<SettingsPage> {
   int? _seriesItemsPerRow;
   int? _seekBackwardSeconds;
   int? _seekForwardSeconds;
+  bool? _playerScrollingSingleLineTitle;
   bool? _letterScrollEnabled;
   bool? _letterScrollBooksAlpha;
   bool? _smartRewindEnabled;
@@ -86,6 +87,7 @@ class _SettingsPageState extends State<SettingsPage> {
     'ui_progress_primary',
     'ui_player_gradient_background',
     'ui_player_cover_size',
+    'ui_player_scrolling_single_line_title',
     'books_library_id',
     'play_history_v1',
     'detailed_play_sessions_v1',
@@ -348,6 +350,8 @@ class _SettingsPageState extends State<SettingsPage> {
         _seriesItemsPerRow = prefs.getInt('ui_series_items_per_row') ?? 2;
         _seekBackwardSeconds = prefs.getInt('ui_seek_backward_seconds') ?? 30;
         _seekForwardSeconds = prefs.getInt('ui_seek_forward_seconds') ?? 30;
+        _playerScrollingSingleLineTitle =
+            prefs.getBool('ui_player_scrolling_single_line_title') ?? false;
         _letterScrollEnabled = prefs.getBool('ui_letter_scroll_enabled') ?? false;
         _letterScrollBooksAlpha = prefs.getBool('ui_letter_scroll_books_alpha') ?? false;
         _legacyFullScreenPlayer = prefs.getBool('ui_legacy_full_screen_player') ?? false;
@@ -1147,6 +1151,15 @@ class _SettingsPageState extends State<SettingsPage> {
             onChanged: (v) async {
               await UiPrefs.setPlayerGradientBackground(v, pinToSettingsOnChange: true);
               if (mounted) setState(() {});
+            },
+          ),
+          SwitchListTile(
+            title: const Text('Single-line scrolling player title'),
+            subtitle: const Text('Show one title line that continuously scrolls left in full player'),
+            value: _playerScrollingSingleLineTitle ?? false,
+            onChanged: (v) async {
+              await UiPrefs.setPlayerScrollingSingleLineTitle(v, pinToSettingsOnChange: true);
+              if (mounted) setState(() => _playerScrollingSingleLineTitle = v);
             },
           ),
           SwitchListTile(

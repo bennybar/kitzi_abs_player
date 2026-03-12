@@ -445,6 +445,8 @@ class _FullPlayerRoute extends PageRouteBuilder<void> {
 }
 
 class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStateMixin, WidgetsBindingObserver {
+  static const double _metadataTextScale = 0.85;
+  static const double _progressThumbScale = 0.75;
   bool _dualProgressEnabled = true;
   ProgressPrimary _progressPrimary = UiPrefs.progressPrimary.value;
   VoidCallback? _progressPrefListener;
@@ -777,12 +779,20 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     final sliderMax = max > 0 ? max : 1.0;
     final value = position.inMilliseconds.toDouble().clamp(0.0, sliderMax);
     final remaining = (total - position).isNegative ? Duration.zero : total - position;
+    final primaryThumbRadius = 15 * _progressThumbScale;
+    final secondaryThumbRadius = 12 * _progressThumbScale;
+    final primaryOverlayRadius = 30 * _progressThumbScale;
+    final secondaryOverlayRadius = 26 * _progressThumbScale;
 
 
     final sliderTheme = SliderTheme.of(context).copyWith(
       trackHeight: isPrimary ? 14 : 10,
-      thumbShape: RoundSliderThumbShape(enabledThumbRadius: isPrimary ? 15 : 12),
-      overlayShape: RoundSliderOverlayShape(overlayRadius: isPrimary ? 30 : 26),
+      thumbShape: RoundSliderThumbShape(
+        enabledThumbRadius: isPrimary ? primaryThumbRadius : secondaryThumbRadius,
+      ),
+      overlayShape: RoundSliderOverlayShape(
+        overlayRadius: isPrimary ? primaryOverlayRadius : secondaryOverlayRadius,
+      ),
       activeTrackColor: cs.primary,
       inactiveTrackColor: cs.surfaceContainerHighest,
       thumbColor: cs.primary,
@@ -923,6 +933,8 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
     final max = duration.inMilliseconds.toDouble();
     final value = metrics.elapsed.inMilliseconds.toDouble().clamp(0.0, max);
     final remaining = duration - metrics.elapsed;
+    final thumbRadius = 15 * _progressThumbScale;
+    final overlayRadius = 30 * _progressThumbScale;
 
     return RepaintBoundary(
       child: Column(
@@ -959,12 +971,14 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                         return SliderTheme(
                           data: SliderTheme.of(context).copyWith(
                             trackHeight: 5.0,
-                            thumbShape: const RoundSliderThumbShape(
-                              enabledThumbRadius: 15,
+                            thumbShape: RoundSliderThumbShape(
+                              enabledThumbRadius: thumbRadius,
                               elevation: 6,
                               pressedElevation: 8,
                             ),
-                            overlayShape: const RoundSliderOverlayShape(overlayRadius: 30),
+                            overlayShape: RoundSliderOverlayShape(
+                              overlayRadius: overlayRadius,
+                            ),
                             activeTrackColor: cs.primary,
                             inactiveTrackColor: cs.surfaceContainerHighest,
                             thumbColor: cs.primary,
@@ -1000,12 +1014,14 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                 return SliderTheme(
                   data: SliderTheme.of(context).copyWith(
                     trackHeight: 14,
-                    thumbShape: const RoundSliderThumbShape(
-                      enabledThumbRadius: 15,
+                    thumbShape: RoundSliderThumbShape(
+                      enabledThumbRadius: thumbRadius,
                       elevation: 6,
                       pressedElevation: 8,
                     ),
-                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 30),
+                    overlayShape: RoundSliderOverlayShape(
+                      overlayRadius: overlayRadius,
+                    ),
                     activeTrackColor: cs.primary,
                     inactiveTrackColor: cs.surfaceContainerHighest,
                     thumbColor: cs.primary,
@@ -1170,6 +1186,8 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
   }) {
     final max = total.inMilliseconds.toDouble().clamp(0.0, double.infinity);
     final value = position.inMilliseconds.toDouble().clamp(0.0, max > 0 ? max : 1.0);
+    final thumbRadius = 15 * _progressThumbScale;
+    final overlayRadius = 30 * _progressThumbScale;
 
     return RepaintBoundary(
       child: Column(
@@ -1195,12 +1213,14 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                         return SliderTheme(
                           data: SliderTheme.of(context).copyWith(
                             trackHeight: 5.0,
-                            thumbShape: const RoundSliderThumbShape(
-                              enabledThumbRadius: 15,
+                            thumbShape: RoundSliderThumbShape(
+                              enabledThumbRadius: thumbRadius,
                               elevation: 6,
                               pressedElevation: 8,
                             ),
-                            overlayShape: const RoundSliderOverlayShape(overlayRadius: 30),
+                            overlayShape: RoundSliderOverlayShape(
+                              overlayRadius: overlayRadius,
+                            ),
                             activeTrackColor: cs.primary,
                             inactiveTrackColor: cs.surfaceContainerHighest,
                             thumbColor: cs.primary,
@@ -1236,12 +1256,14 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                 return SliderTheme(
                   data: SliderTheme.of(context).copyWith(
                     trackHeight: 14,
-                    thumbShape: const RoundSliderThumbShape(
-                      enabledThumbRadius: 15,
+                    thumbShape: RoundSliderThumbShape(
+                      enabledThumbRadius: thumbRadius,
                       elevation: 6,
                       pressedElevation: 8,
                     ),
-                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 30),
+                    overlayShape: RoundSliderOverlayShape(
+                      overlayRadius: overlayRadius,
+                    ),
                     activeTrackColor: cs.primary,
                     inactiveTrackColor: cs.surfaceContainerHighest,
                     thumbColor: cs.primary,
@@ -2738,16 +2760,34 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                     opacity: _titleAnimation.value,
                                     child: Column(
                                       children: [
-                                        Text(
-                                          np.title,
-                                          textAlign: TextAlign.center,
-                                          style: text.headlineMedium?.copyWith(
-                                            fontWeight: FontWeight.w800,
-                                            height: 1.15,
-                                            letterSpacing: -0.5,
-                                          ),
-                                          maxLines: 3,
-                                          overflow: TextOverflow.ellipsis,
+                                        ValueListenableBuilder<bool>(
+                                          valueListenable: UiPrefs.playerScrollingSingleLineTitle,
+                                          builder: (context, singleLineScrollingTitle, _) {
+                                            final titleStyle = text.headlineMedium?.copyWith(
+                                              fontSize:
+                                                  (text.headlineMedium?.fontSize ?? 28) *
+                                                  _metadataTextScale,
+                                              fontWeight: FontWeight.w800,
+                                              height: 1.15,
+                                              letterSpacing: -0.5,
+                                            );
+                                            if (!singleLineScrollingTitle) {
+                                              return Text(
+                                                np.title,
+                                                textAlign: TextAlign.center,
+                                                style: titleStyle,
+                                                maxLines: 3,
+                                                overflow: TextOverflow.ellipsis,
+                                              );
+                                            }
+                                            return _LoopingMarqueeText(
+                                              text: np.title,
+                                              style: titleStyle,
+                                              gap: 40,
+                                              pause: const Duration(milliseconds: 900),
+                                              pixelsPerSecond: 36,
+                                            );
+                                          },
                                         ),
                                         if (np.author != null && np.author!.isNotEmpty) ...[
                                           const SizedBox(height: 12),
@@ -2755,6 +2795,9 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                             np.author!,
                                             textAlign: TextAlign.center,
                                             style: text.titleLarge?.copyWith(
+                                              fontSize:
+                                                  (text.titleLarge?.fontSize ?? 22) *
+                                                  _metadataTextScale,
                                               color: cs.onSurfaceVariant,
                                               fontWeight: FontWeight.w600,
                                               letterSpacing: 0.15,
@@ -2775,6 +2818,9 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                 'Narrated by ${np.narrator!}',
                                 textAlign: TextAlign.center,
                                 style: text.bodyLarge?.copyWith(
+                                  fontSize:
+                                      (text.bodyLarge?.fontSize ?? 16) *
+                                      _metadataTextScale,
                                   color: cs.onSurfaceVariant.withOpacity(0.85),
                                   fontWeight: FontWeight.w500,
                                   fontStyle: FontStyle.italic,
@@ -2928,7 +2974,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                         final maxW = constraints.maxWidth;
                                         double spacing = 12;
                                         double side = 56;   // base side buttons
-                                        double center = 72; // base center button
+                                        double center = 61.2; // play/pause reduced by 15%
                                         final needed = 4 * side + center + 4 * spacing;
                                         if (needed > maxW) {
                                           final scale = (maxW - 4 * spacing) / (4 * side + center);
@@ -3053,6 +3099,7 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                                 ? 'Open chapters'
                                                 : 'Single chapter – no chapters list',
                                             enabled: np.chapters.length > 1,
+                                            heightScale: 0.7,
                                           ),
                                         ),
                                         const SizedBox(width: 12),
@@ -3062,17 +3109,22 @@ class _FullPlayerPageState extends State<FullPlayerPage> with TickerProviderStat
                                             episodeId: np.episodeId,
                                             title: np.title,
                                             iconOnly: true,
+                                            heightScale: 0.7,
                                           ),
                                         ),
                                         const SizedBox(width: 12),
                                         Expanded(
                                           child: _SleepQuickAction(
                                             onTap: () => _showSleepTimerSheet(context, np),
+                                            heightScale: 0.7,
                                           ),
                                         ),
                                         const SizedBox(width: 12),
                                         Expanded(
-                                          child: _SpeedQuickAction(playback: playback),
+                                          child: _SpeedQuickAction(
+                                            playback: playback,
+                                            heightScale: 0.7,
+                                          ),
                                         ),
                                       ],
                                     ),
@@ -3108,6 +3160,7 @@ class _PlayerActionTile extends StatelessWidget {
     this.enabled = true,
     this.backgroundColor,
     this.foregroundColor,
+    this.heightScale = 1.0,
   });
 
   final Widget icon;
@@ -3117,11 +3170,13 @@ class _PlayerActionTile extends StatelessWidget {
   final bool enabled;
   final Color? backgroundColor;
   final Color? foregroundColor;
+  final double heightScale;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
+    final clampedScale = heightScale.clamp(0.6, 1.2);
     // PixelPlay-inspired: more rounded corners for Material 3 Expressive
     final radius = BorderRadius.circular(24);
     final bg = backgroundColor ?? cs.surfaceContainerHigh.withOpacity(0.9);
@@ -3158,14 +3213,17 @@ class _PlayerActionTile extends StatelessWidget {
           borderRadius: radius,
           onTap: enabled ? onTap : null,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            padding: EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: 14 * clampedScale,
+            ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 IconTheme(
                   data: IconThemeData(
                     color: enabled ? fg : cs.onSurfaceVariant,
-                    size: 28,
+                    size: 28 * clampedScale,
                   ),
                   child: icon,
                 ),
@@ -3193,9 +3251,13 @@ class _PlayerActionTile extends StatelessWidget {
 }
 
 class _SleepQuickAction extends StatelessWidget {
-  const _SleepQuickAction({required this.onTap});
+  const _SleepQuickAction({
+    required this.onTap,
+    this.heightScale = 1.0,
+  });
 
   final VoidCallback onTap;
+  final double heightScale;
 
   @override
   Widget build(BuildContext context) {
@@ -3214,6 +3276,7 @@ class _SleepQuickAction extends StatelessWidget {
           tooltip: active ? 'Adjust sleep timer' : 'Set sleep timer',
           backgroundColor: active ? cs.primary : cs.surfaceContainerHighest,
           foregroundColor: active ? cs.onPrimary : cs.onSurface,
+          heightScale: heightScale,
         );
       },
     );
@@ -3221,9 +3284,13 @@ class _SleepQuickAction extends StatelessWidget {
 }
 
 class _SpeedQuickAction extends StatelessWidget {
-  const _SpeedQuickAction({required this.playback});
+  const _SpeedQuickAction({
+    required this.playback,
+    this.heightScale = 1.0,
+  });
 
   final PlaybackRepository playback;
+  final double heightScale;
 
   @override
   Widget build(BuildContext context) {
@@ -3248,6 +3315,7 @@ class _SpeedQuickAction extends StatelessWidget {
           backgroundColor: isNormal
               ? null
               : Color.alphaBlend(accentColor.withOpacity(0.08), cs.surfaceContainerHighest),
+          heightScale: heightScale,
         );
       },
     );
@@ -3334,12 +3402,14 @@ class _ChaptersDownloadButton extends StatefulWidget {
     this.episodeId,
     this.title,
     this.iconOnly = false,
+    this.heightScale = 1.0,
   });
 
   final String libraryItemId;
   final String? episodeId;
   final String? title;
   final bool iconOnly;
+  final double heightScale;
 
   @override
   State<_ChaptersDownloadButton> createState() => _ChaptersDownloadButtonState();
@@ -3564,6 +3634,7 @@ class _ChaptersDownloadButtonState extends State<_ChaptersDownloadButton> {
       tooltip: tooltip,
       backgroundColor: backgroundColor,
       foregroundColor: foregroundColor,
+      heightScale: widget.heightScale,
     );
   }
 }
@@ -3624,6 +3695,128 @@ class _ControlButton extends StatelessWidget {
     );
 
     return tooltip == null ? button : Tooltip(message: tooltip!, child: button);
+  }
+}
+
+class _LoopingMarqueeText extends StatefulWidget {
+  const _LoopingMarqueeText({
+    required this.text,
+    required this.style,
+    this.gap = 32,
+    this.pause = const Duration(milliseconds: 800),
+    this.pixelsPerSecond = 36,
+  });
+
+  final String text;
+  final TextStyle? style;
+  final double gap;
+  final Duration pause;
+  final double pixelsPerSecond;
+
+  @override
+  State<_LoopingMarqueeText> createState() => _LoopingMarqueeTextState();
+}
+
+class _LoopingMarqueeTextState extends State<_LoopingMarqueeText> {
+  final ScrollController _controller = ScrollController();
+  bool _shouldScroll = false;
+  int _runToken = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _scheduleMeasureAndStart();
+  }
+
+  @override
+  void didUpdateWidget(covariant _LoopingMarqueeText oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.text != widget.text || oldWidget.style != widget.style) {
+      _scheduleMeasureAndStart();
+    }
+  }
+
+  @override
+  void dispose() {
+    _runToken++;
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _scheduleMeasureAndStart() {
+    _runToken++;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_controller.hasClients) return;
+      final maxExtent = _controller.position.maxScrollExtent;
+      final shouldScrollNow = maxExtent > 0.5;
+      if (_shouldScroll != shouldScrollNow) {
+        setState(() => _shouldScroll = shouldScrollNow);
+      }
+      if (shouldScrollNow) {
+        _startLoop(_runToken);
+      } else {
+        _controller.jumpTo(0);
+      }
+    });
+  }
+
+  Future<void> _startLoop(int token) async {
+    while (mounted && token == _runToken && _controller.hasClients) {
+      final maxExtent = _controller.position.maxScrollExtent;
+      if (maxExtent <= 0.5) return;
+
+      await Future.delayed(widget.pause);
+      if (!mounted || token != _runToken || !_controller.hasClients) return;
+
+      final durationMs = (maxExtent / widget.pixelsPerSecond * 1000).round().clamp(250, 30000);
+      await _controller.animateTo(
+        maxExtent,
+        duration: Duration(milliseconds: durationMs),
+        curve: Curves.linear,
+      );
+      if (!mounted || token != _runToken || !_controller.hasClients) return;
+      _controller.jumpTo(0);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final baseText = Text(
+      widget.text,
+      style: widget.style,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      softWrap: false,
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return ClipRect(
+          child: SingleChildScrollView(
+            controller: _controller,
+            scrollDirection: Axis.horizontal,
+            physics: const NeverScrollableScrollPhysics(),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minWidth: constraints.maxWidth),
+              child: Row(
+                children: [
+                  baseText,
+                  if (_shouldScroll) ...[
+                    SizedBox(width: widget.gap),
+                    Text(
+                      widget.text,
+                      style: widget.style,
+                      maxLines: 1,
+                      softWrap: false,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 }
 

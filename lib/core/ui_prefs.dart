@@ -26,6 +26,7 @@ class UiPrefs {
   static final ValueNotifier<int> seriesItemsPerRow = ValueNotifier<int>(2); // Default to 2
   static final ValueNotifier<int> seekBackwardSeconds = ValueNotifier<int>(30); // Default to 30 seconds
   static final ValueNotifier<int> seekForwardSeconds = ValueNotifier<int>(30); // Default to 30 seconds
+  static final ValueNotifier<bool> playerScrollingSingleLineTitle = ValueNotifier<bool>(false); // Default to false
 
   static const String _kSeries = 'ui_show_series_tab';
   static const String _kAuthorView = 'ui_author_view_enabled';
@@ -40,6 +41,7 @@ class UiPrefs {
   static const String _kSeriesItemsPerRow = 'ui_series_items_per_row';
   static const String _kSeekBackwardSeconds = 'ui_seek_backward_seconds';
   static const String _kSeekForwardSeconds = 'ui_seek_forward_seconds';
+  static const String _kPlayerScrollingSingleLineTitle = 'ui_player_scrolling_single_line_title';
 
   /// Calculate screen diagonal size in inches
   static double getScreenDiagonalInches(BuildContext context) {
@@ -86,6 +88,8 @@ class UiPrefs {
       seriesItemsPerRow.value = prefs.getInt(_kSeriesItemsPerRow) ?? 2;
       seekBackwardSeconds.value = prefs.getInt(_kSeekBackwardSeconds) ?? 30;
       seekForwardSeconds.value = prefs.getInt(_kSeekForwardSeconds) ?? 30;
+      playerScrollingSingleLineTitle.value =
+          prefs.getBool(_kPlayerScrollingSingleLineTitle) ?? false;
     } catch (_) {}
   }
   
@@ -110,6 +114,8 @@ class UiPrefs {
       seriesItemsPerRow.value = prefs.getInt(_kSeriesItemsPerRow) ?? 2;
       seekBackwardSeconds.value = prefs.getInt(_kSeekBackwardSeconds) ?? 30;
       seekForwardSeconds.value = prefs.getInt(_kSeekForwardSeconds) ?? 30;
+      playerScrollingSingleLineTitle.value =
+          prefs.getBool(_kPlayerScrollingSingleLineTitle) ?? false;
     } catch (_) {}
   }
 
@@ -228,6 +234,18 @@ class UiPrefs {
       await prefs.setInt(_kSeekForwardSeconds, value);
     } catch (_) {}
     seekForwardSeconds.value = value;
+    if (pinToSettingsOnChange) pinSettings.value = true;
+  }
+
+  static Future<void> setPlayerScrollingSingleLineTitle(
+    bool value, {
+    bool pinToSettingsOnChange = false,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_kPlayerScrollingSingleLineTitle, value);
+    } catch (_) {}
+    playerScrollingSingleLineTitle.value = value;
     if (pinToSettingsOnChange) pinSettings.value = true;
   }
 
