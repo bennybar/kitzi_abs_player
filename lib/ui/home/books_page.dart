@@ -868,32 +868,31 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
               physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
               cacheExtent: 800,
               slivers: [
-          // Material 3 large app bar style
-          SliverAppBar.medium(
+          SliverAppBar(
             floating: false,
             pinned: true,
             backgroundColor: cs.surface,
             surfaceTintColor: cs.surfaceTint,
             elevation: 0,
-            title: _query.trim().isEmpty 
-                ? Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.library_music_rounded,
-                        color: cs.primary,
-                        size: 24,
-                      ),
-                      const SizedBox(width: 8),
-                      const Flexible(
-                        child: Text(
-                          'Audiobooks',
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  )
-                : const Text('Library'),
+            toolbarHeight: 72,
+            titleSpacing: 20,
+            title: Row(
+              children: [
+                Icon(
+                  Icons.library_music_rounded,
+                  color: cs.primary,
+                  size: 22,
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  _query.trim().isEmpty ? 'Audiobooks' : 'Library',
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+              ],
+            ),
             bottom: PreferredSize(
               preferredSize: const Size.fromHeight(28),
               child: _isOnline
@@ -919,82 +918,112 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                       ),
                     ),
             ),
-            actions: [
-              IconButton.filledTonal(
-                tooltip: 'Search',
-                onPressed: _toggleSearch,
-                icon: Icon(_searchVisible ? Icons.search_off_rounded : Icons.search_rounded),
-              ),
-              const SizedBox(width: 8),
-              IconButton.filledTonal(
-                tooltip: 'Profile',
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => const ProfilePage(),
+          ),
+
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 18),
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: cs.surfaceContainerLow.withOpacity(0.88),
+                    borderRadius: BorderRadius.circular(28),
+                    border: Border.all(
+                      color: cs.outlineVariant.withOpacity(0.16),
                     ),
-                  );
-                },
-                icon: const Icon(Icons.person_rounded),
-              ),
-              const SizedBox(width: 8),
-              IconButton.filledTonal(
-                tooltip: 'Support',
-                onPressed: () async {
-                  final url = Uri.parse('https://github.com/bennybar/kitzi_abs_player/issues');
-                  if (await canLaunchUrl(url)) {
-                    await launchUrl(url, mode: LaunchMode.externalApplication);
-                  }
-                },
-                icon: const Icon(Icons.help_outline_rounded),
-              ),
-              const SizedBox(width: 8),
-              IconButton.filledTonal(
-                tooltip: 'Scroll to top',
-                onPressed: _loading ? null : _scrollToTop,
-                icon: const Icon(Icons.vertical_align_top_rounded),
-              ),
-              PopupMenuButton<SortMode>(
-                tooltip: 'Sort',
-                enabled: !_forceAlphaSort,
-                initialValue: _forceAlphaSort ? SortMode.nameAsc : _sort,
-                onSelected: !_forceAlphaSort
-                    ? (mode) {
-                        setState(() => _sort = mode);
-                        _saveSortPref(mode);
-                      }
-                    : null,
-                icon: Icon(
-                  Icons.sort_rounded,
-                  color: cs.onSurfaceVariant,
+                  ),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    alignment: WrapAlignment.center,
+                    children: [
+                      _ToolbarSurfaceButton(
+                        tooltip: 'Search',
+                        icon: _searchVisible
+                            ? Icons.search_off_rounded
+                            : Icons.search_rounded,
+                        onTap: _toggleSearch,
+                        emphasized: _searchVisible,
+                      ),
+                      _ToolbarSurfaceButton(
+                        tooltip: 'Profile',
+                        icon: Icons.person_rounded,
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => const ProfilePage(),
+                            ),
+                          );
+                        },
+                      ),
+                      _ToolbarSurfaceButton(
+                        tooltip: 'Support',
+                        icon: Icons.help_outline_rounded,
+                        onTap: () async {
+                          final url = Uri.parse(
+                            'https://github.com/bennybar/kitzi_abs_player/issues',
+                          );
+                          if (await canLaunchUrl(url)) {
+                            await launchUrl(
+                              url,
+                              mode: LaunchMode.externalApplication,
+                            );
+                          }
+                        },
+                      ),
+                      _ToolbarSurfaceButton(
+                        tooltip: 'Scroll to top',
+                        icon: Icons.vertical_align_top_rounded,
+                        onTap: _loading ? null : _scrollToTop,
+                      ),
+                      PopupMenuButton<SortMode>(
+                        tooltip: 'Sort',
+                        enabled: !_forceAlphaSort,
+                        initialValue:
+                            _forceAlphaSort ? SortMode.nameAsc : _sort,
+                        onSelected: !_forceAlphaSort
+                            ? (mode) {
+                                setState(() => _sort = mode);
+                                _saveSortPref(mode);
+                              }
+                            : null,
+                        itemBuilder: (context) => [
+                          PopupMenuItem(
+                            value: SortMode.addedDesc,
+                            child: ListTile(
+                              leading: Icon(
+                                Icons.schedule_rounded,
+                                color: cs.primary,
+                              ),
+                              title: const Text('Added date (newest)'),
+                              contentPadding: EdgeInsets.zero,
+                            ),
+                          ),
+                          PopupMenuItem(
+                            value: SortMode.nameAsc,
+                            child: ListTile(
+                              leading: Icon(
+                                Icons.sort_by_alpha_rounded,
+                                color: cs.primary,
+                              ),
+                              title: const Text('Name (A–Z)'),
+                              contentPadding: EdgeInsets.zero,
+                            ),
+                          ),
+                        ],
+                        child: _ToolbarSurfaceButton(
+                          tooltip: 'Sort',
+                          icon: Icons.sort_rounded,
+                          onTap: null,
+                          enabled: !_forceAlphaSort,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                itemBuilder: (context) => [
-                  PopupMenuItem(
-                    value: SortMode.addedDesc,
-                    child: ListTile(
-                      leading: Icon(
-                        Icons.schedule_rounded,
-                        color: cs.primary,
-                      ),
-                      title: const Text('Added date (newest)'),
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                  ),
-                  PopupMenuItem(
-                    value: SortMode.nameAsc,
-                    child: ListTile(
-                      leading: Icon(
-                        Icons.sort_by_alpha_rounded,
-                        color: cs.primary,
-                      ),
-                      title: const Text('Name (A–Z)'),
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                  ),
-                ],
               ),
-              const SizedBox(width: 8),
-            ],
+            ),
           ),
 
           // Enhanced Search Bar
@@ -1004,7 +1033,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
               curve: Curves.easeInOut,
               child: _searchVisible
                   ? Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
                       child: Column(
                         children: [
                           // Material search bar
@@ -1162,25 +1191,10 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
             if (_recentBooks.isNotEmpty && _query.trim().isEmpty) _buildResumePlayingSection(),
             if (_query.trim().isEmpty)
               SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 11),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.library_books_rounded,
-                        color: Theme.of(context).colorScheme.primary,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Audiobooks',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.w600,
-                              height: 0.8,
-                            ),
-                      ),
-                    ],
-                  ),
+                child: _SectionHeader(
+                  icon: Icons.library_books_rounded,
+                  title: 'Audiobooks',
+                  padding: const EdgeInsets.fromLTRB(20, 6, 20, 14),
                 ),
               ),
             _buildList(visible),
@@ -1230,28 +1244,16 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
     if (_isEbookLibrary) return const SliverToBoxAdapter(child: SizedBox.shrink());
     return SliverToBoxAdapter(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.play_circle_outline_rounded,
-                  color: Theme.of(context).colorScheme.primary,
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  'Resume Playing',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    height: 0.8, // further tighten spacing under the title
-                  ),
-                ),
-              ],
+            const _SectionHeader(
+              icon: Icons.play_circle_outline_rounded,
+              title: 'Resume Playing',
+              padding: EdgeInsets.zero,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 18),
             // One-row, horizontally scrollable list (up to 6 books)
             Builder(
               builder: (context) {
@@ -1261,18 +1263,18 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                     .toList(growable: false);
                 if (visible.isEmpty) return const SizedBox.shrink();
                 return SizedBox(
-                  height: 240,
+                  height: 248,
                   child: ListView.separated(
                     scrollDirection: Axis.horizontal,
                     physics: const BouncingScrollPhysics(),
                     padding: const EdgeInsets.only(right: 4),
                     itemCount: visible.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 8),
+                    separatorBuilder: (_, __) => const SizedBox(width: 12),
                     itemBuilder: (context, index) {
                       final book = visible[index];
                       return SizedBox(
-                        width: 168,
-                        height: 240,
+                        width: 172,
+                        height: 248,
                         child: _ResumeBookCard(
                           key: ValueKey(book.id),
                           book: book,
@@ -1290,7 +1292,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                 );
               },
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
           ],
         ),
       ),
@@ -1299,10 +1301,10 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
 
   Widget _buildList(List<Book> list) {
     return SliverPadding(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       sliver: SliverList.separated(
         itemCount: list.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 8),
+        separatorBuilder: (_, __) => const SizedBox(height: 12),
         itemBuilder: (context, i) {
           final b = list[i];
           
@@ -1528,6 +1530,98 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
   }
 }
 
+class _ToolbarSurfaceButton extends StatelessWidget {
+  const _ToolbarSurfaceButton({
+    required this.tooltip,
+    required this.icon,
+    required this.onTap,
+    this.enabled = true,
+    this.emphasized = false,
+  });
+
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback? onTap;
+  final bool enabled;
+  final bool emphasized;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final bg =
+        emphasized
+            ? Color.alphaBlend(cs.primary.withOpacity(0.16), cs.surface)
+            : cs.surface.withOpacity(0.78);
+
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: enabled ? bg : bg.withOpacity(0.5),
+        shape: const CircleBorder(),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: enabled ? onTap : null,
+          child: SizedBox(
+            width: 44,
+            height: 44,
+            child: Icon(
+              icon,
+              size: 22,
+              color:
+                  enabled
+                      ? (emphasized ? cs.primary : cs.onSurfaceVariant)
+                      : cs.onSurfaceVariant.withOpacity(0.4),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({
+    required this.icon,
+    required this.title,
+    this.padding = const EdgeInsets.fromLTRB(20, 0, 20, 12),
+  });
+
+  final IconData icon;
+  final String title;
+  final EdgeInsetsGeometry padding;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+
+    return Padding(
+      padding: padding,
+      child: Row(
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: cs.primary.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, size: 18, color: cs.primary),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            title,
+            style: text.titleLarge?.copyWith(
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.2,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _BookCard extends StatelessWidget {
   const _BookCard({
     super.key,
@@ -1715,35 +1809,47 @@ class _ResumeBookCardState extends State<_ResumeBookCard> {
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(22),
         side: BorderSide(
-          color: cs.outline.withOpacity(0.1),
+          color: cs.outline.withOpacity(0.08),
           width: 1,
         ),
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: widget.onTap,
+        borderRadius: BorderRadius.circular(22),
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 14),
           child: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
             children: [
               // Square cover on top
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: AspectRatio(
-                  aspectRatio: 1.0,
-                  child: Stack(
-                    children: [
-                      Positioned.fill(
-                        child: Transform.scale(
-                          scale: 1.024,
-                          child: EnhancedCoverImage(url: widget.book.coverUrl),
+              Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(18),
+                  boxShadow: [
+                    BoxShadow(
+                      color: cs.shadow.withOpacity(0.08),
+                      blurRadius: 16,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(18),
+                  child: AspectRatio(
+                    aspectRatio: 1.0,
+                    child: Stack(
+                      children: [
+                        Positioned.fill(
+                          child: Transform.scale(
+                            scale: 1.024,
+                            child: EnhancedCoverImage(url: widget.book.coverUrl),
+                          ),
                         ),
-                      ),
                       // Play/Pause button overlay - top left
                       Positioned(
                         top: 8,
@@ -1773,16 +1879,19 @@ class _ResumeBookCardState extends State<_ResumeBookCard> {
                                     },
                                     borderRadius: BorderRadius.circular(20),
                                     child: Container(
-                                      width: 40,
-                                      height: 40,
+                                      width: 36,
+                                      height: 36,
                                       decoration: BoxDecoration(
-                                        color: Colors.black.withOpacity(0.5),
+                                        color: Colors.black.withOpacity(0.34),
                                         shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: Colors.white.withOpacity(0.14),
+                                        ),
                                       ),
                                       child: Icon(
                                         showPause ? Icons.pause_rounded : Icons.play_arrow_rounded,
                                         color: Colors.white,
-                                        size: 24,
+                                        size: 20,
                                       ),
                                     ),
                                   ),
@@ -1794,9 +1903,9 @@ class _ResumeBookCardState extends State<_ResumeBookCard> {
                       ),
                       // Material 3 progress indicator overlay
                       Positioned(
-                        left: 4,
-                        right: 4,
-                        bottom: 4,
+                        left: 8,
+                        right: 8,
+                        bottom: 8,
                         child: FutureBuilder<Map<String, dynamic>>(
                           future: _getBookProgress(context, widget.book.id),
                           builder: (context, snapshot) {
@@ -1812,10 +1921,10 @@ class _ResumeBookCardState extends State<_ResumeBookCard> {
                             final progress = raw.clamp(0.0, 0.99);
                             
                             return Container(
-                              height: 8,
+                              height: 5,
                               decoration: BoxDecoration(
-                                color: Colors.black.withOpacity(0.3),
-                                borderRadius: BorderRadius.circular(2.5),
+                                color: Colors.black.withOpacity(0.18),
+                                borderRadius: BorderRadius.circular(999),
                               ),
                               child: FractionallySizedBox(
                                 alignment: Alignment.centerLeft,
@@ -1823,7 +1932,7 @@ class _ResumeBookCardState extends State<_ResumeBookCard> {
                                 child: Container(
                                   decoration: BoxDecoration(
                                     color: Theme.of(context).colorScheme.primary,
-                                    borderRadius: BorderRadius.circular(2.5),
+                                    borderRadius: BorderRadius.circular(999),
                                   ),
                                 ),
                               ),
@@ -1831,18 +1940,20 @@ class _ResumeBookCardState extends State<_ResumeBookCard> {
                           },
                         ),
                       ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 14),
               // Title and author below the cover
               Text(
                 widget.book.title,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w600,
+                  height: 1.2,
                 ),
               ),
               // Series (if available) - between title and author
@@ -1857,7 +1968,7 @@ class _ResumeBookCardState extends State<_ResumeBookCard> {
                   
                   return Column(
                     children: [
-                      const SizedBox(height: 2),
+                      const SizedBox(height: 4),
                       GestureDetector(
                         onTap: widget.onSeriesTap,
                         child: Text(
@@ -1875,15 +1986,15 @@ class _ResumeBookCardState extends State<_ResumeBookCard> {
                 },
               ),
               if (widget.book.author != null && widget.book.author!.isNotEmpty) ...[
-                const SizedBox(height: 2),
+                const SizedBox(height: 6),
                 GestureDetector(
                   onTap: widget.onAuthorTap,
                   child: Text(
                   widget.book.author!,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.88),
                     ),
                   ),
                 ),
@@ -2005,40 +2116,41 @@ class _BookListTileState extends State<_BookListTile> {
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         side: BorderSide(
-          color: cs.outline.withOpacity(disabled ? 0.05 : 0.1),
+          color: cs.outline.withOpacity(disabled ? 0.05 : 0.08),
           width: 1,
         ),
       ),
       child: InkWell(
         onTap: widget.onTap,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.fromLTRB(12, 12, 10, 12),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Enhanced cover with only progress indicator (no badges)
               Stack(
                 children: [
                   Container(
                     decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(14),
                       boxShadow: [
                         BoxShadow(
-                          color: cs.shadow.withOpacity(0.1),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
+                          color: cs.shadow.withOpacity(0.08),
+                          blurRadius: 12,
+                          offset: const Offset(0, 6),
                         ),
                       ],
                     ),
                     child: Hero(
                       tag: 'home-cover-${widget.book.id}',
                       child: ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(14),
                       child: Transform.scale(
                         scale: 1.024,
-                        child: EnhancedCoverImage(url: widget.book.coverUrl, width: 72, height: 72),
+                        child: EnhancedCoverImage(url: widget.book.coverUrl, width: 76, height: 76),
                       ),
                       ),
                     ),
@@ -2046,9 +2158,9 @@ class _BookListTileState extends State<_BookListTile> {
                   // Material 3 progress indicator overlay
                   if (widget.book.isAudioBook)
                     Positioned(
-                      left: 4,
-                      right: 4,
-                      bottom: 4,
+                      left: 6,
+                      right: 6,
+                      bottom: 6,
                       child: FutureBuilder<bool>(
                         future: widget.checkIfCompleted(widget.book.id),
                         builder: (context, completionSnapshot) {
@@ -2063,10 +2175,10 @@ class _BookListTileState extends State<_BookListTile> {
                               final progress = progressSnapshot.data ?? 0.0;
                               if (progress > 0 && progress < 0.99) {
                                 return Container(
-                                  height: 3,
+                                  height: 4,
                                   decoration: BoxDecoration(
                                     color: Colors.black.withOpacity(0.3),
-                                    borderRadius: BorderRadius.circular(1.5),
+                                    borderRadius: BorderRadius.circular(999),
                                   ),
                                   child: FractionallySizedBox(
                                     alignment: Alignment.centerLeft,
@@ -2074,7 +2186,7 @@ class _BookListTileState extends State<_BookListTile> {
                                     child: Container(
                                       decoration: BoxDecoration(
                                         color: cs.primary,
-                                        borderRadius: BorderRadius.circular(1.5),
+                                        borderRadius: BorderRadius.circular(999),
                                       ),
                                     ),
                                   ),
@@ -2101,6 +2213,7 @@ class _BookListTileState extends State<_BookListTile> {
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w600,
+                        height: 1.2,
                         color: disabled ? cs.onSurface.withOpacity(0.4) : null,
                       ),
                     ),
@@ -2115,7 +2228,7 @@ class _BookListTileState extends State<_BookListTile> {
                         if (!shouldShowSeries) return const SizedBox.shrink();
                         
                         return Padding(
-                          padding: const EdgeInsets.only(top: 4),
+                          padding: const EdgeInsets.only(top: 6),
                           child: GestureDetector(
                             onTap: widget.onSeriesTap,
                             child: Text(
@@ -2134,7 +2247,7 @@ class _BookListTileState extends State<_BookListTile> {
                       },
                     ),
                     if (widget.book.author != null && widget.book.author!.isNotEmpty) ...[
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 6),
                       GestureDetector(
                         onTap: widget.onAuthorTap,
                         child: Text(
@@ -2142,13 +2255,13 @@ class _BookListTileState extends State<_BookListTile> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: disabled ? cs.onSurfaceVariant.withOpacity(0.4) : cs.onSurfaceVariant,
+                          color: disabled ? cs.onSurfaceVariant.withOpacity(0.4) : cs.onSurfaceVariant.withOpacity(0.9),
                           ),
                         ),
                       ),
                     ],
                     if (widget.book.narrators != null && widget.book.narrators!.isNotEmpty) ...[
-                      const SizedBox(height: 2),
+                      const SizedBox(height: 4),
                       Text(
                         'Narrated by ${widget.book.narrators!.join(', ')}',
                         maxLines: 1,
@@ -2160,7 +2273,7 @@ class _BookListTileState extends State<_BookListTile> {
                     ],
                     // Duration
                     if (widget.book.durationMs != null && widget.book.durationMs! > 0) ...[
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 8),
                       Row(
                         children: [
                           Icon(Icons.schedule_rounded, size: 14, color: cs.onSurfaceVariant.withOpacity(0.7)),
@@ -2200,6 +2313,7 @@ class _BookListTileState extends State<_BookListTile> {
               // Status indicators and arrow
               Row(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   // Download badge
                   if (widget.book.isAudioBook)
@@ -2209,11 +2323,11 @@ class _BookListTileState extends State<_BookListTile> {
                       builder: (context, snapshot) {
                         if (snapshot.data == true) {
                           return Padding(
-                            padding: const EdgeInsets.only(right: 4),
+                            padding: const EdgeInsets.only(right: 6),
                             child: Icon(
                               Icons.offline_pin,
                               color: cs.primary,
-                              size: 20,
+                              size: 18,
                             ),
                           );
                         }
@@ -2227,11 +2341,11 @@ class _BookListTileState extends State<_BookListTile> {
                       builder: (context, snapshot) {
                         if (snapshot.data == true) {
                           return Padding(
-                            padding: const EdgeInsets.only(right: 4),
+                            padding: const EdgeInsets.only(right: 6),
                             child: Icon(
                               Icons.check_circle,
                               color: Colors.green,
-                              size: 20,
+                              size: 18,
                             ),
                           );
                         }
@@ -2241,7 +2355,7 @@ class _BookListTileState extends State<_BookListTile> {
                   // Arrow indicator
                   Icon(
                     Icons.chevron_right_rounded,
-                    color: disabled ? cs.onSurfaceVariant.withOpacity(0.3) : cs.onSurfaceVariant,
+                    color: disabled ? cs.onSurfaceVariant.withOpacity(0.3) : cs.onSurfaceVariant.withOpacity(0.9),
                   ),
                 ],
               ),

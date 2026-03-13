@@ -307,17 +307,29 @@ class _MainScaffoldState extends State<MainScaffold> {
     required bool showAuthors,
     required bool showSeries,
   }) {
-    // Material Design navigation bar for all platforms
-    return NavigationBar(
-      selectedIndex: selectedIndex,
-      onDestinationSelected: onDestinationSelected,
-      backgroundColor: colorScheme.surface,
-      surfaceTintColor: colorScheme.surfaceTint,
-      elevation: 0,
-      height: height,
-      indicatorColor: colorScheme.primaryContainer,
-      labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-      destinations: _buildDestinations(showAuthors, showSeries),
+    return Container(
+      decoration: BoxDecoration(
+        color: colorScheme.surface.withOpacity(0.96),
+        border: Border(
+          top: BorderSide(
+            color: colorScheme.outlineVariant.withOpacity(0.16),
+          ),
+        ),
+      ),
+      child: NavigationBar(
+        selectedIndex: selectedIndex,
+        onDestinationSelected: onDestinationSelected,
+        backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        height: height,
+        indicatorColor: Color.alphaBlend(
+          colorScheme.primary.withOpacity(0.12),
+          colorScheme.surface,
+        ),
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+        destinations: _buildDestinations(showAuthors, showSeries),
+      ),
     );
   }
 

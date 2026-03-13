@@ -37,11 +37,11 @@ class _MiniPlayerState extends State<MiniPlayer> {
       valueListenable: UiPrefs.playerGradientBackground,
       builder: (_, gradientEnabled, __) {
         return Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          padding: const EdgeInsets.fromLTRB(14, 6, 14, 0),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(26),
+            borderRadius: BorderRadius.circular(24),
             child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+              filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
               child: DecoratedBox(
                 decoration: _miniBackgroundDecoration(
                   gradientEnabled,
@@ -94,31 +94,31 @@ class _MiniPlayerState extends State<MiniPlayer> {
               unawaited(_maybeUpdatePalette(np.coverUrl));
 
                 return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   child: Row(
                     children: [
                       // Album art with PixelPlay-inspired rounded corners and shadow
                       Container(
                         decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(14),
                           boxShadow: [
                             BoxShadow(
-                              color: cs.shadow.withOpacity(0.15),
-                              blurRadius: 8,
+                              color: cs.shadow.withOpacity(0.12),
+                              blurRadius: 10,
                               spreadRadius: 0,
-                              offset: const Offset(0, 2),
+                              offset: const Offset(0, 4),
                             ),
                           ],
                         ),
                         child: ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(14),
                           child: Transform.scale(
                             scale: 1.024,
-                            child: _MiniCover(url: np.coverUrl, size: widget.height - 16),
+                            child: _MiniCover(url: np.coverUrl, size: widget.height - 14),
                           ),
                         ),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 14),
 
                       // Title/author with progress (YouTube Music style)
                       Expanded(
@@ -132,11 +132,11 @@ class _MiniPlayerState extends State<MiniPlayer> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
-                            const SizedBox(height: 2),
+                            const SizedBox(height: 3),
                             Row(
                               children: [
                             if (np.author != null && np.author!.isNotEmpty)
@@ -146,7 +146,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  fontSize: 12,
+                                  fontSize: 11.5,
                                   color: cs.onSurfaceVariant,
                                 ),
                                     ),
@@ -179,12 +179,12 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                           Text(
                                             '$posStr / $durStr',
                                             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                              fontSize: 12,
+                                              fontSize: 11.5,
                                               color: cs.onSurfaceVariant,
                                               fontWeight: FontWeight.w500,
                                             ),
                                           ),
-                                          const SizedBox(width: 6),
+                                          const SizedBox(width: 4),
                                           ValueListenableBuilder<ProgressSyncStatus>(
                                             valueListenable: playback.progressSyncStatus,
                                             builder: (_, status, __) {
@@ -198,7 +198,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                                   : (status.hasEverSynced ? 'Progress synced' : 'Progress not synced yet');
                                               return Tooltip(
                                                 message: tooltip,
-                                                child: Icon(icon, size: 14, color: color),
+                                                child: Icon(icon, size: 12, color: color),
                                               );
                                             },
                                           ),
@@ -217,12 +217,12 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                         Text(
                                           '$posStr / $durStr',
                                           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                            fontSize: 12,
+                                            fontSize: 11.5,
                                             color: cs.onSurfaceVariant,
                                             fontWeight: FontWeight.w500,
                                           ),
                                         ),
-                                        const SizedBox(width: 6),
+                                        const SizedBox(width: 4),
                                         ValueListenableBuilder<ProgressSyncStatus>(
                                           valueListenable: playback.progressSyncStatus,
                                           builder: (_, status, __) {
@@ -236,7 +236,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                                 : (status.hasEverSynced ? 'Progress synced' : 'Progress not synced yet');
                                             return Tooltip(
                                               message: tooltip,
-                                              child: Icon(icon, size: 14, color: color),
+                                              child: Icon(icon, size: 12, color: color),
                                             );
                                           },
                                         ),
@@ -249,31 +249,31 @@ class _MiniPlayerState extends State<MiniPlayer> {
                           ],
                         ),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 10),
 
                       // 10 seconds rewind button - PixelPlay-inspired Material 3 style
                       Material(
-                        color: cs.surfaceContainerHighest.withOpacity(0.5),
-                        borderRadius: BorderRadius.circular(20),
+                        color: cs.surfaceContainerHighest.withOpacity(0.42),
+                        borderRadius: BorderRadius.circular(18),
                         child: InkWell(
-                          borderRadius: BorderRadius.circular(20),
+                          borderRadius: BorderRadius.circular(18),
                           onTap: () async {
                             await playback.nudgeSeconds(-10);
                           },
                           child: Container(
-                            width: 40,
-                            height: 40,
+                            width: 36,
+                            height: 36,
                             alignment: Alignment.center,
                             child: Icon(
                               Icons.replay_10,
-                              size: 22,
+                              size: 20,
                               color: cs.onSurface,
                             ),
                           ),
                         ),
                       ),
 
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 10),
 
                       // Play/Pause button - PixelPlay-inspired with primary color
                       StreamBuilder<bool>(
@@ -283,21 +283,25 @@ class _MiniPlayerState extends State<MiniPlayer> {
                           final playing = playSnap.data ?? false;
                           // Ensure we have a valid nowPlaying item and it's actually playing
                           final hasValidNowPlaying = np != null && playing;
-                          return Material(
-                            color: hasValidNowPlaying 
-                                ? Color.alphaBlend(
-                                    cs.primary.withOpacity(0.92),
-                                    cs.surface,
-                                  )
-                                : cs.surfaceContainerHighest.withOpacity(0.55),
-                            borderRadius: BorderRadius.circular(24),
-                            elevation: hasValidNowPlaying ? 2 : 0,
-                            shadowColor: hasValidNowPlaying 
-                                ? cs.primary.withOpacity(0.3) 
-                                : Colors.transparent,
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(24),
-                              onTap: () async {
+                          return AnimatedScale(
+                            duration: const Duration(milliseconds: 220),
+                            curve: Curves.easeOutCubic,
+                            scale: hasValidNowPlaying ? 1.02 : 1.0,
+                            child: Material(
+                              color: hasValidNowPlaying 
+                                  ? Color.alphaBlend(
+                                      cs.primary.withOpacity(0.92),
+                                      cs.surface,
+                                    )
+                                  : cs.surfaceContainerHighest.withOpacity(0.5),
+                              borderRadius: BorderRadius.circular(22),
+                              elevation: hasValidNowPlaying ? 3 : 0,
+                              shadowColor: hasValidNowPlaying 
+                                  ? cs.primary.withOpacity(0.22) 
+                                  : Colors.transparent,
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(22),
+                                onTap: () async {
                                 // Button pressed
                                 if (hasValidNowPlaying) {
                                   // Pausing playback
@@ -335,15 +339,16 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                     await FullPlayerPage.openOnce(context);
                                   }
                                 }
-                              },
-                              child: Container(
-                                width: 48,
-                                height: 48,
-                                alignment: Alignment.center,
-                                child: Icon(
-                                  hasValidNowPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                                  size: 28,
-                                  color: hasValidNowPlaying ? cs.onPrimary : cs.onSurface,
+                                },
+                                child: Container(
+                                  width: 44,
+                                  height: 44,
+                                  alignment: Alignment.center,
+                                  child: Icon(
+                                    hasValidNowPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                                    size: 26,
+                                    color: hasValidNowPlaying ? cs.onPrimary : cs.onSurface,
+                                  ),
                                 ),
                               ),
                             ),
@@ -411,20 +416,20 @@ class _MiniPlayerState extends State<MiniPlayer> {
     if (!gradientEnabled) {
       return BoxDecoration(
         color: cs.surface.withOpacity(
-          brightness == Brightness.dark ? 0.74 : 0.84,
+          brightness == Brightness.dark ? 0.8 : 0.88,
         ),
-        borderRadius: BorderRadius.circular(26),
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(
           color: Colors.white.withOpacity(
-            brightness == Brightness.dark ? 0.12 : 0.28,
+            brightness == Brightness.dark ? 0.1 : 0.22,
           ),
           width: 0.8,
         ),
         boxShadow: [
           BoxShadow(
-            color: cs.shadow.withOpacity(0.16),
-            blurRadius: 24,
-            offset: const Offset(0, 10),
+            color: cs.shadow.withOpacity(0.12),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
           ),
         ],
       );
@@ -443,7 +448,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
             cs.surface.withOpacity(0.82),
           ];
     return BoxDecoration(
-      borderRadius: BorderRadius.circular(26),
+      borderRadius: BorderRadius.circular(24),
       gradient: LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
@@ -451,15 +456,15 @@ class _MiniPlayerState extends State<MiniPlayer> {
       ),
       border: Border.all(
         color: Colors.white.withOpacity(
-          brightness == Brightness.dark ? 0.12 : 0.3,
+          brightness == Brightness.dark ? 0.1 : 0.22,
         ),
         width: 0.8,
       ),
       boxShadow: [
         BoxShadow(
-          color: cs.shadow.withOpacity(0.18),
-          blurRadius: 24,
-          offset: const Offset(0, 10),
+          color: cs.shadow.withOpacity(0.12),
+          blurRadius: 18,
+          offset: const Offset(0, 8),
         ),
       ],
     );

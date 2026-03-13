@@ -285,10 +285,27 @@ class _AbsAppState extends State<AbsApp> with WidgetsBindingObserver {
                   backgroundColor: scheme.surface,
                   surfaceTintColor: scheme.surfaceTint,
                   indicatorColor: scheme.primaryContainer,
+                  indicatorShape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  iconTheme: WidgetStateProperty.resolveWith((states) {
+                    final isSelected = states.contains(WidgetState.selected);
+                    return IconThemeData(
+                      size: isSelected ? 24 : 22,
+                      color:
+                          isSelected
+                              ? scheme.primary
+                              : scheme.onSurfaceVariant,
+                    );
+                  }),
                   labelTextStyle: WidgetStateProperty.resolveWith((states) {
                     final isSelected = states.contains(WidgetState.selected);
                     return baseTheme.textTheme.labelMedium?.copyWith(
                       fontSize: 11,
+                      color:
+                          isSelected
+                              ? scheme.primary
+                              : scheme.onSurfaceVariant,
                       fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                     );
                   }),
