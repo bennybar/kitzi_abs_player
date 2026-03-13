@@ -64,9 +64,10 @@ class _AuthorsPageState extends State<AuthorsPage> {
     if (_searchQuery.isEmpty) {
       _filteredAuthors = List.from(_authors);
     } else {
-      _filteredAuthors = _authors.where((author) {
-        return author.name.toLowerCase().contains(_searchQuery);
-      }).toList();
+      _filteredAuthors =
+          _authors.where((author) {
+            return author.name.toLowerCase().contains(_searchQuery);
+          }).toList();
     }
     _prepareAuthorLetterAnchors(_filteredAuthors);
   }
@@ -87,7 +88,11 @@ class _AuthorsPageState extends State<AuthorsPage> {
     if (index == null || !_scrollCtrl.hasClients) return;
     final maxScroll = _scrollCtrl.position.maxScrollExtent;
     if (maxScroll <= 0) {
-      _scrollCtrl.animateTo(0, duration: const Duration(milliseconds: 200), curve: Curves.easeOutCubic);
+      _scrollCtrl.animateTo(
+        0,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOutCubic,
+      );
       return;
     }
     final ratio = (index / _authorLetterDenominator).clamp(0.0, 1.0);
@@ -126,7 +131,6 @@ class _AuthorsPageState extends State<AuthorsPage> {
     }
   }
 
-
   Future<void> _refresh() async {
     setState(() {
       _loading = true;
@@ -141,49 +145,77 @@ class _AuthorsPageState extends State<AuthorsPage> {
     final cs = theme.colorScheme;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Authors'),
-        actions: [
-          IconButton(
-            onPressed: _refresh,
-            icon: const Icon(Icons.refresh_rounded),
-          ),
-        ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(60),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                hintText: 'Search authors...',
-                prefixIcon: const Icon(Icons.search_rounded),
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
-                        onPressed: () {
-                          _searchController.clear();
-                        },
-                        icon: const Icon(Icons.clear_rounded),
-                      )
-                    : null,
-                filled: true,
-                fillColor: theme.colorScheme.surfaceContainerHighest,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide.none,
-                ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
       body: Stack(
         children: [
-          _buildAuthorsBody(theme, cs),
+          NestedScrollView(
+            headerSliverBuilder:
+                (context, innerBoxIsScrolled) => [
+                  SliverAppBar(
+                    pinned: true,
+                    backgroundColor: cs.surface,
+                    surfaceTintColor: cs.surfaceTint,
+                    elevation: 0,
+                    toolbarHeight: 72,
+                    titleSpacing: 20,
+                    title: Row(
+                      children: [
+                        Icon(Icons.person_rounded, color: cs.primary, size: 22),
+                        const SizedBox(width: 10),
+                        Text(
+                          'Authors',
+                          style: theme.textTheme.headlineSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: -0.2,
+                          ),
+                        ),
+                      ],
+                    ),
+                    actions: [
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: IconButton(
+                          onPressed: _refresh,
+                          icon: const Icon(Icons.refresh_rounded),
+                        ),
+                      ),
+                    ],
+                    bottom: PreferredSize(
+                      preferredSize: const Size.fromHeight(76),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                        child: TextField(
+                          controller: _searchController,
+                          decoration: InputDecoration(
+                            hintText: 'Search authors...',
+                            prefixIcon: const Icon(Icons.search_rounded),
+                            suffixIcon:
+                                _searchQuery.isNotEmpty
+                                    ? IconButton(
+                                      onPressed: () {
+                                        _searchController.clear();
+                                      },
+                                      icon: const Icon(Icons.clear_rounded),
+                                    )
+                                    : null,
+                            filled: true,
+                            fillColor:
+                                theme.colorScheme.surfaceContainerHighest,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              borderSide: BorderSide.none,
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+            body: _buildAuthorsBody(theme, cs),
+          ),
           _buildAuthorLetterScrollbar(context),
         ],
       ),
@@ -191,10 +223,7 @@ class _AuthorsPageState extends State<AuthorsPage> {
   }
 
   void _showAuthorBooks(BuildContext context, AuthorInfo author) {
-    AuthorCard.show(
-      context: context,
-      author: author,
-    );
+    AuthorCard.show(context: context, author: author);
   }
 
   Widget _buildAuthorsBody(ThemeData theme, ColorScheme cs) {
@@ -208,11 +237,7 @@ class _AuthorsPageState extends State<AuthorsPage> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                Icons.error_outline_rounded,
-                size: 64,
-                color: cs.error,
-              ),
+              Icon(Icons.error_outline_rounded, size: 64, color: cs.error),
               const SizedBox(height: 16),
               Text(
                 'Failed to load authors',
@@ -299,7 +324,7 @@ class _AuthorsPageState extends State<AuthorsPage> {
     final media = MediaQuery.of(context);
     return Positioned(
       right: 4,
-      top: media.padding.top + 96,
+      top: media.padding.top + 148,
       bottom: 32,
       child: ValueListenableBuilder<bool>(
         valueListenable: UiPrefs.letterScrollEnabled,
@@ -320,12 +345,8 @@ class _AuthorsPageState extends State<AuthorsPage> {
   }
 }
 
-
 class _AuthorTile extends StatelessWidget {
-  const _AuthorTile({
-    required this.author,
-    required this.onTap,
-  });
+  const _AuthorTile({required this.author, required this.onTap});
 
   final AuthorInfo author;
   final VoidCallback onTap;
@@ -340,10 +361,7 @@ class _AuthorTile extends StatelessWidget {
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: cs.outline.withOpacity(0.1),
-          width: 1,
-        ),
+        side: BorderSide(color: cs.outline.withOpacity(0.1), width: 1),
       ),
       child: InkWell(
         onTap: onTap,
@@ -360,30 +378,33 @@ class _AuthorTile extends StatelessWidget {
                   color: cs.primaryContainer.withOpacity(0.3),
                   borderRadius: BorderRadius.circular(24),
                 ),
-                child: author.imageUrl != null && author.imageUrl!.isNotEmpty
-                    ? ClipRRect(
-                        borderRadius: BorderRadius.circular(24),
-                        child: CachedNetworkImage(
-                          imageUrl: author.imageUrl!,
-                          cacheManager: ImageCacheManager.instance,
-                          fit: BoxFit.cover,
-                          placeholder: (context, url) => Icon(
-                            Icons.person_rounded,
-                            color: cs.primary,
-                            size: 24,
+                child:
+                    author.imageUrl != null && author.imageUrl!.isNotEmpty
+                        ? ClipRRect(
+                          borderRadius: BorderRadius.circular(24),
+                          child: CachedNetworkImage(
+                            imageUrl: author.imageUrl!,
+                            cacheManager: ImageCacheManager.instance,
+                            fit: BoxFit.cover,
+                            placeholder:
+                                (context, url) => Icon(
+                                  Icons.person_rounded,
+                                  color: cs.primary,
+                                  size: 24,
+                                ),
+                            errorWidget:
+                                (context, url, error) => Icon(
+                                  Icons.person_rounded,
+                                  color: cs.primary,
+                                  size: 24,
+                                ),
                           ),
-                          errorWidget: (context, url, error) => Icon(
-                            Icons.person_rounded,
-                            color: cs.primary,
-                            size: 24,
-                          ),
+                        )
+                        : Icon(
+                          Icons.person_rounded,
+                          color: cs.primary,
+                          size: 24,
                         ),
-                      )
-                    : Icon(
-                        Icons.person_rounded,
-                        color: cs.primary,
-                        size: 24,
-                      ),
               ),
               const SizedBox(width: 16),
               // Author info
@@ -410,10 +431,7 @@ class _AuthorTile extends StatelessWidget {
                 ),
               ),
               // Arrow indicator
-              Icon(
-                Icons.chevron_right_rounded,
-                color: cs.onSurfaceVariant,
-              ),
+              Icon(Icons.chevron_right_rounded, color: cs.onSurfaceVariant),
             ],
           ),
         ),
