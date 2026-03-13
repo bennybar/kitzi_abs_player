@@ -2569,6 +2569,22 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                   Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
+                                      StreamBuilder<double>(
+                                        stream: playback.player.speedStream,
+                                        initialData: playback.player.speed,
+                                        builder: (_, speedSnap) {
+                                          final speed = speedSnap.data ?? 1.0;
+                                          return _InfoPill(
+                                            icon: Icons.speed_rounded,
+                                            label: _formatPlaybackSpeedLabel(
+                                              speed,
+                                            ),
+                                            highlighted:
+                                                (speed - 1.0).abs() > 0.001,
+                                          );
+                                        },
+                                      ),
+                                      const SizedBox(width: 10),
                                       IconButton.filledTonal(
                                         tooltip: 'Add bookmark',
                                         onPressed:
@@ -3304,36 +3320,10 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                         );
                                   }
 
-                                  return StreamBuilder<double>(
-                                    stream: playback.player.speedStream,
-                                    initialData: playback.player.speed,
-                                    builder: (_, speedSnap) {
-                                      final speed = speedSnap.data ?? 1.0;
-                                      return Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.stretch,
-                                        children: [
-                                          Row(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              const SizedBox(width: 12),
-                                              _InfoPill(
-                                                icon: Icons.speed_rounded,
-                                                label:
-                                                    _formatPlaybackSpeedLabel(
-                                                      speed,
-                                                    ),
-                                                highlighted:
-                                                    (speed - 1.0).abs() > 0.001,
-                                              ),
-                                            ],
-                                          ),
-                                          const SizedBox(height: 10),
-                                          progressContent,
-                                        ],
-                                      );
-                                    },
+                                  return Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [progressContent],
                                   );
                                 },
                               ),
