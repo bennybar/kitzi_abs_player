@@ -3869,7 +3869,7 @@ class _PlayerActionTile extends StatelessWidget {
             child: Padding(
               padding: EdgeInsets.symmetric(
                 horizontal: 12,
-                vertical: 10 * clampedScale,
+                vertical: 6 * clampedScale,
               ),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
