@@ -2452,7 +2452,7 @@ class _PlayerActionTile extends StatelessWidget {
           borderRadius: radius,
           onTap: enabled ? onTap : null,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
