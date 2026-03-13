@@ -230,9 +230,10 @@ class _AbsAppState extends State<AbsApp> with WidgetsBindingObserver {
           valueListenable: services.theme.surfaceTintLevel,
           builder: (_, tintLevel, __) {
             ThemeData expressiveTheme(ColorScheme scheme) {
-              return ThemeData(
+              final baseTheme = ThemeData(
                 useMaterial3: true,
                 colorScheme: scheme,
+                fontFamily: 'GoogleSans',
                 appBarTheme: AppBarTheme(
                   centerTitle: false,
                   elevation: 0,
@@ -273,6 +274,28 @@ class _AbsAppState extends State<AbsApp> with WidgetsBindingObserver {
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
+                ),
+              );
+
+              final compactTextTheme = baseTheme.textTheme.apply(
+                fontSizeFactor: 0.94,
+              );
+
+              return baseTheme.copyWith(
+                textTheme: compactTextTheme,
+                primaryTextTheme: compactTextTheme,
+                navigationBarTheme: NavigationBarThemeData(
+                  elevation: 0,
+                  backgroundColor: scheme.surface,
+                  surfaceTintColor: scheme.surfaceTint,
+                  indicatorColor: scheme.primaryContainer,
+                  labelTextStyle: WidgetStateProperty.resolveWith((states) {
+                    final isSelected = states.contains(WidgetState.selected);
+                    return compactTextTheme.labelMedium?.copyWith(
+                      fontSize: 11,
+                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                    );
+                  }),
                 ),
               );
             }

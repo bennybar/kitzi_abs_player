@@ -131,7 +131,8 @@ class _MiniPlayerState extends State<MiniPlayer> {
                               np.title,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                fontSize: 14,
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
@@ -145,6 +146,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  fontSize: 12,
                                   color: cs.onSurfaceVariant,
                                 ),
                                     ),
@@ -177,6 +179,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                           Text(
                                             '$posStr / $durStr',
                                             style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                              fontSize: 12,
                                               color: cs.onSurfaceVariant,
                                               fontWeight: FontWeight.w500,
                                             ),
@@ -214,6 +217,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                         Text(
                                           '$posStr / $durStr',
                                           style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                            fontSize: 12,
                                             color: cs.onSurfaceVariant,
                                             fontWeight: FontWeight.w500,
                                           ),
