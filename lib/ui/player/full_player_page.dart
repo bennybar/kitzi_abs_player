@@ -1450,6 +1450,30 @@ class _FullPlayerPageState extends State<FullPlayerPage>
     );
   }
 
+  List<BoxShadow> _artworkShadows(
+    _CoverDims dims,
+    ColorScheme cs,
+    bool isPlaying,
+  ) {
+    if (!isPlaying) return dims.shadows(cs);
+
+    final glowColor = _palettePrimary ?? cs.primary;
+    return [
+      BoxShadow(
+        color: cs.shadow.withOpacity(0.22),
+        blurRadius: 26,
+        spreadRadius: 0,
+        offset: const Offset(0, 12),
+      ),
+      BoxShadow(
+        color: glowColor.withOpacity(0.16),
+        blurRadius: 36,
+        spreadRadius: -2,
+        offset: const Offset(0, 14),
+      ),
+    ];
+  }
+
   void _showCastingComingSoon(BuildContext context) {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -2813,158 +2837,161 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                         context,
                                         coverSize,
                                       );
-                                      return AnimatedBuilder(
-                                        animation: _coverAnimation,
-                                        builder: (context, child) {
-                                          final t = _coverAnimation.value;
-                                          final fade = Curves.easeOut.transform(
-                                            t,
-                                          );
-                                          final scale =
-                                              0.975 +
-                                              0.0325 *
-                                                  Curves.easeOut.transform(
-                                                    t,
-                                                  ); // subtle zoom-in to 100.75%
-                                          final translateY =
-                                              14 *
-                                              (1 -
-                                                  t); // reduce lift for less wobble
-                                          return Transform.translate(
-                                            offset: Offset(0, translateY),
-                                            child: Opacity(
-                                              opacity: fade,
-                                              child: Transform.scale(
-                                                scale: scale,
-                                                child: child,
+                                      return StreamBuilder<bool>(
+                                        stream: playback.playingStream,
+                                        initialData: playback.player.playing,
+                                        builder: (_, playSnap) {
+                                          final isPlaying = playSnap.data ?? false;
+                                          return AnimatedBuilder(
+                                            animation: _coverAnimation,
+                                            builder: (context, child) {
+                                              final t = _coverAnimation.value;
+                                              final fade = Curves.easeOut.transform(
+                                                t,
+                                              );
+                                              final entranceScale =
+                                                  0.975 +
+                                                  0.0325 *
+                                                      Curves.easeOut.transform(t);
+                                              final translateY = 14 * (1 - t);
+                                              return Transform.translate(
+                                                offset: Offset(0, translateY),
+                                                child: Opacity(
+                                                  opacity: fade,
+                                                  child: Transform.scale(
+                                                    scale: entranceScale,
+                                                    child: AnimatedScale(
+                                                      scale: isPlaying ? 1.018 : 1.0,
+                                                      duration: const Duration(
+                                                        milliseconds: 650,
+                                                      ),
+                                                      curve: Curves.easeOutCubic,
+                                                      child: child,
+                                                    ),
+                                                  ),
+                                                ),
+                                              );
+                                            },
+                                            child: Center(
+                                              child: SizedBox(
+                                                width: dims.width,
+                                                child: AspectRatio(
+                                                  aspectRatio: 1,
+                                                  child: Stack(
+                                                    children: [
+                                                      AnimatedContainer(
+                                                        duration: const Duration(
+                                                          milliseconds: 650,
+                                                        ),
+                                                        curve: Curves.easeOutCubic,
+                                                        decoration: BoxDecoration(
+                                                          borderRadius:
+                                                              BorderRadius.circular(
+                                                                dims.radius,
+                                                              ),
+                                                          border: Border.all(
+                                                            color: cs.outline
+                                                                .withOpacity(0.6),
+                                                            width: 2.0,
+                                                          ),
+                                                          boxShadow:
+                                                              _artworkShadows(
+                                                                dims,
+                                                                cs,
+                                                                isPlaying,
+                                                              ),
+                                                        ),
+                                                      ),
+                                                      ClipRRect(
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                              dims.radius,
+                                                            ),
+                                                        child: Transform.scale(
+                                                          scale: 1.024,
+                                                          child:
+                                                              np.coverUrl !=
+                                                                          null &&
+                                                                      np
+                                                                          .coverUrl!
+                                                                          .isNotEmpty
+                                                                  ? _ValidatedCachedNetworkImage(
+                                                                    imageUrl:
+                                                                        np.coverUrl!,
+                                                                    fit:
+                                                                        BoxFit.cover,
+                                                                    fadeInDuration:
+                                                                        const Duration(
+                                                                          milliseconds:
+                                                                              220,
+                                                                        ),
+                                                                    fadeOutDuration:
+                                                                        const Duration(
+                                                                          milliseconds:
+                                                                              120,
+                                                                        ),
+                                                                    placeholder:
+                                                                        (
+                                                                          _,
+                                                                          __,
+                                                                        ) => Container(
+                                                                          decoration: BoxDecoration(
+                                                                            gradient: LinearGradient(
+                                                                              colors: [
+                                                                                cs.surfaceContainerHighest,
+                                                                                cs.surfaceContainerHigh.withOpacity(
+                                                                                  0.9,
+                                                                                ),
+                                                                              ],
+                                                                              begin: Alignment.topLeft,
+                                                                              end: Alignment.bottomRight,
+                                                                            ),
+                                                                          ),
+                                                                          child: Icon(
+                                                                            Icons.menu_book_outlined,
+                                                                            size: 88,
+                                                                            color: cs.onSurfaceVariant.withOpacity(
+                                                                              0.75,
+                                                                            ),
+                                                                          ),
+                                                                        ),
+                                                                    errorWidget:
+                                                                        (
+                                                                          _,
+                                                                          __,
+                                                                          ___,
+                                                                        ) => Container(
+                                                                          color: cs.surfaceContainerHighest,
+                                                                          child: Icon(
+                                                                            Icons.menu_book_outlined,
+                                                                            size: 88,
+                                                                            color: cs.onSurfaceVariant,
+                                                                          ),
+                                                                        ),
+                                                                  )
+                                                                  : Container(
+                                                                    color: cs.surfaceContainerHighest,
+                                                                    child: Icon(
+                                                                      Icons.menu_book_outlined,
+                                                                      size: 88,
+                                                                      color: cs.onSurfaceVariant,
+                                                                    ),
+                                                                  ),
+                                                        ),
+                                                      ),
+                                                      Positioned(
+                                                        left: 10,
+                                                        bottom: 10,
+                                                        child:
+                                                            _ResumeFromHistoryButton(),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
                                               ),
                                             ),
                                           );
                                         },
-                                        child: Center(
-                                          child: SizedBox(
-                                            width: dims.width,
-                                            child: AspectRatio(
-                                              aspectRatio: 1,
-                                              child: Stack(
-                                                children: [
-                                                  Container(
-                                                    decoration: BoxDecoration(
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                            dims.radius,
-                                                          ),
-                                                      border: Border.all(
-                                                        color: cs.outline
-                                                            .withOpacity(0.6),
-                                                        width: 2.0,
-                                                      ),
-                                                      boxShadow: dims.shadows(
-                                                        cs,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                  ClipRRect(
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          dims.radius,
-                                                        ),
-                                                    child: Transform.scale(
-                                                      scale: 1.024,
-                                                      child:
-                                                          np.coverUrl != null &&
-                                                                  np
-                                                                      .coverUrl!
-                                                                      .isNotEmpty
-                                                              ? _ValidatedCachedNetworkImage(
-                                                                imageUrl:
-                                                                    np.coverUrl!,
-                                                                fit:
-                                                                    BoxFit
-                                                                        .cover,
-                                                                fadeInDuration:
-                                                                    const Duration(
-                                                                      milliseconds:
-                                                                          220,
-                                                                    ),
-                                                                fadeOutDuration:
-                                                                    const Duration(
-                                                                      milliseconds:
-                                                                          120,
-                                                                    ),
-                                                                placeholder:
-                                                                    (
-                                                                      _,
-                                                                      __,
-                                                                    ) => Container(
-                                                                      decoration: BoxDecoration(
-                                                                        gradient: LinearGradient(
-                                                                          colors: [
-                                                                            cs.surfaceContainerHighest,
-                                                                            cs.surfaceContainerHigh.withOpacity(
-                                                                              0.9,
-                                                                            ),
-                                                                          ],
-                                                                          begin:
-                                                                              Alignment.topLeft,
-                                                                          end:
-                                                                              Alignment.bottomRight,
-                                                                        ),
-                                                                      ),
-                                                                      child: Icon(
-                                                                        Icons
-                                                                            .menu_book_outlined,
-                                                                        size:
-                                                                            88,
-                                                                        color: cs
-                                                                            .onSurfaceVariant
-                                                                            .withOpacity(
-                                                                              0.75,
-                                                                            ),
-                                                                      ),
-                                                                    ),
-                                                                errorWidget:
-                                                                    (
-                                                                      _,
-                                                                      __,
-                                                                      ___,
-                                                                    ) => Container(
-                                                                      color:
-                                                                          cs.surfaceContainerHighest,
-                                                                      child: Icon(
-                                                                        Icons
-                                                                            .menu_book_outlined,
-                                                                        size:
-                                                                            88,
-                                                                        color:
-                                                                            cs.onSurfaceVariant,
-                                                                      ),
-                                                                    ),
-                                                              )
-                                                              : Container(
-                                                                color:
-                                                                    cs.surfaceContainerHighest,
-                                                                child: Icon(
-                                                                  Icons
-                                                                      .menu_book_outlined,
-                                                                  size: 88,
-                                                                  color:
-                                                                      cs.onSurfaceVariant,
-                                                                ),
-                                                              ),
-                                                    ),
-                                                  ),
-                                                  Positioned(
-                                                    left: 10,
-                                                    bottom: 10,
-                                                    child:
-                                                        _ResumeFromHistoryButton(),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ),
-                                        ),
                                       );
                                     },
                                   ),
@@ -3318,7 +3345,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                             final maxW = constraints.maxWidth;
                                             double spacing = 10;
                                             double edge = 42;
-                                            double skip = 48;
+                                            double skip = 52;
                                             double center = 68;
                                             final needed =
                                                 2 * edge +
@@ -3502,13 +3529,6 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                           crossAxisAlignment:
                                               CrossAxisAlignment.start,
                                           children: [
-                                            Text(
-                                              'Playback tools',
-                                              style: text.titleSmall?.copyWith(
-                                                fontWeight: FontWeight.w700,
-                                              ),
-                                            ),
-                                            const SizedBox(height: 10),
                                             Row(
                                               children: [
                                                 Expanded(
