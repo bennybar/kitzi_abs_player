@@ -1492,56 +1492,9 @@ class _FullPlayerPageState extends State<FullPlayerPage>
     required int currentChapter,
   }) {
     final disabled = totalChapters <= 1;
-    final baseColor = disabled ? cs.onSurfaceVariant : cs.onSurface;
-    final badgeColor = cs.primary;
-    final safeCurrent = currentChapter.clamp(1, totalChapters);
-
-    Widget _line(double width) => Container(
-      width: width,
-      height: 3,
-      decoration: BoxDecoration(
-        color: baseColor,
-        borderRadius: BorderRadius.circular(2),
-      ),
-    );
-
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        SizedBox(
-          height: 30,
-          width: 26,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _line(18),
-              const SizedBox(height: 4),
-              _line(22),
-              const SizedBox(height: 4),
-              _line(16),
-            ],
-          ),
-        ),
-        if (!disabled)
-          Positioned(
-            right: -6,
-            bottom: -6,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: badgeColor,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Text(
-                '$safeCurrent/$totalChapters',
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: cs.onPrimary,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ),
-      ],
+    return Icon(
+      Icons.format_list_bulleted_rounded,
+      color: disabled ? cs.onSurfaceVariant : cs.onSurface,
     );
   }
 
@@ -3887,10 +3840,6 @@ class _PlayerActionTile extends StatelessWidget {
         );
     final fg = foregroundColor ?? cs.onSurface;
     final iconColor = enabled ? fg : cs.onSurfaceVariant;
-    final iconBadgeColor = Color.alphaBlend(
-      iconColor.withOpacity(enabled ? 0.12 : 0.07),
-      bg,
-    );
 
     final tile = SizedBox(
       height: tileHeight,
@@ -3926,20 +3875,15 @@ class _PlayerActionTile extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Container(
-                    width: 38 * clampedScale,
-                    height: 38 * clampedScale,
-                    decoration: BoxDecoration(
-                      color: iconBadgeColor,
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    alignment: Alignment.center,
+                  SizedBox(
+                    width: 30 * clampedScale,
+                    height: 30 * clampedScale,
                     child: IconTheme(
                       data: IconThemeData(
                         color: iconColor,
                         size: 22 * clampedScale,
                       ),
-                      child: icon,
+                      child: Center(child: icon),
                     ),
                   ),
                   if (label.isNotEmpty) ...[
@@ -3988,7 +3932,7 @@ class _SleepQuickAction extends StatelessWidget {
         final isChapterMode = timer.isChapterMode;
         return _PlayerActionTile(
           icon: Icon(
-            isChapterMode ? Icons.menu_book_rounded : Icons.nights_stay_rounded,
+            isChapterMode ? Icons.auto_stories_rounded : Icons.bedtime_rounded,
           ),
           label: 'Sleep',
           onTap: onTap,
@@ -4019,11 +3963,9 @@ class _SpeedQuickAction extends StatelessWidget {
         final isNormal = (cur - 1.0).abs() < 0.001;
         final accentColor = cs.primary;
         return _PlayerActionTile(
-          icon: _SpeedIcon(
-            value: cur,
+          icon: Icon(
+            Icons.speed_rounded,
             color: isNormal ? cs.onSurface : accentColor,
-            accentColor: accentColor,
-            highlight: !isNormal,
           ),
           label: isNormal ? 'Speed' : _formatPlaybackSpeedLabel(cur),
           tooltip: 'Playback speed',
@@ -4354,7 +4296,7 @@ class _ChaptersDownloadButtonState extends State<_ChaptersDownloadButton> {
       foregroundColor = cs.onPrimary;
       action = _cancelCurrent;
     } else {
-      iconWidget = const Icon(Icons.download_rounded);
+      iconWidget = const Icon(Icons.download_for_offline_rounded);
       label = 'Offline';
       tooltip = 'Download for offline';
       backgroundColor = cs.surfaceContainerHighest;
