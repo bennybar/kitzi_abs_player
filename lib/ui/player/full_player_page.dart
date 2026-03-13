@@ -3317,23 +3317,6 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                             crossAxisAlignment:
                                                 CrossAxisAlignment.start,
                                             children: [
-                                              Expanded(
-                                                child: Column(
-                                                  crossAxisAlignment:
-                                                      CrossAxisAlignment.start,
-                                                  children: [
-                                                    Text(
-                                                      'Progress',
-                                                      style: text.titleSmall
-                                                          ?.copyWith(
-                                                            fontWeight:
-                                                                FontWeight.w700,
-                                                            letterSpacing: -0.1,
-                                                          ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
                                               const SizedBox(width: 12),
                                               _InfoPill(
                                                 icon: Icons.speed_rounded,
