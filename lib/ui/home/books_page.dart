@@ -951,7 +951,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                     ],
                   ),
                   bottom: PreferredSize(
-                    preferredSize: const Size.fromHeight(28),
+                    preferredSize: Size.fromHeight(_isOnline ? 0 : 28),
                     child:
                         _isOnline
                             ? const SizedBox.shrink()

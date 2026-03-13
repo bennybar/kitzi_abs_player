@@ -21,7 +21,6 @@ version: 1.6.34+154
 environment:
   sdk: ^3.7.2
 
-
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions
 # consider running `flutter pub upgrade --major-versions`. Alternatively,
