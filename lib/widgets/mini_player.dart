@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -35,34 +36,27 @@ class _MiniPlayerState extends State<MiniPlayer> {
     return ValueListenableBuilder<bool>(
       valueListenable: UiPrefs.playerGradientBackground,
       builder: (_, gradientEnabled, __) {
-        final content = Platform.isIOS
-            ? Padding(
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-                child: Card(
-                  color: Colors.transparent,
-                  elevation: 3,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(24),
-                    side: BorderSide(
-                      color: cs.outline.withOpacity(0.12),
-                      width: 0.5,
-                    ),
-                  ),
-                  child: _buildContent(context, playback, cs, showTopBorder: false),
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(26),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+              child: DecoratedBox(
+                decoration: _miniBackgroundDecoration(
+                  gradientEnabled,
+                  cs,
+                  brightness,
                 ),
-              )
-            : Container(
-                decoration: const BoxDecoration(),
-                child: _buildContent(context, playback, cs, showTopBorder: true),
-              );
-
-        return DecoratedBox(
-          decoration: _miniBackgroundDecoration(
-            gradientEnabled,
-            cs,
-            brightness,
+                child: _buildContent(
+                  context,
+                  playback,
+                  cs,
+                  showTopBorder: false,
+                ),
+              ),
+            ),
           ),
-          child: content,
         );
       },
     );
@@ -255,7 +249,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
 
                       // 10 seconds rewind button - PixelPlay-inspired Material 3 style
                       Material(
-                        color: cs.surfaceContainerHighest.withOpacity(0.7),
+                        color: cs.surfaceContainerHighest.withOpacity(0.5),
                         borderRadius: BorderRadius.circular(20),
                         child: InkWell(
                           borderRadius: BorderRadius.circular(20),
@@ -287,8 +281,11 @@ class _MiniPlayerState extends State<MiniPlayer> {
                           final hasValidNowPlaying = np != null && playing;
                           return Material(
                             color: hasValidNowPlaying 
-                                ? cs.primary 
-                                : cs.surfaceContainerHighest.withOpacity(0.7),
+                                ? Color.alphaBlend(
+                                    cs.primary.withOpacity(0.92),
+                                    cs.surface,
+                                  )
+                                : cs.surfaceContainerHighest.withOpacity(0.55),
                             borderRadius: BorderRadius.circular(24),
                             elevation: hasValidNowPlaying ? 2 : 0,
                             shadowColor: hasValidNowPlaying 
@@ -408,27 +405,59 @@ class _MiniPlayerState extends State<MiniPlayer> {
     Brightness brightness,
   ) {
     if (!gradientEnabled) {
-      return BoxDecoration(color: cs.surface);
+      return BoxDecoration(
+        color: cs.surface.withOpacity(
+          brightness == Brightness.dark ? 0.74 : 0.84,
+        ),
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(
+          color: Colors.white.withOpacity(
+            brightness == Brightness.dark ? 0.12 : 0.28,
+          ),
+          width: 0.8,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: cs.shadow.withOpacity(0.16),
+            blurRadius: 24,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      );
     }
     final primary = _palettePrimary ?? cs.primary;
     final secondary = _paletteSecondary ?? cs.secondary;
     final colors = brightness == Brightness.dark
         ? [
-            Color.alphaBlend(primary.withOpacity(0.4), cs.surface),
-            Color.alphaBlend(secondary.withOpacity(0.28), cs.surfaceContainerHighest),
-            Colors.black,
+            Color.alphaBlend(primary.withOpacity(0.2), cs.surface.withOpacity(0.85)),
+            Color.alphaBlend(secondary.withOpacity(0.16), cs.surface.withOpacity(0.8)),
+            cs.surface.withOpacity(0.72),
           ]
         : [
-            Color.alphaBlend(primary.withOpacity(0.42), cs.surface),
-            Color.alphaBlend(secondary.withOpacity(0.32), cs.surface),
-            Colors.white,
+            Color.alphaBlend(primary.withOpacity(0.18), cs.surface.withOpacity(0.94)),
+            Color.alphaBlend(secondary.withOpacity(0.14), cs.surface.withOpacity(0.9)),
+            cs.surface.withOpacity(0.82),
           ];
     return BoxDecoration(
+      borderRadius: BorderRadius.circular(26),
       gradient: LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
         colors: colors,
       ),
+      border: Border.all(
+        color: Colors.white.withOpacity(
+          brightness == Brightness.dark ? 0.12 : 0.3,
+        ),
+        width: 0.8,
+      ),
+      boxShadow: [
+        BoxShadow(
+          color: cs.shadow.withOpacity(0.18),
+          blurRadius: 24,
+          offset: const Offset(0, 10),
+        ),
+      ],
     );
   }
 }

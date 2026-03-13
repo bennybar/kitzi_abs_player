@@ -207,6 +207,7 @@ class _MainScaffoldState extends State<MainScaffold> {
           },
           child: Scaffold(
             backgroundColor: cs.surface,
+            extendBody: true,
             body: Stack(
               children: [
                 // Content
@@ -241,7 +242,13 @@ class _MainScaffoldState extends State<MainScaffold> {
                     duration: const Duration(milliseconds: 350), // Max smoothness at 120Hz (42 frames)
                     curve: const Cubic(0.05, 0.7, 0.1, 1.0), // Material Design 3 emphasized decelerate
                     child: hasMini
-                        ? const MiniPlayer(height: 68)
+                        ? const Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              MiniPlayer(height: 68),
+                              SizedBox(height: 6),
+                            ],
+                          )
                         : const SizedBox.shrink(),
                   ),
                   _buildNavigationBar(
