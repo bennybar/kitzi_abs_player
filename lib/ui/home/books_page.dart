@@ -29,6 +29,7 @@ void _unawaited(Future<void> future) {
 }
 
 enum LibraryView { grid, list }
+
 enum SortMode { nameAsc, addedDesc }
 
 class BooksPage extends StatefulWidget {
@@ -63,7 +64,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
   bool get _letterScrollEnabled => UiPrefs.letterScrollEnabled.value;
   bool get _booksLetterAlphaEnabled => UiPrefs.letterScrollBooksAlpha.value;
   bool get _forceAlphaSort => _letterScrollEnabled && _booksLetterAlphaEnabled;
-  
+
   // Memory management
   final List<StreamSubscription> _subscriptions = [];
   final List<TextEditingController> _controllers = [];
@@ -82,7 +83,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
   Timer? _searchDebounce;
   final _searchFocusNode = FocusNode();
   bool _searchVisible = false;
-  
+
   // Add controller to managed list
   void _addController(TextEditingController controller) {
     _controllers.add(controller);
@@ -97,7 +98,9 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       _dbChangeSub = repo.dbChanges.listen((_) => _scheduleDbCacheReload());
     });
     _addController(_searchCtrl); // Track search controller
-    _scrollCtrl.addListener(_onScrollChanged); // Add scroll listener for image preloading
+    _scrollCtrl.addListener(
+      _onScrollChanged,
+    ); // Add scroll listener for image preloading
     WidgetsBinding.instance.addObserver(this); // Observe app lifecycle
     _startConnectivityWatch();
     _restorePrefs().then((_) {
@@ -121,7 +124,8 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     // Clear search when app is paused/detached
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
       if (_searchVisible && _query.isNotEmpty) {
         setState(() {
           _searchCtrl.clear();
@@ -158,24 +162,26 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
   void dispose() {
     // Remove lifecycle observer
     WidgetsBinding.instance.removeObserver(this);
-    
+
     // Cancel all timers
     _timer?.cancel();
     _searchDebounce?.cancel();
-    
+
     // Cancel all stream subscriptions
     _connSub?.cancel();
     if (_letterScrollListener != null) {
       UiPrefs.letterScrollEnabled.removeListener(_letterScrollListener!);
     }
     if (_letterScrollAlphaListener != null) {
-      UiPrefs.letterScrollBooksAlpha.removeListener(_letterScrollAlphaListener!);
+      UiPrefs.letterScrollBooksAlpha.removeListener(
+        _letterScrollAlphaListener!,
+      );
     }
     for (final subscription in _subscriptions) {
       subscription.cancel();
     }
     _subscriptions.clear();
-    
+
     // Dispose all controllers
     // Remove _searchCtrl from _controllers list first to avoid double-dispose
     _controllers.remove(_searchCtrl);
@@ -189,13 +195,13 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       }
     }
     _controllers.clear();
-    
+
     // Dispose scroll controller
     _scrollCtrl.dispose();
     _dbReloadDebounce?.cancel();
     _dbChangeSub?.cancel();
     _repoFut.then((repo) => repo.dispose());
-    
+
     super.dispose();
   }
 
@@ -217,20 +223,25 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
         final auth = await AuthRepository.ensure();
         final api = auth.api;
         final token = await api.accessToken();
-        final tokenQS = (token != null && token.isNotEmpty) ? '?token=$token' : '';
+        final tokenQS =
+            (token != null && token.isNotEmpty) ? '?token=$token' : '';
         final resp = await api.request('GET', '/api/libraries$tokenQS');
         if (resp.statusCode == 200) {
           final bodyStr = resp.body;
           final body = bodyStr.isNotEmpty ? jsonDecode(bodyStr) : null;
-          final list = (body is Map && body['libraries'] is List)
-              ? (body['libraries'] as List)
-              : (body is List ? body : const []);
+          final list =
+              (body is Map && body['libraries'] is List)
+                  ? (body['libraries'] as List)
+                  : (body is List ? body : const []);
           for (final it in list) {
             if (it is Map) {
               final m = it.cast<String, dynamic>();
               final id = (m['id'] ?? m['_id'] ?? '').toString();
               if (activeLibId != null && id == activeLibId) {
-                final mediaType = (m['mediaType'] ?? m['type'] ?? '').toString().toLowerCase();
+                final mediaType =
+                    (m['mediaType'] ?? m['type'] ?? '')
+                        .toString()
+                        .toLowerCase();
                 await prefs.setString('books_library_media_type', mediaType);
                 isEbook = mediaType.contains('ebook');
                 break;
@@ -240,7 +251,10 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
         }
       } catch (_) {}
     }
-    if (mounted) setState(() { _isEbookLibrary = isEbook; });
+    if (mounted)
+      setState(() {
+        _isEbookLibrary = isEbook;
+      });
   }
 
   void _scrollToTop() {
@@ -257,7 +271,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
     if (_searchVisible) {
       _searchDebounce?.cancel();
     }
-    
+
     setState(() {
       _searchVisible = !_searchVisible;
       if (_searchVisible) {
@@ -272,7 +286,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
         _query = '';
       }
     });
-    
+
     // Refresh data when hiding search to clear filter
     if (!_searchVisible) {
       _saveSearchPref('');
@@ -306,18 +320,18 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
   Future<bool> _checkIfCompleted(String bookId) async {
     try {
       final playback = ServicesScope.of(context).services.playback;
-      
+
       // Use cached completion status if available
       if (playback.completionCache.containsKey(bookId)) {
         return playback.completionCache[bookId]!;
       }
-      
+
       // Otherwise fetch from server
       final auth = await AuthRepository.ensure();
       final api = auth.api;
       final resp = await api.request('GET', '/api/me/progress/$bookId');
       if (resp.statusCode != 200) return false;
-      
+
       final data = jsonDecode(resp.body);
       if (data is Map<String, dynamic>) {
         // Check for isFinished field
@@ -373,7 +387,9 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
   Future<void> _saveSortPref(SortMode s) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
-        _sortKey, s == SortMode.nameAsc ? 'nameAsc' : 'addedDesc');
+      _sortKey,
+      s == SortMode.nameAsc ? 'nameAsc' : 'addedDesc',
+    );
   }
 
   Future<void> _saveSearchPref(String q) async {
@@ -386,8 +402,6 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
     }
   }
 
-  
-
   void _setupAutoRefresh() {
     // Disabled: manual pull-to-refresh or toolbar refresh triggers updates.
   }
@@ -399,7 +413,8 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
     debugPrint('[REFRESH] Loaded ${_books.length} books from cache');
     try {
       final conn = await Connectivity().checkConnectivity();
-      final online = conn.contains(ConnectivityResult.mobile) ||
+      final online =
+          conn.contains(ConnectivityResult.mobile) ||
           conn.contains(ConnectivityResult.wifi) ||
           conn.contains(ConnectivityResult.ethernet) ||
           conn.contains(ConnectivityResult.vpn);
@@ -416,15 +431,23 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       // Always pull fresh data from server (ETag-aware; falls back to full fetch)
       debugPrint('[REFRESH] Calling refreshFromServer()...');
       final refreshedBooks = await repo.refreshFromServer();
-      debugPrint('[REFRESH] refreshFromServer returned ${refreshedBooks.length} books');
+      debugPrint(
+        '[REFRESH] refreshFromServer returned ${refreshedBooks.length} books',
+      );
       if (refreshedBooks.isNotEmpty) {
-        debugPrint('[REFRESH] First book: ${refreshedBooks.first.title} (id: ${refreshedBooks.first.id}, updatedAt: ${refreshedBooks.first.updatedAt})');
+        debugPrint(
+          '[REFRESH] First book: ${refreshedBooks.first.title} (id: ${refreshedBooks.first.id}, updatedAt: ${refreshedBooks.first.updatedAt})',
+        );
       }
-      
+
       // If searching, hydrate first page of the query too
       if (q.isNotEmpty) {
         debugPrint('[REFRESH] Query active: "$q", fetching first page...');
-        final queryBooks = await repo.fetchBooksPage(page: 1, limit: 50, query: q);
+        final queryBooks = await repo.fetchBooksPage(
+          page: 1,
+          limit: 50,
+          query: q,
+        );
         debugPrint('[REFRESH] Query page returned ${queryBooks.length} books');
       }
 
@@ -437,7 +460,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       debugPrint('[REFRESH] Starting incremental update sync...');
       await repo.incrementalUpdateSync();
       debugPrint('[REFRESH] Incremental update sync completed');
-      
+
       // Sync author metadata (images, descriptions)
       debugPrint('[REFRESH] Syncing author metadata...');
       await repo.syncAuthorMetadata();
@@ -456,17 +479,17 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       debugPrint('[REFRESH] Error during refresh: $e');
       debugPrint('[REFRESH] Stack trace: $stackTrace');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Refresh failed: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Refresh failed: $e')));
       }
     }
   }
 
   void _showNoInternetSnack() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('No internet connection')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('No internet connection')));
   }
 
   void _scheduleDbCacheReload() {
@@ -514,8 +537,12 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       );
       debugPrint('[LOAD_FROM_CACHE] Loaded ${items.length} books from DB');
       if (items.isNotEmpty) {
-        debugPrint('[LOAD_FROM_CACHE] First book: "${items.first.title}" (id: ${items.first.id}, updatedAt: ${items.first.updatedAt?.toIso8601String() ?? "null"})');
-        debugPrint('[LOAD_FROM_CACHE] Last book: "${items.last.title}" (id: ${items.last.id}, updatedAt: ${items.last.updatedAt?.toIso8601String() ?? "null"})');
+        debugPrint(
+          '[LOAD_FROM_CACHE] First book: "${items.first.title}" (id: ${items.first.id}, updatedAt: ${items.first.updatedAt?.toIso8601String() ?? "null"})',
+        );
+        debugPrint(
+          '[LOAD_FROM_CACHE] Last book: "${items.last.title}" (id: ${items.last.id}, updatedAt: ${items.last.updatedAt?.toIso8601String() ?? "null"})',
+        );
       }
       if (!mounted) {
         debugPrint('[LOAD_FROM_CACHE] Widget not mounted, skipping setState');
@@ -528,7 +555,9 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
         _currentPage = 1;
         _error = null;
       });
-      debugPrint('[LOAD_FROM_CACHE] setState completed, _books.length=${_books.length}');
+      debugPrint(
+        '[LOAD_FROM_CACHE] setState completed, _books.length=${_books.length}',
+      );
     } catch (e, stackTrace) {
       debugPrint('[LOAD_FROM_CACHE] Error: $e');
       debugPrint('[LOAD_FROM_CACHE] Stack trace: $stackTrace');
@@ -539,7 +568,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       });
     }
   }
-  
+
   bool _bookListsMatch(List<Book> a, List<Book> b) {
     if (a.length != b.length) return false;
     for (var i = 0; i < a.length; i++) {
@@ -549,28 +578,31 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
     }
     return true;
   }
-  
+
   String _bookSignature(Book book) {
     final updated = book.updatedAt?.millisecondsSinceEpoch ?? 0;
     final duration = book.durationMs ?? 0;
     final size = book.sizeBytes ?? 0;
     return '${book.id}|$updated|${book.title}|${book.author ?? ''}|$duration|$size|${book.isAudioBook ? 1 : 0}';
   }
-  
+
   Future<void> _loadRecentBooks() async {
     List<Book> fallback = const [];
     try {
       fallback = await PlayHistoryService.getLastPlayedBooksLocal(6);
     } catch (_) {}
 
-    if (mounted && fallback.isNotEmpty && !_bookListsMatch(_recentBooks, fallback)) {
+    if (mounted &&
+        fallback.isNotEmpty &&
+        !_bookListsMatch(_recentBooks, fallback)) {
       setState(() => _recentBooks = fallback);
     }
 
     bool online = true;
     try {
       final conn = await Connectivity().checkConnectivity();
-      online = conn.contains(ConnectivityResult.mobile) ||
+      online =
+          conn.contains(ConnectivityResult.mobile) ||
           conn.contains(ConnectivityResult.wifi) ||
           conn.contains(ConnectivityResult.ethernet) ||
           conn.contains(ConnectivityResult.vpn);
@@ -599,20 +631,21 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       await ImageCacheManager.preloadImages(urls, context);
     });
   }
-  
+
   /// Smart image preloading based on scroll position
   void _onScrollChanged() {
     if (!_scrollCtrl.hasClients || _books.isEmpty) return;
-    
+
     final position = _scrollCtrl.position;
     final itemHeight = 104.0; // Approximate item height
     final visibleStart = (position.pixels / itemHeight).floor();
-    final visibleEnd = ((position.pixels + position.viewportDimension) / itemHeight).ceil();
-    
+    final visibleEnd =
+        ((position.pixels + position.viewportDimension) / itemHeight).ceil();
+
     final currentIndex = (visibleStart + visibleEnd) ~/ 2;
     if (currentIndex >= 0 && currentIndex < _books.length) {
       final urls = _books.map((b) => b.coverUrl).toList();
-      
+
       // Determine scroll direction
       String? direction;
       if (position.pixels > (position.maxScrollExtent * 0.8)) {
@@ -620,9 +653,14 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       } else if (position.pixels < (position.maxScrollExtent * 0.2)) {
         direction = 'reverse';
       }
-      
+
       // Preload images around current position
-      ImageCacheManager.preloadAroundIndex(urls, currentIndex, context, scrollDirection: direction);
+      ImageCacheManager.preloadAroundIndex(
+        urls,
+        currentIndex,
+        context,
+        scrollDirection: direction,
+      );
     }
   }
 
@@ -632,15 +670,18 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.95,
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: BookDetailPage(bookId: b.id),
-      ),
+      builder:
+          (context) => Container(
+            height: MediaQuery.of(context).size.height * 0.95,
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(24),
+              ),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: BookDetailPage(bookId: b.id),
+          ),
     );
   }
 
@@ -654,7 +695,8 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       );
       if (authorInfo.books.isEmpty) {
         // Try to get books by filtering current list
-        final booksByAuthor = _books.where((b) => b.author == authorName).toList();
+        final booksByAuthor =
+            _books.where((b) => b.author == authorName).toList();
         if (booksByAuthor.isNotEmpty) {
           AuthorCard.show(
             context: context,
@@ -663,15 +705,13 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
           return;
         }
       } else {
-        AuthorCard.show(
-          context: context,
-          author: authorInfo,
-        );
+        AuthorCard.show(context: context, author: authorInfo);
         return;
       }
     } catch (e) {
       // Fallback: try to get books from current list
-      final booksByAuthor = _books.where((b) => b.author == authorName).toList();
+      final booksByAuthor =
+          _books.where((b) => b.author == authorName).toList();
       if (booksByAuthor.isNotEmpty) {
         AuthorCard.show(
           context: context,
@@ -693,7 +733,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       );
       final books = await repo.getBooksForSeries(series);
       if (books.isEmpty) return;
-      
+
       // Create a proper Series object with the loaded books
       final seriesWithBooks = Series(
         id: seriesName,
@@ -701,7 +741,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
         numBooks: books.length,
         bookIds: books.map((b) => b.id).toList(),
       );
-      
+
       showModalBottomSheet(
         context: context,
         isScrollControlled: true,
@@ -709,38 +749,44 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
         enableDrag: true,
         useSafeArea: true,
         backgroundColor: Colors.transparent,
-        builder: (context) => DraggableScrollableSheet(
-          initialChildSize: 0.95,
-          minChildSize: 0.3,
-          maxChildSize: 0.95,
-          builder: (context, scrollController) => Container(
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: Column(
-              children: [
-                // Drag handle indicator
-                Container(
-                  margin: const EdgeInsets.only(top: 8, bottom: 4),
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.4),
-                    borderRadius: BorderRadius.circular(2),
+        builder:
+            (context) => DraggableScrollableSheet(
+              initialChildSize: 0.95,
+              minChildSize: 0.3,
+              maxChildSize: 0.95,
+              builder:
+                  (context, scrollController) => Container(
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surface,
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(24),
+                      ),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: Column(
+                      children: [
+                        // Drag handle indicator
+                        Container(
+                          margin: const EdgeInsets.only(top: 8, bottom: 4),
+                          width: 40,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant.withOpacity(0.4),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                        Expanded(
+                          child: SeriesBooksPage(
+                            series: seriesWithBooks,
+                            getBooksForSeries: (s) => repo.getBooksForSeries(s),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                Expanded(
-                  child: SeriesBooksPage(
-                    series: seriesWithBooks,
-                    getBooksForSeries: (s) => repo.getBooksForSeries(s),
-                  ),
-                ),
-              ],
             ),
-          ),
-        ),
       );
     } catch (e) {
       // Silently fail if series can't be loaded
@@ -750,22 +796,29 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
   List<Book> _visibleBooks() {
     if (_isEbookLibrary) return const <Book>[];
     final q = _query.trim().toLowerCase();
-    List<Book> list = q.isEmpty
-        ? List<Book>.from(_books)
-        : _books.where((b) {
-      final t = b.title.toLowerCase();
-      final a = (b.author ?? '').toLowerCase();
-      return t.contains(q) || a.contains(q);
-    }).toList();
+    List<Book> list =
+        q.isEmpty
+            ? List<Book>.from(_books)
+            : _books.where((b) {
+              final t = b.title.toLowerCase();
+              final a = (b.author ?? '').toLowerCase();
+              return t.contains(q) || a.contains(q);
+            }).toList();
 
     // Show only audiobooks
-    list = list.where((b) => b.isAudioBook && (b.libraryId == null || !_isEbookLibrary)).toList();
-    
+    list =
+        list
+            .where(
+              (b) => b.isAudioBook && (b.libraryId == null || !_isEbookLibrary),
+            )
+            .toList();
+
     final sortMode = _forceAlphaSort ? SortMode.nameAsc : _sort;
     switch (sortMode) {
       case SortMode.nameAsc:
         list.sort(
-                (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+          (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()),
+        );
         break;
       case SortMode.addedDesc:
         list.sort((a, b) {
@@ -781,7 +834,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
     }
     return list;
   }
-  
+
   Future<double> _fetchProgress(String bookId) async {
     try {
       final playback = ServicesScope.of(context).services.playback;
@@ -800,7 +853,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       return 0.0;
     }
   }
-  
+
   double _getBookProgress(String bookId) {
     // Synchronous version for filters - uses completion cache only
     try {
@@ -865,341 +918,371 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
             backgroundColor: cs.surface,
             child: CustomScrollView(
               controller: _scrollCtrl,
-              physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+              physics: const BouncingScrollPhysics(
+                parent: AlwaysScrollableScrollPhysics(),
+              ),
               cacheExtent: 800,
               slivers: [
-          SliverAppBar(
-            floating: false,
-            pinned: true,
-            backgroundColor: cs.surface,
-            surfaceTintColor: cs.surfaceTint,
-            elevation: 0,
-            toolbarHeight: 72,
-            titleSpacing: 20,
-            title: Row(
-              children: [
-                Icon(
-                  Icons.library_music_rounded,
-                  color: cs.primary,
-                  size: 22,
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  _query.trim().isEmpty ? 'Audiobooks' : 'Library',
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -0.2,
+                SliverAppBar(
+                  floating: false,
+                  pinned: true,
+                  backgroundColor: cs.surface,
+                  surfaceTintColor: cs.surfaceTint,
+                  elevation: 0,
+                  toolbarHeight: 72,
+                  titleSpacing: 20,
+                  title: Row(
+                    children: [
+                      Icon(
+                        Icons.library_music_rounded,
+                        color: cs.primary,
+                        size: 22,
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        _query.trim().isEmpty ? 'Audiobooks' : 'Library',
+                        style: Theme.of(
+                          context,
+                        ).textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.2,
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-              ],
-            ),
-            bottom: PreferredSize(
-              preferredSize: const Size.fromHeight(28),
-              child: _isOnline
-                  ? const SizedBox.shrink()
-                  : Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                      color: cs.errorContainer,
-                      child: Row(
-                        children: [
-                          Icon(Icons.wifi_off_rounded, size: 16, color: cs.onErrorContainer),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'Offline – showing cached library',
-                              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  bottom: PreferredSize(
+                    preferredSize: const Size.fromHeight(28),
+                    child:
+                        _isOnline
+                            ? const SizedBox.shrink()
+                            : Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 6,
+                              ),
+                              color: cs.errorContainer,
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.wifi_off_rounded,
+                                    size: 16,
                                     color: cs.onErrorContainer,
                                   ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-            ),
-          ),
-
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 10, 20, 18),
-              child: Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: cs.surfaceContainerLow.withOpacity(0.88),
-                    borderRadius: BorderRadius.circular(28),
-                    border: Border.all(
-                      color: cs.outlineVariant.withOpacity(0.16),
-                    ),
-                  ),
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    alignment: WrapAlignment.center,
-                    children: [
-                      _ToolbarSurfaceButton(
-                        tooltip: 'Search',
-                        icon: _searchVisible
-                            ? Icons.search_off_rounded
-                            : Icons.search_rounded,
-                        onTap: _toggleSearch,
-                        emphasized: _searchVisible,
-                      ),
-                      _ToolbarSurfaceButton(
-                        tooltip: 'Profile',
-                        icon: Icons.person_rounded,
-                        onTap: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (context) => const ProfilePage(),
-                            ),
-                          );
-                        },
-                      ),
-                      _ToolbarSurfaceButton(
-                        tooltip: 'Support',
-                        icon: Icons.help_outline_rounded,
-                        onTap: () async {
-                          final url = Uri.parse(
-                            'https://github.com/bennybar/kitzi_abs_player/issues',
-                          );
-                          if (await canLaunchUrl(url)) {
-                            await launchUrl(
-                              url,
-                              mode: LaunchMode.externalApplication,
-                            );
-                          }
-                        },
-                      ),
-                      _ToolbarSurfaceButton(
-                        tooltip: 'Scroll to top',
-                        icon: Icons.vertical_align_top_rounded,
-                        onTap: _loading ? null : _scrollToTop,
-                      ),
-                      PopupMenuButton<SortMode>(
-                        tooltip: 'Sort',
-                        enabled: !_forceAlphaSort,
-                        initialValue:
-                            _forceAlphaSort ? SortMode.nameAsc : _sort,
-                        onSelected: !_forceAlphaSort
-                            ? (mode) {
-                                setState(() => _sort = mode);
-                                _saveSortPref(mode);
-                              }
-                            : null,
-                        itemBuilder: (context) => [
-                          PopupMenuItem(
-                            value: SortMode.addedDesc,
-                            child: ListTile(
-                              leading: Icon(
-                                Icons.schedule_rounded,
-                                color: cs.primary,
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      'Offline – showing cached library',
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.labelMedium?.copyWith(
+                                        color: cs.onErrorContainer,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
                               ),
-                              title: const Text('Added date (newest)'),
-                              contentPadding: EdgeInsets.zero,
                             ),
-                          ),
-                          PopupMenuItem(
-                            value: SortMode.nameAsc,
-                            child: ListTile(
-                              leading: Icon(
-                                Icons.sort_by_alpha_rounded,
-                                color: cs.primary,
-                              ),
-                              title: const Text('Name (A–Z)'),
-                              contentPadding: EdgeInsets.zero,
-                            ),
-                          ),
-                        ],
-                        child: _ToolbarSurfaceButton(
-                          tooltip: 'Sort',
-                          icon: Icons.sort_rounded,
-                          onTap: null,
-                          enabled: !_forceAlphaSort,
-                        ),
-                      ),
-                    ],
                   ),
                 ),
-              ),
-            ),
-          ),
 
-          // Enhanced Search Bar
-          SliverToBoxAdapter(
-            child: AnimatedSize(
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeInOut,
-              child: _searchVisible
-                  ? Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-                      child: Column(
-                        children: [
-                          // Material search bar
-                          SearchBar(
-                            controller: _searchCtrl,
-                            focusNode: _searchFocusNode,
-                            leading: Icon(
-                              Icons.search_rounded,
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 10, 20, 18),
+                    child: Center(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: cs.surfaceContainerLow.withOpacity(0.88),
+                          borderRadius: BorderRadius.circular(28),
+                          border: Border.all(
+                            color: cs.outlineVariant.withOpacity(0.16),
+                          ),
+                        ),
+                        child: Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          alignment: WrapAlignment.center,
+                          children: [
+                            _ToolbarSurfaceButton(
+                              tooltip: 'Search',
+                              icon:
+                                  _searchVisible
+                                      ? Icons.search_off_rounded
+                                      : Icons.search_rounded,
+                              onTap: _toggleSearch,
+                              emphasized: _searchVisible,
+                            ),
+                            _ToolbarSurfaceButton(
+                              tooltip: 'Profile',
+                              icon: Icons.person_rounded,
+                              onTap: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (context) => const ProfilePage(),
+                                  ),
+                                );
+                              },
+                            ),
+                            _ToolbarSurfaceButton(
+                              tooltip: 'Support',
+                              icon: Icons.help_outline_rounded,
+                              onTap: () async {
+                                final url = Uri.parse(
+                                  'https://github.com/bennybar/kitzi_abs_player/issues',
+                                );
+                                if (await canLaunchUrl(url)) {
+                                  await launchUrl(
+                                    url,
+                                    mode: LaunchMode.externalApplication,
+                                  );
+                                }
+                              },
+                            ),
+                            _ToolbarSurfaceButton(
+                              tooltip: 'Scroll to top',
+                              icon: Icons.vertical_align_top_rounded,
+                              onTap: _loading ? null : _scrollToTop,
+                            ),
+                            PopupMenuButton<SortMode>(
+                              tooltip: 'Sort',
+                              enabled: !_forceAlphaSort,
+                              initialValue:
+                                  _forceAlphaSort ? SortMode.nameAsc : _sort,
+                              onSelected:
+                                  !_forceAlphaSort
+                                      ? (mode) {
+                                        setState(() => _sort = mode);
+                                        _saveSortPref(mode);
+                                      }
+                                      : null,
+                              itemBuilder:
+                                  (context) => [
+                                    PopupMenuItem(
+                                      value: SortMode.addedDesc,
+                                      child: ListTile(
+                                        leading: Icon(
+                                          Icons.schedule_rounded,
+                                          color: cs.primary,
+                                        ),
+                                        title: const Text(
+                                          'Added date (newest)',
+                                        ),
+                                        contentPadding: EdgeInsets.zero,
+                                      ),
+                                    ),
+                                    PopupMenuItem(
+                                      value: SortMode.nameAsc,
+                                      child: ListTile(
+                                        leading: Icon(
+                                          Icons.sort_by_alpha_rounded,
+                                          color: cs.primary,
+                                        ),
+                                        title: const Text('Name (A–Z)'),
+                                        contentPadding: EdgeInsets.zero,
+                                      ),
+                                    ),
+                                  ],
+                              child: _ToolbarSurfaceButton(
+                                tooltip: 'Sort',
+                                icon: Icons.sort_rounded,
+                                onTap: null,
+                                enabled: !_forceAlphaSort,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Enhanced Search Bar
+                SliverToBoxAdapter(
+                  child: AnimatedSize(
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeInOut,
+                    child:
+                        _searchVisible
+                            ? Padding(
+                              padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                              child: Column(
+                                children: [
+                                  // Material search bar
+                                  SearchBar(
+                                    controller: _searchCtrl,
+                                    focusNode: _searchFocusNode,
+                                    leading: Icon(
+                                      Icons.search_rounded,
+                                      color: cs.onSurfaceVariant,
+                                    ),
+                                    hintText: 'Search books or authors...',
+                                    hintStyle: WidgetStateProperty.all(
+                                      TextStyle(color: cs.onSurfaceVariant),
+                                    ),
+                                    backgroundColor: WidgetStateProperty.all(
+                                      cs.surfaceContainerHighest,
+                                    ),
+                                    elevation: WidgetStateProperty.all(0),
+                                    shape: WidgetStateProperty.all(
+                                      RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(16),
+                                      ),
+                                    ),
+                                    onChanged: (val) {
+                                      setState(() => _query = val);
+                                      _saveSearchPref(val);
+                                      _searchDebounce?.cancel();
+                                      _searchDebounce = Timer(
+                                        const Duration(milliseconds: 300),
+                                        () {
+                                          if (!mounted) return;
+                                          _restartSearchPagination();
+                                        },
+                                      );
+                                    },
+                                    trailing: [
+                                      if (_query.isNotEmpty)
+                                        IconButton(
+                                          tooltip: 'Clear',
+                                          onPressed: () {
+                                            // Hide keyboard
+                                            FocusScope.of(context).unfocus();
+                                            _searchCtrl.clear();
+                                            setState(() => _query = '');
+                                            _saveSearchPref('');
+                                            // Force re-fetch first page from server and restart pagination
+                                            _restartSearchPagination();
+                                          },
+                                          icon: Icon(
+                                            Icons.clear_rounded,
+                                            color: cs.onSurfaceVariant,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 16),
+                                  // View toggle removed – list only
+                                ],
+                              ),
+                            )
+                            : const SizedBox.shrink(),
+                  ),
+                ),
+
+                // Content
+                if (_loading)
+                  SliverFillRemaining(child: _buildLoadingSkeleton(context))
+                else if (_error != null)
+                  SliverFillRemaining(
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.error_outline_rounded,
+                              size: 64,
+                              color: cs.error,
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Error loading library',
+                              style: Theme.of(
+                                context,
+                              ).textTheme.titleLarge?.copyWith(color: cs.error),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              _error!,
+                              textAlign: TextAlign.center,
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(color: cs.onSurfaceVariant),
+                            ),
+                            const SizedBox(height: 16),
+                            FilledButton.icon(
+                              onPressed: () => _refresh(),
+                              icon: const Icon(Icons.refresh_rounded),
+                              label: const Text('Try Again'),
+                            ),
+                            const SizedBox(height: 8),
+                            FilledButton.tonalIcon(
+                              onPressed: () async {
+                                // Force offline view from DB only
+                                setState(() => _loading = true);
+                                final repo = await _repoFut;
+                                final local = await repo.listBooks();
+                                if (!mounted) return;
+                                setState(() {
+                                  _books = local;
+                                  _loading = false;
+                                  _error = null;
+                                });
+                              },
+                              icon: const Icon(Icons.offline_pin_rounded),
+                              label: const Text('Show Offline Library'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  )
+                else if (visible.isEmpty)
+                  SliverFillRemaining(
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              _query.isNotEmpty
+                                  ? Icons.search_off_rounded
+                                  : Icons.library_books_outlined,
+                              size: 64,
                               color: cs.onSurfaceVariant,
                             ),
-                            hintText: 'Search books or authors...',
-                            hintStyle: WidgetStateProperty.all(
-                              TextStyle(color: cs.onSurfaceVariant),
+                            const SizedBox(height: 16),
+                            Text(
+                              _query.isNotEmpty
+                                  ? 'No books found'
+                                  : 'Your library is empty',
+                              style: Theme.of(context).textTheme.titleLarge
+                                  ?.copyWith(color: cs.onSurface),
                             ),
-                            backgroundColor: WidgetStateProperty.all(cs.surfaceContainerHighest),
-                            elevation: WidgetStateProperty.all(0),
-                            shape: WidgetStateProperty.all(
-                              RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
+                            const SizedBox(height: 8),
+                            Text(
+                              _query.isNotEmpty
+                                  ? 'Try adjusting your search terms'
+                                  : 'Add some books to get started',
+                              textAlign: TextAlign.center,
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(color: cs.onSurfaceVariant),
                             ),
-                            onChanged: (val) {
-                              setState(() => _query = val);
-                              _saveSearchPref(val);
-                              _searchDebounce?.cancel();
-                              _searchDebounce = Timer(const Duration(milliseconds: 300), () {
-                                if (!mounted) return;
-                                _restartSearchPagination();
-                              });
-                            },
-                            trailing: [
-                              if (_query.isNotEmpty)
-                                IconButton(
-                                  tooltip: 'Clear',
-                                  onPressed: () {
-                                    // Hide keyboard
-                                    FocusScope.of(context).unfocus();
-                                    _searchCtrl.clear();
-                                    setState(() => _query = '');
-                                    _saveSearchPref('');
-                                    // Force re-fetch first page from server and restart pagination
-                                    _restartSearchPagination();
-                                  },
-                                  icon: Icon(
-                                    Icons.clear_rounded,
-                                    color: cs.onSurfaceVariant,
-                                  ),
-                                ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                          // View toggle removed – list only
-                        ],
-                      ),
-                    )
-                  : const SizedBox.shrink(),
-            ),
-          ),
-
-          // Content
-          if (_loading)
-            SliverFillRemaining(child: _buildLoadingSkeleton(context))
-          else if (_error != null)
-            SliverFillRemaining(
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.error_outline_rounded,
-                        size: 64,
-                        color: cs.error,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Error loading library',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          color: cs.error,
+                          ],
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _error!,
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: cs.onSurfaceVariant,
-                        ),
+                    ),
+                  )
+                else ...[
+                  if (_recentBooks.isNotEmpty && _query.trim().isEmpty)
+                    _buildResumePlayingSection(),
+                  if (_query.trim().isEmpty)
+                    SliverToBoxAdapter(
+                      child: _SectionHeader(
+                        icon: Icons.library_books_rounded,
+                        title: 'Audiobooks',
+                        padding: const EdgeInsets.fromLTRB(20, 6, 20, 14),
                       ),
-                      const SizedBox(height: 16),
-                      FilledButton.icon(
-                        onPressed: () => _refresh(),
-                        icon: const Icon(Icons.refresh_rounded),
-                        label: const Text('Try Again'),
-                      ),
-                      const SizedBox(height: 8),
-                      FilledButton.tonalIcon(
-                        onPressed: () async {
-                          // Force offline view from DB only
-                          setState(() => _loading = true);
-                          final repo = await _repoFut;
-                          final local = await repo.listBooks();
-                          if (!mounted) return;
-                          setState(() {
-                            _books = local;
-                            _loading = false;
-                            _error = null;
-                          });
-                        },
-                        icon: const Icon(Icons.offline_pin_rounded),
-                        label: const Text('Show Offline Library'),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            )
-          else if (visible.isEmpty)
-            SliverFillRemaining(
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        _query.isNotEmpty ? Icons.search_off_rounded : Icons.library_books_outlined,
-                        size: 64,
-                        color: cs.onSurfaceVariant,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        _query.isNotEmpty ? 'No books found' : 'Your library is empty',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          color: cs.onSurface,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _query.isNotEmpty
-                            ? 'Try adjusting your search terms'
-                            : 'Add some books to get started',
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: cs.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            )
-          else ...[
-            if (_recentBooks.isNotEmpty && _query.trim().isEmpty) _buildResumePlayingSection(),
-            if (_query.trim().isEmpty)
-              SliverToBoxAdapter(
-                child: _SectionHeader(
-                  icon: Icons.library_books_rounded,
-                  title: 'Audiobooks',
-                  padding: const EdgeInsets.fromLTRB(20, 6, 20, 14),
-                ),
-              ),
-            _buildList(visible),
-            _buildLoadMore(),
-              ],
+                    ),
+                  _buildList(visible),
+                  _buildLoadMore(),
+                ],
               ],
             ),
           ),
@@ -1219,29 +1302,29 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
           crossAxisSpacing: 12,
           childAspectRatio: 0.62,
         ),
-        delegate: SliverChildBuilderDelegate(
-          (context, i) {
-            final b = list[i];
-            return _BookCard(
-              key: ValueKey(b.id),
-              book: b,
-              onTap: b.isAudioBook ? () => _openDetails(b) : null,
-              onAuthorTap: b.author != null && b.author!.isNotEmpty
-                  ? () => _showAuthorBooks(context, b.author!)
-                  : null,
-              onSeriesTap: b.series != null && b.series!.isNotEmpty
-                  ? () => _showSeriesBooks(context, b.series!)
-                  : null,
-            );
-          },
-          childCount: list.length,
-        ),
+        delegate: SliverChildBuilderDelegate((context, i) {
+          final b = list[i];
+          return _BookCard(
+            key: ValueKey(b.id),
+            book: b,
+            onTap: b.isAudioBook ? () => _openDetails(b) : null,
+            onAuthorTap:
+                b.author != null && b.author!.isNotEmpty
+                    ? () => _showAuthorBooks(context, b.author!)
+                    : null,
+            onSeriesTap:
+                b.series != null && b.series!.isNotEmpty
+                    ? () => _showSeriesBooks(context, b.series!)
+                    : null,
+          );
+        }, childCount: list.length),
       ),
     );
   }
 
   Widget _buildResumePlayingSection() {
-    if (_isEbookLibrary) return const SliverToBoxAdapter(child: SizedBox.shrink());
+    if (_isEbookLibrary)
+      return const SliverToBoxAdapter(child: SizedBox.shrink());
     return SliverToBoxAdapter(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
@@ -1279,12 +1362,16 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                           key: ValueKey(book.id),
                           book: book,
                           onTap: () => _openDetails(book),
-                          onAuthorTap: book.author != null && book.author!.isNotEmpty
-                              ? () => _showAuthorBooks(context, book.author!)
-                              : null,
-                          onSeriesTap: book.series != null && book.series!.isNotEmpty
-                              ? () => _showSeriesBooks(context, book.series!)
-                              : null,
+                          onAuthorTap:
+                              book.author != null && book.author!.isNotEmpty
+                                  ? () =>
+                                      _showAuthorBooks(context, book.author!)
+                                  : null,
+                          onSeriesTap:
+                              book.series != null && book.series!.isNotEmpty
+                                  ? () =>
+                                      _showSeriesBooks(context, book.series!)
+                                  : null,
                         ),
                       );
                     },
@@ -1307,7 +1394,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
         separatorBuilder: (_, __) => const SizedBox(height: 12),
         itemBuilder: (context, i) {
           final b = list[i];
-          
+
           // Trigger load more when approaching end
           if (!_loadingMore && _hasMore && i >= list.length - 8) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1316,75 +1403,94 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
               }
             });
           }
-          
+
           return Dismissible(
             key: ValueKey(b.id),
-            direction: DismissDirection.startToEnd, // Only allow swipe right (download)
-            dismissThresholds: const {
-              DismissDirection.startToEnd: 0.4,
-            },
+            direction:
+                DismissDirection
+                    .startToEnd, // Only allow swipe right (download)
+            dismissThresholds: const {DismissDirection.startToEnd: 0.4},
             confirmDismiss: (direction) async {
               // Execute actions in background and bounce back immediately
               if (direction == DismissDirection.startToEnd) {
                 // Swipe right → Download/Delete (with confirmation)
                 if (b.isAudioBook) {
-                  final downloads = ServicesScope.of(context).services.downloads;
+                  final downloads =
+                      ServicesScope.of(context).services.downloads;
                   final ctx = context;
-                  
+
                   // Check status and show confirmation
-                  unawaited(downloads.hasLocalDownloads(b.id).then((hasLocal) async {
-                    if (!ctx.mounted) return;
-                    
-                    final action = hasLocal ? 'delete' : 'download';
-                    final confirmed = await showDialog<bool>(
-                      context: ctx,
-                      builder: (context) => AlertDialog(
-                        title: Text(hasLocal ? 'Delete Download?' : 'Download Book?'),
-                        content: Text(
-                          hasLocal 
-                            ? 'Delete downloaded files for "${b.title}"? You can re-download it later.'
-                            : 'Download "${b.title}" for offline listening?',
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.of(context).pop(false),
-                            child: const Text('Cancel'),
-                          ),
-                          FilledButton(
-                            onPressed: () => Navigator.of(context).pop(true),
-                            style: hasLocal ? FilledButton.styleFrom(
-                              backgroundColor: Theme.of(context).colorScheme.error,
-                            ) : null,
-                            child: Text(hasLocal ? 'Delete' : 'Download'),
-                          ),
-                        ],
-                      ),
-                    );
-                    
-                    if (confirmed == true) {
-                      if (hasLocal) {
-                        await downloads.deleteLocal(b.id);
-                        if (ctx.mounted) {
-                          ScaffoldMessenger.of(ctx).showSnackBar(
-                            SnackBar(
-                              content: Text('Deleted: ${b.title}'),
-                              duration: const Duration(seconds: 2),
+                  unawaited(
+                    downloads.hasLocalDownloads(b.id).then((hasLocal) async {
+                      if (!ctx.mounted) return;
+
+                      final action = hasLocal ? 'delete' : 'download';
+                      final confirmed = await showDialog<bool>(
+                        context: ctx,
+                        builder:
+                            (context) => AlertDialog(
+                              title: Text(
+                                hasLocal
+                                    ? 'Delete Download?'
+                                    : 'Download Book?',
+                              ),
+                              content: Text(
+                                hasLocal
+                                    ? 'Delete downloaded files for "${b.title}"? You can re-download it later.'
+                                    : 'Download "${b.title}" for offline listening?',
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed:
+                                      () => Navigator.of(context).pop(false),
+                                  child: const Text('Cancel'),
+                                ),
+                                FilledButton(
+                                  onPressed:
+                                      () => Navigator.of(context).pop(true),
+                                  style:
+                                      hasLocal
+                                          ? FilledButton.styleFrom(
+                                            backgroundColor:
+                                                Theme.of(
+                                                  context,
+                                                ).colorScheme.error,
+                                          )
+                                          : null,
+                                  child: Text(hasLocal ? 'Delete' : 'Download'),
+                                ),
+                              ],
                             ),
+                      );
+
+                      if (confirmed == true) {
+                        if (hasLocal) {
+                          await downloads.deleteLocal(b.id);
+                          if (ctx.mounted) {
+                            ScaffoldMessenger.of(ctx).showSnackBar(
+                              SnackBar(
+                                content: Text('Deleted: ${b.title}'),
+                                duration: const Duration(seconds: 2),
+                              ),
+                            );
+                          }
+                        } else {
+                          await downloads.enqueueItemDownloads(
+                            b.id,
+                            displayTitle: b.title,
                           );
-                        }
-                      } else {
-                        await downloads.enqueueItemDownloads(b.id, displayTitle: b.title);
-                        if (ctx.mounted) {
-                          ScaffoldMessenger.of(ctx).showSnackBar(
-                            SnackBar(
-                              content: Text('Downloading: ${b.title}'),
-                              duration: const Duration(seconds: 2),
-                            ),
-                          );
+                          if (ctx.mounted) {
+                            ScaffoldMessenger.of(ctx).showSnackBar(
+                              SnackBar(
+                                content: Text('Downloading: ${b.title}'),
+                                duration: const Duration(seconds: 2),
+                              ),
+                            );
+                          }
                         }
                       }
-                    }
-                  }));
+                    }),
+                  );
                 }
               }
               return false; // Return immediately - action runs in background
@@ -1396,19 +1502,25 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                 color: Colors.green,
                 borderRadius: BorderRadius.circular(16),
               ),
-              child: const Icon(Icons.download_rounded, color: Colors.white, size: 28),
+              child: const Icon(
+                Icons.download_rounded,
+                color: Colors.white,
+                size: 28,
+              ),
             ),
             child: _BookListTile(
               key: ValueKey('tile-${b.id}'),
               book: b,
               onTap: b.isAudioBook ? () => _openDetails(b) : null,
               checkIfCompleted: _checkIfCompleted,
-              onAuthorTap: b.author != null && b.author!.isNotEmpty
-                  ? () => _showAuthorBooks(context, b.author!)
-                  : null,
-              onSeriesTap: b.series != null && b.series!.isNotEmpty
-                  ? () => _showSeriesBooks(context, b.series!)
-                  : null,
+              onAuthorTap:
+                  b.author != null && b.author!.isNotEmpty
+                      ? () => _showAuthorBooks(context, b.author!)
+                      : null,
+              onSeriesTap:
+                  b.series != null && b.series!.isNotEmpty
+                      ? () => _showSeriesBooks(context, b.series!)
+                      : null,
             ),
           );
         },
@@ -1416,17 +1528,16 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
     );
   }
 
-  
-
   Widget _buildLoadMore() {
     if (!_hasMore) return const SliverToBoxAdapter(child: SizedBox.shrink());
     return SliverToBoxAdapter(
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 16),
         child: Center(
-          child: _loadingMore
-              ? const CircularProgressIndicator()
-              : const SizedBox.shrink(),
+          child:
+              _loadingMore
+                  ? const CircularProgressIndicator()
+                  : const SizedBox.shrink(),
         ),
       ),
     );
@@ -1439,8 +1550,16 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       final repo = await _repoFut;
       final nextPage = _currentPage + 1;
       final q = _query.trim();
-      await repo.ensureServerPageIntoDb(page: nextPage, limit: 50, query: q.isEmpty ? null : q);
-      final page = await repo.listBooksFromDbPaged(page: nextPage, limit: 50, query: q.isEmpty ? null : q);
+      await repo.ensureServerPageIntoDb(
+        page: nextPage,
+        limit: 50,
+        query: q.isEmpty ? null : q,
+      );
+      final page = await repo.listBooksFromDbPaged(
+        page: nextPage,
+        limit: 50,
+        query: q.isEmpty ? null : q,
+      );
       // Loaded page from database
       if (!mounted) return;
       setState(() {
@@ -1456,7 +1575,10 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _startBackgroundSync({bool awaitCompletion = false, bool forceCheck = false}) async {
+  Future<void> _startBackgroundSync({
+    bool awaitCompletion = false,
+    bool forceCheck = false,
+  }) async {
     final query = _query.trim();
     final effectiveQuery = query.isEmpty ? null : query;
 
@@ -1500,7 +1622,11 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       child: ValueListenableBuilder<bool>(
         valueListenable: UiPrefs.letterScrollEnabled,
         builder: (_, enabled, __) {
-          final visible = _forceAlphaSort && enabled && _bookLetterOrder.length > 1 && !_loading;
+          final visible =
+              _forceAlphaSort &&
+              enabled &&
+              _bookLetterOrder.length > 1 &&
+              !_loading;
           if (!visible) return const SizedBox.shrink();
           return SizedBox(
             width: 40,
@@ -1520,7 +1646,11 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
     try {
       final repo = await _repoFut;
       final q = _query.trim();
-      await repo.ensureServerPageIntoDb(page: 1, limit: 50, query: q.isEmpty ? null : q);
+      await repo.ensureServerPageIntoDb(
+        page: 1,
+        limit: 50,
+        query: q.isEmpty ? null : q,
+      );
       _reloadBooksFromCacheIfChanged();
       _startBackgroundSync();
     } catch (_) {
@@ -1676,9 +1806,16 @@ class _BookCard extends StatelessWidget {
                     child: AspectRatio(
                       aspectRatio: 2 / 3,
                       child: ColorFiltered(
-                        colorFilter: disabled
-                            ? ColorFilter.mode(cs.surface.withOpacity(0.12), BlendMode.saturation)
-                            : const ColorFilter.mode(Colors.transparent, BlendMode.srcOver),
+                        colorFilter:
+                            disabled
+                                ? ColorFilter.mode(
+                                  cs.surface.withOpacity(0.12),
+                                  BlendMode.saturation,
+                                )
+                                : const ColorFilter.mode(
+                                  Colors.transparent,
+                                  BlendMode.srcOver,
+                                ),
                         child: Transform.scale(
                           scale: 1.024,
                           child: EnhancedCoverImage(url: book.coverUrl),
@@ -1712,11 +1849,12 @@ class _BookCard extends StatelessWidget {
               ValueListenableBuilder<bool>(
                 valueListenable: UiPrefs.hideSeriesWhenSameAsAuthor,
                 builder: (context, hideWhenSame, _) {
-                  final shouldShowSeries = book.series != null && 
-                      book.series!.isNotEmpty && 
+                  final shouldShowSeries =
+                      book.series != null &&
+                      book.series!.isNotEmpty &&
                       (!hideWhenSame || book.series != book.author);
                   if (!shouldShowSeries) return const SizedBox.shrink();
-                  
+
                   return SizedBox(
                     height: 14,
                     child: GestureDetector(
@@ -1726,9 +1864,10 @@ class _BookCard extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: disabled 
-                              ? cs.onSurfaceVariant.withOpacity(0.4)
-                              : cs.primary.withOpacity(0.8),
+                          color:
+                              disabled
+                                  ? cs.onSurfaceVariant.withOpacity(0.4)
+                                  : cs.primary.withOpacity(0.8),
                           fontWeight: FontWeight.w500,
                         ),
                       ),
@@ -1740,27 +1879,35 @@ class _BookCard extends StatelessWidget {
               // Author
               SizedBox(
                 height: 14,
-                child: (book.author != null && book.author!.isNotEmpty)
-                    ? GestureDetector(
-                        onTap: onAuthorTap,
-                        child: Text(
-                        book.author!,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: disabled 
-                                ? cs.onSurfaceVariant.withOpacity(0.4)
-                                : cs.onSurfaceVariant,
+                child:
+                    (book.author != null && book.author!.isNotEmpty)
+                        ? GestureDetector(
+                          onTap: onAuthorTap,
+                          child: Text(
+                            book.author!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(
+                              context,
+                            ).textTheme.bodySmall?.copyWith(
+                              color:
+                                  disabled
+                                      ? cs.onSurfaceVariant.withOpacity(0.4)
+                                      : cs.onSurfaceVariant,
+                            ),
                           ),
-                        ),
-                      )
-                    : const SizedBox.shrink(),
+                        )
+                        : const SizedBox.shrink(),
               ),
               if (disabled) ...[
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    Icon(Icons.block, size: 14, color: cs.onSurfaceVariant.withOpacity(0.6)),
+                    Icon(
+                      Icons.block,
+                      size: 14,
+                      color: cs.onSurfaceVariant.withOpacity(0.6),
+                    ),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
@@ -1805,15 +1952,12 @@ class _ResumeBookCardState extends State<_ResumeBookCard> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final playback = ServicesScope.of(context).services.playback;
-    
+
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(22),
-        side: BorderSide(
-          color: cs.outline.withOpacity(0.08),
-          width: 1,
-        ),
+        side: BorderSide(color: cs.outline.withOpacity(0.08), width: 1),
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -1822,184 +1966,216 @@ class _ResumeBookCardState extends State<_ResumeBookCard> {
         child: Padding(
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 14),
           child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
-            children: [
-              // Square cover on top
-              Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(18),
-                  boxShadow: [
-                    BoxShadow(
-                      color: cs.shadow.withOpacity(0.08),
-                      blurRadius: 16,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(18),
-                  child: AspectRatio(
-                    aspectRatio: 1.0,
-                    child: Stack(
-                      children: [
-                        Positioned.fill(
-                          child: Transform.scale(
-                            scale: 1.024,
-                            child: EnhancedCoverImage(url: widget.book.coverUrl),
+              children: [
+                // Square cover on top
+                Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(18),
+                    boxShadow: [
+                      BoxShadow(
+                        color: cs.shadow.withOpacity(0.08),
+                        blurRadius: 16,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(18),
+                    child: AspectRatio(
+                      aspectRatio: 1.0,
+                      child: Stack(
+                        children: [
+                          Positioned.fill(
+                            child: Transform.scale(
+                              scale: 1.024,
+                              child: EnhancedCoverImage(
+                                url: widget.book.coverUrl,
+                              ),
+                            ),
                           ),
-                        ),
-                      // Play/Pause button overlay - top left
-                      Positioned(
-                        top: 8,
-                        left: 8,
-                        child: StreamBuilder(
-                          stream: playback.nowPlayingStream,
-                          initialData: playback.nowPlaying,
-                          builder: (context, nowPlayingSnapshot) {
-                            return StreamBuilder<bool>(
-                              stream: playback.playingStream,
-                              initialData: playback.player.playing,
-                              builder: (context, playingSnapshot) {
-                                final nowPlaying = nowPlayingSnapshot.data;
-                                final isPlaying = playingSnapshot.data ?? false;
-                                final isThisBook = nowPlaying?.libraryItemId == widget.book.id;
-                                final showPause = isThisBook && isPlaying;
-                                
-                                return Material(
-                                  color: Colors.transparent,
-                                  child: InkWell(
-                                    onTap: () async {
-                                      if (showPause) {
-                                        await playback.pause();
-                                      } else {
-                                        await playback.playItem(widget.book.id, context: context);
-                                      }
-                                    },
-                                    borderRadius: BorderRadius.circular(20),
-                                    child: Container(
-                                      width: 36,
-                                      height: 36,
-                                      decoration: BoxDecoration(
-                                        color: Colors.black.withOpacity(0.34),
-                                        shape: BoxShape.circle,
-                                        border: Border.all(
-                                          color: Colors.white.withOpacity(0.14),
+                          // Play/Pause button overlay - top left
+                          Positioned(
+                            top: 8,
+                            left: 8,
+                            child: StreamBuilder(
+                              stream: playback.nowPlayingStream,
+                              initialData: playback.nowPlaying,
+                              builder: (context, nowPlayingSnapshot) {
+                                return StreamBuilder<bool>(
+                                  stream: playback.playingStream,
+                                  initialData: playback.player.playing,
+                                  builder: (context, playingSnapshot) {
+                                    final nowPlaying = nowPlayingSnapshot.data;
+                                    final isPlaying =
+                                        playingSnapshot.data ?? false;
+                                    final isThisBook =
+                                        nowPlaying?.libraryItemId ==
+                                        widget.book.id;
+                                    final showPause = isThisBook && isPlaying;
+
+                                    return Material(
+                                      color: Colors.transparent,
+                                      child: InkWell(
+                                        onTap: () async {
+                                          if (showPause) {
+                                            await playback.pause();
+                                          } else {
+                                            await playback.playItem(
+                                              widget.book.id,
+                                              context: context,
+                                            );
+                                          }
+                                        },
+                                        borderRadius: BorderRadius.circular(20),
+                                        child: Container(
+                                          width: 36,
+                                          height: 36,
+                                          decoration: BoxDecoration(
+                                            color: Colors.black.withOpacity(
+                                              0.34,
+                                            ),
+                                            shape: BoxShape.circle,
+                                            border: Border.all(
+                                              color: Colors.white.withOpacity(
+                                                0.14,
+                                              ),
+                                            ),
+                                          ),
+                                          child: Icon(
+                                            showPause
+                                                ? Icons.pause_rounded
+                                                : Icons.play_arrow_rounded,
+                                            color: Colors.white,
+                                            size: 20,
+                                          ),
                                         ),
                                       ),
-                                      child: Icon(
-                                        showPause ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                                        color: Colors.white,
-                                        size: 20,
+                                    );
+                                  },
+                                );
+                              },
+                            ),
+                          ),
+                          // Material 3 progress indicator overlay
+                          Positioned(
+                            left: 8,
+                            right: 8,
+                            bottom: 8,
+                            child: FutureBuilder<Map<String, dynamic>>(
+                              future: _getBookProgress(context, widget.book.id),
+                              builder: (context, snapshot) {
+                                if (!snapshot.hasData)
+                                  return const SizedBox.shrink();
+                                final progressInfo = snapshot.data!;
+                                final raw = progressInfo['progress'] as double?;
+                                final isCompleted =
+                                    progressInfo['isCompleted'] as bool? ??
+                                    false;
+
+                                // Don't show progress for completed books
+                                if (isCompleted) return const SizedBox.shrink();
+
+                                if (raw == null || raw <= 0)
+                                  return const SizedBox.shrink();
+                                final progress = raw.clamp(0.0, 0.99);
+
+                                return Container(
+                                  height: 5,
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withOpacity(0.18),
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                  child: FractionallySizedBox(
+                                    alignment: Alignment.centerLeft,
+                                    widthFactor: progress,
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        color:
+                                            Theme.of(
+                                              context,
+                                            ).colorScheme.primary,
+                                        borderRadius: BorderRadius.circular(
+                                          999,
+                                        ),
                                       ),
                                     ),
                                   ),
                                 );
                               },
-                            );
-                          },
-                        ),
+                            ),
+                          ),
+                        ],
                       ),
-                      // Material 3 progress indicator overlay
-                      Positioned(
-                        left: 8,
-                        right: 8,
-                        bottom: 8,
-                        child: FutureBuilder<Map<String, dynamic>>(
-                          future: _getBookProgress(context, widget.book.id),
-                          builder: (context, snapshot) {
-                            if (!snapshot.hasData) return const SizedBox.shrink();
-                            final progressInfo = snapshot.data!;
-                            final raw = progressInfo['progress'] as double?;
-                            final isCompleted = progressInfo['isCompleted'] as bool? ?? false;
-                            
-                            // Don't show progress for completed books
-                            if (isCompleted) return const SizedBox.shrink();
-                            
-                            if (raw == null || raw <= 0) return const SizedBox.shrink();
-                            final progress = raw.clamp(0.0, 0.99);
-                            
-                            return Container(
-                              height: 5,
-                              decoration: BoxDecoration(
-                                color: Colors.black.withOpacity(0.18),
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                              child: FractionallySizedBox(
-                                alignment: Alignment.centerLeft,
-                                widthFactor: progress,
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: Theme.of(context).colorScheme.primary,
-                                    borderRadius: BorderRadius.circular(999),
-                                  ),
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                      ],
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 14),
-              // Title and author below the cover
-              Text(
-                widget.book.title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  height: 1.2,
+                const SizedBox(height: 14),
+                // Title and author below the cover
+                Text(
+                  widget.book.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    height: 1.2,
+                  ),
                 ),
-              ),
-              // Series (if available) - between title and author
-              // Hide series if it's the same as author name (when preference is enabled)
-              ValueListenableBuilder<bool>(
-                valueListenable: UiPrefs.hideSeriesWhenSameAsAuthor,
-                builder: (context, hideWhenSame, _) {
-                  final shouldShowSeries = widget.book.series != null && 
-                      widget.book.series!.isNotEmpty && 
-                      (!hideWhenSame || widget.book.series != widget.book.author);
-                  if (!shouldShowSeries) return const SizedBox.shrink();
-                  
-                  return Column(
-                    children: [
-                      const SizedBox(height: 4),
-                      GestureDetector(
-                        onTap: widget.onSeriesTap,
-                        child: Text(
-                          widget.book.series!,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context).colorScheme.primary.withOpacity(0.8),
-                            fontWeight: FontWeight.w500,
+                // Series (if available) - between title and author
+                // Hide series if it's the same as author name (when preference is enabled)
+                ValueListenableBuilder<bool>(
+                  valueListenable: UiPrefs.hideSeriesWhenSameAsAuthor,
+                  builder: (context, hideWhenSame, _) {
+                    final shouldShowSeries =
+                        widget.book.series != null &&
+                        widget.book.series!.isNotEmpty &&
+                        (!hideWhenSame ||
+                            widget.book.series != widget.book.author);
+                    if (!shouldShowSeries) return const SizedBox.shrink();
+
+                    return Column(
+                      children: [
+                        const SizedBox(height: 4),
+                        GestureDetector(
+                          onTap: widget.onSeriesTap,
+                          child: Text(
+                            widget.book.series!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(
+                              context,
+                            ).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.primary.withOpacity(0.8),
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
                         ),
+                      ],
+                    );
+                  },
+                ),
+                if (widget.book.author != null &&
+                    widget.book.author!.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  GestureDetector(
+                    onTap: widget.onAuthorTap,
+                    child: Text(
+                      widget.book.author!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.onSurfaceVariant.withOpacity(0.88),
                       ),
-                    ],
-                  );
-                },
-              ),
-              if (widget.book.author != null && widget.book.author!.isNotEmpty) ...[
-                const SizedBox(height: 6),
-                GestureDetector(
-                  onTap: widget.onAuthorTap,
-                  child: Text(
-                  widget.book.author!,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.88),
                     ),
                   ),
-                ),
+                ],
               ],
-            ],
             ),
           ),
         ),
@@ -2008,11 +2184,16 @@ class _ResumeBookCardState extends State<_ResumeBookCard> {
   }
 
   /// Get book progress using the same logic as book details (PlaybackRepository)
-  Future<Map<String, dynamic>> _getBookProgress(BuildContext context, String bookId) async {
+  Future<Map<String, dynamic>> _getBookProgress(
+    BuildContext context,
+    String bookId,
+  ) async {
     try {
       final playback = ServicesScope.of(context).services.playback;
-      final seconds = await playback.fetchServerProgress(bookId); // nullable seconds
-      
+      final seconds = await playback.fetchServerProgress(
+        bookId,
+      ); // nullable seconds
+
       // Use cached completion status first, fallback to server if not cached
       bool isCompleted = playback.completionCache[bookId] ?? false;
       if (!playback.completionCache.containsKey(bookId)) {
@@ -2041,7 +2222,8 @@ class _ResumeBookCardState extends State<_ResumeBookCard> {
             if (data is Map<String, dynamic>) {
               if (data['progress'] is num) {
                 progress = (data['progress'] as num).toDouble();
-              } else if (data['currentTime'] is num && data['duration'] is num) {
+              } else if (data['currentTime'] is num &&
+                  data['duration'] is num) {
                 final currentTime = (data['currentTime'] as num).toDouble();
                 final duration = (data['duration'] as num).toDouble();
                 if (duration > 0) progress = currentTime / duration;
@@ -2081,14 +2263,14 @@ class _BookListTile extends StatefulWidget {
 
 class _BookListTileState extends State<_BookListTile> {
   Future<double>? _progressFuture;
-  
+
   @override
   void initState() {
     super.initState();
     // Fetch progress once when tile is created
     _progressFuture = _fetchProgress();
   }
-  
+
   Future<double> _fetchProgress() async {
     try {
       final services = ServicesScope.of(context).services;
@@ -2148,10 +2330,14 @@ class _BookListTileState extends State<_BookListTile> {
                       tag: 'home-cover-${widget.book.id}',
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(14),
-                      child: Transform.scale(
-                        scale: 1.024,
-                        child: EnhancedCoverImage(url: widget.book.coverUrl, width: 76, height: 76),
-                      ),
+                        child: Transform.scale(
+                          scale: 1.024,
+                          child: EnhancedCoverImage(
+                            url: widget.book.coverUrl,
+                            width: 76,
+                            height: 76,
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -2168,7 +2354,7 @@ class _BookListTileState extends State<_BookListTile> {
                           if (completionSnapshot.data == true) {
                             return const SizedBox.shrink();
                           }
-                          
+
                           return FutureBuilder<double>(
                             future: _progressFuture,
                             builder: (context, progressSnapshot) {
@@ -2186,7 +2372,9 @@ class _BookListTileState extends State<_BookListTile> {
                                     child: Container(
                                       decoration: BoxDecoration(
                                         color: cs.primary,
-                                        borderRadius: BorderRadius.circular(999),
+                                        borderRadius: BorderRadius.circular(
+                                          999,
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -2201,7 +2389,7 @@ class _BookListTileState extends State<_BookListTile> {
                 ],
               ),
               const SizedBox(width: 12),
-              
+
               // Title, author, and narrator
               Expanded(
                 child: Column(
@@ -2222,11 +2410,13 @@ class _BookListTileState extends State<_BookListTile> {
                     ValueListenableBuilder<bool>(
                       valueListenable: UiPrefs.hideSeriesWhenSameAsAuthor,
                       builder: (context, hideWhenSame, _) {
-                        final shouldShowSeries = widget.book.series != null && 
-                            widget.book.series!.isNotEmpty && 
-                            (!hideWhenSame || widget.book.series != widget.book.author);
+                        final shouldShowSeries =
+                            widget.book.series != null &&
+                            widget.book.series!.isNotEmpty &&
+                            (!hideWhenSame ||
+                                widget.book.series != widget.book.author);
                         if (!shouldShowSeries) return const SizedBox.shrink();
-                        
+
                         return Padding(
                           padding: const EdgeInsets.only(top: 6),
                           child: GestureDetector(
@@ -2235,10 +2425,13 @@ class _BookListTileState extends State<_BookListTile> {
                               widget.book.series!,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: disabled 
-                                    ? cs.onSurfaceVariant.withOpacity(0.4)
-                                    : cs.primary.withOpacity(0.8),
+                              style: Theme.of(
+                                context,
+                              ).textTheme.bodyMedium?.copyWith(
+                                color:
+                                    disabled
+                                        ? cs.onSurfaceVariant.withOpacity(0.4)
+                                        : cs.primary.withOpacity(0.8),
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
@@ -2246,42 +2439,62 @@ class _BookListTileState extends State<_BookListTile> {
                         );
                       },
                     ),
-                    if (widget.book.author != null && widget.book.author!.isNotEmpty) ...[
+                    if (widget.book.author != null &&
+                        widget.book.author!.isNotEmpty) ...[
                       const SizedBox(height: 6),
                       GestureDetector(
                         onTap: widget.onAuthorTap,
                         child: Text(
-                        widget.book.author!,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: disabled ? cs.onSurfaceVariant.withOpacity(0.4) : cs.onSurfaceVariant.withOpacity(0.9),
+                          widget.book.author!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(
+                            context,
+                          ).textTheme.bodyMedium?.copyWith(
+                            color:
+                                disabled
+                                    ? cs.onSurfaceVariant.withOpacity(0.4)
+                                    : cs.onSurfaceVariant.withOpacity(0.9),
                           ),
                         ),
                       ),
                     ],
-                    if (widget.book.narrators != null && widget.book.narrators!.isNotEmpty) ...[
+                    if (widget.book.narrators != null &&
+                        widget.book.narrators!.isNotEmpty) ...[
                       const SizedBox(height: 4),
                       Text(
                         'Narrated by ${widget.book.narrators!.join(', ')}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: disabled ? cs.onSurfaceVariant.withOpacity(0.3) : cs.onSurfaceVariant.withOpacity(0.8),
+                          color:
+                              disabled
+                                  ? cs.onSurfaceVariant.withOpacity(0.3)
+                                  : cs.onSurfaceVariant.withOpacity(0.8),
                         ),
                       ),
                     ],
                     // Duration
-                    if (widget.book.durationMs != null && widget.book.durationMs! > 0) ...[
+                    if (widget.book.durationMs != null &&
+                        widget.book.durationMs! > 0) ...[
                       const SizedBox(height: 8),
                       Row(
                         children: [
-                          Icon(Icons.schedule_rounded, size: 14, color: cs.onSurfaceVariant.withOpacity(0.7)),
+                          Icon(
+                            Icons.schedule_rounded,
+                            size: 14,
+                            color: cs.onSurfaceVariant.withOpacity(0.7),
+                          ),
                           const SizedBox(width: 4),
                           Text(
                             _formatDuration(widget.book.durationMs!),
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: disabled ? cs.onSurfaceVariant.withOpacity(0.3) : cs.onSurfaceVariant.withOpacity(0.7),
+                            style: Theme.of(
+                              context,
+                            ).textTheme.bodySmall?.copyWith(
+                              color:
+                                  disabled
+                                      ? cs.onSurfaceVariant.withOpacity(0.3)
+                                      : cs.onSurfaceVariant.withOpacity(0.7),
                             ),
                           ),
                         ],
@@ -2291,14 +2504,20 @@ class _BookListTileState extends State<_BookListTile> {
                       const SizedBox(height: 6),
                       Row(
                         children: [
-                          Icon(Icons.block, size: 16, color: cs.onSurfaceVariant.withOpacity(0.6)),
+                          Icon(
+                            Icons.block,
+                            size: 16,
+                            color: cs.onSurfaceVariant.withOpacity(0.6),
+                          ),
                           const SizedBox(width: 6),
                           Expanded(
                             child: Text(
                               'Not an audiobook (e.g., ebook/podcast)',
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              style: Theme.of(
+                                context,
+                              ).textTheme.bodySmall?.copyWith(
                                 color: cs.onSurfaceVariant.withOpacity(0.7),
                               ),
                             ),
@@ -2309,7 +2528,7 @@ class _BookListTileState extends State<_BookListTile> {
                   ],
                 ),
               ),
-              
+
               // Status indicators and arrow
               Row(
                 mainAxisSize: MainAxisSize.min,
@@ -2318,7 +2537,9 @@ class _BookListTileState extends State<_BookListTile> {
                   // Download badge
                   if (widget.book.isAudioBook)
                     StreamBuilder<bool>(
-                      stream: services.downloads.watchItemProgress(widget.book.id).map((p) => p.status == 'complete'),
+                      stream: services.downloads
+                          .watchItemProgress(widget.book.id)
+                          .map((p) => p.status == 'complete'),
                       initialData: false,
                       builder: (context, snapshot) {
                         if (snapshot.data == true) {
@@ -2355,7 +2576,10 @@ class _BookListTileState extends State<_BookListTile> {
                   // Arrow indicator
                   Icon(
                     Icons.chevron_right_rounded,
-                    color: disabled ? cs.onSurfaceVariant.withOpacity(0.3) : cs.onSurfaceVariant.withOpacity(0.9),
+                    color:
+                        disabled
+                            ? cs.onSurfaceVariant.withOpacity(0.3)
+                            : cs.onSurfaceVariant.withOpacity(0.9),
                   ),
                 ],
               ),
@@ -2365,20 +2589,16 @@ class _BookListTileState extends State<_BookListTile> {
       ),
     );
   }
-  
+
   String _formatDuration(int durationMs) {
     final duration = Duration(milliseconds: durationMs);
     final hours = duration.inHours;
     final minutes = duration.inMinutes.remainder(60);
-    
+
     if (hours > 0) {
       return '${hours}h ${minutes}m';
     } else {
       return '${minutes}m';
     }
   }
-
 }
-
- 
-

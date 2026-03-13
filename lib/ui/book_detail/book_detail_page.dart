@@ -41,10 +41,13 @@ class _BookDetailPageState extends State<BookDetailPage> {
   bool _isResolvingSize = false; // Prevent concurrent size resolution
   bool _backgroundUpdateInProgress = false;
 
-  Future<void> _resolveDurationIfNeeded(Book b, PlaybackRepository playbackRepo) async {
+  Future<void> _resolveDurationIfNeeded(
+    Book b,
+    PlaybackRepository playbackRepo,
+  ) async {
     final current = _resolvedDurationMs ?? b.durationMs ?? 0;
     if (current > 0) return;
-    
+
     // Don't automatically resolve duration on page load to prevent unnecessary transcoding sessions
     // Duration will be resolved when user explicitly requests it (e.g., taps duration chip)
     // or when they actually start playing the book
@@ -54,7 +57,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
   Future<void> _resolveSizeIfNeeded(BuildContext context, Book b) async {
     final current = _resolvedSizeBytes ?? b.sizeBytes ?? 0;
     if (current > 0) return;
-    
+
     // Don't automatically resolve size on page load to prevent unnecessary API calls
     // Size will be resolved when user explicitly requests it (e.g., taps size chip)
     return;
@@ -88,12 +91,12 @@ class _BookDetailPageState extends State<BookDetailPage> {
   Future<void> _startBackgroundUpdate() async {
     if (_backgroundUpdateInProgress) return;
     _backgroundUpdateInProgress = true;
-    
+
     try {
       final repo = await _repoFut;
       // Fetch from server in background - this will update the DB
       await repo.getBook(widget.bookId);
-      
+
       // Reload from DB after update
       final updated = await repo.getBookFromDb(widget.bookId);
       if (updated != null && mounted) {
@@ -129,9 +132,9 @@ class _BookDetailPageState extends State<BookDetailPage> {
     // This method is kept for compatibility but should not be used
     // Use _cachedBook instead
     final repo = await _repoFut;
-      final cached = await repo.getBookFromDb(widget.bookId);
-      if (cached != null) return cached;
-      throw Exception('offline_not_cached');
+    final cached = await repo.getBookFromDb(widget.bookId);
+    if (cached != null) return cached;
+    throw Exception('offline_not_cached');
   }
 
   @override
@@ -146,28 +149,37 @@ class _BookDetailPageState extends State<BookDetailPage> {
     _dbChangeSub?.cancel();
     final downloads = _services?.downloads;
     if (downloads != null) {
-      unawaited(downloads.hasActiveOrQueued().then((hasActive) async {
-        if (hasActive) {
-          await downloads.resumeAll();
-        }
-      }));
+      unawaited(
+        downloads.hasActiveOrQueued().then((hasActive) async {
+          if (hasActive) {
+            await downloads.resumeAll();
+          }
+        }),
+      );
     }
     super.dispose();
   }
 
-  Stream<bool> _getBookCompletionStream(PlaybackRepository playback, String bookId) {
+  Stream<bool> _getBookCompletionStream(
+    PlaybackRepository playback,
+    String bookId,
+  ) {
     // Start with the current cache value to avoid race conditions
     final currentValue = playback.completionCache[bookId] ?? false;
     return playback.getBookCompletionStream(bookId).startWith(currentValue);
   }
 
-  Future<void> _toggleBookCompletion(BuildContext context, Book book, bool isCurrentlyCompleted) async {
+  Future<void> _toggleBookCompletion(
+    BuildContext context,
+    Book book,
+    bool isCurrentlyCompleted,
+  ) async {
     final playback = ServicesScope.of(context).services.playback;
     final newCompletionStatus = !isCurrentlyCompleted;
-    
-    
+
     // Show confirmation dialog(s)
-    Duration? unfinishChoice; // null => cancel, 0 => restart, >0 => resume to that
+    Duration?
+    unfinishChoice; // null => cancel, 0 => restart, >0 => resume to that
     if (newCompletionStatus) {
       final confirmed = await _showMarkAsFinishedDialog(context);
       if (!confirmed) return;
@@ -175,7 +187,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
       unfinishChoice = await _showMarkAsUnfinishedDialog(context, book);
       if (unfinishChoice == null) return; // cancelled
     }
-    
+
     // Save current position and playback state if we're unfinishing
     Duration? savedPosition;
     bool wasPlaying = false;
@@ -183,7 +195,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
       savedPosition = playback.player.position;
       wasPlaying = playback.player.playing;
     }
-    
+
     // Stop any ongoing playback immediately when marking as finished
     if (newCompletionStatus) {
       try {
@@ -192,18 +204,24 @@ class _BookDetailPageState extends State<BookDetailPage> {
         // Error stopping playback
       }
     }
-  
+
     try {
       // Send the request to server (this will also update the cache)
       double? overrideSeconds;
       if (!newCompletionStatus && unfinishChoice != null) {
         overrideSeconds = unfinishChoice.inSeconds.toDouble();
       }
-      await _markBookAsFinished(context, book.id, newCompletionStatus, overrideCurrentTimeSeconds: overrideSeconds);
-      
-      
+      await _markBookAsFinished(
+        context,
+        book.id,
+        newCompletionStatus,
+        overrideCurrentTimeSeconds: overrideSeconds,
+      );
+
       // If unfinishing, apply the user's choice locally if this book is active
-      if (!newCompletionStatus && playback.nowPlaying?.libraryItemId == book.id && unfinishChoice != null) {
+      if (!newCompletionStatus &&
+          playback.nowPlaying?.libraryItemId == book.id &&
+          unfinishChoice != null) {
         final chosen = unfinishChoice;
         try {
           // Wait a bit for the API call to complete
@@ -231,25 +249,28 @@ class _BookDetailPageState extends State<BookDetailPage> {
           // Error seeking to saved position
         }
       }
-      
+
       // Show feedback to user
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(newCompletionStatus ? 'Book marked as finished' : 'Book marked as unread'),
+            content: Text(
+              newCompletionStatus
+                  ? 'Book marked as finished'
+                  : 'Book marked as unread',
+            ),
             duration: const Duration(seconds: 2),
           ),
         );
-        
+
         // Refresh the page to ensure UI is completely up-to-date
         setState(() {
           // This will trigger a rebuild of the entire page
         });
       }
-      
     } catch (e) {
       // Error toggling completion
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -264,34 +285,35 @@ class _BookDetailPageState extends State<BookDetailPage> {
   Future<bool> _showMarkAsFinishedDialog(BuildContext context) async {
     final cs = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
-    
+
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(
-          'Mark as Finished',
-          style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600),
-        ),
-        content: Text(
-          'Are you sure you want to mark this book as finished?',
-          style: text.bodyMedium,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text(
-              'Cancel',
-              style: TextStyle(color: cs.onSurfaceVariant),
+      builder:
+          (context) => AlertDialog(
+            title: Text(
+              'Mark as Finished',
+              style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600),
             ),
+            content: Text(
+              'Are you sure you want to mark this book as finished?',
+              style: text.bodyMedium,
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: Text(
+                  'Cancel',
+                  style: TextStyle(color: cs.onSurfaceVariant),
+                ),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Mark as Finished'),
+              ),
+            ],
           ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Mark as Finished'),
-          ),
-        ],
-      ),
     );
-    
+
     return confirmed ?? false;
   }
 
@@ -314,10 +336,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
           return;
         }
       } else {
-        AuthorCard.show(
-          context: context,
-          author: authorInfo,
-        );
+        AuthorCard.show(context: context, author: authorInfo);
         return;
       }
     } catch (e) {
@@ -343,7 +362,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
       );
       final books = await repo.getBooksForSeries(series);
       if (books.isEmpty) return;
-      
+
       // Create a proper Series object with the loaded books
       final seriesWithBooks = Series(
         id: seriesName,
@@ -351,139 +370,146 @@ class _BookDetailPageState extends State<BookDetailPage> {
         numBooks: books.length,
         bookIds: books.map((b) => b.id).toList(),
       );
-      
+
       showModalBottomSheet(
         context: context,
         isScrollControlled: true,
         useSafeArea: true,
         backgroundColor: Colors.transparent,
-        builder: (context) => Container(
-          height: MediaQuery.of(context).size.height * 0.95,
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: SeriesBooksPage(
-            series: seriesWithBooks,
-            getBooksForSeries: (s) => repo.getBooksForSeries(s),
-          ),
-        ),
+        builder:
+            (context) => Container(
+              height: MediaQuery.of(context).size.height * 0.95,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(24),
+                ),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: SeriesBooksPage(
+                series: seriesWithBooks,
+                getBooksForSeries: (s) => repo.getBooksForSeries(s),
+              ),
+            ),
       );
     } catch (e) {
       // Silently fail if series can't be loaded
     }
   }
 
-  Future<Duration?> _showMarkAsUnfinishedDialog(BuildContext context, Book book) async {
+  Future<Duration?> _showMarkAsUnfinishedDialog(
+    BuildContext context,
+    Book book,
+  ) async {
     final cs = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
     final playback = ServicesScope.of(context).services.playback;
-    
+
     // Get current position from server (more reliable than local player position)
     final currentPositionSeconds = await playback.fetchServerProgress(book.id);
-    final currentPosition = currentPositionSeconds != null 
-        ? Duration(seconds: currentPositionSeconds.round())
-        : playback.player.position;
+    final currentPosition =
+        currentPositionSeconds != null
+            ? Duration(seconds: currentPositionSeconds.round())
+            : playback.player.position;
     final positionText = _formatDuration(currentPosition);
-    
+
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(
-          'Mark as Unfinished',
-          style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Are you sure you want to mark this book as unfinished?',
-              style: text.bodyMedium,
+      builder:
+          (context) => AlertDialog(
+            title: Text(
+              'Mark as Unfinished',
+              style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600),
             ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: cs.primaryContainer,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: cs.primary.withOpacity(0.3),
-                  width: 1,
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Are you sure you want to mark this book as unfinished?',
+                  style: text.bodyMedium,
                 ),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.access_time_rounded,
-                    size: 16,
-                    color: cs.onPrimaryContainer,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Current position: $positionText',
-                    style: text.bodyMedium?.copyWith(
-                      color: cs.onPrimaryContainer,
-                      fontWeight: FontWeight.w600,
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: cs.primaryContainer,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: cs.primary.withOpacity(0.3),
+                      width: 1,
                     ),
                   ),
-                ],
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.access_time_rounded,
+                        size: 16,
+                        color: cs.onPrimaryContainer,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Current position: $positionText',
+                        style: text.bodyMedium?.copyWith(
+                          color: cs.onPrimaryContainer,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'This position will be preserved.',
+                  style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: Text(
+                  'Cancel',
+                  style: TextStyle(color: cs.onSurfaceVariant),
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'This position will be preserved.',
-              style: text.bodySmall?.copyWith(
-                color: cs.onSurfaceVariant,
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Mark as Unfinished'),
               ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text(
-              'Cancel',
-              style: TextStyle(color: cs.onSurfaceVariant),
-            ),
+            ],
           ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Mark as Unfinished'),
-          ),
-        ],
-      ),
     );
     if (confirmed != true) return null;
 
     // Second step: choose where to resume
     final choice = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(
-          'Choose where to resume',
-          style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600),
-        ),
-        content: Text(
-          'Resume from the preserved position or start from the beginning.',
-          style: text.bodyMedium,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop('cancel'),
-            child: const Text('Cancel'),
+      builder:
+          (context) => AlertDialog(
+            title: Text(
+              'Choose where to resume',
+              style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+            ),
+            content: Text(
+              'Resume from the preserved position or start from the beginning.',
+              style: text.bodyMedium,
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop('cancel'),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop('restart'),
+                child: const Text('Start from beginning'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop('resume'),
+                child: Text('Return to $positionText'),
+              ),
+            ],
           ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop('restart'),
-            child: const Text('Start from beginning'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop('resume'),
-            child: Text('Return to $positionText'),
-          ),
-        ],
-      ),
     );
 
     if (choice == 'restart') return Duration.zero;
@@ -495,7 +521,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
     final hours = duration.inHours;
     final minutes = duration.inMinutes.remainder(60);
     final seconds = duration.inSeconds.remainder(60);
-    
+
     if (hours > 0) {
       return '${hours}h ${minutes}m ${seconds}s';
     } else if (minutes > 0) {
@@ -505,10 +531,15 @@ class _BookDetailPageState extends State<BookDetailPage> {
     }
   }
 
-  Future<void> _markBookAsFinished(BuildContext context, String libraryItemId, bool finished, {double? overrideCurrentTimeSeconds}) async {
+  Future<void> _markBookAsFinished(
+    BuildContext context,
+    String libraryItemId,
+    bool finished, {
+    double? overrideCurrentTimeSeconds,
+  }) async {
     final playback = ServicesScope.of(context).services.playback;
     final api = ServicesScope.of(context).services.auth.api;
-    
+
     // Prepare the request body
     Map<String, dynamic> requestBody = {'isFinished': finished};
 
@@ -516,15 +547,23 @@ class _BookDetailPageState extends State<BookDetailPage> {
     // Always do this using server progress when available (even if this book isn't currently playing)
     if (!finished) {
       // Get position from server (more reliable than local player position)
-      double? currentPositionSeconds = await playback.fetchServerProgress(libraryItemId);
+      double? currentPositionSeconds = await playback.fetchServerProgress(
+        libraryItemId,
+      );
       if (overrideCurrentTimeSeconds != null) {
         currentPositionSeconds = overrideCurrentTimeSeconds;
       }
-      final bool isActiveOnPlayer = playback.nowPlaying?.libraryItemId == libraryItemId;
-      final currentTimeSeconds = currentPositionSeconds ?? (isActiveOnPlayer ? playback.player.position.inSeconds.toDouble() : 0.0);
+      final bool isActiveOnPlayer =
+          playback.nowPlaying?.libraryItemId == libraryItemId;
+      final currentTimeSeconds =
+          currentPositionSeconds ??
+          (isActiveOnPlayer
+              ? playback.player.position.inSeconds.toDouble()
+              : 0.0);
 
       // Always include currentTime when override was provided, even if 0; otherwise include only when > 0
-      final shouldInclude = overrideCurrentTimeSeconds != null || currentTimeSeconds > 0;
+      final shouldInclude =
+          overrideCurrentTimeSeconds != null || currentTimeSeconds > 0;
       if (shouldInclude) {
         requestBody['currentTime'] = currentTimeSeconds;
 
@@ -533,12 +572,14 @@ class _BookDetailPageState extends State<BookDetailPage> {
         if (totalDuration != null && totalDuration.inSeconds > 0) {
           final totalSeconds = totalDuration.inSeconds.toDouble();
           requestBody['duration'] = totalSeconds;
-          requestBody['progress'] = (currentTimeSeconds / totalSeconds).clamp(0.0, 1.0);
+          requestBody['progress'] = (currentTimeSeconds / totalSeconds).clamp(
+            0.0,
+            1.0,
+          );
         }
       }
     }
-    
-    
+
     try {
       final response = await api.request(
         'PATCH',
@@ -546,8 +587,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(requestBody),
       );
-      
-      
+
       if (response.statusCode == 200 || response.statusCode == 204) {
         // Update the global completion status cache and notify all listeners
         await playback.updateBookCompletionStatus(libraryItemId, finished);
@@ -556,11 +596,16 @@ class _BookDetailPageState extends State<BookDetailPage> {
         if (!finished && overrideCurrentTimeSeconds != null) {
           try {
             final prefs = await SharedPreferences.getInstance();
-            await prefs.setDouble('abs_progress:$libraryItemId', overrideCurrentTimeSeconds);
+            await prefs.setDouble(
+              'abs_progress:$libraryItemId',
+              overrideCurrentTimeSeconds,
+            );
           } catch (_) {}
         }
       } else {
-        throw Exception('Server returned ${response.statusCode}: ${response.body}');
+        throw Exception(
+          'Server returned ${response.statusCode}: ${response.body}',
+        );
       }
     } catch (e) {
       // API Error
@@ -584,531 +629,785 @@ class _BookDetailPageState extends State<BookDetailPage> {
           // Material Design drag handle (centered, subtle)
           Center(
             child: Container(
-              width: 32,
+              width: 36,
               height: 4,
-              margin: const EdgeInsets.symmetric(vertical: 12),
+              margin: const EdgeInsets.only(top: 10, bottom: 12),
               decoration: BoxDecoration(
-                color: cs.onSurfaceVariant.withOpacity(0.4),
+                color: cs.onSurfaceVariant.withOpacity(0.28),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
           ),
           // Header with title and mark as finished button
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Expanded(
                   child: Text(
                     'Book Details',
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w600),
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.2,
+                    ),
                   ),
                 ),
                 // Mark as finished button - only show for audio books
                 if (_cachedBook != null && _cachedBook!.isAudioBook)
                   StreamBuilder<bool>(
-                    stream: _getBookCompletionStream(playbackRepo, _cachedBook!.id),
-                      initialData: false,
-                      builder: (_, completionSnap) {
-                        final isCompleted = completionSnap.data ?? false;
-                        final label = isCompleted ? 'Mark as Unfinished' : 'Mark as Finished';
-                        return FilledButton.tonal(
-                        onPressed: () => _toggleBookCompletion(context, _cachedBook!, isCompleted),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: isCompleted 
-                                ? cs.errorContainer 
-                                : cs.surfaceContainerHighest,
-                            foregroundColor: isCompleted 
-                                ? cs.onErrorContainer 
-                                : cs.onSurface,
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    stream: _getBookCompletionStream(
+                      playbackRepo,
+                      _cachedBook!.id,
+                    ),
+                    initialData: false,
+                    builder: (_, completionSnap) {
+                      final isCompleted = completionSnap.data ?? false;
+                      final label =
+                          isCompleted
+                              ? 'Mark as Unfinished'
+                              : 'Mark as Finished';
+                      return FilledButton.tonal(
+                        onPressed:
+                            () => _toggleBookCompletion(
+                              context,
+                              _cachedBook!,
+                              isCompleted,
+                            ),
+                        style: FilledButton.styleFrom(
+                          backgroundColor:
+                              isCompleted
+                                  ? cs.errorContainer
+                                  : cs.surfaceContainerHigh,
+                          foregroundColor:
+                              isCompleted ? cs.onErrorContainer : cs.onSurface,
+                          minimumSize: const Size(0, 40),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 10,
                           ),
-                          child: Text(label),
-                    );
-                  },
-                ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          textStyle: text.labelLarge?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        child: Text(label),
+                      );
+                    },
+                  ),
               ],
             ),
           ),
           // Content
           Expanded(
-            child: _cachedBook == null
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const CircularProgressIndicator(),
-                          const SizedBox(height: 16),
-                          Text(
-                            'Loading book details...',
-                            style: TextStyle(color: cs.onSurfaceVariant),
+            child:
+                _cachedBook == null
+                    ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const CircularProgressIndicator(),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Loading book details...',
+                              style: TextStyle(color: cs.onSurfaceVariant),
+                            ),
+                          ],
+                        ),
                       ),
-                        ],
-                    ),
-                    ),
-                  )
-                : Builder(
-                    builder: (context) {
-                      final b = _cachedBook!;
-              // No verbose logging in production
+                    )
+                    : Builder(
+                      builder: (context) {
+                        final b = _cachedBook!;
+                        // No verbose logging in production
 
-                String fmtDuration() {
-                  final ms = _resolvedDurationMs ?? b.durationMs;
-                  if (ms == null || ms == 0) return 'Unknown';
-                  final d = Duration(milliseconds: ms);
-                  final h = d.inHours;
-                  final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
-                  return h > 0 ? '$h h $m m' : '$m m';
-                }
+                        String fmtDuration() {
+                          final ms = _resolvedDurationMs ?? b.durationMs;
+                          if (ms == null || ms == 0) return 'Unknown';
+                          final d = Duration(milliseconds: ms);
+                          final h = d.inHours;
+                          final m = d.inMinutes
+                              .remainder(60)
+                              .toString()
+                              .padLeft(2, '0');
+                          return h > 0 ? '$h h $m m' : '$m m';
+                        }
 
-                String fmtSize() {
-                  final sz = _resolvedSizeBytes ?? b.sizeBytes;
-                  if (sz == null || sz == 0) return '—';
-                  final mb = (sz / (1024 * 1024));
-                  return '${mb.toStringAsFixed(1)} MB';
-                }
+                        String fmtSize() {
+                          final sz = _resolvedSizeBytes ?? b.sizeBytes;
+                          if (sz == null || sz == 0) return '—';
+                          final mb = (sz / (1024 * 1024));
+                          return '${mb.toStringAsFixed(1)} MB';
+                        }
 
-                // Layout: header and actions stay static; description area scrolls independently.
-                return Column(
-                  children: [
-                    // Removed automatic duration/size resolution to prevent unnecessary session opening
-                    // Duration and size will be resolved only when user explicitly requests it
-                    // Cover, title, and author/narrator in one row
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          Builder(
-                            builder: (_) {
-                              final uri = Uri.tryParse(b.coverUrl);
-                              final radius = BorderRadius.circular(12);
-                              final coverHeight = b.isAudioBook ? 160.0 : 240.0;
-                              
-                              Widget coverImage;
-                              if (uri != null && uri.scheme == 'file') {
-                                coverImage = ClipRRect(
-                                  borderRadius: radius,
-                                  child: Transform.scale(
-                                    scale: 1.024,
-                                    child: Image.file(
-                                      File(uri.toFilePath()),
-                                      width: 160,
-                                      height: coverHeight,
-                                      fit: BoxFit.cover,
+                        return SingleChildScrollView(
+                          padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _DetailSurface(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  16,
+                                  16,
+                                  18,
+                                ),
+                                child: Column(
+                                  children: [
+                                    Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Builder(
+                                          builder: (_) {
+                                            final uri = Uri.tryParse(
+                                              b.coverUrl,
+                                            );
+                                            final radius =
+                                                BorderRadius.circular(18);
+                                            final coverWidth =
+                                                b.isAudioBook ? 136.0 : 148.0;
+                                            final coverHeight =
+                                                b.isAudioBook ? 136.0 : 204.0;
+
+                                            Widget coverImage;
+                                            if (uri != null &&
+                                                uri.scheme == 'file') {
+                                              coverImage = ClipRRect(
+                                                borderRadius: radius,
+                                                child: Transform.scale(
+                                                  scale: 1.024,
+                                                  child: Image.file(
+                                                    File(uri.toFilePath()),
+                                                    width: coverWidth,
+                                                    height: coverHeight,
+                                                    fit: BoxFit.cover,
+                                                  ),
+                                                ),
+                                              );
+                                            } else {
+                                              coverImage = ClipRRect(
+                                                borderRadius: radius,
+                                                child: Transform.scale(
+                                                  scale: 1.024,
+                                                  child: CachedNetworkImage(
+                                                    imageUrl: b.coverUrl,
+                                                    width: coverWidth,
+                                                    height: coverHeight,
+                                                    fit: BoxFit.cover,
+                                                    errorWidget:
+                                                        (
+                                                          _,
+                                                          __,
+                                                          ___,
+                                                        ) => Container(
+                                                          width: coverWidth,
+                                                          height: coverHeight,
+                                                          alignment:
+                                                              Alignment.center,
+                                                          color:
+                                                              cs.surfaceContainerHighest,
+                                                          child: const Icon(
+                                                            Icons
+                                                                .menu_book_outlined,
+                                                            size: 44,
+                                                          ),
+                                                        ),
+                                                  ),
+                                                ),
+                                              );
+                                            }
+
+                                            return Container(
+                                              decoration: BoxDecoration(
+                                                borderRadius: radius,
+                                                border: Border.all(
+                                                  color: cs.outline.withOpacity(
+                                                    0.14,
+                                                  ),
+                                                  width: 1,
+                                                ),
+                                                boxShadow: [
+                                                  BoxShadow(
+                                                    color: cs.shadow
+                                                        .withOpacity(0.08),
+                                                    blurRadius: 16,
+                                                    offset: const Offset(0, 8),
+                                                  ),
+                                                ],
+                                              ),
+                                              child: coverImage,
+                                            );
+                                          },
+                                        ),
+                                        const SizedBox(width: 16),
+                                        Expanded(
+                                          child: Padding(
+                                            padding: const EdgeInsets.only(
+                                              top: 4,
+                                            ),
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  b.title,
+                                                  style: text.headlineSmall
+                                                      ?.copyWith(
+                                                        fontWeight:
+                                                            FontWeight.w700,
+                                                        height: 1.14,
+                                                        letterSpacing: -0.25,
+                                                      ),
+                                                  maxLines: 4,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
+                                                const SizedBox(height: 10),
+                                                GestureDetector(
+                                                  onTap:
+                                                      b.author != null &&
+                                                              b
+                                                                  .author!
+                                                                  .isNotEmpty
+                                                          ? () =>
+                                                              _showAuthorBooks(
+                                                                context,
+                                                                b.author!,
+                                                              )
+                                                          : null,
+                                                  child: Text(
+                                                    b.author ??
+                                                        'Unknown author',
+                                                    style: text.titleMedium
+                                                        ?.copyWith(
+                                                          color:
+                                                              cs.onSurfaceVariant,
+                                                          fontWeight:
+                                                              FontWeight.w500,
+                                                        ),
+                                                    maxLines: 2,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                                if ((b.narrators ?? const [])
+                                                    .isNotEmpty) ...[
+                                                  const SizedBox(height: 8),
+                                                  Text(
+                                                    'Narrated by ${b.narrators!.join(', ')}',
+                                                    style: text.bodyMedium
+                                                        ?.copyWith(
+                                                          color: cs
+                                                              .onSurfaceVariant
+                                                              .withOpacity(
+                                                                0.82,
+                                                              ),
+                                                          height: 1.3,
+                                                        ),
+                                                    maxLines: 3,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                  ),
+                                                ],
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                  ),
-                                );
-                              } else {
-                                coverImage = ClipRRect(
-                                  borderRadius: radius,
-                                  child: Transform.scale(
-                                    scale: 1.024,
-                                    child: CachedNetworkImage(
-                                      imageUrl: b.coverUrl,
-                                      width: 160,
-                                      height: coverHeight,
-                                      fit: BoxFit.cover,
-                                      errorWidget: (_, __, ___) => Container(
-                                        width: 160,
-                                        height: coverHeight,
-                                        alignment: Alignment.center,
-                                        color: cs.surfaceContainerHighest,
-                                        child: const Icon(Icons.menu_book_outlined, size: 48),
+                                    const SizedBox(height: 16),
+                                    Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: Wrap(
+                                        spacing: 8,
+                                        runSpacing: 8,
+                                        children: [
+                                          _InfoChip(
+                                            icon: Icons.schedule,
+                                            label: fmtDuration(),
+                                            tooltip: 'Total length',
+                                            onTap: () async {
+                                              // If unknown, try resolving via streaming tracks (then close session)
+                                              if ((_resolvedDurationMs ??
+                                                      b.durationMs ??
+                                                      0) ==
+                                                  0) {
+                                                // Prevent concurrent duration resolution
+                                                if (_isResolvingDuration) {
+                                                  if (mounted) {
+                                                    ScaffoldMessenger.of(
+                                                      context,
+                                                    ).showSnackBar(
+                                                      const SnackBar(
+                                                        content: Text(
+                                                          'Duration is already being loaded...',
+                                                        ),
+                                                        duration: Duration(
+                                                          seconds: 2,
+                                                        ),
+                                                      ),
+                                                    );
+                                                  }
+                                                  return;
+                                                }
+
+                                                _isResolvingDuration = true;
+                                                try {
+                                                  // Show loading indicator
+                                                  if (mounted) {
+                                                    ScaffoldMessenger.of(
+                                                      context,
+                                                    ).showSnackBar(
+                                                      const SnackBar(
+                                                        content: Row(
+                                                          children: [
+                                                            SizedBox(
+                                                              width: 16,
+                                                              height: 16,
+                                                              child:
+                                                                  CircularProgressIndicator(
+                                                                    strokeWidth:
+                                                                        2,
+                                                                  ),
+                                                            ),
+                                                            SizedBox(width: 8),
+                                                            Text(
+                                                              'Loading duration...',
+                                                            ),
+                                                          ],
+                                                        ),
+                                                        duration: Duration(
+                                                          seconds: 2,
+                                                        ),
+                                                      ),
+                                                    );
+                                                  }
+
+                                                  final open = await playbackRepo
+                                                      .openSessionAndGetTracks(
+                                                        b.id,
+                                                      );
+                                                  final totalSec = open.tracks
+                                                      .fold<double>(
+                                                        0.0,
+                                                        (a, t) =>
+                                                            a +
+                                                            (t.duration > 0
+                                                                ? t.duration
+                                                                : 0.0),
+                                                      );
+                                                  if (mounted && totalSec > 0) {
+                                                    final ms =
+                                                        (totalSec * 1000)
+                                                            .round();
+                                                    setState(() {
+                                                      _resolvedDurationMs = ms;
+                                                    });
+
+                                                    // Persist duration to local cache for future use
+                                                    try {
+                                                      final repo =
+                                                          await _repoFut;
+                                                      await repo.upsertBook(
+                                                        Book(
+                                                          id: b.id,
+                                                          title: b.title,
+                                                          author: b.author,
+                                                          coverUrl: b.coverUrl,
+                                                          description:
+                                                              b.description,
+                                                          durationMs: ms,
+                                                          sizeBytes:
+                                                              b.sizeBytes,
+                                                          updatedAt:
+                                                              b.updatedAt,
+                                                          authors: b.authors,
+                                                          narrators:
+                                                              b.narrators,
+                                                          publisher:
+                                                              b.publisher,
+                                                          publishYear:
+                                                              b.publishYear,
+                                                          genres: b.genres,
+                                                        ),
+                                                      );
+                                                    } catch (_) {}
+                                                  }
+
+                                                  // Always close the session to prevent transcoding from continuing
+                                                  if (open.sessionId != null &&
+                                                      open
+                                                          .sessionId!
+                                                          .isNotEmpty) {
+                                                    await playbackRepo
+                                                        .closeSessionById(
+                                                          open.sessionId!,
+                                                        );
+                                                  }
+                                                } catch (e) {
+                                                  if (mounted) {
+                                                    ScaffoldMessenger.of(
+                                                      context,
+                                                    ).showSnackBar(
+                                                      SnackBar(
+                                                        content: Text(
+                                                          'Failed to load duration: $e',
+                                                        ),
+                                                        backgroundColor:
+                                                            Theme.of(
+                                                              context,
+                                                            ).colorScheme.error,
+                                                      ),
+                                                    );
+                                                  }
+                                                  return;
+                                                } finally {
+                                                  _isResolvingDuration = false;
+                                                }
+                                              }
+
+                                              final txt = fmtDuration();
+                                              if (mounted) {
+                                                ScaffoldMessenger.of(
+                                                  context,
+                                                ).showSnackBar(
+                                                  SnackBar(
+                                                    content: Text(
+                                                      'Total length: $txt',
+                                                    ),
+                                                  ),
+                                                );
+                                              }
+                                            },
+                                          ),
+                                          _InfoChip(
+                                            icon: Icons.save_alt,
+                                            label: fmtSize(),
+                                            tooltip: 'Estimated download size',
+                                            onTap: () async {
+                                              // If unknown, try resolving via /api/items/{id}/files sum of sizes
+                                              if ((_resolvedSizeBytes ??
+                                                      b.sizeBytes ??
+                                                      0) ==
+                                                  0) {
+                                                // Prevent concurrent size resolution
+                                                if (_isResolvingSize) {
+                                                  if (mounted) {
+                                                    ScaffoldMessenger.of(
+                                                      context,
+                                                    ).showSnackBar(
+                                                      const SnackBar(
+                                                        content: Text(
+                                                          'Size is already being loaded...',
+                                                        ),
+                                                        duration: Duration(
+                                                          seconds: 2,
+                                                        ),
+                                                      ),
+                                                    );
+                                                  }
+                                                  return;
+                                                }
+
+                                                _isResolvingSize = true;
+                                                try {
+                                                  // Show loading indicator
+                                                  if (mounted) {
+                                                    ScaffoldMessenger.of(
+                                                      context,
+                                                    ).showSnackBar(
+                                                      const SnackBar(
+                                                        content: Row(
+                                                          children: [
+                                                            SizedBox(
+                                                              width: 16,
+                                                              height: 16,
+                                                              child:
+                                                                  CircularProgressIndicator(
+                                                                    strokeWidth:
+                                                                        2,
+                                                                  ),
+                                                            ),
+                                                            SizedBox(width: 8),
+                                                            Text(
+                                                              'Loading size...',
+                                                            ),
+                                                          ],
+                                                        ),
+                                                        duration: Duration(
+                                                          seconds: 2,
+                                                        ),
+                                                      ),
+                                                    );
+                                                  }
+
+                                                  final api =
+                                                      ServicesScope.of(
+                                                        context,
+                                                      ).services.auth.api;
+                                                  final resp = await api.request(
+                                                    'GET',
+                                                    '/api/items/${b.id}/files',
+                                                  );
+                                                  if (resp.statusCode == 200) {
+                                                    final data = jsonDecode(
+                                                      resp.body,
+                                                    );
+                                                    List list;
+                                                    if (data is Map &&
+                                                        data['files'] is List) {
+                                                      list =
+                                                          data['files'] as List;
+                                                    } else if (data is List)
+                                                      list = data;
+                                                    else
+                                                      list = const [];
+                                                    int sum = 0;
+                                                    for (final it in list) {
+                                                      if (it is Map) {
+                                                        final m =
+                                                            it
+                                                                .cast<
+                                                                  String,
+                                                                  dynamic
+                                                                >();
+                                                        final v =
+                                                            m['size'] ??
+                                                            m['bytes'] ??
+                                                            m['fileSize'];
+                                                        if (v is num)
+                                                          sum += v.toInt();
+                                                        if (v is String) {
+                                                          final n =
+                                                              int.tryParse(v);
+                                                          if (n != null)
+                                                            sum += n;
+                                                        }
+                                                      }
+                                                    }
+                                                    if (mounted && sum > 0) {
+                                                      setState(() {
+                                                        _resolvedSizeBytes =
+                                                            sum;
+                                                      });
+
+                                                      // Persist size to local cache for future use
+                                                      try {
+                                                        final repo =
+                                                            await _repoFut;
+                                                        await repo.upsertBook(
+                                                          Book(
+                                                            id: b.id,
+                                                            title: b.title,
+                                                            author: b.author,
+                                                            coverUrl:
+                                                                b.coverUrl,
+                                                            description:
+                                                                b.description,
+                                                            durationMs:
+                                                                b.durationMs,
+                                                            sizeBytes: sum,
+                                                            updatedAt:
+                                                                b.updatedAt,
+                                                            authors: b.authors,
+                                                            narrators:
+                                                                b.narrators,
+                                                            publisher:
+                                                                b.publisher,
+                                                            publishYear:
+                                                                b.publishYear,
+                                                            genres: b.genres,
+                                                          ),
+                                                        );
+                                                      } catch (_) {}
+                                                    }
+                                                  }
+                                                } catch (e) {
+                                                  if (mounted) {
+                                                    ScaffoldMessenger.of(
+                                                      context,
+                                                    ).showSnackBar(
+                                                      SnackBar(
+                                                        content: Text(
+                                                          'Failed to load size: $e',
+                                                        ),
+                                                        backgroundColor:
+                                                            Theme.of(
+                                                              context,
+                                                            ).colorScheme.error,
+                                                      ),
+                                                    );
+                                                  }
+                                                  return;
+                                                } finally {
+                                                  _isResolvingSize = false;
+                                                }
+                                              }
+
+                                              final txt = fmtSize();
+                                              if (mounted) {
+                                                ScaffoldMessenger.of(
+                                                  context,
+                                                ).showSnackBar(
+                                                  SnackBar(
+                                                    content: Text(
+                                                      'Estimated download size: $txt',
+                                                    ),
+                                                  ),
+                                                );
+                                              }
+                                            },
+                                          ),
+                                        ],
                                       ),
-                                    ),
-                                  ),
-                                );
-                              }
-                              
-                              return Container(
-                                decoration: BoxDecoration(
-                                  borderRadius: radius,
-                                  border: Border.all(
-                                    color: cs.outline.withOpacity(0.2),
-                                    width: 1,
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: cs.shadow.withOpacity(0.1),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 2),
                                     ),
                                   ],
                                 ),
-                                child: coverImage,
-                              );
-                            },
-                          ),
-                          const SizedBox(width: 20),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text(b.title, style: text.titleLarge, maxLines: 3, overflow: TextOverflow.ellipsis),
-                                const SizedBox(height: 8),
-                                GestureDetector(
-                                  onTap: b.author != null && b.author!.isNotEmpty
-                                      ? () => _showAuthorBooks(context, b.author!)
-                                      : null,
-                                  child: Text(
-                                    b.author ?? 'Unknown author',
-                                    style: text.titleMedium?.copyWith(
-                                      color: cs.onSurfaceVariant,
-                                      decoration: b.author != null && b.author!.isNotEmpty
-                                          ? TextDecoration.underline
-                                          : null,
-                                    ),
-                                  ),
+                              ),
+                              const SizedBox(height: 14),
+                              _DetailSurface(
+                                padding: const EdgeInsets.all(14),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    if (b.series != null &&
+                                        b.series!.isNotEmpty)
+                                      Padding(
+                                        padding: const EdgeInsets.only(
+                                          bottom: 10,
+                                        ),
+                                        child: _MetaChip(
+                                          icon:
+                                              Icons
+                                                  .collections_bookmark_rounded,
+                                          label: 'Series',
+                                          value:
+                                              b.seriesSequence != null &&
+                                                      !b.seriesSequence!.isNaN
+                                                  ? '${b.series} (#${b.seriesSequence!.toStringAsFixed(0)})'
+                                                  : b.series!,
+                                          onTap:
+                                              () => _showSeriesBooks(
+                                                context,
+                                                b.series!,
+                                              ),
+                                        ),
+                                      ),
+                                    if (b.publishYear != null ||
+                                        (b.publisher ?? '').isNotEmpty ||
+                                        (b.genres ?? const []).isNotEmpty)
+                                      Wrap(
+                                        spacing: 10,
+                                        runSpacing: 10,
+                                        children: [
+                                          if (b.publishYear != null)
+                                            SizedBox(
+                                              width: 150,
+                                              child: _MetaChip(
+                                                icon:
+                                                    Icons
+                                                        .calendar_today_rounded,
+                                                label: 'Year',
+                                                value: b.publishYear.toString(),
+                                              ),
+                                            ),
+                                          if ((b.publisher ?? '').isNotEmpty)
+                                            SizedBox(
+                                              width: 180,
+                                              child: _MetaChip(
+                                                icon: Icons.business_rounded,
+                                                label: 'Publisher',
+                                                value: b.publisher!,
+                                              ),
+                                            ),
+                                          if ((b.genres ?? const []).isNotEmpty)
+                                            ConstrainedBox(
+                                              constraints: BoxConstraints(
+                                                minWidth:
+                                                    (b.publishYear != null ||
+                                                            (b.publisher ?? '')
+                                                                .isNotEmpty)
+                                                        ? 220
+                                                        : 280,
+                                                maxWidth: 320,
+                                              ),
+                                              child: _MetaChip(
+                                                icon: Icons.category_rounded,
+                                                label: 'Genres',
+                                                value: b.genres!.join(' / '),
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                  ],
                                 ),
-                                if ((b.narrators ?? const []).isNotEmpty) ...[
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    'Narrated by ${b.narrators!.join(', ')}',
-                                    style: text.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    // Metadata below in a separate section
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                      child: Column(
-                        children: [
-                          // Publish Year (full width)
-                          if (b.publishYear != null)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 8),
-                              child: _MetaChip(
-                                icon: Icons.calendar_today_rounded,
-                                label: 'Publish Year',
-                                value: b.publishYear.toString(),
                               ),
-                            ),
-                          // Series information (full width)
-                          if (b.series != null && b.series!.isNotEmpty)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 8),
-                              child: _MetaChip(
-                                icon: Icons.collections_bookmark_rounded,
-                                label: 'Series',
-                                value: b.seriesSequence != null && !b.seriesSequence!.isNaN
-                                    ? '${b.series} (#${b.seriesSequence!.toStringAsFixed(0)})'
-                                    : b.series!,
-                                onTap: () => _showSeriesBooks(context, b.series!),
-                              ),
-                            ),
-                          // Publisher and Genres in one row
-                          if ((b.publisher ?? '').isNotEmpty || (b.genres ?? const []).isNotEmpty)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 16),
-                              child: Row(
+                              const SizedBox(height: 14),
+                              _ProgressSummary(playback: playbackRepo, book: b),
+                              const SizedBox(height: 18),
+                              Row(
                                 children: [
-                                  if ((b.publisher ?? '').isNotEmpty)
-                                    Expanded(
-                                      child: _MetaChip(
-                                        icon: Icons.business_rounded,
-                                        label: 'Publisher',
-                                        value: b.publisher!,
+                                  Expanded(
+                                    child: _PlayPrimaryButton(
+                                      book: b,
+                                      playback: playbackRepo,
+                                      onResetPerformed: () {
+                                        // Refresh the page after reset
+                                        setState(() {
+                                          // This will trigger a rebuild of the entire page
+                                        });
+                                      },
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Theme(
+                                      data: Theme.of(context).copyWith(
+                                        filledButtonTheme:
+                                            FilledButtonThemeData(
+                                              style: FilledButton.styleFrom(
+                                                minimumSize:
+                                                    const Size.fromHeight(54),
+                                                shape: RoundedRectangleBorder(
+                                                  borderRadius:
+                                                      BorderRadius.circular(16),
+                                                ),
+                                              ),
+                                            ),
+                                      ),
+                                      child: DownloadButton(
+                                        libraryItemId: b.id,
+                                        titleForNotification: b.title,
                                       ),
                                     ),
-                                  if ((b.publisher ?? '').isNotEmpty && (b.genres ?? const []).isNotEmpty)
-                                    const SizedBox(width: 8),
-                                  if ((b.genres ?? const []).isNotEmpty)
-                                    Expanded(
-                                      child: _MetaChip(
-                                        icon: Icons.category_rounded,
-                                        label: 'Genres',
-                                        value: b.genres!.join(' / '),
-                                      ),
-                                    ),
+                                  ),
                                 ],
                               ),
-                            ),
-                          // Time/Size chips centered
-                          Center(
-                            child: Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: [
-                                _InfoChip(
-                                  icon: Icons.schedule,
-                                  label: fmtDuration(),
-                                  tooltip: 'Total length',
-                                  onTap: () async {
-                                    // If unknown, try resolving via streaming tracks (then close session)
-                                    if ((_resolvedDurationMs ?? b.durationMs ?? 0) == 0) {
-                                      // Prevent concurrent duration resolution
-                                      if (_isResolvingDuration) {
-                                        if (mounted) {
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            const SnackBar(
-                                              content: Text('Duration is already being loaded...'),
-                                              duration: Duration(seconds: 2),
-                                            ),
-                                          );
-                                        }
-                                        return;
-                                      }
-                                      
-                                      _isResolvingDuration = true;
-                                      try {
-                                        // Show loading indicator
-                                        if (mounted) {
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            const SnackBar(
-                                              content: Row(
-                                                children: [
-                                                  SizedBox(
-                                                    width: 16,
-                                                    height: 16,
-                                                    child: CircularProgressIndicator(strokeWidth: 2),
-                                                  ),
-                                                  SizedBox(width: 8),
-                                                  Text('Loading duration...'),
-                                                ],
-                                              ),
-                                              duration: Duration(seconds: 2),
-                                            ),
-                                          );
-                                        }
-                                        
-                                        final open = await playbackRepo.openSessionAndGetTracks(b.id);
-                                        final totalSec = open.tracks.fold<double>(0.0, (a, t) => a + (t.duration > 0 ? t.duration : 0.0));
-                                        if (mounted && totalSec > 0) {
-                                          final ms = (totalSec * 1000).round();
-                                          setState(() { _resolvedDurationMs = ms; });
-                                          
-                                          // Persist duration to local cache for future use
-                                          try {
-                                            final repo = await _repoFut;
-                                            await repo.upsertBook(Book(
-                                              id: b.id,
-                                              title: b.title,
-                                              author: b.author,
-                                              coverUrl: b.coverUrl,
-                                              description: b.description,
-                                              durationMs: ms,
-                                              sizeBytes: b.sizeBytes,
-                                              updatedAt: b.updatedAt,
-                                              authors: b.authors,
-                                              narrators: b.narrators,
-                                              publisher: b.publisher,
-                                              publishYear: b.publishYear,
-                                              genres: b.genres,
-                                            ));
-                                          } catch (_) {}
-                                        }
-                                        
-                                        // Always close the session to prevent transcoding from continuing
-                                        if (open.sessionId != null && open.sessionId!.isNotEmpty) {
-                                          await playbackRepo.closeSessionById(open.sessionId!);
-                                        }
-                                      } catch (e) {
-                                        if (mounted) {
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            SnackBar(
-                                              content: Text('Failed to load duration: $e'),
-                                              backgroundColor: Theme.of(context).colorScheme.error,
-                                            ),
-                                          );
-                                        }
-                                        return;
-                                      } finally {
-                                        _isResolvingDuration = false;
-                                      }
-                                    }
-                                    
-                                    final txt = fmtDuration();
-                                    if (mounted) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(content: Text('Total length: $txt')),
-                                      );
-                                    }
-                                  },
-                                ),
-                                _InfoChip(
-                                  icon: Icons.save_alt,
-                                  label: fmtSize(),
-                                  tooltip: 'Estimated download size',
-                                  onTap: () async {
-                                    // If unknown, try resolving via /api/items/{id}/files sum of sizes
-                                    if ((_resolvedSizeBytes ?? b.sizeBytes ?? 0) == 0) {
-                                      // Prevent concurrent size resolution
-                                      if (_isResolvingSize) {
-                                        if (mounted) {
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            const SnackBar(
-                                              content: Text('Size is already being loaded...'),
-                                              duration: Duration(seconds: 2),
-                                            ),
-                                          );
-                                        }
-                                        return;
-                                      }
-                                      
-                                      _isResolvingSize = true;
-                                      try {
-                                        // Show loading indicator
-                                        if (mounted) {
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            const SnackBar(
-                                              content: Row(
-                                                children: [
-                                                  SizedBox(
-                                                    width: 16,
-                                                    height: 16,
-                                                    child: CircularProgressIndicator(strokeWidth: 2),
-                                                  ),
-                                                  SizedBox(width: 8),
-                                                  Text('Loading size...'),
-                                                ],
-                                              ),
-                                              duration: Duration(seconds: 2),
-                                            ),
-                                          );
-                                        }
-                                        
-                                        final api = ServicesScope.of(context).services.auth.api;
-                                        final resp = await api.request('GET', '/api/items/${b.id}/files');
-                                        if (resp.statusCode == 200) {
-                                          final data = jsonDecode(resp.body);
-                                          List list;
-                                          if (data is Map && data['files'] is List) {
-                                            list = data['files'] as List;
-                                          } else if (data is List) list = data;
-                                          else list = const [];
-                                          int sum = 0;
-                                          for (final it in list) {
-                                            if (it is Map) {
-                                              final m = it.cast<String, dynamic>();
-                                              final v = m['size'] ?? m['bytes'] ?? m['fileSize'];
-                                              if (v is num) sum += v.toInt();
-                                              if (v is String) {
-                                                final n = int.tryParse(v);
-                                                if (n != null) sum += n;
-                                              }
-                                            }
-                                          }
-                                          if (mounted && sum > 0) {
-                                            setState(() { _resolvedSizeBytes = sum; });
-                                            
-                                            // Persist size to local cache for future use
-                                            try {
-                                              final repo = await _repoFut;
-                                              await repo.upsertBook(Book(
-                                                id: b.id,
-                                                title: b.title,
-                                                author: b.author,
-                                                coverUrl: b.coverUrl,
-                                                description: b.description,
-                                                durationMs: b.durationMs,
-                                                sizeBytes: sum,
-                                                updatedAt: b.updatedAt,
-                                                authors: b.authors,
-                                                narrators: b.narrators,
-                                                publisher: b.publisher,
-                                                publishYear: b.publishYear,
-                                                genres: b.genres,
-                                              ));
-                                            } catch (_) {}
-                                          }
-                                        }
-                                      } catch (e) {
-                                        if (mounted) {
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            SnackBar(
-                                              content: Text('Failed to load size: $e'),
-                                              backgroundColor: Theme.of(context).colorScheme.error,
-                                            ),
-                                          );
-                                        }
-                                        return;
-                                      } finally {
-                                        _isResolvingSize = false;
-                                      }
-                                    }
-                                    
-                                    final txt = fmtSize();
-                                    if (mounted) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(content: Text('Estimated download size: $txt')),
-                                      );
-                                    }
-                                  },
+                              if (b.isAudioBook) ...[
+                                const SizedBox(height: 18),
+                                _BookmarksPreview(
+                                  book: b,
+                                  playback: playbackRepo,
                                 ),
                               ],
-                            ),
+                              if (b.description != null &&
+                                  b.description!.isNotEmpty) ...[
+                                const SizedBox(height: 18),
+                                _DetailSurface(
+                                  padding: const EdgeInsets.all(16),
+                                  child: _MetaOrDescription(book: b),
+                                ),
+                              ],
+                            ],
                           ),
-                        ],
-                      ),
+                        );
+                      },
                     ),
-                    Center(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: _ProgressSummary(
-                          playback: playbackRepo,
-                          book: b,
-                        ),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: _PlayPrimaryButton(
-                              book: b, 
-                              playback: playbackRepo,
-                              onResetPerformed: () {
-                                // Refresh the page after reset
-                                setState(() {
-                                  // This will trigger a rebuild of the entire page
-                                });
-                              },
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: DownloadButton(
-                              libraryItemId: b.id,
-                              titleForNotification: b.title,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (b.isAudioBook)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                        child: _BookmarksPreview(
-                          book: b,
-                          playback: playbackRepo,
-                        ),
-                      ),
-                    // Scrollable description area
-                    if (b.description != null && b.description!.isNotEmpty)
-                      Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                          child: SingleChildScrollView(
-                            child: _MetaOrDescription(book: b),
-                          ),
-                        ),
-                      ),
-                  ],
-                );
-              },
-            ),
           ),
         ],
       ),
@@ -1116,8 +1415,80 @@ class _BookDetailPageState extends State<BookDetailPage> {
   }
 }
 
+class _DetailSurface extends StatelessWidget {
+  const _DetailSurface({
+    required this.child,
+    this.padding = const EdgeInsets.all(16),
+  });
+
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: cs.outlineVariant.withOpacity(0.22)),
+        boxShadow: [
+          BoxShadow(
+            color: cs.shadow.withOpacity(0.05),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Padding(padding: padding, child: child),
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({required this.title, this.actionLabel, this.onAction});
+
+  final String title;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            title,
+            style: text.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.1,
+            ),
+          ),
+        ),
+        if (actionLabel != null)
+          TextButton(
+            onPressed: onAction,
+            style: TextButton.styleFrom(
+              foregroundColor: cs.primary,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              textStyle: text.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+            ),
+            child: Text(actionLabel!),
+          ),
+      ],
+    );
+  }
+}
+
 class _InfoChip extends StatelessWidget {
-  const _InfoChip({required this.icon, required this.label, this.onTap, this.tooltip});
+  const _InfoChip({
+    required this.icon,
+    required this.label,
+    this.onTap,
+    this.tooltip,
+  });
   final IconData icon;
   final String label;
   final VoidCallback? onTap;
@@ -1127,23 +1498,30 @@ class _InfoChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final chip = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
       decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest,
+        color: cs.surfaceContainerHighest.withOpacity(0.78),
         borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: cs.outlineVariant.withOpacity(0.24)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 16, color: cs.onSurfaceVariant),
-          const SizedBox(width: 6),
-          Text(label, style: Theme.of(context).textTheme.labelLarge),
+          Icon(icon, size: 16, color: cs.onSurfaceVariant.withOpacity(0.92)),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: Theme.of(
+              context,
+            ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+          ),
         ],
       ),
     );
-    final withTooltip = (tooltip != null && tooltip!.isNotEmpty)
-        ? Tooltip(message: tooltip!, child: chip)
-        : chip;
+    final withTooltip =
+        (tooltip != null && tooltip!.isNotEmpty)
+            ? Tooltip(message: tooltip!, child: chip)
+            : chip;
     if (onTap == null) return withTooltip;
     return InkWell(
       borderRadius: BorderRadius.circular(999),
@@ -1169,66 +1547,73 @@ class _MetaChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
-    
+
     final chip = Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.fromLTRB(12, 11, 12, 12),
       decoration: BoxDecoration(
-        color: cs.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: cs.outline.withOpacity(0.1),
-          width: 1,
-        ),
+        color: cs.surfaceContainerHighest.withOpacity(0.45),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: cs.outline.withOpacity(0.1), width: 1),
       ),
-      child: SizedBox(
-        height: 80, // Fixed height to ensure consistent sizing
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-          Row(
-            children: [
-              Icon(icon, size: 16, color: cs.primary),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: text.labelMedium?.copyWith(
-                  color: cs.onSurfaceVariant,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              color: cs.primary.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            alignment: Alignment.center,
+            child: Icon(icon, size: 16, color: cs.primary),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(width: 10),
           Expanded(
-            child: Center(
-              child: Text(
-                value,
-                style: text.bodyMedium?.copyWith(
-                  color: cs.onSurface,
-                  fontWeight: FontWeight.w500,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  label,
+                  style: text.labelMedium?.copyWith(
+                    color: cs.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-              ),
+                const SizedBox(height: 4),
+                Text(
+                  value,
+                  style: text.bodyMedium?.copyWith(
+                    color: cs.onSurface,
+                    fontWeight: FontWeight.w600,
+                    height: 1.25,
+                  ),
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
             ),
           ),
         ],
-        ),
       ),
     );
-    
+
     if (onTap == null) return chip;
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(16),
       child: chip,
     );
   }
 }
 
 class _MetaLine extends StatelessWidget {
-  const _MetaLine({required this.icon, required this.label, required this.value});
+  const _MetaLine({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
   final IconData icon;
   final String label;
   final String value;
@@ -1246,11 +1631,15 @@ class _MetaLine extends StatelessWidget {
           Expanded(
             child: RichText(
               text: TextSpan(
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: cs.onSurface),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(color: cs.onSurface),
                 children: [
                   TextSpan(
                     text: '$label\n',
-                    style: Theme.of(context).textTheme.labelLarge?.copyWith(color: cs.onSurfaceVariant),
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: cs.onSurfaceVariant,
+                    ),
                   ),
                   TextSpan(text: value),
                 ],
@@ -1265,10 +1654,7 @@ class _MetaLine extends StatelessWidget {
 
 // ---------- Listening Progress ----------
 class _ProgressSummary extends StatefulWidget {
-  const _ProgressSummary({
-    required this.playback,
-    required this.book,
-  });
+  const _ProgressSummary({required this.playback, required this.book});
 
   final PlaybackRepository playback;
   final Book book;
@@ -1326,7 +1712,7 @@ class _ProgressSummaryState extends State<_ProgressSummary> {
     final hours = duration.inHours;
     final minutes = duration.inMinutes.remainder(60);
     final seconds = duration.inSeconds.remainder(60);
-    
+
     if (hours > 0) {
       return '${hours}h ${minutes}m ${seconds}s';
     } else if (minutes > 0) {
@@ -1362,7 +1748,12 @@ class _ProgressSummaryState extends State<_ProgressSummary> {
           }
           final posSec = prefixSec + curPos.inSeconds;
           final isCompleted = totalSec > 0 && (posSec / totalSec) >= 0.999;
-      return _renderTextWithCompletion(context, posSec, totalSec > 0 ? totalSec : null, isCompleted);
+          return _renderTextWithCompletion(
+            context,
+            posSec,
+            totalSec > 0 ? totalSec : null,
+            isCompleted,
+          );
         },
       );
     }
@@ -1372,101 +1763,158 @@ class _ProgressSummaryState extends State<_ProgressSummary> {
         padding: const EdgeInsets.symmetric(vertical: 8),
         child: Row(
           children: [
-            const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+            const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
             const SizedBox(width: 8),
             Text(
               'Checking progress…',
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: cs.onSurfaceVariant),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyLarge?.copyWith(color: cs.onSurfaceVariant),
             ),
           ],
         ),
       );
     }
 
-    final totalSeconds = (book.durationMs ?? 0) > 0 ? (book.durationMs! / 1000.0) : null;
+    final totalSeconds =
+        (book.durationMs ?? 0) > 0 ? (book.durationMs! / 1000.0) : null;
     final seconds = _localSeconds;
-    return _renderTextWithCompletion(context, seconds, totalSeconds, _isCompleted);
+    return _renderTextWithCompletion(
+      context,
+      seconds,
+      totalSeconds,
+      _isCompleted,
+    );
   }
 
-
-  Widget _renderTextWithCompletion(BuildContext context, double? seconds, double? totalSeconds, bool isCompleted) {
+  Widget _renderTextWithCompletion(
+    BuildContext context,
+    double? seconds,
+    double? totalSeconds,
+    bool isCompleted,
+  ) {
     final cs = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
-    
+
     if (isCompleted) {
-      // No action (redundant with top unfinish button)
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: cs.primaryContainer,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: cs.primary.withOpacity(0.2),
-            width: 1,
-          ),
-        ),
+      return _DetailSurface(
         child: Row(
-          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.check_circle_rounded, size: 20, color: cs.primary),
-            const SizedBox(width: 8),
-            Text(
-              'Completed',
-              style: text.titleMedium?.copyWith(
-                color: cs.onPrimaryContainer,
-                fontWeight: FontWeight.w600,
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: cs.primary.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              alignment: Alignment.center,
+              child: Icon(
+                Icons.check_circle_rounded,
+                size: 20,
+                color: cs.primary,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Completed',
+                    style: text.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'You finished this audiobook.',
+                    style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                  ),
+                ],
               ),
             ),
           ],
         ),
       );
     } else if (seconds == null || seconds <= 0) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: cs.surfaceContainerLow,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: cs.outline.withOpacity(0.1),
-            width: 1,
-          ),
-        ),
+      return _DetailSurface(
         child: Row(
-          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.play_circle_outline_rounded, size: 20, color: cs.onSurfaceVariant),
-            const SizedBox(width: 8),
-            Text(
-              'Not started',
-              style: text.titleMedium?.copyWith(
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              alignment: Alignment.center,
+              child: Icon(
+                Icons.play_circle_outline_rounded,
+                size: 20,
                 color: cs.onSurfaceVariant,
-                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Not started',
+                    style: text.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Start listening to save your progress.',
+                    style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                  ),
+                ],
               ),
             ),
           ],
         ),
       );
     } else if (totalSeconds == null || totalSeconds <= 0) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: cs.secondaryContainer,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: cs.secondary.withOpacity(0.2),
-            width: 1,
-          ),
-        ),
+      return _DetailSurface(
         child: Row(
-          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.play_circle_rounded, size: 20, color: cs.onSecondaryContainer),
-            const SizedBox(width: 8),
-            Text(
-              'In progress',
-              style: text.titleMedium?.copyWith(
-                color: cs.onSecondaryContainer,
-                fontWeight: FontWeight.w600,
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: cs.secondary.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              alignment: Alignment.center,
+              child: Icon(
+                Icons.play_circle_rounded,
+                size: 20,
+                color: cs.secondary,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'In progress',
+                    style: text.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    _fmtHMS(seconds),
+                    style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                  ),
+                ],
               ),
             ),
           ],
@@ -1475,53 +1923,89 @@ class _ProgressSummaryState extends State<_ProgressSummary> {
     } else {
       final progress = seconds / totalSeconds;
       final progressPercent = (progress * 100).round();
-      
-      return Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: cs.surfaceContainerLow,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: cs.outline.withOpacity(0.1),
-            width: 1,
-          ),
-        ),
+      final remaining =
+          (totalSeconds - seconds).clamp(0.0, totalSeconds).toDouble();
+
+      return _DetailSurface(
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Progress bar
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Listening progress',
+                        style: text.labelLarge?.copyWith(
+                          color: cs.onSurfaceVariant,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _fmtHMS(seconds),
+                        style: text.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.3,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: cs.primary.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Text(
+                    '$progressPercent%',
+                    style: text.titleMedium?.copyWith(
+                      color: cs.primary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
             ClipRRect(
-              borderRadius: BorderRadius.circular(4),
+              borderRadius: BorderRadius.circular(999),
               child: LinearProgressIndicator(
                 value: progress.clamp(0.0, 1.0),
                 backgroundColor: cs.surfaceContainerHighest,
                 valueColor: AlwaysStoppedAnimation<Color>(cs.primary),
-                minHeight: 8,
+                minHeight: 10,
               ),
             ),
             const SizedBox(height: 12),
-            // Progress text
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  _fmtHMS(seconds),
-                  style: text.titleMedium?.copyWith(
-                    color: cs.onSurface,
-                    fontWeight: FontWeight.w600,
+                Expanded(
+                  child: _ProgressStat(
+                    label: 'Elapsed',
+                    value: _fmtHMS(seconds),
+                    alignment: CrossAxisAlignment.start,
                   ),
                 ),
-                Text(
-                  '$progressPercent%',
-                  style: text.titleMedium?.copyWith(
-                    color: cs.primary,
-                    fontWeight: FontWeight.w600,
+                Expanded(
+                  child: _ProgressStat(
+                    label: 'Remaining',
+                    value: _fmtHMS(remaining),
+                    alignment: CrossAxisAlignment.center,
                   ),
                 ),
-                Text(
-                  _fmtHMS(totalSeconds),
-                  style: text.titleMedium?.copyWith(
-                    color: cs.onSurfaceVariant,
-                    fontWeight: FontWeight.w500,
+                Expanded(
+                  child: _ProgressStat(
+                    label: 'Total',
+                    value: _fmtHMS(totalSeconds),
+                    alignment: CrossAxisAlignment.end,
                   ),
                 ),
               ],
@@ -1543,64 +2027,63 @@ class _ProgressSummaryState extends State<_ProgressSummary> {
   Future<void> _showResetProgressDialog(BuildContext context) async {
     final cs = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
-    
+
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(
-          'Mark as Unfinished',
-          style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600),
-        ),
-        content: Text(
-          'This book is currently marked as finished. Do you want to reset it to the beginning?',
-          style: text.bodyMedium,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text(
-              'Cancel',
-              style: TextStyle(color: cs.onSurfaceVariant),
+      builder:
+          (context) => AlertDialog(
+            title: Text(
+              'Mark as Unfinished',
+              style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600),
             ),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: FilledButton.styleFrom(
-              backgroundColor: cs.primary,
-              foregroundColor: cs.onPrimary,
+            content: Text(
+              'This book is currently marked as finished. Do you want to reset it to the beginning?',
+              style: text.bodyMedium,
             ),
-            child: const Text('Reset to Beginning'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: Text(
+                  'Cancel',
+                  style: TextStyle(color: cs.onSurfaceVariant),
+                ),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                style: FilledButton.styleFrom(
+                  backgroundColor: cs.primary,
+                  foregroundColor: cs.onPrimary,
+                ),
+                child: const Text('Reset to Beginning'),
+              ),
+            ],
           ),
-        ],
-      ),
     );
-    
+
     if (confirmed == true) {
       await _resetBookProgress(context, resetToBeginning: true);
     }
   }
 
-
-
-  Future<void> _resetBookProgress(BuildContext context, {required bool resetToBeginning}) async {
+  Future<void> _resetBookProgress(
+    BuildContext context, {
+    required bool resetToBeginning,
+  }) async {
     final cs = Theme.of(context).colorScheme;
-    
+
     try {
       final api = ServicesScope.of(context).services.auth.api;
-      
+
       // Always do a full reset (isFinished: false, currentTime: 0)
-      final requestBody = {
-        'isFinished': false,
-        'currentTime': 0,
-      };
-      
+      final requestBody = {'isFinished': false, 'currentTime': 0};
+
       final response = await api.request(
         'PATCH',
         '/api/me/progress/${book.id}',
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(requestBody),
       );
-      
+
       if (response.statusCode == 200 || response.statusCode == 204) {
         // Clear local progress cache to ensure fresh start
         try {
@@ -1609,17 +2092,17 @@ class _ProgressSummaryState extends State<_ProgressSummary> {
         } catch (e) {
           // Ignore cache clearing errors
         }
-        
+
         // Update the global completion status cache and notify all listeners
         await playback.updateBookCompletionStatus(book.id, false);
-        
+
         if (context.mounted && resetToBeginning) {
           // Start playing the book after reset
           final success = await playback.playItem(book.id, context: context);
           if (success) {
             // Open the full player page
             await FullPlayerPage.openOnce(context);
-            
+
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: const Text('Book reset and started playing'),
@@ -1636,10 +2119,11 @@ class _ProgressSummaryState extends State<_ProgressSummary> {
           }
         }
       } else {
-        throw Exception('Server returned ${response.statusCode}: ${response.body}');
+        throw Exception(
+          'Server returned ${response.statusCode}: ${response.body}',
+        );
       }
     } catch (e) {
-      
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1650,7 +2134,49 @@ class _ProgressSummaryState extends State<_ProgressSummary> {
       }
     }
   }
+}
 
+class _ProgressStat extends StatelessWidget {
+  const _ProgressStat({
+    required this.label,
+    required this.value,
+    required this.alignment,
+  });
+
+  final String label;
+  final String value;
+  final CrossAxisAlignment alignment;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    final textAlign = switch (alignment) {
+      CrossAxisAlignment.center => TextAlign.center,
+      CrossAxisAlignment.end => TextAlign.end,
+      _ => TextAlign.start,
+    };
+
+    return Column(
+      crossAxisAlignment: alignment,
+      children: [
+        Text(
+          label,
+          textAlign: textAlign,
+          style: text.labelMedium?.copyWith(
+            color: cs.onSurfaceVariant,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          value,
+          textAlign: textAlign,
+          style: text.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+        ),
+      ],
+    );
+  }
 }
 
 class _PlayPrimaryButton extends StatefulWidget {
@@ -1670,6 +2196,30 @@ class _PlayPrimaryButton extends StatefulWidget {
 class _PlayPrimaryButtonState extends State<_PlayPrimaryButton> {
   late Future<Map<String, dynamic>> _progressFuture;
 
+  ButtonStyle _actionStyle(
+    BuildContext context, {
+    required bool primary,
+    bool destructive = false,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    return FilledButton.styleFrom(
+      minimumSize: const Size.fromHeight(54),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      backgroundColor:
+          destructive
+              ? cs.errorContainer
+              : (primary ? cs.primary : cs.surfaceContainerHigh),
+      foregroundColor:
+          destructive
+              ? cs.onErrorContainer
+              : (primary ? cs.onPrimary : cs.onSurface),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      textStyle: Theme.of(
+        context,
+      ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -1686,41 +2236,45 @@ class _PlayPrimaryButtonState extends State<_PlayPrimaryButton> {
 
   /// Show reset dialog for completed book
   /// Returns true if reset was performed, false if cancelled
-  Future<bool> _showResetDialogForCompletedBook(BuildContext context, String bookId) async {
+  Future<bool> _showResetDialogForCompletedBook(
+    BuildContext context,
+    String bookId,
+  ) async {
     final cs = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
-    
+
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(
-          'Mark as Unfinished',
-          style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600),
-        ),
-        content: Text(
-          'This book is currently marked as finished. Do you want to reset it to the beginning?',
-          style: text.bodyMedium,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text(
-              'Cancel',
-              style: TextStyle(color: cs.onSurfaceVariant),
+      builder:
+          (context) => AlertDialog(
+            title: Text(
+              'Mark as Unfinished',
+              style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600),
             ),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: FilledButton.styleFrom(
-              backgroundColor: cs.primary,
-              foregroundColor: cs.onPrimary,
+            content: Text(
+              'This book is currently marked as finished. Do you want to reset it to the beginning?',
+              style: text.bodyMedium,
             ),
-            child: const Text('Reset to Beginning'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: Text(
+                  'Cancel',
+                  style: TextStyle(color: cs.onSurfaceVariant),
+                ),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                style: FilledButton.styleFrom(
+                  backgroundColor: cs.primary,
+                  foregroundColor: cs.onPrimary,
+                ),
+                child: const Text('Reset to Beginning'),
+              ),
+            ],
           ),
-        ],
-      ),
     );
-    
+
     if (confirmed == true) {
       await _resetBookProgressForCompletedBook(context, bookId);
       return true;
@@ -1729,25 +2283,25 @@ class _PlayPrimaryButtonState extends State<_PlayPrimaryButton> {
   }
 
   /// Reset book progress for completed book
-  Future<void> _resetBookProgressForCompletedBook(BuildContext context, String bookId) async {
+  Future<void> _resetBookProgressForCompletedBook(
+    BuildContext context,
+    String bookId,
+  ) async {
     final cs = Theme.of(context).colorScheme;
     final playback = widget.playback;
-    
+
     try {
       final api = ServicesScope.of(context).services.auth.api;
-      
-      final requestBody = {
-        'isFinished': false,
-        'currentTime': 0,
-      };
-      
+
+      final requestBody = {'isFinished': false, 'currentTime': 0};
+
       final response = await api.request(
         'PATCH',
         '/api/me/progress/$bookId',
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(requestBody),
       );
-      
+
       if (response.statusCode == 200 || response.statusCode == 204) {
         // Clear local progress cache to ensure fresh start
         try {
@@ -1756,16 +2310,16 @@ class _PlayPrimaryButtonState extends State<_PlayPrimaryButton> {
         } catch (e) {
           // Ignore cache clearing errors
         }
-        
+
         await playback.updateBookCompletionStatus(bookId, false);
-        
+
         // Start playing the book after reset
         if (context.mounted) {
           final success = await playback.playItem(bookId, context: context);
           if (success) {
             // Open the full player page
             await FullPlayerPage.openOnce(context);
-            
+
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: const Text('Book reset and started playing'),
@@ -1780,14 +2334,15 @@ class _PlayPrimaryButtonState extends State<_PlayPrimaryButton> {
               ),
             );
           }
-          
+
           // Note: Page refresh will be handled by the parent widget
         }
       } else {
-        throw Exception('Server returned ${response.statusCode}: ${response.body}');
+        throw Exception(
+          'Server returned ${response.statusCode}: ${response.body}',
+        );
       }
     } catch (e) {
-      
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1800,19 +2355,18 @@ class _PlayPrimaryButtonState extends State<_PlayPrimaryButton> {
   }
 
   /// Get book progress information including completion status
-  Future<Map<String, dynamic>> _getBookProgressInfo(PlaybackRepository playback, String bookId) async {
+  Future<Map<String, dynamic>> _getBookProgressInfo(
+    PlaybackRepository playback,
+    String bookId,
+  ) async {
     try {
       final progress = await playback.fetchServerProgress(bookId);
-      
+
       // ALWAYS use cached completion status - don't fetch from server
       // The cache is the source of truth for UI state
       bool isCompleted = playback.completionCache[bookId] ?? false;
-      
-      
-      return {
-        'hasProgress': (progress ?? 0) > 0,
-        'isCompleted': isCompleted,
-      };
+
+      return {'hasProgress': (progress ?? 0) > 0, 'isCompleted': isCompleted};
     } catch (e) {
       // Error in _getBookProgressInfo
       return {'hasProgress': false, 'isCompleted': false};
@@ -1828,6 +2382,7 @@ class _PlayPrimaryButtonState extends State<_PlayPrimaryButton> {
         onPressed: null,
         icon: const Icon(Icons.block),
         label: const Text('Not an audiobook'),
+        style: _actionStyle(context, primary: false),
       );
     }
 
@@ -1837,7 +2392,7 @@ class _PlayPrimaryButtonState extends State<_PlayPrimaryButton> {
       initialData: playback.nowPlaying,
       builder: (context, nowPlayingSnap) {
         final isThis = nowPlayingSnap.data?.libraryItemId == book.id;
-        
+
         if (isThis) {
           return StreamBuilder<bool>(
             stream: playback.playingStream,
@@ -1848,27 +2403,38 @@ class _PlayPrimaryButtonState extends State<_PlayPrimaryButton> {
                 initialData: playback.player.processingState,
                 builder: (context, processingSnap) {
                   final isPlaying = playingSnap.data ?? false;
-                  final processing = processingSnap.data ?? ProcessingState.idle;
-                  final isBuffering = processing == ProcessingState.loading || processing == ProcessingState.buffering;
-                  
+                  final processing =
+                      processingSnap.data ?? ProcessingState.idle;
+                  final isBuffering =
+                      processing == ProcessingState.loading ||
+                      processing == ProcessingState.buffering;
+
                   // More robust check: ensure we have a valid nowPlaying item and it's actually playing
-                  final hasValidNowPlaying = isThis && (processing == ProcessingState.ready || processing == ProcessingState.completed);
+                  final hasValidNowPlaying =
+                      isThis &&
+                      (processing == ProcessingState.ready ||
+                          processing == ProcessingState.completed);
                   final shouldShowAsPlaying = hasValidNowPlaying && isPlaying;
-                  
 
                   if (isBuffering && !isPlaying) {
                     return FilledButton.icon(
                       onPressed: null,
-                      icon: const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                      icon: const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
                       label: const Text('Loading'),
+                      style: _actionStyle(context, primary: true),
                     );
                   }
 
                   if (shouldShowAsPlaying) {
                     return FilledButton.icon(
-                      style: FilledButton.styleFrom(
-                        backgroundColor: Theme.of(context).colorScheme.error,
-                        foregroundColor: Theme.of(context).colorScheme.onError,
+                      style: _actionStyle(
+                        context,
+                        primary: false,
+                        destructive: true,
                       ),
                       onPressed: () async {
                         await playback.pause();
@@ -1881,7 +2447,7 @@ class _PlayPrimaryButtonState extends State<_PlayPrimaryButton> {
                   // Active but paused/ready -> Resume
                   return FilledButton.icon(
                     onPressed: () async {
-                      // Try to resume first, but if that fails (no current item), 
+                      // Try to resume first, but if that fails (no current item),
                       // warm load the last item and play it
                       bool success = await playback.resume(context: context);
                       if (!success) {
@@ -1892,18 +2458,20 @@ class _PlayPrimaryButtonState extends State<_PlayPrimaryButton> {
                           success = false;
                         }
                       }
-                      
+
                       if (!success && context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                            content: Text('Cannot play: server unavailable and sync progress is required'),
+                            content: Text(
+                              'Cannot play: server unavailable and sync progress is required',
+                            ),
                             duration: Duration(seconds: 4),
                           ),
                         );
                       } else if (success && context.mounted) {
                         // Wait a brief moment for the player state to update
                         await Future.delayed(const Duration(milliseconds: 100));
-                        
+
                         // Check if we're still playing before opening full player
                         // This prevents opening the player if the user paused during the async operations
                         final stillPlaying = playback.player.playing;
@@ -1914,6 +2482,7 @@ class _PlayPrimaryButtonState extends State<_PlayPrimaryButton> {
                     },
                     icon: const Icon(Icons.play_arrow_rounded),
                     label: const Text('Resume'),
+                    style: _actionStyle(context, primary: true),
                   );
                 },
               );
@@ -1922,27 +2491,33 @@ class _PlayPrimaryButtonState extends State<_PlayPrimaryButton> {
         }
 
         // Not active on player: decide between Resume vs Play by checking saved progress
-    return FutureBuilder<Map<String, dynamic>>(
+        return FutureBuilder<Map<String, dynamic>>(
           future: _progressFuture,
           builder: (context, snap) {
             if (snap.connectionState == ConnectionState.waiting) {
               return FilledButton.icon(
                 onPressed: null,
-                icon: const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                icon: const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
                 label: const Text('Loading...'),
+                style: _actionStyle(context, primary: true),
               );
             }
 
-        final progressInfo = snap.data ?? {'hasProgress': false, 'isCompleted': false};
-        final playback = widget.playback;
-        final book = widget.book;
-        return _buildInactiveAction(
-          context,
-          playback,
-          book,
-          progressInfo['hasProgress'] == true,
-          progressInfo['isCompleted'] == true,
-        );
+            final progressInfo =
+                snap.data ?? {'hasProgress': false, 'isCompleted': false};
+            final playback = widget.playback;
+            final book = widget.book;
+            return _buildInactiveAction(
+              context,
+              playback,
+              book,
+              progressInfo['hasProgress'] == true,
+              progressInfo['isCompleted'] == true,
+            );
           },
         );
       },
@@ -1971,25 +2546,33 @@ class _PlayPrimaryButtonState extends State<_PlayPrimaryButton> {
 
     return FilledButton.icon(
       onPressed: () async {
-        final currentCompletionStatus = playback.completionCache[book.id] ?? false;
+        final currentCompletionStatus =
+            playback.completionCache[book.id] ?? false;
         if (currentCompletionStatus) {
-          final resetPerformed = await _showResetDialogForCompletedBook(context, book.id);
+          final resetPerformed = await _showResetDialogForCompletedBook(
+            context,
+            book.id,
+          );
           if (resetPerformed && widget.onResetPerformed != null) {
             widget.onResetPerformed!();
           }
           return;
         }
 
-        unawaited(playback.playItem(book.id, context: context).then((success) {
-          if (!success && context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Cannot play: server unavailable and sync progress is required'),
-                duration: Duration(seconds: 4),
-              ),
-            );
-          }
-        }));
+        unawaited(
+          playback.playItem(book.id, context: context).then((success) {
+            if (!success && context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'Cannot play: server unavailable and sync progress is required',
+                  ),
+                  duration: Duration(seconds: 4),
+                ),
+              );
+            }
+          }),
+        );
 
         if (context.mounted) {
           await FullPlayerPage.openOnce(context);
@@ -1997,6 +2580,7 @@ class _PlayPrimaryButtonState extends State<_PlayPrimaryButton> {
       },
       icon: Icon(icon),
       label: Text(label),
+      style: _actionStyle(context, primary: true),
     );
   }
 }
@@ -2016,14 +2600,18 @@ class _BookmarksPreviewState extends State<_BookmarksPreview> {
   @override
   void initState() {
     super.initState();
-    _future = PlaybackJournalService.instance
-        .bookmarksFor(widget.book.id, forceRemote: true);
+    _future = PlaybackJournalService.instance.bookmarksFor(
+      widget.book.id,
+      forceRemote: true,
+    );
   }
 
   Future<void> _refresh() async {
     setState(() {
-      _future = PlaybackJournalService.instance
-          .bookmarksFor(widget.book.id, forceRemote: true);
+      _future = PlaybackJournalService.instance.bookmarksFor(
+        widget.book.id,
+        forceRemote: true,
+      );
     });
   }
 
@@ -2035,9 +2623,9 @@ class _BookmarksPreviewState extends State<_BookmarksPreview> {
       future: _future,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
-          return Card(
+          return _DetailSurface(
             child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 24),
+              padding: const EdgeInsets.symmetric(vertical: 10),
               child: Center(
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
@@ -2048,75 +2636,155 @@ class _BookmarksPreviewState extends State<_BookmarksPreview> {
           );
         }
         final entries = snapshot.data ?? const [];
-        return Card(
-          elevation: 0,
-          color: cs.surfaceContainerLowest,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'Bookmarks',
-                        style: text.titleMedium?.copyWith(fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: entries.isEmpty
-                          ? null
-                          : () async {
-                              await showModalBottomSheet<void>(
-                                context: context,
-                                useSafeArea: true,
-                                isScrollControlled: true,
-                                builder: (_) => BookmarksSheet(
+        return _DetailSurface(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _SectionHeader(
+                title: 'Bookmarks',
+                actionLabel: 'See all',
+                onAction:
+                    entries.isEmpty
+                        ? null
+                        : () async {
+                          await showModalBottomSheet<void>(
+                            context: context,
+                            useSafeArea: true,
+                            isScrollControlled: true,
+                            builder:
+                                (_) => BookmarksSheet(
                                   libraryItemId: widget.book.id,
                                   bookTitle: widget.book.title,
                                   playback: widget.playback,
                                 ),
-                              );
-                              if (mounted) _refresh();
-                            },
-                      child: const Text('See all'),
-                    ),
-                  ],
-                ),
-                if (entries.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 12),
-                    child: Text(
-                      'No bookmarks yet. Tap the bookmark icon in the player to save your spot.',
-                      style: text.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
-                    ),
-                  )
-                else
-                  ...entries.take(3).map((entry) {
-                    final subtitle =
-                        '${_formatTimestamp(entry.createdAt)} • ${_fmt(Duration(milliseconds: entry.positionMs))}';
-                    final title = entry.chapterTitle?.isNotEmpty == true
-                        ? entry.chapterTitle!
-                        : 'Chapter ${entry.chapterIndex != null ? entry.chapterIndex! + 1 : entries.indexOf(entry) + 1}';
-                    return ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.bookmark_rounded, color: cs.primary),
-                      title: Text(title),
-                      subtitle: Text(subtitle),
+                          );
+                          if (mounted) _refresh();
+                        },
+              ),
+              if (entries.isEmpty)
+                Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(top: 12),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: cs.surfaceContainerHighest.withOpacity(0.42),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(
+                          color: cs.primary.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        alignment: Alignment.center,
+                        child: Icon(
+                          Icons.bookmark_add_outlined,
+                          size: 18,
+                          color: cs.primary,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'No bookmarks yet. Use the bookmark button in the player to save your spot.',
+                          style: text.bodyMedium?.copyWith(
+                            color: cs.onSurfaceVariant,
+                            height: 1.4,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else ...[
+                const SizedBox(height: 8),
+                ...entries.take(3).map((entry) {
+                  final subtitle =
+                      '${_formatTimestamp(entry.createdAt)} • ${_fmt(Duration(milliseconds: entry.positionMs))}';
+                  final title =
+                      entry.chapterTitle?.isNotEmpty == true
+                          ? entry.chapterTitle!
+                          : 'Chapter ${entry.chapterIndex != null ? entry.chapterIndex! + 1 : entries.indexOf(entry) + 1}';
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(16),
                       onTap: () => _restoreBookmark(context, entry),
-                    );
-                  }),
+                      child: Ink(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: cs.surfaceContainerHighest.withOpacity(0.42),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 38,
+                              height: 38,
+                              decoration: BoxDecoration(
+                                color: cs.primary.withOpacity(0.12),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              alignment: Alignment.center,
+                              child: Icon(
+                                Icons.bookmark_rounded,
+                                color: cs.primary,
+                                size: 18,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: text.titleSmall?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    subtitle,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: text.bodySmall?.copyWith(
+                                      color: cs.onSurfaceVariant,
+                                      height: 1.3,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Icon(
+                              Icons.chevron_right_rounded,
+                              color: cs.onSurfaceVariant,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                }),
               ],
-            ),
+            ],
           ),
         );
       },
     );
   }
 
-  Future<void> _restoreBookmark(BuildContext context, BookmarkEntry entry) async {
+  Future<void> _restoreBookmark(
+    BuildContext context,
+    BookmarkEntry entry,
+  ) async {
     final playback = widget.playback;
     final confirm = await _confirmJump(context, entry);
     if (!confirm) return;
@@ -2126,7 +2794,9 @@ class _BookmarksPreviewState extends State<_BookmarksPreview> {
       if (!success) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Unable to start playback for this book.')),
+          const SnackBar(
+            content: Text('Unable to start playback for this book.'),
+          ),
         );
         return;
       }
@@ -2143,30 +2813,31 @@ class _BookmarksPreviewState extends State<_BookmarksPreview> {
     final cs = Theme.of(context).colorScheme;
     final result = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(
-          'Jump to bookmark?',
-          style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600),
-        ),
-        content: Text(
-          'Go to "${entry.chapterTitle ?? widget.book.title}" at ${_fmt(Duration(milliseconds: entry.positionMs))}?',
-          style: text.bodyMedium,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            style: FilledButton.styleFrom(
-              backgroundColor: cs.primary,
-              foregroundColor: cs.onPrimary,
+      builder:
+          (ctx) => AlertDialog(
+            title: Text(
+              'Jump to bookmark?',
+              style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600),
             ),
-            child: const Text('Go'),
+            content: Text(
+              'Go to "${entry.chapterTitle ?? widget.book.title}" at ${_fmt(Duration(milliseconds: entry.positionMs))}?',
+              style: text.bodyMedium,
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(ctx).pop(true),
+                style: FilledButton.styleFrom(
+                  backgroundColor: cs.primary,
+                  foregroundColor: cs.onPrimary,
+                ),
+                child: const Text('Go'),
+              ),
+            ],
           ),
-        ],
-      ),
     );
     return result ?? false;
   }
@@ -2215,7 +2886,10 @@ class _HumanizedDescription extends StatelessWidget {
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('• ', style: text.bodyMedium?.copyWith(color: cs.onSurface)),
+                        Text(
+                          '• ',
+                          style: text.bodyMedium?.copyWith(color: cs.onSurface),
+                        ),
                         Expanded(
                           child: Text(
                             '${it['name'] ?? it['title'] ?? 'Item'} (${it['id'] ?? ''})',
@@ -2258,28 +2932,48 @@ class _MetaOrDescription extends StatelessWidget {
       final m = parsed;
 
       String title = book.title;
-      final author = book.author ?? _fromList(m['authors']) ?? _fromList(book.authors);
+      final author =
+          book.author ?? _fromList(m['authors']) ?? _fromList(book.authors);
       final narrators = _fromList(m['narrators']) ?? _fromList(book.narrators);
       final publisher = (m['publisher']?.toString()) ?? book.publisher;
-      final year = (m['year']?.toString() ?? m['publishYear']?.toString()) ?? (book.publishYear?.toString());
-      final genres = _fromList(m['genres'], sep: ' / ') ?? _fromList(book.genres, sep: ' / ');
-      final duration = _formatDurationAny(m['duration'] ?? m['durationMs'] ?? book.durationMs);
+      final year =
+          (m['year']?.toString() ?? m['publishYear']?.toString()) ??
+          (book.publishYear?.toString());
+      final genres =
+          _fromList(m['genres'], sep: ' / ') ??
+          _fromList(book.genres, sep: ' / ');
+      final duration = _formatDurationAny(
+        m['duration'] ?? m['durationMs'] ?? book.durationMs,
+      );
       final size = _formatSizeAny(m['size'] ?? book.sizeBytes);
 
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: text.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+          const _SectionHeader(title: 'Description'),
+          const SizedBox(height: 12),
+          Text(
+            title,
+            style: text.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+          ),
           if (author != null && author.isNotEmpty) ...[
             const SizedBox(height: 4),
-            Text('by $author', style: text.titleMedium?.copyWith(color: cs.onSurfaceVariant)),
+            Text(
+              'by $author',
+              style: text.titleMedium?.copyWith(color: cs.onSurfaceVariant),
+            ),
           ],
           const SizedBox(height: 16),
-          if (narrators != null && narrators.isNotEmpty) _kv('Narrators', narrators, context),
-          if (year != null && year.isNotEmpty) _kv('Publish Year', year, context),
-          if (publisher != null && publisher.isNotEmpty) _kv('Publisher', publisher, context),
-          if (genres != null && genres.isNotEmpty) _kv('Genres', genres, context),
-          if (duration != null && duration.isNotEmpty) _kv('Duration', duration, context),
+          if (narrators != null && narrators.isNotEmpty)
+            _kv('Narrators', narrators, context),
+          if (year != null && year.isNotEmpty)
+            _kv('Publish Year', year, context),
+          if (publisher != null && publisher.isNotEmpty)
+            _kv('Publisher', publisher, context),
+          if (genres != null && genres.isNotEmpty)
+            _kv('Genres', genres, context),
+          if (duration != null && duration.isNotEmpty)
+            _kv('Duration', duration, context),
           if (size != null && size.isNotEmpty) _kv('Size', size, context),
         ],
       );
@@ -2290,7 +2984,7 @@ class _MetaOrDescription extends StatelessWidget {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Details', style: text.titleMedium),
+          const _SectionHeader(title: 'Description'),
           const SizedBox(height: 8),
           _HumanizedDescription(raw: book.description!),
         ],
@@ -2301,8 +2995,8 @@ class _MetaOrDescription extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Description', style: text.titleMedium),
-        const SizedBox(height: 8),
+        const _SectionHeader(title: 'Description'),
+        const SizedBox(height: 12),
         _RichDescription(book: book),
       ],
     );
@@ -2326,7 +3020,7 @@ class _MetaOrDescription extends StatelessWidget {
   String? _formatDurationAny(dynamic v) {
     if (v == null) return null;
     if (v is int) return _fmt(Duration(milliseconds: v));
-    if (v is num) return _fmt(Duration(seconds: v.round())) ;
+    if (v is num) return _fmt(Duration(seconds: v.round()));
     if (v is String) {
       final n = num.tryParse(v);
       if (n != null) return _formatDurationAny(n);
@@ -2354,13 +3048,19 @@ class _MetaOrDescription extends StatelessWidget {
     final text = Theme.of(context).textTheme;
     final cs = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(k, style: text.labelLarge?.copyWith(color: cs.onSurfaceVariant)),
-          const SizedBox(height: 2),
-          Text(v, style: text.bodyMedium),
+          Text(
+            k,
+            style: text.labelLarge?.copyWith(
+              color: cs.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(v, style: text.bodyMedium?.copyWith(height: 1.45)),
         ],
       ),
     );
@@ -2383,7 +3083,7 @@ class _RichDescription extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final raw = book.description ?? '';
     if (raw.isEmpty) return const SizedBox.shrink();
-    
+
     // Check if description is HTML
     if (_isHtml(raw)) {
       return Html(
@@ -2394,21 +3094,15 @@ class _RichDescription extends StatelessWidget {
             padding: HtmlPaddings.zero,
             fontSize: FontSize(text.bodyMedium?.fontSize ?? 14),
             color: cs.onSurface,
-            lineHeight: const LineHeight(1.5),
+            lineHeight: const LineHeight(1.6),
           ),
-          "p": Style(
-            margin: Margins.only(bottom: 8),
-          ),
+          "p": Style(margin: Margins.only(bottom: 10)),
           "a": Style(
             color: cs.primary,
             textDecoration: TextDecoration.underline,
           ),
-          "strong": Style(
-            fontWeight: FontWeight.bold,
-          ),
-          "em": Style(
-            fontStyle: FontStyle.italic,
-          ),
+          "strong": Style(fontWeight: FontWeight.bold),
+          "em": Style(fontStyle: FontStyle.italic),
           "h1, h2, h3, h4, h5, h6": Style(
             fontWeight: FontWeight.bold,
             margin: Margins.only(top: 12, bottom: 8),
@@ -2417,15 +3111,16 @@ class _RichDescription extends StatelessWidget {
             margin: Margins.only(bottom: 8),
             padding: HtmlPaddings.only(left: 20),
           ),
-          "li": Style(
-            margin: Margins.only(bottom: 4),
-          ),
+          "li": Style(margin: Margins.only(bottom: 4)),
         },
       );
     }
-    
+
     // Original behavior for non-HTML (image URL detection)
-    final re = RegExp(r'https?://[^\s"\)]+\.(?:png|jpg|jpeg|webp|gif)', caseSensitive: false);
+    final re = RegExp(
+      r'https?://[^\s"\)]+\.(?:png|jpg|jpeg|webp|gif)',
+      caseSensitive: false,
+    );
     final parts = <InlineSpan>[];
     int last = 0;
     for (final m in re.allMatches(raw)) {
@@ -2433,35 +3128,40 @@ class _RichDescription extends StatelessWidget {
         parts.add(TextSpan(text: raw.substring(last, m.start)));
       }
       final url = m.group(0)!;
-      parts.add(WidgetSpan(
-        alignment: PlaceholderAlignment.baseline,
-        baseline: TextBaseline.alphabetic,
-        child: FutureBuilder<Uri>(
-          future: repo_helpers.BooksRepository.localOrRemoteDescriptionImageUri(book.id, url),
-          builder: (_, snap) {
-            final uri = snap.data;
-            if (uri == null) return const SizedBox.shrink();
-            if (uri.scheme == 'file') {
+      parts.add(
+        WidgetSpan(
+          alignment: PlaceholderAlignment.baseline,
+          baseline: TextBaseline.alphabetic,
+          child: FutureBuilder<Uri>(
+            future: repo_helpers
+                .BooksRepository.localOrRemoteDescriptionImageUri(book.id, url),
+            builder: (_, snap) {
+              final uri = snap.data;
+              if (uri == null) return const SizedBox.shrink();
+              if (uri.scheme == 'file') {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Image.file(File(uri.toFilePath()), fit: BoxFit.cover),
+                );
+              }
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Image.file(
-                  File(uri.toFilePath()),
-                  fit: BoxFit.cover,
-                ),
+                child: Image.network(uri.toString(), fit: BoxFit.cover),
               );
-            }
-            return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Image.network(uri.toString(), fit: BoxFit.cover),
-            );
-          },
+            },
+          ),
         ),
-      ));
+      );
       last = m.end;
     }
     if (last < raw.length) {
       parts.add(TextSpan(text: raw.substring(last)));
     }
-    return RichText(text: TextSpan(style: text.bodyMedium, children: parts));
+    return RichText(
+      text: TextSpan(
+        style: text.bodyMedium?.copyWith(color: cs.onSurface, height: 1.6),
+        children: parts,
+      ),
+    );
   }
 }
