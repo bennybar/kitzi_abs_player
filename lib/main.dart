@@ -229,6 +229,8 @@ class _AbsAppState extends State<AbsApp> with WidgetsBindingObserver {
         return ValueListenableBuilder<SurfaceTintLevel>(
           valueListenable: services.theme.surfaceTintLevel,
           builder: (_, tintLevel, __) {
+            final fontScalePercent = services.theme.fontScalePercent;
+
             ThemeData expressiveTheme(ColorScheme scheme) {
               final baseTheme = ThemeData(
                 useMaterial3: true,
@@ -277,13 +279,7 @@ class _AbsAppState extends State<AbsApp> with WidgetsBindingObserver {
                 ),
               );
 
-              final compactTextTheme = baseTheme.textTheme.apply(
-                fontSizeFactor: 0.94,
-              );
-
               return baseTheme.copyWith(
-                textTheme: compactTextTheme,
-                primaryTextTheme: compactTextTheme,
                 navigationBarTheme: NavigationBarThemeData(
                   elevation: 0,
                   backgroundColor: scheme.surface,
@@ -291,7 +287,7 @@ class _AbsAppState extends State<AbsApp> with WidgetsBindingObserver {
                   indicatorColor: scheme.primaryContainer,
                   labelTextStyle: WidgetStateProperty.resolveWith((states) {
                     final isSelected = states.contains(WidgetState.selected);
-                    return compactTextTheme.labelMedium?.copyWith(
+                    return baseTheme.textTheme.labelMedium?.copyWith(
                       fontSize: 11,
                       fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                     );
@@ -300,84 +296,103 @@ class _AbsAppState extends State<AbsApp> with WidgetsBindingObserver {
               );
             }
 
-            return DynamicColorBuilder(
-              builder: (lightDynamic, darkDynamic) {
-                final seed = Colors.deepPurple;
-                var lightScheme = (lightDynamic ?? ColorScheme.fromSeed(seedColor: seed)).harmonized();
-                final darkScheme = (darkDynamic ?? ColorScheme.fromSeed(seedColor: seed, brightness: Brightness.dark)).harmonized();
+            return ValueListenableBuilder<int>(
+              valueListenable: fontScalePercent,
+              builder: (_, fontPercent, __) {
+                final appTextScale = 0.94 * (fontPercent / 100.0);
 
-                // Apply surface tint level to light scheme
-                switch (tintLevel) {
-                  case SurfaceTintLevel.none:
-                    // Pure white - no tint at all
-                    lightScheme = lightScheme.copyWith(
-                      surface: Colors.white,
-                      surfaceContainerLowest: Colors.white,
-                      surfaceContainerLow: const Color(0xFFFAFAFA),
-                      surfaceContainer: const Color(0xFFF5F5F5),
-                      surfaceContainerHigh: const Color(0xFFF0F0F0),
-                      surfaceContainerHighest: const Color(0xFFEEEEEE),
-                    );
-                    break;
-                  case SurfaceTintLevel.light:
-                    // Light tint - very subtle color
-                    final primary = lightScheme.primary;
-                    lightScheme = lightScheme.copyWith(
-                      surface: Color.lerp(Colors.white, primary, 0.01),
-                      surfaceContainerLowest: Color.lerp(Colors.white, primary, 0.01),
-                      surfaceContainerLow: Color.lerp(const Color(0xFFFAFAFA), primary, 0.015),
-                      surfaceContainer: Color.lerp(const Color(0xFFF5F5F5), primary, 0.02),
-                      surfaceContainerHigh: Color.lerp(const Color(0xFFF0F0F0), primary, 0.025),
-                      surfaceContainerHighest: Color.lerp(const Color(0xFFEEEEEE), primary, 0.03),
-                    );
-                    break;
-                  case SurfaceTintLevel.medium:
-                    // Medium tint - default Material 3 behavior (do nothing)
-                    break;
-                  case SurfaceTintLevel.strong:
-                    // Strong tint - more pronounced color
-                    final primary = lightScheme.primary;
-                    lightScheme = lightScheme.copyWith(
-                      surface: Color.lerp(lightScheme.surface, primary, 0.04),
-                      surfaceContainerLowest: Color.lerp(lightScheme.surfaceContainerLowest, primary, 0.04),
-                      surfaceContainerLow: Color.lerp(lightScheme.surfaceContainerLow, primary, 0.05),
-                      surfaceContainer: Color.lerp(lightScheme.surfaceContainer, primary, 0.06),
-                      surfaceContainerHigh: Color.lerp(lightScheme.surfaceContainerHigh, primary, 0.07),
-                      surfaceContainerHighest: Color.lerp(lightScheme.surfaceContainerHighest, primary, 0.08),
-                    );
-                    break;
-                  case SurfaceTintLevel.veryStrong:
-                    // Very Strong tint - heavily saturated color
-                    final primary = lightScheme.primary;
-                    lightScheme = lightScheme.copyWith(
-                      surface: Color.lerp(lightScheme.surface, primary, 0.08),
-                      surfaceContainerLowest: Color.lerp(lightScheme.surfaceContainerLowest, primary, 0.08),
-                      surfaceContainerLow: Color.lerp(lightScheme.surfaceContainerLow, primary, 0.10),
-                      surfaceContainer: Color.lerp(lightScheme.surfaceContainer, primary, 0.12),
-                      surfaceContainerHigh: Color.lerp(lightScheme.surfaceContainerHigh, primary, 0.14),
-                      surfaceContainerHighest: Color.lerp(lightScheme.surfaceContainerHighest, primary, 0.16),
-                    );
-                    break;
-                }
+                return DynamicColorBuilder(
+                  builder: (lightDynamic, darkDynamic) {
+                    final seed = Colors.deepPurple;
+                    var lightScheme = (lightDynamic ?? ColorScheme.fromSeed(seedColor: seed)).harmonized();
+                    final darkScheme = (darkDynamic ?? ColorScheme.fromSeed(seedColor: seed, brightness: Brightness.dark)).harmonized();
 
-                return MaterialApp(
-                  title: 'ABS Client',
-                  theme: expressiveTheme(lightScheme),
-                  darkTheme: expressiveTheme(darkScheme),
-                  themeMode: themeMode,
-                  home: FutureBuilder<bool>(
-                    future: _sessionFuture,
-                    builder: (context, snap) {
-                      if (!snap.hasData) {
-                        return const Scaffold(
-                          body: Center(child: CircularProgressIndicator()),
+                    // Apply surface tint level to light scheme
+                    switch (tintLevel) {
+                      case SurfaceTintLevel.none:
+                        // Pure white - no tint at all
+                        lightScheme = lightScheme.copyWith(
+                          surface: Colors.white,
+                          surfaceContainerLowest: Colors.white,
+                          surfaceContainerLow: const Color(0xFFFAFAFA),
+                          surfaceContainer: const Color(0xFFF5F5F5),
+                          surfaceContainerHigh: const Color(0xFFF0F0F0),
+                          surfaceContainerHighest: const Color(0xFFEEEEEE),
                         );
-                      }
-                      return snap.data!
-                          ? MainScaffold(downloadsRepo: services.downloads)
-                          : LoginScreen(auth: services.auth);
-                    },
-                  ),
+                        break;
+                      case SurfaceTintLevel.light:
+                        // Light tint - very subtle color
+                        final primary = lightScheme.primary;
+                        lightScheme = lightScheme.copyWith(
+                          surface: Color.lerp(Colors.white, primary, 0.01),
+                          surfaceContainerLowest: Color.lerp(Colors.white, primary, 0.01),
+                          surfaceContainerLow: Color.lerp(const Color(0xFFFAFAFA), primary, 0.015),
+                          surfaceContainer: Color.lerp(const Color(0xFFF5F5F5), primary, 0.02),
+                          surfaceContainerHigh: Color.lerp(const Color(0xFFF0F0F0), primary, 0.025),
+                          surfaceContainerHighest: Color.lerp(const Color(0xFFEEEEEE), primary, 0.03),
+                        );
+                        break;
+                      case SurfaceTintLevel.medium:
+                        // Medium tint - default Material 3 behavior (do nothing)
+                        break;
+                      case SurfaceTintLevel.strong:
+                        // Strong tint - more pronounced color
+                        final primary = lightScheme.primary;
+                        lightScheme = lightScheme.copyWith(
+                          surface: Color.lerp(lightScheme.surface, primary, 0.04),
+                          surfaceContainerLowest: Color.lerp(lightScheme.surfaceContainerLowest, primary, 0.04),
+                          surfaceContainerLow: Color.lerp(lightScheme.surfaceContainerLow, primary, 0.05),
+                          surfaceContainer: Color.lerp(lightScheme.surfaceContainer, primary, 0.06),
+                          surfaceContainerHigh: Color.lerp(lightScheme.surfaceContainerHigh, primary, 0.07),
+                          surfaceContainerHighest: Color.lerp(lightScheme.surfaceContainerHighest, primary, 0.08),
+                        );
+                        break;
+                      case SurfaceTintLevel.veryStrong:
+                        // Very Strong tint - heavily saturated color
+                        final primary = lightScheme.primary;
+                        lightScheme = lightScheme.copyWith(
+                          surface: Color.lerp(lightScheme.surface, primary, 0.08),
+                          surfaceContainerLowest: Color.lerp(lightScheme.surfaceContainerLowest, primary, 0.08),
+                          surfaceContainerLow: Color.lerp(lightScheme.surfaceContainerLow, primary, 0.10),
+                          surfaceContainer: Color.lerp(lightScheme.surfaceContainer, primary, 0.12),
+                          surfaceContainerHigh: Color.lerp(lightScheme.surfaceContainerHigh, primary, 0.14),
+                          surfaceContainerHighest: Color.lerp(lightScheme.surfaceContainerHighest, primary, 0.16),
+                        );
+                        break;
+                    }
+
+                    return MaterialApp(
+                      title: 'ABS Client',
+                      theme: expressiveTheme(lightScheme),
+                      darkTheme: expressiveTheme(darkScheme),
+                      themeMode: themeMode,
+                      builder: (context, child) {
+                        final mediaQuery = MediaQuery.of(context);
+                        final systemTextScale = mediaQuery.textScaler.scale(1.0);
+                        return MediaQuery(
+                          data: mediaQuery.copyWith(
+                            textScaler: TextScaler.linear(
+                              systemTextScale * appTextScale,
+                            ),
+                          ),
+                          child: child ?? const SizedBox.shrink(),
+                        );
+                      },
+                      home: FutureBuilder<bool>(
+                        future: _sessionFuture,
+                        builder: (context, snap) {
+                          if (!snap.hasData) {
+                            return const Scaffold(
+                              body: Center(child: CircularProgressIndicator()),
+                            );
+                          }
+                          return snap.data!
+                              ? MainScaffold(downloadsRepo: services.downloads)
+                              : LoginScreen(auth: services.auth);
+                        },
+                      ),
+                    );
+                  },
                 );
               },
             );

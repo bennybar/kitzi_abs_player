@@ -94,6 +94,7 @@ class _SettingsPageState extends State<SettingsPage> {
     'detailed_play_history_enabled',
     'playback_speed',
     'ui_surface_tint_level',
+    'ui_font_scale_percent',
     'streaming_cache_max_bytes',
   ];
   static const _excludedKeys = <String>{
@@ -170,6 +171,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _importSettings() async {
     try {
+      final theme = ServicesScope.of(context).services.theme;
       // Let user pick file to import
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
@@ -267,6 +269,14 @@ class _SettingsPageState extends State<SettingsPage> {
             break;
           case 'ui_surface_tint_level':
             if (val is int) await setInt(key, val);
+            await theme.setSurfaceTintLevel(
+              SurfaceTintLevel.fromValue(
+                val is int ? val : SurfaceTintLevel.medium.value,
+              ),
+            );
+            break;
+          case 'ui_font_scale_percent':
+            if (val is int) await theme.setFontScalePercent(val);
             break;
           case 'streaming_cache_max_bytes':
             if (val is int) await setInt(key, val);
@@ -1228,6 +1238,45 @@ class _SettingsPageState extends State<SettingsPage> {
                 );
               },
             ),
+          ),
+          ValueListenableBuilder<int>(
+            valueListenable: theme.fontScalePercent,
+            builder: (_, fontScalePercent, __) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ListTile(
+                    title: const Text('Font size'),
+                    subtitle: Text('$fontScalePercent%'),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Slider(
+                      value: fontScalePercent.toDouble(),
+                      min: 80,
+                      max: 120,
+                      divisions: 8,
+                      label: '$fontScalePercent%',
+                      onChanged: (value) {
+                        final rounded = (value / 5).round() * 5;
+                        theme.fontScalePercent.value = rounded.clamp(80, 120);
+                      },
+                      onChangeEnd: (value) async {
+                        final rounded = ((value / 5).round() * 5).clamp(
+                          80,
+                          120,
+                        );
+                        await theme.setFontScalePercent(rounded);
+                      },
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
           ValueListenableBuilder<SurfaceTintLevel>(
             valueListenable: theme.surfaceTintLevel,

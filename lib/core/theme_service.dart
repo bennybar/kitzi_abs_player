@@ -28,6 +28,7 @@ enum SurfaceTintLevel {
 class ThemeService {
   final ValueNotifier<ThemeMode> mode = ValueNotifier<ThemeMode>(ThemeMode.system);
   final ValueNotifier<SurfaceTintLevel> surfaceTintLevel = ValueNotifier<SurfaceTintLevel>(SurfaceTintLevel.medium);
+  final ValueNotifier<int> fontScalePercent = ValueNotifier<int>(100);
 
   ThemeService();
 
@@ -60,6 +61,11 @@ class ThemeService {
         if (oldBoolValue != null) {
           surfaceTintLevel.value = oldBoolValue ? SurfaceTintLevel.medium : SurfaceTintLevel.none;
         }
+      }
+
+      final storedFontScalePercent = prefs.getInt('ui_font_scale_percent');
+      if (storedFontScalePercent != null) {
+        fontScalePercent.value = _normalizeFontScalePercent(storedFontScalePercent);
       }
     } catch (_) {
       // Ignore errors, use defaults
@@ -94,5 +100,22 @@ class ThemeService {
     } catch (_) {
       // Ignore save errors
     }
+  }
+
+  Future<void> setFontScalePercent(int percent) async {
+    final normalized = _normalizeFontScalePercent(percent);
+    fontScalePercent.value = normalized;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('ui_font_scale_percent', normalized);
+    } catch (_) {
+      // Ignore save errors
+    }
+  }
+
+  int _normalizeFontScalePercent(int percent) {
+    final clamped = percent.clamp(80, 120);
+    final stepIndex = ((clamped - 80) / 5).round();
+    return 80 + (stepIndex * 5);
   }
 }
