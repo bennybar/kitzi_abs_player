@@ -3814,7 +3814,7 @@ class _PlayerActionTile extends StatelessWidget {
     final text = Theme.of(context).textTheme;
     final clampedScale = heightScale.clamp(0.6, 1.2);
     final radius = BorderRadius.circular(20);
-    final tileHeight = 96.0 * clampedScale;
+    final tileHeight = 76.0 * clampedScale;
     final bg =
         backgroundColor ??
         Color.alphaBlend(
@@ -3870,7 +3870,7 @@ class _PlayerActionTile extends StatelessWidget {
                     ),
                   ),
                   if (label.isNotEmpty) ...[
-                    SizedBox(height: 8 * clampedScale),
+                    SizedBox(height: 4 * clampedScale),
                     Text(
                       label,
                       maxLines: 1,
