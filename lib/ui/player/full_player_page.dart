@@ -7,7 +7,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
-import 'package:palette_generator/palette_generator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:squiggly_slider/slider.dart';
 import 'dart:io';
@@ -21,6 +20,7 @@ import '../../main.dart'; // ServicesScope
 import '../../widgets/audio_waveform.dart';
 import '../../widgets/download_button.dart';
 import 'full_player_overlay.dart';
+import 'player_visual_cache.dart';
 import '../../core/playback_journal_service.dart';
 import 'journal_sheets.dart';
 
@@ -339,79 +339,14 @@ class FullPlayerPage extends StatefulWidget {
   // Prevent duplicate openings of the FullPlayerPage within the same session.
   static bool _isOpen = false;
 
-  /// Validate and prewarm cover image cache before opening player
-  static Future<void> _validateAndPrewarmCover(BuildContext context) async {
-    try {
-      final playback = ServicesScope.of(context).services.playback;
-      final np = playback.nowPlaying;
-      final coverUrl = np?.coverUrl;
-
-      if (coverUrl == null || coverUrl.isEmpty) return;
-
-      final cacheManager = DefaultCacheManager();
-      final fileInfo = await cacheManager.getFileFromCache(coverUrl);
-
-      bool shouldClear = false;
-      if (fileInfo != null) {
-        final file = fileInfo.file;
-        if (await file.exists()) {
-          final length = await file.length();
-          if (length == 0) {
-            shouldClear = true;
-          } else {
-            // Try to verify it's a valid image
-            try {
-              final bytes = await file.readAsBytes();
-              if (bytes.isEmpty) {
-                shouldClear = true;
-              } else {
-                // Check if cache entry is stale
-                final now = DateTime.now();
-                final validUntil = fileInfo.validTill;
-                if (validUntil != null && now.isAfter(validUntil)) {
-                  shouldClear = true;
-                }
-              }
-            } catch (_) {
-              shouldClear = true;
-            }
-          }
-        } else {
-          shouldClear = true;
-        }
-      }
-
-      if (shouldClear && fileInfo != null) {
-        await cacheManager.removeFile(coverUrl);
-      }
-
-      // Prewarm the image after validation/clearing
-      try {
-        await precacheImage(CachedNetworkImageProvider(coverUrl), context);
-      } catch (_) {
-        // If prewarming fails, continue anyway
-      }
-    } catch (_) {
-      // If validation fails, continue anyway
-    }
-  }
-
   static Future<void> openOnce(BuildContext context) async {
     if (_isOpen) return;
     _isOpen = true;
     FullPlayerOverlay.isVisible.value = true;
     try {
-      // Validate and prewarm cover image before opening (with timeout to avoid blocking)
-      try {
-        await _validateAndPrewarmCover(context).timeout(
-          const Duration(milliseconds: 500),
-          onTimeout: () {
-            // Continue even if validation times out
-          },
-        );
-      } catch (_) {
-        // Continue even if validation fails
-      }
+      final playback = ServicesScope.of(context).services.playback;
+      final coverUrl = playback.nowPlaying?.coverUrl;
+      unawaited(PlayerVisualCache.prewarmCover(coverUrl, context));
 
       // Check if legacy full screen player is enabled
       final prefs = await SharedPreferences.getInstance();
@@ -596,8 +531,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
       ),
     );
 
-    // Start the content animation after a short delay
-    Future.delayed(const Duration(milliseconds: 100), () {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _contentAnimationController.forward();
       }
@@ -621,13 +555,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
   }
 
   Future<void> _maybeUpdatePalette(NowPlaying np) async {
-    // Prewarm cover image before palette extraction to reduce first-frame jank
     final cover = np.coverUrl;
-    if (cover != null && cover.isNotEmpty) {
-      try {
-        await precacheImage(CachedNetworkImageProvider(cover), context);
-      } catch (_) {}
-    }
 
     if (cover == null || cover.isEmpty) {
       if (_paletteCoverUrl != null ||
@@ -646,10 +574,8 @@ class _FullPlayerPageState extends State<FullPlayerPage>
 
     _paletteLoading = true;
     try {
-      final provider = CachedNetworkImageProvider(cover);
-      // Palette generation can be expensive; keep size bounded
-      final palette = await PaletteGenerator.fromImageProvider(
-        provider,
+      final palette = await PlayerVisualCache.paletteForCover(
+        cover,
         size: const Size(200, 200),
         maximumColorCount: 12,
       );
@@ -657,13 +583,8 @@ class _FullPlayerPageState extends State<FullPlayerPage>
       if (!mounted) return;
       setState(() {
         _paletteCoverUrl = cover;
-        _palettePrimary =
-            palette.dominantColor?.color ?? palette.darkVibrantColor?.color;
-        _paletteSecondary =
-            palette.vibrantColor?.color ??
-            palette.lightVibrantColor?.color ??
-            palette.mutedColor?.color ??
-            _palettePrimary;
+        _palettePrimary = palette.primary;
+        _paletteSecondary = palette.secondary ?? palette.primary;
       });
     } catch (_) {
       if (!mounted) return;
