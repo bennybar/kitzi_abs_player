@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:material_symbols_icons/symbols.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -1012,14 +1013,14 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                               tooltip: 'Search',
                               icon:
                                   _searchVisible
-                                      ? Icons.search_off_rounded
-                                      : Icons.search_rounded,
+                                      ? Symbols.search_off
+                                      : Symbols.search,
                               onTap: _toggleSearch,
                               emphasized: _searchVisible,
                             ),
                             _ToolbarSurfaceButton(
                               tooltip: 'Profile',
-                              icon: Icons.person_rounded,
+                              icon: Symbols.person,
                               onTap: () {
                                 Navigator.of(context).push(
                                   MaterialPageRoute(
@@ -1030,7 +1031,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                             ),
                             _ToolbarSurfaceButton(
                               tooltip: 'Support',
-                              icon: Icons.help_outline_rounded,
+                              icon: Symbols.help,
                               onTap: () async {
                                 final url = Uri.parse(
                                   'https://github.com/bennybar/kitzi_abs_player/issues',
@@ -1045,7 +1046,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                             ),
                             _ToolbarSurfaceButton(
                               tooltip: 'Scroll to top',
-                              icon: Icons.vertical_align_top_rounded,
+                              icon: Symbols.vertical_align_top,
                               onTap: _loading ? null : _scrollToTop,
                             ),
                             PopupMenuButton<SortMode>(
@@ -1089,7 +1090,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                                   ],
                               child: _ToolbarSurfaceButton(
                                 tooltip: 'Sort',
-                                icon: Icons.sort_rounded,
+                                icon: Symbols.sort,
                                 onTap: null,
                                 enabled: !_forceAlphaSort,
                               ),

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 import '../settings/settings_page.dart';
 import '../home/books_page.dart';
@@ -63,7 +64,9 @@ class _MainScaffoldState extends State<MainScaffold> {
 
   void _watchDownloadProgress() {
     // Listen for download progress events and aggregate progress across tasks.
-    _downloadProgressSub = widget.downloadsRepo.progressStream().listen((update) {
+    _downloadProgressSub = widget.downloadsRepo.progressStream().listen((
+      update,
+    ) {
       _debounceTimer?.cancel();
       _debounceTimer = Timer(const Duration(milliseconds: 200), () {
         _handleDownloadUpdate(update);
@@ -89,7 +92,9 @@ class _MainScaffoldState extends State<MainScaffold> {
         if (status == TaskStatus.running || status == TaskStatus.enqueued) {
           _taskActive[itemId] = true;
           _taskProgress[itemId] = _taskProgress[itemId] ?? 0.0;
-        } else if (status == TaskStatus.complete || status == TaskStatus.canceled || status == TaskStatus.failed) {
+        } else if (status == TaskStatus.complete ||
+            status == TaskStatus.canceled ||
+            status == TaskStatus.failed) {
           _taskActive.remove(itemId);
           _taskProgress.remove(itemId);
         }
@@ -113,7 +118,8 @@ class _MainScaffoldState extends State<MainScaffold> {
 
   void _recalculateAggregatedProgress() {
     if (!mounted) return;
-    final activeIds = _taskActive.keys.where((id) => _taskActive[id] == true).toList();
+    final activeIds =
+        _taskActive.keys.where((id) => _taskActive[id] == true).toList();
     if (activeIds.isEmpty) {
       setState(() {
         _hasActiveDownloads = false;
@@ -184,12 +190,14 @@ class _MainScaffoldState extends State<MainScaffold> {
 
     final safeIndex = _index.clamp(0, pages.length - 1);
 
-    return StreamBuilder<NowPlaying?>
-      (stream: playback.nowPlayingStream,
+    return StreamBuilder<NowPlaying?>(
+      stream: playback.nowPlayingStream,
       initialData: playback.nowPlaying,
       builder: (_, snap) {
         final hideOnSettingsIndex = pages.length - 1;
-        final hasMini = snap.data != null && safeIndex != hideOnSettingsIndex; // hide on Settings
+        final hasMini =
+            snap.data != null &&
+            safeIndex != hideOnSettingsIndex; // hide on Settings
         const double navHeight = 72;
 
         return PopScope(
@@ -222,7 +230,10 @@ class _MainScaffoldState extends State<MainScaffold> {
                     right: 0,
                     child: IgnorePointer(
                       child: LinearProgressIndicator(
-                        value: _overallDownloadProgress > 0 ? _overallDownloadProgress : null,
+                        value:
+                            _overallDownloadProgress > 0
+                                ? _overallDownloadProgress
+                                : null,
                         minHeight: 3,
                         backgroundColor: cs.surfaceContainerHighest,
                         valueColor: AlwaysStoppedAnimation<Color>(cs.primary),
@@ -231,67 +242,79 @@ class _MainScaffoldState extends State<MainScaffold> {
                   ),
               ],
             ),
-          bottomNavigationBar: ValueListenableBuilder<bool>(
-            valueListenable: FullPlayerOverlay.isVisible,
-            builder: (_, fullPlayerVisible, __) {
-              final chrome = Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Mini player with animated size - only takes space when visible (120Hz optimized)
-                  AnimatedSize(
-                    duration: const Duration(milliseconds: 350), // Max smoothness at 120Hz (42 frames)
-                    curve: const Cubic(0.05, 0.7, 0.1, 1.0), // Material Design 3 emphasized decelerate
-                    child: hasMini
-                        ? const Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              MiniPlayer(height: 68),
-                              SizedBox(height: 6),
-                            ],
-                          )
-                        : const SizedBox.shrink(),
-                  ),
-                  _buildNavigationBar(
-                    context: context,
-                    selectedIndex: safeIndex,
-                    onDestinationSelected: (i) {
-                      setState(() {
-                        if (UiPrefs.pinSettings.value) {
-                          _index = pages.length - 1;
-                          UiPrefs.pinSettings.value = false;
-                        } else {
-                          _index = i.clamp(0, pages.length - 1);
-                        }
-                      });
-                    },
-                    colorScheme: cs,
-                    height: navHeight,
-                    showAuthors: _showAuthors,
-                    showSeries: _showSeries,
-                  ),
-                ],
-              );
+            bottomNavigationBar: ValueListenableBuilder<bool>(
+              valueListenable: FullPlayerOverlay.isVisible,
+              builder: (_, fullPlayerVisible, __) {
+                final chrome = Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Mini player with animated size - only takes space when visible (120Hz optimized)
+                    AnimatedSize(
+                      duration: const Duration(
+                        milliseconds: 350,
+                      ), // Max smoothness at 120Hz (42 frames)
+                      curve: const Cubic(
+                        0.05,
+                        0.7,
+                        0.1,
+                        1.0,
+                      ), // Material Design 3 emphasized decelerate
+                      child:
+                          hasMini
+                              ? const Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  MiniPlayer(height: 68),
+                                  SizedBox(height: 6),
+                                ],
+                              )
+                              : const SizedBox.shrink(),
+                    ),
+                    _buildNavigationBar(
+                      context: context,
+                      selectedIndex: safeIndex,
+                      onDestinationSelected: (i) {
+                        setState(() {
+                          if (UiPrefs.pinSettings.value) {
+                            _index = pages.length - 1;
+                            UiPrefs.pinSettings.value = false;
+                          } else {
+                            _index = i.clamp(0, pages.length - 1);
+                          }
+                        });
+                      },
+                      colorScheme: cs,
+                      height: navHeight,
+                      showAuthors: _showAuthors,
+                      showSeries: _showSeries,
+                    ),
+                  ],
+                );
 
-              const animDuration = Duration(milliseconds: 300);
+                const animDuration = Duration(milliseconds: 300);
 
-              return IgnorePointer(
-                ignoring: fullPlayerVisible,
-                child: AnimatedSlide(
-                  duration: animDuration,
-                  curve: fullPlayerVisible 
-                      ? Curves.easeInCubic // Smooth acceleration when hiding (going down)
-                      : Curves.easeOutCubic, // Smooth deceleration when showing (coming up)
-                  offset: fullPlayerVisible ? const Offset(0, 1.0) : Offset.zero,
-                  child: AnimatedOpacity(
+                return IgnorePointer(
+                  ignoring: fullPlayerVisible,
+                  child: AnimatedSlide(
                     duration: animDuration,
-                    curve: Curves.easeInOut,
-                    opacity: fullPlayerVisible ? 0.0 : 1.0,
-                    child: chrome,
+                    curve:
+                        fullPlayerVisible
+                            ? Curves
+                                .easeInCubic // Smooth acceleration when hiding (going down)
+                            : Curves
+                                .easeOutCubic, // Smooth deceleration when showing (coming up)
+                    offset:
+                        fullPlayerVisible ? const Offset(0, 1.0) : Offset.zero,
+                    child: AnimatedOpacity(
+                      duration: animDuration,
+                      curve: Curves.easeInOut,
+                      opacity: fullPlayerVisible ? 0.0 : 1.0,
+                      child: chrome,
+                    ),
                   ),
-                ),
-              );
-            },
-          ),
+                );
+              },
+            ),
           ),
         );
       },
@@ -311,9 +334,7 @@ class _MainScaffoldState extends State<MainScaffold> {
       decoration: BoxDecoration(
         color: colorScheme.surface.withOpacity(0.96),
         border: Border(
-          top: BorderSide(
-            color: colorScheme.outlineVariant.withOpacity(0.16),
-          ),
+          top: BorderSide(color: colorScheme.outlineVariant.withOpacity(0.16)),
         ),
       ),
       child: NavigationBar(
@@ -333,33 +354,52 @@ class _MainScaffoldState extends State<MainScaffold> {
     );
   }
 
-  List<NavigationDestination> _buildDestinations(bool showAuthors, bool showSeries) {
+  List<NavigationDestination> _buildDestinations(
+    bool showAuthors,
+    bool showSeries,
+  ) {
     return [
       const NavigationDestination(
-        icon: Icon(Icons.library_books_outlined, semanticLabel: 'Books'),
-        selectedIcon: Icon(Icons.library_books, semanticLabel: 'Books'),
+        icon: Icon(Symbols.library_books, semanticLabel: 'Books'),
+        selectedIcon: Icon(
+          Symbols.library_books,
+          fill: 1,
+          semanticLabel: 'Books',
+        ),
         label: 'Books',
       ),
       if (showAuthors)
         const NavigationDestination(
-          icon: Icon(Icons.person_outlined, semanticLabel: 'Authors'),
-          selectedIcon: Icon(Icons.person, semanticLabel: 'Authors'),
+          icon: Icon(Symbols.person, semanticLabel: 'Authors'),
+          selectedIcon: Icon(Symbols.person, fill: 1, semanticLabel: 'Authors'),
           label: 'Authors',
         ),
       if (showSeries)
         const NavigationDestination(
-          icon: Icon(Icons.collections_bookmark_outlined, semanticLabel: 'Series'),
-          selectedIcon: Icon(Icons.collections_bookmark, semanticLabel: 'Series'),
+          icon: Icon(Symbols.collections_bookmark, semanticLabel: 'Series'),
+          selectedIcon: Icon(
+            Symbols.collections_bookmark,
+            fill: 1,
+            semanticLabel: 'Series',
+          ),
           label: 'Series',
         ),
       const NavigationDestination(
-        icon: Icon(Icons.download_outlined, semanticLabel: 'Downloads'),
-        selectedIcon: Icon(Icons.download, semanticLabel: 'Downloads'),
+        icon: Icon(Symbols.download_for_offline, semanticLabel: 'Downloads'),
+        selectedIcon: Icon(
+          Symbols.download_for_offline,
+          fill: 1,
+          semanticLabel: 'Downloads',
+        ),
         label: 'Downloads',
       ),
       const NavigationDestination(
-        icon: Icon(Icons.settings_outlined, semanticLabel: 'Settings'),
-        selectedIcon: Icon(Icons.settings, semanticLabel: 'Settings'),
+        icon: Icon(Symbols.settings, semanticLabel: 'Settings'),
+        selectedIcon: Icon(
+          Symbols.settings,
+          fill: 1,
+          semanticLabel: 'Settings',
+        ),
         label: 'Settings',
       ),
     ];
