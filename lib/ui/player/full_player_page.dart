@@ -7,6 +7,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import 'package:material_symbols_icons/symbols.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:squiggly_slider/slider.dart';
 import 'dart:io';
@@ -1373,7 +1374,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
   }) {
     final disabled = totalChapters <= 1;
     return Icon(
-      Icons.format_list_bulleted_rounded,
+      Symbols.format_list_bulleted,
       color: disabled ? cs.onSurfaceVariant : cs.onSurface,
     );
   }
@@ -2425,9 +2426,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                             children: [
                               IconButton.filledTonal(
                                 onPressed: () => Navigator.of(context).pop(),
-                                icon: const Icon(
-                                  Icons.keyboard_arrow_down_rounded,
-                                ),
+                                icon: const Icon(Symbols.keyboard_arrow_down),
                                 style: IconButton.styleFrom(
                                   backgroundColor: cs.surface.withOpacity(0.38),
                                   foregroundColor: cs.onSurface,
@@ -2446,7 +2445,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                     builder: (_, speedSnap) {
                                       final speed = speedSnap.data ?? 1.0;
                                       return _InfoPill(
-                                        icon: Icons.speed_rounded,
+                                        icon: Symbols.speed,
                                         label: _formatPlaybackSpeedLabel(speed),
                                         highlighted:
                                             (speed - 1.0).abs() > 0.001,
@@ -2461,9 +2460,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                             ? null
                                             : () =>
                                                 _addBookmark(context, playback),
-                                    icon: const Icon(
-                                      Icons.bookmark_add_rounded,
-                                    ),
+                                    icon: const Icon(Symbols.bookmark_add),
                                     style: IconButton.styleFrom(
                                       backgroundColor: cs.surface.withOpacity(
                                         0.34,
@@ -2492,9 +2489,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                               : cs.surface;
                                       return PopupMenuButton<_TopMenuAction>(
                                         tooltip: 'More options',
-                                        icon: const Icon(
-                                          Icons.more_vert_rounded,
-                                        ),
+                                        icon: const Icon(Symbols.more_vert),
                                         color: menuBg,
                                         shape: RoundedRectangleBorder(
                                           borderRadius: BorderRadius.circular(
@@ -3198,9 +3193,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                               children: [
                                                 _ControlButton(
                                                   tooltip: 'Previous track',
-                                                  icon:
-                                                      Icons
-                                                          .skip_previous_rounded,
+                                                  icon: Symbols.skip_previous,
                                                   size: edge,
                                                   onTap: () async {
                                                     if (playback.hasSmartPrev) {
@@ -3222,9 +3215,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                                     return _ControlButton(
                                                       tooltip:
                                                           'Back ${seekSeconds}s',
-                                                      icon:
-                                                          Icons
-                                                              .replay_30_rounded,
+                                                      icon: Symbols.replay_30,
                                                       size: skip,
                                                       onTap:
                                                           () => playback
@@ -3250,10 +3241,9 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                                               : 'Play',
                                                       icon:
                                                           playing
-                                                              ? Icons
-                                                                  .pause_rounded
-                                                              : Icons
-                                                                  .play_arrow_rounded,
+                                                              ? Symbols.pause
+                                                              : Symbols
+                                                                  .play_arrow,
                                                       isPrimary: true,
                                                       isCircular:
                                                           !playing, // keep round when showing Play triangle
@@ -3322,9 +3312,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                                     return _ControlButton(
                                                       tooltip:
                                                           'Forward ${seekSeconds}s',
-                                                      icon:
-                                                          Icons
-                                                              .forward_30_rounded,
+                                                      icon: Symbols.forward_30,
                                                       size: skip,
                                                       onTap:
                                                           () => playback
@@ -3337,7 +3325,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                                 SizedBox(width: spacing),
                                                 _ControlButton(
                                                   tooltip: 'Next track',
-                                                  icon: Icons.skip_next_rounded,
+                                                  icon: Symbols.skip_next,
                                                   size: edge,
                                                   onTap: () async {
                                                     if (playback.hasSmartNext) {
@@ -3675,9 +3663,7 @@ class _SleepQuickAction extends StatelessWidget {
         final active = timer.isActive;
         final isChapterMode = timer.isChapterMode;
         return _PlayerActionTile(
-          icon: Icon(
-            isChapterMode ? Icons.auto_stories_rounded : Icons.bedtime_rounded,
-          ),
+          icon: Icon(isChapterMode ? Symbols.auto_stories : Symbols.bedtime),
           label: 'Sleep',
           onTap: onTap,
           tooltip: active ? 'Adjust sleep timer' : 'Set sleep timer',
@@ -3708,7 +3694,7 @@ class _SpeedQuickAction extends StatelessWidget {
         final accentColor = cs.primary;
         return _PlayerActionTile(
           icon: Icon(
-            Icons.speed_rounded,
+            Symbols.speed,
             color: isNormal ? cs.onSurface : accentColor,
           ),
           label: isNormal ? 'Speed' : _formatPlaybackSpeedLabel(cur),
@@ -3819,6 +3805,7 @@ class _ChaptersDownloadButton extends StatefulWidget {
   final String? title;
   final bool iconOnly;
   final double heightScale;
+
 
   @override
   State<_ChaptersDownloadButton> createState() =>
@@ -3983,7 +3970,7 @@ class _ChaptersDownloadButtonState extends State<_ChaptersDownloadButton> {
     VoidCallback? action;
 
     if (snap?.status == 'complete') {
-      iconWidget = const Icon(Icons.delete_outline);
+      iconWidget = const Icon(Symbols.delete);
       label = 'Offline';
       tooltip = 'Remove download';
       backgroundColor = cs.secondaryContainer;
@@ -4040,7 +4027,7 @@ class _ChaptersDownloadButtonState extends State<_ChaptersDownloadButton> {
       foregroundColor = cs.onPrimary;
       action = _cancelCurrent;
     } else {
-      iconWidget = const Icon(Icons.download_for_offline_rounded);
+      iconWidget = const Icon(Symbols.download_for_offline);
       label = 'Offline';
       tooltip = 'Download for offline';
       backgroundColor = cs.surfaceContainerHighest;

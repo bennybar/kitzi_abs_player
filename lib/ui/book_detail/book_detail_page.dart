@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:rxdart/rxdart.dart';
 import 'dart:io';
 import 'package:flutter_html/flutter_html.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 import '../../core/books_repository.dart';
 import '../../models/book.dart';
@@ -928,7 +929,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
                                         runSpacing: 8,
                                         children: [
                                           _InfoChip(
-                                            icon: Icons.schedule,
+                                            icon: Symbols.schedule,
                                             label: fmtDuration(),
                                             tooltip: 'Total length',
                                             onTap: () async {
@@ -1086,7 +1087,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
                                             },
                                           ),
                                           _InfoChip(
-                                            icon: Icons.save_alt,
+                                            icon: Symbols.download,
                                             label: fmtSize(),
                                             tooltip: 'Estimated download size',
                                             onTap: () async {
@@ -1282,9 +1283,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
                                           bottom: 10,
                                         ),
                                         child: _MetaChip(
-                                          icon:
-                                              Icons
-                                                  .collections_bookmark_rounded,
+                                          icon: Symbols.collections_bookmark,
                                           label: 'Series',
                                           value:
                                               b.seriesSequence != null &&
@@ -1309,9 +1308,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
                                             SizedBox(
                                               width: 150,
                                               child: _MetaChip(
-                                                icon:
-                                                    Icons
-                                                        .calendar_today_rounded,
+                                                icon: Symbols.calendar_today,
                                                 label: 'Year',
                                                 value: b.publishYear.toString(),
                                               ),
@@ -1320,7 +1317,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
                                             SizedBox(
                                               width: 180,
                                               child: _MetaChip(
-                                                icon: Icons.business_rounded,
+                                                icon: Symbols.business,
                                                 label: 'Publisher',
                                                 value: b.publisher!,
                                               ),
@@ -1337,7 +1334,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
                                                 maxWidth: 320,
                                               ),
                                               child: _MetaChip(
-                                                icon: Icons.category_rounded,
+                                                icon: Symbols.category,
                                                 label: 'Genres',
                                                 value: b.genres!.join(' / '),
                                               ),
@@ -1812,11 +1809,7 @@ class _ProgressSummaryState extends State<_ProgressSummary> {
                 borderRadius: BorderRadius.circular(14),
               ),
               alignment: Alignment.center,
-              child: Icon(
-                Icons.check_circle_rounded,
-                size: 20,
-                color: cs.primary,
-              ),
+              child: Icon(Symbols.check_circle, size: 20, color: cs.primary),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -1853,7 +1846,7 @@ class _ProgressSummaryState extends State<_ProgressSummary> {
               ),
               alignment: Alignment.center,
               child: Icon(
-                Icons.play_circle_outline_rounded,
+                Symbols.play_circle,
                 size: 20,
                 color: cs.onSurfaceVariant,
               ),
@@ -1892,11 +1885,7 @@ class _ProgressSummaryState extends State<_ProgressSummary> {
                 borderRadius: BorderRadius.circular(14),
               ),
               alignment: Alignment.center,
-              child: Icon(
-                Icons.play_circle_rounded,
-                size: 20,
-                color: cs.secondary,
-              ),
+              child: Icon(Symbols.play_circle, size: 20, color: cs.secondary),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -2380,7 +2369,7 @@ class _PlayPrimaryButtonState extends State<_PlayPrimaryButton> {
     if (!book.isAudioBook) {
       return FilledButton.icon(
         onPressed: null,
-        icon: const Icon(Icons.block),
+        icon: const Icon(Symbols.block),
         label: const Text('Not an audiobook'),
         style: _actionStyle(context, primary: false),
       );
@@ -2439,7 +2428,7 @@ class _PlayPrimaryButtonState extends State<_PlayPrimaryButton> {
                       onPressed: () async {
                         await playback.pause();
                       },
-                      icon: const Icon(Icons.stop_rounded),
+                      icon: const Icon(Symbols.stop),
                       label: const Text('Stop'),
                     );
                   }
@@ -2480,7 +2469,7 @@ class _PlayPrimaryButtonState extends State<_PlayPrimaryButton> {
                         }
                       }
                     },
-                    icon: const Icon(Icons.play_arrow_rounded),
+                    icon: const Icon(Symbols.play_arrow),
                     label: const Text('Resume'),
                     style: _actionStyle(context, primary: true),
                   );
@@ -2535,13 +2524,13 @@ class _PlayPrimaryButtonState extends State<_PlayPrimaryButton> {
     IconData icon;
     if (isCompleted) {
       label = 'Start';
-      icon = Icons.play_arrow_rounded;
+      icon = Symbols.play_arrow;
     } else if (hasProgress) {
       label = 'Resume';
-      icon = Icons.play_arrow_rounded;
+      icon = Symbols.play_arrow;
     } else {
       label = 'Play';
-      icon = Icons.play_arrow_rounded;
+      icon = Symbols.play_arrow;
     }
 
     return FilledButton.icon(
@@ -2682,7 +2671,7 @@ class _BookmarksPreviewState extends State<_BookmarksPreview> {
                         ),
                         alignment: Alignment.center,
                         child: Icon(
-                          Icons.bookmark_add_outlined,
+                          Symbols.bookmark_add,
                           size: 18,
                           color: cs.primary,
                         ),
@@ -2731,7 +2720,7 @@ class _BookmarksPreviewState extends State<_BookmarksPreview> {
                               ),
                               alignment: Alignment.center,
                               child: Icon(
-                                Icons.bookmark_rounded,
+                                Symbols.bookmark,
                                 color: cs.primary,
                                 size: 18,
                               ),
@@ -2764,7 +2753,7 @@ class _BookmarksPreviewState extends State<_BookmarksPreview> {
                             ),
                             const SizedBox(width: 8),
                             Icon(
-                              Icons.chevron_right_rounded,
+                              Symbols.chevron_right,
                               color: cs.onSurfaceVariant,
                             ),
                           ],
