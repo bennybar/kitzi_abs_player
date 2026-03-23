@@ -100,12 +100,14 @@ class _MiniPlayerState extends State<MiniPlayer> {
 
               _schedulePaletteUpdate(np.coverUrl);
 
-              return Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 8,
-                ),
-                child: Row(
+              return Stack(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 8,
+                    ),
+                    child: Row(
                   children: [
                     // Album art with PixelPlay-inspired rounded corners and shadow
                     Container(
@@ -439,6 +441,42 @@ class _MiniPlayerState extends State<MiniPlayer> {
                     ),
                   ],
                 ),
+                  ),
+                  // Thin book-progress bar at the very bottom of the mini player
+                  Positioned(
+                    left: 14,
+                    right: 14,
+                    bottom: 4,
+                    child: StreamBuilder<Duration>(
+                      stream: playback.positionStream,
+                      initialData: playback.player.position,
+                      builder: (_, posSnap) {
+                        final pos =
+                            playback.globalBookPosition ??
+                            (posSnap.data ?? Duration.zero);
+                        final dur = playback.totalBookDuration;
+                        if (dur == null || dur == Duration.zero) {
+                          return const SizedBox.shrink();
+                        }
+                        final fraction = (pos.inMilliseconds /
+                                dur.inMilliseconds)
+                            .clamp(0.0, 1.0);
+                        return ClipRRect(
+                          borderRadius: BorderRadius.circular(2),
+                          child: LinearProgressIndicator(
+                            value: fraction,
+                            minHeight: 3,
+                            backgroundColor:
+                                cs.outlineVariant.withOpacity(0.25),
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              cs.primary.withOpacity(0.75),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
               );
             },
           ),

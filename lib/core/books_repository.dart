@@ -709,6 +709,30 @@ class BooksRepository {
     }).toList();
   }
 
+  /// Returns books in the same series, sorted by series sequence, excluding [excludeId].
+  Future<List<Book>> listBooksInSeries(String seriesName, {String? excludeId}) async {
+    final all = await _listBooksFromDb();
+    final result = all
+        .where((b) => b.series == seriesName && b.id != excludeId)
+        .toList()
+      ..sort((a, b) => (a.seriesSequence ?? 0).compareTo(b.seriesSequence ?? 0));
+    return result;
+  }
+
+  /// Returns books by the same author, sorted by updatedAt desc, excluding [excludeId].
+  Future<List<Book>> listBooksByAuthor(String author, {String? excludeId}) async {
+    final all = await _listBooksFromDb();
+    final result = all
+        .where((b) => b.author == author && b.id != excludeId)
+        .toList()
+      ..sort((a, b) {
+        final aDate = a.updatedAt ?? DateTime(0);
+        final bDate = b.updatedAt ?? DateTime(0);
+        return bDate.compareTo(aDate);
+      });
+    return result;
+  }
+
   /// Paged local query of books from the on-device DB with optional search and sort.
   Future<List<Book>> listBooksFromDbPaged({
     required int page,

@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kitzi — UI Improvement Suggestions</title>
+<style>
+  :root {
+    --bg: #0f0f13;
+    --surface: #1a1a24;
+    --surface2: #22222f;
+    --accent: #b39ddb;
+    --accent2: #7c4dff;
+    --text: #e8e8f0;
+    --muted: #8888aa;
+    --border: #2e2e40;
+    --green: #69f0ae;
+    --orange: #ffab40;
+    --red: #ff5252;
+    --blue: #40c4ff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    line-height: 1.6;
+    padding: 40px 20px;
+  }
+  h1 {
+    text-align: center;
+    font-size: 2rem;
+    background: linear-gradient(135deg, #b39ddb, #7c4dff);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 8px;
+  }
+  .subtitle {
+    text-align: center;
+    color: var(--muted);
+    margin-bottom: 48px;
+    font-size: 0.95rem;
+  }
+  .suggestion {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+    margin-bottom: 36px;
+    max-width: 900px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .suggestion-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .num {
+    background: var(--accent2);
+    color: white;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.9rem;
+    flex-shrink: 0;
+  }
+  h2 { font-size: 1.2rem; color: var(--accent); }
+  .tag {
+    margin-left: auto;
+    font-size: 0.72rem;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  .tag-easy { background: #1b3a2a; color: var(--green); }
+  .tag-medium { background: #3a2a1a; color: var(--orange); }
+  .tag-hard { background: #3a1a1a; color: var(--red); }
+  p { color: var(--muted); font-size: 0.93rem; margin-bottom: 20px; }
+  .drawing-area {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: center;
+  }
+  .phone-frame {
+    background: #0d0d14;
+    border: 2px solid #3a3a50;
+    border-radius: 24px;
+    width: 200px;
+    min-height: 360px;
+    position: relative;
+    padding: 12px 8px 16px;
+    flex-shrink: 0;
+  }
+  .phone-notch {
+    background: #3a3a50;
+    width: 50px;
+    height: 8px;
+    border-radius: 4px;
+    margin: 0 auto 10px;
+  }
+  .phone-label {
+    text-align: center;
+    font-size: 0.65rem;
+    color: var(--muted);
+    margin-top: 8px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  .phone-screen {
+    background: #111118;
+    border-radius: 12px;
+    min-height: 320px;
+    overflow: hidden;
+    position: relative;
+  }
+  svg { display: block; }
+  .arrow-area {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+    font-size: 1.5rem;
+  }
+  .arrow-label {
+    font-size: 0.7rem;
+    color: var(--muted);
+    text-align: center;
+    max-width: 80px;
+    margin-top: 4px;
+    letter-spacing: 0.3px;
+  }
+  .notes {
+    margin-top: 16px;
+    padding: 12px 16px;
+    background: #1a1a30;
+    border-left: 3px solid var(--accent2);
+    border-radius: 0 8px 8px 0;
+    font-size: 0.85rem;
+    color: var(--muted);
+  }
+  .notes ul { padding-left: 16px; }
+  .notes li { margin-bottom: 4px; }
+  .drawing-caption {
+    font-size: 0.75rem;
+    color: var(--muted);
+    text-align: center;
+    margin-top: 12px;
+    font-style: italic;
+  }
+</style>
+</head>
+<body>
+
+<h1>Kitzi — UI Improvements</h1>
+<p class="subtitle">Visual design &amp; interaction improvements for the Audiobookshelf client</p>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<!-- 1. MINI PLAYER RICHER DESIGN -->
+<!-- ─────────────────────────────────────────────────────────────── -->
+<div class="suggestion">
+  <div class="suggestion-header">
+    <div class="num">1</div>
+    <h2>Mini Player — Richer, More Informative Bar</h2>
+    <span class="tag tag-medium">Medium</span>
+  </div>
+  <p>The current mini player is a single slim bar. Surface more info at a glance: chapter title, a tiny chapter-scoped progress ring around the cover art, and a waveform pulse to show live playback state. Add a swipe-down-to-dismiss gesture.</p>
+
+  <div class="drawing-area">
+    <!-- BEFORE -->
+    <div>
+      <div class="phone-frame">
+        <div class="phone-notch"></div>
+        <div class="phone-screen">
+          <svg width="184" height="320" viewBox="0 0 184 320">
+            <!-- Library content placeholder -->
+            <rect x="8" y="8" width="80" height="100" rx="6" fill="#1e1e2a"/>
+            <rect x="96" y="8" width="80" height="100" rx="6" fill="#1e1e2a"/>
+            <rect x="8" y="116" width="80" height="100" rx="6" fill="#1e1e2a"/>
+            <rect x="96" y="116" width="80" height="100" rx="6" fill="#1e1e2a"/>
+            <!-- Mini player bar (BEFORE) -->
+            <rect x="0" y="270" width="184" height="50" fill="#2a2a3d"/>
+            <rect x="8" y="278" width="34" height="34" rx="4" fill="#3a3a55"/>
+            <!-- title placeholder -->
+            <rect x="50" y="282" width="80" height="8" rx="3" fill="#4a4a60"/>
+            <rect x="50" y="296" width="50" height="6" rx="3" fill="#3a3a55"/>
+            <!-- play button -->
+            <circle cx="162" cy="295" r="14" fill="#3a3a55"/>
+            <polygon points="158,290 158,300 168,295" fill="#8888aa"/>
+            <!-- bottom nav -->
+            <rect x="0" y="304" width="184" height="16" fill="#1e1e28"/>
+          </svg>
+        </div>
+        <div class="phone-label">Current (Before)</div>
+      </div>
+    </div>
+
+    <div class="arrow-area">
+      <span>→</span>
+      <span class="arrow-label">Redesign</span>
+    </div>
+
+    <!-- AFTER -->
+    <div>
+      <div class="phone-frame">
+        <div class="phone-notch"></div>
+        <div class="phone-screen">
+          <svg width="184" height="320" viewBox="0 0 184 320">
+            <!-- Library content placeholder -->
+            <rect x="8" y="8" width="80" height="100" rx="6" fill="#1e1e2a"/>
+            <rect x="96" y="8" width="80" height="100" rx="6" fill="#1e1e2a"/>
+            <rect x="8" y="116" width="80" height="100" rx="6" fill="#1e1e2a"/>
+            <rect x="96" y="116" width="80" height="100" rx="6" fill="#1e1e2a"/>
+            <!-- Mini player bar (AFTER) - taller, richer -->
+            <rect x="4" y="260" width="176" height="62" rx="12" fill="#2e2040"/>
+            <!-- glassmorphism border -->
+            <rect x="4" y="260" width="176" height="62" rx="12" fill="none" stroke="#5a4080" stroke-width="1"/>
+            <!-- Cover art with progress ring -->
+            <circle cx="34" cy="291" r="22" fill="none" stroke="#3a3050" stroke-width="3"/>
+            <path d="M34,269 a22,22 0 0,1 19,11" fill="none" stroke="#b39ddb" stroke-width="3" stroke-linecap="round"/>
+            <rect x="20" y="277" width="28" height="28" rx="5" fill="#3a3050"/>
+            <!-- Text info -->
+            <rect x="62" y="268" width="70" height="8" rx="3" fill="#b39ddb" opacity="0.8"/>
+            <rect x="62" y="280" width="50" height="6" rx="3" fill="#7a6a90" opacity="0.7"/>
+            <!-- Mini waveform (live indicator) -->
+            <rect x="62" y="290" width="3" height="8" rx="1" fill="#7c4dff"/>
+            <rect x="67" y="287" width="3" height="14" rx="1" fill="#7c4dff" opacity="0.8"/>
+            <rect x="72" y="292" width="3" height="6" rx="1" fill="#7c4dff" opacity="0.6"/>
+            <rect x="77" y="289" width="3" height="12" rx="1" fill="#7c4dff" opacity="0.9"/>
+            <rect x="82" y="291" width="3" height="8" rx="1" fill="#7c4dff" opacity="0.7"/>
+            <!-- Controls -->
+            <circle cx="140" cy="291" r="12" fill="#3a3050"/>
+            <polygon points="136,286 136,296 146,291" fill="#b39ddb"/>
+            <text x="160" y="296" fill="#8888aa" font-size="16" text-anchor="middle">⏭</text>
+            <!-- Progress bar thin at bottom -->
+            <rect x="12" y="316" width="160" height="2" rx="1" fill="#3a3050"/>
+            <rect x="12" y="316" width="60" height="2" rx="1" fill="#7c4dff"/>
+            <!-- bottom nav -->
+            <rect x="0" y="318" width="184" height="2" fill="#1e1e28"/>
+          </svg>
+        </div>
+        <div class="phone-label">Proposed (After)</div>
+      </div>
+    </div>
+  </div>
+  <div class="notes">
+    <ul>
+      <li>Progress ring around cover art shows chapter completion (not just book progress)</li>
+      <li>Mini animated waveform bars give visual confirmation audio is playing</li>
+      <li>Thin progress bar at bottom of mini player for book-level progress</li>
+      <li>Swipe down on mini player to dismiss / stop</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<!-- 2. LIBRARY GRID — PROGRESS OVERLAY ON COVERS -->
+<!-- ─────────────────────────────────────────────────────────────── -->
+<div class="suggestion">
+  <div class="suggestion-header">
+    <div class="num">2</div>
+    <h2>Library Grid — Richer Cover Overlays</h2>
+    <span class="tag tag-easy">Easy</span>
+  </div>
+  <p>Book covers in the grid currently show minimal state. Add a subtle bottom progress bar, a "finished" checkmark badge, a "new" badge for recently added items, and a "currently playing" animated border so users can find their active book instantly.</p>
+
+  <div class="drawing-area">
+    <svg width="400" height="220" viewBox="0 0 400 220">
+      <!-- Background -->
+      <rect width="400" height="220" fill="#111118" rx="8"/>
+      <text x="10" y="20" fill="#5a5a70" font-size="10" font-family="sans-serif">Library Grid</text>
+
+      <!-- Book card 1 — In Progress -->
+      <rect x="10" y="28" width="80" height="110" rx="8" fill="#2a2a3d"/>
+      <rect x="14" y="32" width="72" height="80" rx="6" fill="#3a3050"/>
+      <!-- Progress bar overlay at bottom of cover -->
+      <rect x="14" y="102" width="72" height="6" rx="0" fill="#1a1a28" opacity="0.8"/>
+      <rect x="14" y="102" width="45" height="6" rx="0" fill="#7c4dff"/>
+      <!-- Title -->
+      <rect x="14" y="116" width="55" height="6" rx="2" fill="#4a4a60"/>
+      <rect x="14" y="126" width="35" height="5" rx="2" fill="#3a3a50"/>
+      <!-- "62%" label -->
+      <text x="83" y="109" fill="#b39ddb" font-size="8" font-family="sans-serif" text-anchor="end">62%</text>
+
+      <!-- Book card 2 — Finished -->
+      <rect x="100" y="28" width="80" height="110" rx="8" fill="#2a2a3d"/>
+      <rect x="104" y="32" width="72" height="80" rx="6" fill="#3a3050"/>
+      <!-- Finished badge -->
+      <circle cx="168" cy="42" r="11" fill="#1b3a2a"/>
+      <text x="168" y="47" fill="#69f0ae" font-size="13" text-anchor="middle">✓</text>
+      <!-- Progress bar full -->
+      <rect x="104" y="102" width="72" height="6" rx="0" fill="#1b3a2a" opacity="0.9"/>
+      <rect x="104" y="102" width="72" height="6" rx="0" fill="#69f0ae"/>
+      <rect x="104" y="116" width="55" height="6" rx="2" fill="#4a4a60"/>
+      <rect x="104" y="126" width="35" height="5" rx="2" fill="#3a3a50"/>
+
+      <!-- Book card 3 — Currently Playing (animated border) -->
+      <rect x="190" y="26" width="84" height="114" rx="10" fill="#2e2040" stroke="#7c4dff" stroke-width="2"/>
+      <rect x="194" y="30" width="72" height="80" rx="6" fill="#3a3050"/>
+      <!-- Animated ring indicator top-left -->
+      <circle cx="204" cy="40" r="8" fill="#1a1020" stroke="#7c4dff" stroke-width="1.5"/>
+      <text x="204" y="44" fill="#b39ddb" font-size="9" text-anchor="middle">▶</text>
+      <!-- Progress bar -->
+      <rect x="194" y="100" width="72" height="6" rx="0" fill="#1a1028" opacity="0.8"/>
+      <rect x="194" y="100" width="28" height="6" rx="0" fill="#7c4dff"/>
+      <rect x="194" y="114" width="55" height="6" rx="2" fill="#4a4a60"/>
+      <rect x="194" y="124" width="35" height="5" rx="2" fill="#3a3a50"/>
+      <!-- "NOW PLAYING" label -->
+      <text x="236" y="145" fill="#7c4dff" font-size="7" text-anchor="middle" font-family="sans-serif" font-weight="bold">NOW PLAYING</text>
+
+      <!-- Book card 4 — New -->
+      <rect x="284" y="28" width="80" height="110" rx="8" fill="#2a2a3d"/>
+      <rect x="288" y="32" width="72" height="80" rx="6" fill="#3a3050"/>
+      <!-- New badge -->
+      <rect x="282" y="28" width="30" height="14" rx="7" fill="#ff6d00"/>
+      <text x="297" y="39" fill="white" font-size="8" text-anchor="middle" font-family="sans-serif" font-weight="bold">NEW</text>
+      <!-- No progress bar (unstarted) -->
+      <rect x="288" y="102" width="72" height="6" rx="0" fill="#1a1a28" opacity="0.5"/>
+      <rect x="288" y="116" width="55" height="6" rx="2" fill="#4a4a60"/>
+      <rect x="288" y="126" width="35" height="5" rx="2" fill="#3a3a50"/>
+
+      <!-- Legend -->
+      <rect x="10" y="160" width="10" height="4" rx="1" fill="#7c4dff"/>
+      <text x="26" y="165" fill="#8888aa" font-size="9" font-family="sans-serif">In Progress</text>
+      <rect x="90" y="160" width="10" height="4" rx="1" fill="#69f0ae"/>
+      <text x="106" y="165" fill="#8888aa" font-size="9" font-family="sans-serif">Finished</text>
+      <rect x="10" y="178" width="10" height="4" rx="1" fill="#7c4dff" stroke="#7c4dff" stroke-width="1"/>
+      <text x="26" y="183" fill="#8888aa" font-size="9" font-family="sans-serif">Now Playing (glowing border)</text>
+      <rect x="170" y="175" width="22" height="10" rx="5" fill="#ff6d00"/>
+      <text x="181" y="183" fill="white" font-size="7" text-anchor="middle" font-family="sans-serif">NEW</text>
+      <text x="198" y="183" fill="#8888aa" font-size="9" font-family="sans-serif">Recent add badge</text>
+    </svg>
+  </div>
+  <div class="notes">
+    <ul>
+      <li>Progress bar height: 5–6px at very bottom edge of cover image</li>
+      <li>Glowing purple border + play icon for currently-playing book — easy to spot in large libraries</li>
+      <li>"Finished" green checkmark badge stays until user manually marks unread</li>
+      <li>Orange "NEW" pill badge (configurable: last 7 days)</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<!-- 3. FULL PLAYER — SWIPE GESTURE ZONES -->
+<!-- ─────────────────────────────────────────────────────────────── -->
+<div class="suggestion">
+  <div class="suggestion-header">
+    <div class="num">3</div>
+    <h2>Full Player — Intuitive Swipe Gesture Zones</h2>
+    <span class="tag tag-medium">Medium</span>
+  </div>
+  <p>The full-screen player has no swipe gestures for navigation. Add gesture zones: swipe left/right on the cover for previous/next chapter, swipe up from cover to reveal the chapter list, and swipe down to dismiss back to the mini player. Haptic feedback on chapter change.</p>
+
+  <div class="drawing-area">
+    <div>
+      <div class="phone-frame">
+        <div class="phone-notch"></div>
+        <div class="phone-screen">
+          <svg width="184" height="320" viewBox="0 0 184 320">
+            <!-- Player background -->
+            <defs>
+              <linearGradient id="bg1" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#1a0a2e"/>
+                <stop offset="100%" stop-color="#0d0d14"/>
+              </linearGradient>
+            </defs>
+            <rect width="184" height="320" fill="url(#bg1)"/>
+            <!-- Cover art -->
+            <rect x="32" y="40" width="120" height="120" rx="10" fill="#2e1a4a"/>
+            <text x="92" y="110" fill="#5a4080" font-size="36" text-anchor="middle">♪</text>
+            <!-- Gesture arrows on cover -->
+            <!-- Swipe LEFT (prev chapter) -->
+            <text x="22" y="103" fill="#7c4dff" font-size="18" text-anchor="middle" opacity="0.8">←</text>
+            <text x="22" y="115" fill="#5a4080" font-size="7" text-anchor="middle">prev ch.</text>
+            <!-- Swipe RIGHT (next chapter) -->
+            <text x="162" y="103" fill="#7c4dff" font-size="18" text-anchor="middle" opacity="0.8">→</text>
+            <text x="162" y="115" fill="#5a4080" font-size="7" text-anchor="middle">next ch.</text>
+            <!-- Swipe UP (chapter list) -->
+            <text x="92" y="58" fill="#7c4dff" font-size="16" text-anchor="middle" opacity="0.8">↑</text>
+            <text x="92" y="38" fill="#5a4080" font-size="7" text-anchor="middle">chapter list</text>
+            <!-- Swipe DOWN (dismiss) -->
+            <text x="92" y="178" fill="#7c4dff" font-size="16" text-anchor="middle" opacity="0.8">↓</text>
+            <text x="92" y="192" fill="#5a4080" font-size="7" text-anchor="middle">dismiss</text>
+            <!-- Title -->
+            <rect x="30" y="200" width="124" height="10" rx="3" fill="#3a3050"/>
+            <rect x="50" y="216" width="84" height="8" rx="3" fill="#2a2040"/>
+            <!-- Progress slider -->
+            <rect x="20" y="240" width="144" height="4" rx="2" fill="#2a2040"/>
+            <rect x="20" y="240" width="60" height="4" rx="2" fill="#7c4dff"/>
+            <circle cx="80" cy="242" r="6" fill="#b39ddb"/>
+            <!-- Controls row -->
+            <text x="52" y="278" fill="#8888aa" font-size="20" text-anchor="middle">⏮</text>
+            <circle cx="92" cy="272" r="18" fill="#7c4dff"/>
+            <polygon points="87,264 87,280 104,272" fill="white"/>
+            <text x="132" y="278" fill="#8888aa" font-size="20" text-anchor="middle">⏭</text>
+          </svg>
+        </div>
+        <div class="phone-label">Gesture Zones</div>
+      </div>
+    </div>
+
+    <div class="arrow-area">
+      <span style="font-size:1rem">↑</span>
+      <span class="arrow-label">Swipe up reveals</span>
+    </div>
+
+    <!-- Chapter list overlay -->
+    <div>
+      <div class="phone-frame">
+        <div class="phone-notch"></div>
+        <div class="phone-screen">
+          <svg width="184" height="320" viewBox="0 0 184 320">
+            <!-- Dimmed player behind -->
+            <rect width="184" height="320" fill="#0d0d14"/>
+            <rect x="32" y="40" width="120" height="120" rx="10" fill="#1e1428" opacity="0.4"/>
+            <!-- Bottom sheet -->
+            <rect x="0" y="130" width="184" height="190" rx="16" fill="#1e1e2e"/>
+            <!-- Sheet handle -->
+            <rect x="72" y="140" width="40" height="4" rx="2" fill="#3a3a50"/>
+            <!-- Chapter list header -->
+            <text x="92" y="162" fill="#b39ddb" font-size="10" text-anchor="middle" font-family="sans-serif" font-weight="bold">CHAPTERS</text>
+            <!-- Chapter items -->
+            <!-- Active chapter -->
+            <rect x="10" y="170" width="164" height="30" rx="6" fill="#2e2040"/>
+            <rect x="10" y="170" width="3" height="30" rx="2" fill="#7c4dff"/>
+            <rect x="20" y="177" width="80" height="7" rx="2" fill="#b39ddb"/>
+            <rect x="20" y="188" width="40" height="5" rx="2" fill="#5a4080"/>
+            <text x="168" y="190" fill="#7c4dff" font-size="8" text-anchor="end" font-family="sans-serif">▶ 12:34</text>
+            <!-- Other chapters -->
+            <rect x="10" y="206" width="164" height="28" rx="6" fill="#161620"/>
+            <rect x="16" y="213" width="80" height="7" rx="2" fill="#4a4a60"/>
+            <rect x="16" y="224" width="40" height="5" rx="2" fill="#3a3a50"/>
+            <text x="168" y="226" fill="#5a5a70" font-size="8" text-anchor="end" font-family="sans-serif">24:10</text>
+            <rect x="10" y="240" width="164" height="28" rx="6" fill="#161620"/>
+            <rect x="16" y="247" width="70" height="7" rx="2" fill="#4a4a60"/>
+            <rect x="16" y="258" width="40" height="5" rx="2" fill="#3a3a50"/>
+            <text x="168" y="260" fill="#5a5a70" font-size="8" text-anchor="end" font-family="sans-serif">18:42</text>
+            <rect x="10" y="274" width="164" height="28" rx="6" fill="#161620"/>
+            <rect x="16" y="281" width="90" height="7" rx="2" fill="#4a4a60"/>
+            <rect x="16" y="292" width="40" height="5" rx="2" fill="#3a3a50"/>
+            <text x="168" y="294" fill="#5a5a70" font-size="8" text-anchor="end" font-family="sans-serif">31:05</text>
+          </svg>
+        </div>
+        <div class="phone-label">Chapter Sheet (after swipe up)</div>
+      </div>
+    </div>
+  </div>
+  <div class="notes">
+    <ul>
+      <li>Left/right swipe on cover art navigates chapters (with parallax animation)</li>
+      <li>Swipe up anywhere on player opens chapter list bottom sheet</li>
+      <li>Active chapter highlighted with accent color left border</li>
+      <li>Swipe down from anywhere dismisses player back to mini player</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<!-- 4. SEARCH — PERSISTENT BAR + FILTER CHIPS -->
+<!-- ─────────────────────────────────────────────────────────────── -->
+<div class="suggestion">
+  <div class="suggestion-header">
+    <div class="num">4</div>
+    <h2>Search — Persistent Bar with Filter Chips</h2>
+    <span class="tag tag-easy">Easy</span>
+  </div>
+  <p>The search bar currently hides when scrolling. Make it sticky at the top and add horizontal filter chips below it (All / Unfinished / Downloaded / By Series / By Author). Chips update results instantly without navigating away.</p>
+
+  <div class="drawing-area">
+    <svg width="380" height="200" viewBox="0 0 380 200">
+      <rect width="380" height="200" fill="#111118" rx="8"/>
+
+      <!-- Before -->
+      <text x="60" y="18" fill="#5a5a70" font-size="10" font-family="sans-serif" text-anchor="middle">BEFORE</text>
+      <rect x="8" y="24" width="104" height="28" rx="8" fill="#1e1e2e"/>
+      <text x="24" y="42" fill="#4a4a60" font-size="11" font-family="sans-serif">🔍  Search...</text>
+      <!-- scrolls away indicator -->
+      <rect x="8" y="58" width="104" height="8" rx="3" fill="#2a2a3a"/>
+      <rect x="8" y="72" width="104" height="8" rx="3" fill="#2a2a3a"/>
+      <text x="60" y="98" fill="#4a4a60" font-size="8" font-family="sans-serif" text-anchor="middle">↕ scrolls away</text>
+      <line x1="60" y1="100" x2="60" y2="56" stroke="#4a4a60" stroke-width="1" stroke-dasharray="3,2"/>
+
+      <!-- Divider -->
+      <line x1="130" y1="10" x2="130" y2="190" stroke="#2e2e40" stroke-width="1"/>
+
+      <!-- After -->
+      <text x="255" y="18" fill="#5a5a70" font-size="10" font-family="sans-serif" text-anchor="middle">AFTER</text>
+      <!-- Sticky search -->
+      <rect x="138" y="22" width="234" height="28" rx="8" fill="#1e1e2e" stroke="#3a3050" stroke-width="1"/>
+      <text x="154" y="40" fill="#8888aa" font-size="11" font-family="sans-serif">🔍  Search books, authors...</text>
+      <!-- Filter chips row -->
+      <rect x="138" y="56" width="234" height="24" rx="0" fill="#111118"/>
+      <!-- All chip (active) -->
+      <rect x="138" y="58" width="28" height="18" rx="9" fill="#7c4dff"/>
+      <text x="152" y="71" fill="white" font-size="8" text-anchor="middle" font-family="sans-serif" font-weight="bold">All</text>
+      <!-- Unfinished chip -->
+      <rect x="172" y="58" width="54" height="18" rx="9" fill="#2a2040" stroke="#3a3050" stroke-width="1"/>
+      <text x="199" y="71" fill="#8888aa" font-size="8" text-anchor="middle" font-family="sans-serif">Unfinished</text>
+      <!-- Downloaded chip -->
+      <rect x="232" y="58" width="54" height="18" rx="9" fill="#2a2040" stroke="#3a3050" stroke-width="1"/>
+      <text x="259" y="71" fill="#8888aa" font-size="8" text-anchor="middle" font-family="sans-serif">Downloaded</text>
+      <!-- Series chip -->
+      <rect x="292" y="58" width="34" height="18" rx="9" fill="#2a2040" stroke="#3a3050" stroke-width="1"/>
+      <text x="309" y="71" fill="#8888aa" font-size="8" text-anchor="middle" font-family="sans-serif">Series</text>
+      <!-- divider under chips -->
+      <line x1="138" y1="82" x2="372" y2="82" stroke="#2e2e40" stroke-width="1"/>
+      <!-- search results -->
+      <rect x="138" y="90" width="234" height="22" rx="4" fill="#1e1e2e"/>
+      <rect x="144" y="95" width="16" height="12" rx="2" fill="#2a2a3d"/>
+      <rect x="166" y="97" width="80" height="5" rx="2" fill="#4a4a60"/>
+      <rect x="166" y="106" width="50" height="4" rx="2" fill="#3a3a50"/>
+      <rect x="138" y="118" width="234" height="22" rx="4" fill="#1e1e2e"/>
+      <rect x="144" y="123" width="16" height="12" rx="2" fill="#2a2a3d"/>
+      <rect x="166" y="125" width="100" height="5" rx="2" fill="#4a4a60"/>
+      <rect x="166" y="134" width="60" height="4" rx="2" fill="#3a3a50"/>
+      <text x="255" y="165" fill="#5a5a70" font-size="8" text-anchor="middle" font-family="sans-serif">sticky, never scrolls away</text>
+      <line x1="255" y1="148" x2="255" y2="162" stroke="#4a4a60" stroke-width="1" stroke-dasharray="2,2"/>
+      <text x="255" y="180" fill="#7c4dff" font-size="8" text-anchor="middle" font-family="sans-serif">↕ only results scroll</text>
+    </svg>
+  </div>
+  <div class="notes">
+    <ul>
+      <li>Search bar pins to top — results list scrolls beneath it</li>
+      <li>Filter chips: All, Unfinished, Downloaded, In Series, By Author (horizontal scroll if more)</li>
+      <li>Active chip uses accent fill; inactive chips use subtle border only</li>
+      <li>Chips persist between sessions via <code>ui_prefs.dart</code></li>
+    </ul>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<!-- 5. SLEEP TIMER — VISUAL COUNTDOWN RING ON PLAYER -->
+<!-- ─────────────────────────────────────────────────────────────── -->
+<div class="suggestion">
+  <div class="suggestion-header">
+    <div class="num">5</div>
+    <h2>Sleep Timer — Visual Countdown Ring</h2>
+    <span class="tag tag-easy">Easy</span>
+  </div>
+  <p>When a sleep timer is active, the user has no visual cue in the player. Draw a thin arc around the cover art that depletes as time runs out. Show minutes remaining in a small badge. Tapping it opens the timer editor directly.</p>
+
+  <div class="drawing-area">
+    <svg width="300" height="240" viewBox="0 0 300 240">
+      <rect width="300" height="240" fill="#0d0d14" rx="8"/>
+
+      <!-- Player preview with timer ring -->
+      <!-- Cover art -->
+      <rect x="75" y="30" width="150" height="150" rx="12" fill="#2e1a4a"/>
+      <text x="150" y="118" fill="#5a4080" font-size="48" text-anchor="middle">♪</text>
+
+      <!-- Countdown ring (arc depleting, ~40% remaining) -->
+      <!-- Full track -->
+      <circle cx="150" cy="105" r="82" fill="none" stroke="#2a2040" stroke-width="3" opacity="0.5"/>
+      <!-- Remaining arc (~40% of circumference, starting from top) -->
+      <!-- Circumference = 2π*82 ≈ 515. 40% = 206 -->
+      <circle cx="150" cy="105" r="82" fill="none" stroke="#ff9800" stroke-width="3"
+              stroke-dasharray="206 515" stroke-dashoffset="129" stroke-linecap="round"
+              transform="rotate(-90 150 105)"/>
+
+      <!-- Badge showing remaining time -->
+      <rect x="186" y="28" width="34" height="18" rx="9" fill="#3a2010"/>
+      <rect x="186" y="28" width="34" height="18" rx="9" fill="none" stroke="#ff9800" stroke-width="1"/>
+      <text x="203" y="41" fill="#ff9800" font-size="9" text-anchor="middle" font-family="sans-serif" font-weight="bold">12m</text>
+
+      <!-- Labels -->
+      <text x="150" y="200" fill="#6a6a80" font-size="9" text-anchor="middle" font-family="sans-serif">Arc depletes as timer counts down</text>
+      <text x="150" y="214" fill="#6a6a80" font-size="9" text-anchor="middle" font-family="sans-serif">Tap badge to edit timer</text>
+
+      <!-- Arrow to badge -->
+      <line x1="200" y1="48" x2="200" y2="28" stroke="#ff9800" stroke-width="1" stroke-dasharray="2,2" opacity="0.5"/>
+    </svg>
+  </div>
+  <div class="notes">
+    <ul>
+      <li>Thin orange arc around cover art depletes over the timer duration</li>
+      <li>When &lt;5 minutes remain the arc pulses to warn the user</li>
+      <li>Timer badge (top-right of cover) shows minutes remaining; tap to modify</li>
+      <li>No ring shown when timer is inactive — zero visual clutter</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<!-- 6. BOOK DETAIL — TIMELINE PROGRESS + RELATED ROW -->
+<!-- ─────────────────────────────────────────────────────────────── -->
+<div class="suggestion">
+  <div class="suggestion-header">
+    <div class="num">6</div>
+    <h2>Book Detail — Timeline Bar + Related Books Row</h2>
+    <span class="tag tag-medium">Medium</span>
+  </div>
+  <p>Book detail pages show cover, description, and a play button. Add a chapter timeline bar (each chapter as a colored segment, current position marked) and a "More like this" horizontal carousel at the bottom for books in the same series or by the same author.</p>
+
+  <div class="drawing-area">
+    <div>
+      <div class="phone-frame">
+        <div class="phone-notch"></div>
+        <div class="phone-screen">
+          <svg width="184" height="320" viewBox="0 0 184 320">
+            <rect width="184" height="320" fill="#111118"/>
+            <!-- Cover top area -->
+            <rect x="0" y="0" width="184" height="140" fill="#1a0a2e"/>
+            <rect x="60" y="16" width="64" height="90" rx="6" fill="#2e1a4a"/>
+            <text x="92" y="68" fill="#5a4080" font-size="24" text-anchor="middle">♪</text>
+            <!-- Title block -->
+            <rect x="20" y="114" width="100" height="9" rx="3" fill="#4a4a60"/>
+            <rect x="20" y="128" width="70" height="7" rx="3" fill="#3a3050"/>
+            <!-- Chapter timeline bar -->
+            <text x="10" y="162" fill="#8888aa" font-size="8" font-family="sans-serif">CHAPTERS</text>
+            <rect x="10" y="166" width="164" height="8" rx="4" fill="#1e1e2e"/>
+            <!-- chapter segments (completed = purple, current = bright, future = dark) -->
+            <rect x="10" y="166" width="40" height="8" rx="4" fill="#4a2080" opacity="0.9"/>
+            <rect x="50" y="166" width="30" height="8" fill="#4a2080" opacity="0.9"/>
+            <rect x="80" y="166" width="20" height="8" fill="#7c4dff"/>
+            <!-- current position marker -->
+            <rect x="98" y="162" width="2" height="16" rx="1" fill="white"/>
+            <!-- future chapters -->
+            <rect x="100" y="166" width="35" height="8" fill="#2a2040"/>
+            <rect x="135" y="166" width="25" height="8" fill="#2a2040"/>
+            <rect x="160" y="166" width="14" height="8" rx="0" fill="#2a2040" style="border-radius:0 4px 4px 0"/>
+            <!-- Chapter progress label -->
+            <text x="10" y="184" fill="#7c4dff" font-size="7" font-family="sans-serif">Chapter 3 of 7 · 53%</text>
+            <!-- Description lines -->
+            <rect x="10" y="194" width="164" height="5" rx="2" fill="#2a2a3a"/>
+            <rect x="10" y="203" width="164" height="5" rx="2" fill="#2a2a3a"/>
+            <rect x="10" y="212" width="120" height="5" rx="2" fill="#2a2a3a"/>
+            <!-- Related row label -->
+            <text x="10" y="232" fill="#8888aa" font-size="8" font-family="sans-serif">MORE IN SERIES</text>
+            <!-- Related book cards -->
+            <rect x="10" y="238" width="44" height="58" rx="6" fill="#2a2a3d"/>
+            <rect x="60" y="238" width="44" height="58" rx="6" fill="#2a2a3d"/>
+            <rect x="110" y="238" width="44" height="58" rx="6" fill="#2a2a3d"/>
+            <rect x="160" y="238" width="20" height="58" rx="6" fill="#1e1e2a" opacity="0.5"/>
+          </svg>
+        </div>
+        <div class="phone-label">Book Detail (enhanced)</div>
+      </div>
+    </div>
+  </div>
+  <div class="notes">
+    <ul>
+      <li>Chapter timeline: each segment proportional to chapter duration, completed chapters shown darker</li>
+      <li>White tick marker shows exact current playback position across all chapters</li>
+      <li>"More in Series" row auto-populates from <code>series.dart</code> model already in code</li>
+      <li>Tapping a series card opens that book's detail page</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<!-- 7. STATS PAGE — BETTER DATA VISUALIZATION -->
+<!-- ─────────────────────────────────────────────────────────────── -->
+<div class="suggestion">
+  <div class="suggestion-header">
+    <div class="num">7</div>
+    <h2>Stats Page — Bar Chart Listening History</h2>
+    <span class="tag tag-hard">Hard</span>
+  </div>
+  <p>The stats page currently shows numbers. Add a 7-day/30-day listening bar chart, a streak counter badge, and a "best listening day" highlight to make stats more engaging and motivating.</p>
+
+  <div class="drawing-area">
+    <svg width="360" height="200" viewBox="0 0 360 200">
+      <rect width="360" height="200" fill="#0d0d14" rx="8"/>
+
+      <!-- Card -->
+      <rect x="10" y="10" width="340" height="180" rx="12" fill="#1a1a24"/>
+
+      <!-- Header -->
+      <text x="24" y="32" fill="#b39ddb" font-size="11" font-family="sans-serif" font-weight="bold">LAST 7 DAYS</text>
+      <text x="320" y="32" fill="#7c4dff" font-size="9" font-family="sans-serif" text-anchor="end">30d ▾</text>
+
+      <!-- Streak badge -->
+      <rect x="258" y="16" width="58" height="20" rx="10" fill="#3a2010"/>
+      <text x="287" y="30" fill="#ff9800" font-size="9" text-anchor="middle" font-family="sans-serif" font-weight="bold">🔥 5 day streak</text>
+
+      <!-- Y axis labels -->
+      <text x="22" y="55" fill="#4a4a60" font-size="7" font-family="sans-serif" text-anchor="end">2h</text>
+      <text x="22" y="80" fill="#4a4a60" font-size="7" font-family="sans-serif" text-anchor="end">1h</text>
+      <text x="22" y="105" fill="#4a4a60" font-size="7" font-family="sans-serif" text-anchor="end">30m</text>
+      <text x="22" y="130" fill="#4a4a60" font-size="7" font-family="sans-serif" text-anchor="end">0</text>
+
+      <!-- Grid lines -->
+      <line x1="28" y1="52" x2="344" y2="52" stroke="#2a2a3a" stroke-width="1" stroke-dasharray="3,3"/>
+      <line x1="28" y1="77" x2="344" y2="77" stroke="#2a2a3a" stroke-width="1" stroke-dasharray="3,3"/>
+      <line x1="28" y1="102" x2="344" y2="102" stroke="#2a2a3a" stroke-width="1" stroke-dasharray="3,3"/>
+      <line x1="28" y1="127" x2="344" y2="127" stroke="#2a2a3a" stroke-width="1" stroke-dasharray="3,3"/>
+
+      <!-- Bars (7 days) -->
+      <!-- Mon 45min -->
+      <rect x="34" y="95" width="32" height="32" rx="4" fill="#4a2080" opacity="0.7"/>
+      <text x="50" y="140" fill="#5a5a70" font-size="7" text-anchor="middle" font-family="sans-serif">Mon</text>
+      <!-- Tue 30min -->
+      <rect x="82" y="105" width="32" height="22" rx="4" fill="#4a2080" opacity="0.7"/>
+      <text x="98" y="140" fill="#5a5a70" font-size="7" text-anchor="middle" font-family="sans-serif">Tue</text>
+      <!-- Wed 0 -->
+      <rect x="130" y="124" width="32" height="3" rx="2" fill="#3a3050" opacity="0.5"/>
+      <text x="146" y="140" fill="#5a5a70" font-size="7" text-anchor="middle" font-family="sans-serif">Wed</text>
+      <!-- Thu 1h20 (best) - highlighted -->
+      <rect x="178" y="62" width="32" height="65" rx="4" fill="#7c4dff"/>
+      <text x="194" y="140" fill="#b39ddb" font-size="7" text-anchor="middle" font-family="sans-serif" font-weight="bold">Thu</text>
+      <rect x="184" y="55" width="20" height="12" rx="6" fill="#3a1a60"/>
+      <text x="194" y="65" fill="#b39ddb" font-size="7" text-anchor="middle" font-family="sans-serif">best</text>
+      <!-- Fri 50min -->
+      <rect x="226" y="88" width="32" height="39" rx="4" fill="#4a2080" opacity="0.8"/>
+      <text x="242" y="140" fill="#5a5a70" font-size="7" text-anchor="middle" font-family="sans-serif">Fri</text>
+      <!-- Sat 40min -->
+      <rect x="274" y="98" width="32" height="29" rx="4" fill="#4a2080" opacity="0.7"/>
+      <text x="290" y="140" fill="#5a5a70" font-size="7" text-anchor="middle" font-family="sans-serif">Sat</text>
+      <!-- Today dot (today = partial) -->
+      <rect x="322" y="110" width="14" height="17" rx="4" fill="#7c4dff" opacity="0.4"/>
+      <text x="329" y="140" fill="#5a5a70" font-size="7" text-anchor="middle" font-family="sans-serif">Today</text>
+
+      <!-- Total this week -->
+      <text x="180" y="166" fill="#8888aa" font-size="9" text-anchor="middle" font-family="sans-serif">Week total: <tspan fill="#b39ddb" font-weight="bold">4h 25min</tspan></text>
+    </svg>
+  </div>
+  <div class="notes">
+    <ul>
+      <li>Bar chart uses data already tracked in <code>play_history_service.dart</code></li>
+      <li>"Best day" bar highlighted in brighter purple with a "best" label</li>
+      <li>Streak counter uses consecutive days with &gt;1 minute of listening</li>
+      <li>Toggle between 7-day and 30-day views</li>
+    </ul>
+  </div>
+</div>
+
+</body>
+</html>

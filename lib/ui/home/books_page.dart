@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/books_repository.dart';
 import '../../core/auth_repository.dart';
 import '../../core/play_history_service.dart';
+import '../../core/playback_repository.dart';
 import '../../core/image_cache_manager.dart';
 import '../../core/ui_prefs.dart';
 import '../../models/book.dart';
@@ -1770,6 +1771,13 @@ class _BookCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final disabled = !book.isAudioBook;
+    final playback = ServicesScope.of(context).services.playback;
+
+    // Static checks — update when widget rebuilds
+    final isFinished = playback.completionCache[book.id] == true;
+    final isNew =
+        book.updatedAt != null &&
+        DateTime.now().difference(book.updatedAt!).inDays <= 7;
 
     return Card(
       elevation: 0,
@@ -1788,43 +1796,169 @@ class _BookCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Uniform cover size 2:3
-              Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: cs.shadow.withOpacity(disabled ? 0.04 : 0.1),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
+              // Uniform cover size 2:3 — reactive to now-playing state
+              StreamBuilder<NowPlaying?>(
+                stream: playback.nowPlayingStream,
+                initialData: playback.nowPlaying,
+                builder: (ctx, npSnap) {
+                  final isNowPlaying =
+                      npSnap.data?.libraryItemId == book.id;
+                  return Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: cs.shadow.withOpacity(disabled ? 0.04 : 0.1),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                        if (isNowPlaying)
+                          BoxShadow(
+                            color: cs.primary.withOpacity(0.35),
+                            blurRadius: 18,
+                            spreadRadius: 2,
+                          ),
+                      ],
+                      border:
+                          isNowPlaying
+                              ? Border.all(
+                                color: cs.primary.withOpacity(0.7),
+                                width: 2,
+                              )
+                              : null,
                     ),
-                  ],
-                ),
-                child: Hero(
-                  tag: 'home-cover-${book.id}',
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: AspectRatio(
-                      aspectRatio: 2 / 3,
-                      child: ColorFiltered(
-                        colorFilter:
-                            disabled
-                                ? ColorFilter.mode(
-                                  cs.surface.withOpacity(0.12),
-                                  BlendMode.saturation,
-                                )
-                                : const ColorFilter.mode(
-                                  Colors.transparent,
-                                  BlendMode.srcOver,
+                    child: Hero(
+                      tag: 'home-cover-${book.id}',
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: AspectRatio(
+                          aspectRatio: 2 / 3,
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              ColorFiltered(
+                                colorFilter:
+                                    disabled
+                                        ? ColorFilter.mode(
+                                          cs.surface.withOpacity(0.12),
+                                          BlendMode.saturation,
+                                        )
+                                        : const ColorFilter.mode(
+                                          Colors.transparent,
+                                          BlendMode.srcOver,
+                                        ),
+                                child: Transform.scale(
+                                  scale: 1.024,
+                                  child: EnhancedCoverImage(
+                                    url: book.coverUrl,
+                                  ),
                                 ),
-                        child: Transform.scale(
-                          scale: 1.024,
-                          child: EnhancedCoverImage(url: book.coverUrl),
+                              ),
+                              // Live progress bar for now-playing book
+                              if (isNowPlaying)
+                                Positioned(
+                                  left: 0,
+                                  right: 0,
+                                  bottom: 0,
+                                  child: StreamBuilder<Duration>(
+                                    stream: playback.positionStream,
+                                    initialData: playback.player.position,
+                                    builder: (_, posSnap) {
+                                      final pos =
+                                          playback.globalBookPosition ??
+                                          (posSnap.data ?? Duration.zero);
+                                      final dur = playback.totalBookDuration;
+                                      final fraction =
+                                          dur != null && dur != Duration.zero
+                                              ? (pos.inMilliseconds /
+                                                      dur.inMilliseconds)
+                                                  .clamp(0.0, 1.0)
+                                              : 0.0;
+                                      return SizedBox(
+                                        height: 4,
+                                        child: LinearProgressIndicator(
+                                          value: fraction,
+                                          backgroundColor: Colors.black45,
+                                          valueColor:
+                                              AlwaysStoppedAnimation<Color>(
+                                                cs.primary,
+                                              ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                              // Finished check badge
+                              if (isFinished && !isNowPlaying)
+                                Positioned(
+                                  top: 6,
+                                  right: 6,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(3),
+                                    decoration: BoxDecoration(
+                                      color: Colors.green.shade700
+                                          .withOpacity(0.88),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      Icons.check,
+                                      color: Colors.white,
+                                      size: 11,
+                                    ),
+                                  ),
+                                ),
+                              // "NEW" badge for recently added books
+                              if (isNew && !isFinished && !isNowPlaying)
+                                Positioned(
+                                  top: 6,
+                                  left: 6,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 5,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.deepOrange.withOpacity(
+                                        0.88,
+                                      ),
+                                      borderRadius: BorderRadius.circular(5),
+                                    ),
+                                    child: const Text(
+                                      'NEW',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: 0.3,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              // Now-playing indicator
+                              if (isNowPlaying)
+                                Positioned(
+                                  top: 6,
+                                  left: 6,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: BoxDecoration(
+                                      color: cs.primary.withOpacity(0.88),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      Icons.play_arrow_rounded,
+                                      color: Colors.white,
+                                      size: 11,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ),
+                  );
+                },
               ),
               const SizedBox(height: 6),
               // Fixed text heights for consistency

@@ -1,6 +1,7 @@
 // lib/ui/player/full_player_page.dart
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -2845,6 +2846,11 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                                                   ),
                                                         ),
                                                       ),
+                                                      // Sleep timer countdown arc
+                                                      Positioned.fill(
+                                                        child:
+                                                            _SleepTimerArcOverlay(),
+                                                      ),
                                                       Positioned(
                                                         left: 10,
                                                         bottom: 10,
@@ -4270,6 +4276,126 @@ class _LoopingMarqueeTextState extends State<_LoopingMarqueeText> {
     );
   }
 }
+
+// ── Sleep-timer arc overlay ──────────────────────────────────────────────────
+
+class _SleepTimerArcPainter extends CustomPainter {
+  const _SleepTimerArcPainter({required this.fraction, required this.color});
+
+  final double fraction;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (fraction <= 0) return;
+
+    const strokeWidth = 4.5;
+    final center = Offset(size.width / 2, size.height / 2);
+    final arcRadius =
+        math.min(size.width, size.height) / 2 - strokeWidth / 2 - 1;
+
+    // Faint full-circle track
+    canvas.drawCircle(
+      center,
+      arcRadius,
+      Paint()
+        ..color = color.withOpacity(0.18)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strokeWidth,
+    );
+
+    // Remaining arc — starts at top (−π/2), sweeps clockwise
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: arcRadius),
+      -math.pi / 2,
+      2 * math.pi * fraction,
+      false,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strokeWidth
+        ..strokeCap = StrokeCap.round,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_SleepTimerArcPainter old) =>
+      old.fraction != fraction || old.color != color;
+}
+
+/// Shows a circular countdown arc around the album cover art when the sleep
+/// timer is active, plus a small badge with the remaining minutes.
+class _SleepTimerArcOverlay extends StatelessWidget {
+  const _SleepTimerArcOverlay();
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<Duration?>(
+      stream: SleepTimerService.instance.remainingTimeStream,
+      initialData: SleepTimerService.instance.remainingTime,
+      builder: (ctx, snap) {
+        final remaining = snap.data;
+        final initial = SleepTimerService.instance.initialDuration;
+        if (remaining == null || initial == null || initial == Duration.zero) {
+          return const SizedBox.shrink();
+        }
+        final fraction =
+            (remaining.inMilliseconds / initial.inMilliseconds).clamp(
+              0.0,
+              1.0,
+            );
+        final isAlmostDone =
+            remaining.inMinutes < 5 && remaining.inSeconds > 0;
+        final arcColor =
+            isAlmostDone ? Colors.deepOrange : Colors.orange.shade400;
+        final label =
+            remaining.inSeconds < 60
+                ? '${remaining.inSeconds}s'
+                : '${remaining.inMinutes}m';
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: IgnorePointer(
+                child: CustomPaint(
+                  painter: _SleepTimerArcPainter(
+                    fraction: fraction,
+                    color: arcColor,
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 10,
+              right: 10,
+              child: IgnorePointer(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: arcColor.withOpacity(0.88),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    label,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _CoverDims {
   _CoverDims({required this.width, required this.radius});

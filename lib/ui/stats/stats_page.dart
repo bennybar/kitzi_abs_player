@@ -188,34 +188,19 @@ class _StatsPageState extends State<StatsPage> {
                         children: [
                           Expanded(
                             child: _buildStatCard(
-                              value: _currentStreakDays.toString(),
-                              label: 'Current Streak',
+                              value:
+                                  _currentStreakDays > 0
+                                      ? '🔥 $_currentStreakDays'
+                                      : '0',
+                              label: 'Day Streak',
                               icon: Icons.local_fire_department_outlined,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Card(
-                              child: Padding(
-                                padding: const EdgeInsets.all(16),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Last 7 days',
-                                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                    ),
-                                    const SizedBox(height: 10),
-                                    _WeeklyBars(days: _last7Days),
-                                  ],
-                                ),
-                              ),
                             ),
                           ),
                         ],
                       ),
+                      const SizedBox(height: 12),
+                      // Full-width enhanced weekly chart
+                      _WeeklyBarsCard(days: _last7Days),
                       
                       const SizedBox(height: 24),
                       
@@ -252,11 +237,15 @@ class _StatsPageState extends State<StatsPage> {
           children: [
             Icon(icon, size: 32, color: cs.primary),
             const SizedBox(height: 8),
-            Text(
-              value,
-              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: cs.onSurface,
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                value,
+                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: cs.onSurface,
+                ),
+                maxLines: 1,
               ),
             ),
             const SizedBox(height: 4),
@@ -691,52 +680,286 @@ class _DayBar {
   const _DayBar({required this.date, required this.seconds});
 }
 
-class _WeeklyBars extends StatelessWidget {
-  const _WeeklyBars({required this.days});
+/// Full-width card with a bar chart of the last 7 days, best-day highlight,
+/// time labels, and a tooltip showing the exact duration on tap.
+class _WeeklyBarsCard extends StatefulWidget {
+  const _WeeklyBarsCard({required this.days});
   final List<_DayBar> days;
+
+  @override
+  State<_WeeklyBarsCard> createState() => _WeeklyBarsCardState();
+}
+
+class _WeeklyBarsCardState extends State<_WeeklyBarsCard> {
+  int? _tappedIdx;
+
+  static String _fmtSeconds(int s) {
+    if (s <= 0) return '0m';
+    final h = s ~/ 3600;
+    final m = (s % 3600) ~/ 60;
+    if (h > 0 && m > 0) return '${h}h ${m}m';
+    if (h > 0) return '${h}h';
+    return '${m}m';
+  }
+
+  static String _weekdayLabel(DateTime d) {
+    const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    return labels[(d.weekday - 1).clamp(0, 6)];
+  }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final maxSec = days.isEmpty ? 1 : days.map((d) => d.seconds).reduce((a, b) => a > b ? a : b);
+    final text = Theme.of(context).textTheme;
+    final days = widget.days;
+    if (days.isEmpty) return const SizedBox.shrink();
+
+    final maxSec = days.map((d) => d.seconds).reduce((a, b) => a > b ? a : b);
     final denom = maxSec <= 0 ? 1 : maxSec;
-    String weekdayLabel(DateTime d) {
-      const labels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-      // Dart: Monday=1..Sunday=7
-      return labels[(d.weekday - 1).clamp(0, 6)];
+    final bestIdx = days.indexWhere((d) => d.seconds == maxSec && maxSec > 0);
+    final today = DateTime.now();
+    final todayNorm = DateTime(today.year, today.month, today.day);
+    const barHeight = 80.0;
+    const minBarHeight = 4.0;
+
+    // Y-axis labels
+    String yLabel(double frac) {
+      final s = (frac * maxSec).round();
+      return _fmtSeconds(s);
     }
 
-    return Row(
-      children: days.map((d) {
-        final frac = (d.seconds / denom).clamp(0.0, 1.0);
-        return Expanded(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 2),
-            child: Column(
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               children: [
+                Text(
+                  'Last 7 Days',
+                  style: text.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                const Spacer(),
+                if (maxSec > 0)
+                  Text(
+                    'Total: ${_fmtSeconds(days.fold(0, (s, d) => s + d.seconds))}',
+                    style: text.bodySmall?.copyWith(
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            // Chart area
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                // Y-axis
                 SizedBox(
-                  height: 46,
-                  child: Align(
-                    alignment: Alignment.bottomCenter,
-                    child: Container(
-                      height: (8 + 38 * frac).clamp(8.0, 46.0),
-                      decoration: BoxDecoration(
-                        color: d.seconds > 0 ? cs.primary : cs.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(8),
+                  width: 32,
+                  height: barHeight + 20,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        yLabel(1.0),
+                        style: text.labelSmall?.copyWith(
+                          color: cs.onSurfaceVariant.withOpacity(0.6),
+                          fontSize: 9,
+                        ),
                       ),
+                      Text(
+                        yLabel(0.5),
+                        style: text.labelSmall?.copyWith(
+                          color: cs.onSurfaceVariant.withOpacity(0.6),
+                          fontSize: 9,
+                        ),
+                      ),
+                      const SizedBox(height: 20), // space for day labels
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: SizedBox(
+                    height: barHeight + 20,
+                    child: Stack(
+                      children: [
+                        // Grid lines
+                        Positioned(
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          child: Divider(
+                            height: 1,
+                            color: cs.outlineVariant.withOpacity(0.3),
+                          ),
+                        ),
+                        Positioned(
+                          top: barHeight / 2,
+                          left: 0,
+                          right: 0,
+                          child: Divider(
+                            height: 1,
+                            color: cs.outlineVariant.withOpacity(0.2),
+                          ),
+                        ),
+                        // Bars row
+                        Positioned(
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: List.generate(days.length, (i) {
+                              final d = days[i];
+                              final frac = (d.seconds / denom).clamp(0.0, 1.0);
+                              final isBest = i == bestIdx;
+                              final isToday =
+                                  d.date.year == todayNorm.year &&
+                                  d.date.month == todayNorm.month &&
+                                  d.date.day == todayNorm.day;
+                              final barColor =
+                                  isBest
+                                      ? cs.primary
+                                      : d.seconds > 0
+                                      ? cs.primary.withOpacity(0.55)
+                                      : cs.surfaceContainerHighest;
+                              final barH = d.seconds > 0
+                                  ? (minBarHeight + (barHeight - minBarHeight) * frac)
+                                      .clamp(minBarHeight, barHeight)
+                                  : minBarHeight;
+
+                              return Expanded(
+                                child: GestureDetector(
+                                  onTap: () => setState(() {
+                                    _tappedIdx = _tappedIdx == i ? null : i;
+                                  }),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 3,
+                                    ),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.max,
+                                      children: [
+                                        // Bar area — expands to fill space above day label
+                                        Expanded(
+                                          child: Stack(
+                                            alignment: Alignment.bottomCenter,
+                                            clipBehavior: Clip.none,
+                                            children: [
+                                              // Bar pinned to bottom
+                                              Positioned(
+                                                bottom: 0,
+                                                left: 0,
+                                                right: 0,
+                                                child: AnimatedContainer(
+                                                  duration: const Duration(milliseconds: 300),
+                                                  curve: Curves.easeOutCubic,
+                                                  height: barH,
+                                                  decoration: BoxDecoration(
+                                                    color: barColor,
+                                                    borderRadius: const BorderRadius.vertical(
+                                                      top: Radius.circular(6),
+                                                    ),
+                                                    border: isToday
+                                                        ? Border.all(
+                                                            color: cs.primary.withOpacity(0.5),
+                                                            width: 1.5,
+                                                          )
+                                                        : null,
+                                                  ),
+                                                ),
+                                              ),
+                                              // "best" pill pinned to top
+                                              if (isBest && maxSec > 0)
+                                                Positioned(
+                                                  top: 0,
+                                                  child: Container(
+                                                    padding: const EdgeInsets.symmetric(
+                                                      horizontal: 4,
+                                                      vertical: 1,
+                                                    ),
+                                                    decoration: BoxDecoration(
+                                                      color: cs.primaryContainer,
+                                                      borderRadius: BorderRadius.circular(4),
+                                                    ),
+                                                    child: Text(
+                                                      'best',
+                                                      style: text.labelSmall?.copyWith(
+                                                        color: cs.onPrimaryContainer,
+                                                        fontSize: 8,
+                                                        fontWeight: FontWeight.w700,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              // Tooltip just above the bar
+                                              if (_tappedIdx == i && d.seconds > 0)
+                                                Positioned(
+                                                  bottom: barH + 2,
+                                                  child: Container(
+                                                    padding: const EdgeInsets.symmetric(
+                                                      horizontal: 4,
+                                                      vertical: 1,
+                                                    ),
+                                                    decoration: BoxDecoration(
+                                                      color: cs.inverseSurface,
+                                                      borderRadius: BorderRadius.circular(4),
+                                                    ),
+                                                    child: Text(
+                                                      _fmtSeconds(d.seconds),
+                                                      style: text.labelSmall?.copyWith(
+                                                        color: cs.onInverseSurface,
+                                                        fontSize: 9,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                            ],
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          _weekdayLabel(d.date),
+                                          style: text.labelSmall?.copyWith(
+                                            color: isToday
+                                                ? cs.primary
+                                                : cs.onSurfaceVariant,
+                                            fontWeight: isToday
+                                                ? FontWeight.w700
+                                                : FontWeight.normal,
+                                            fontSize: 10,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  weekdayLabel(d.date),
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(color: cs.onSurfaceVariant),
-                ),
               ],
             ),
-          ),
-        );
-      }).toList(growable: false),
+            if (maxSec <= 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  'No listening activity this week',
+                  style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }

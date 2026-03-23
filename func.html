@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kitzi — Functionality Improvement Suggestions</title>
+<style>
+  :root {
+    --bg: #0f0f13;
+    --surface: #1a1a24;
+    --surface2: #22222f;
+    --accent: #80cbc4;
+    --accent2: #00bcd4;
+    --text: #e8e8f0;
+    --muted: #8888aa;
+    --border: #2e2e40;
+    --green: #69f0ae;
+    --orange: #ffab40;
+    --red: #ff5252;
+    --blue: #40c4ff;
+    --purple: #b39ddb;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    line-height: 1.6;
+    padding: 40px 20px;
+  }
+  h1 {
+    text-align: center;
+    font-size: 2rem;
+    background: linear-gradient(135deg, #80cbc4, #00bcd4);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 8px;
+  }
+  .subtitle {
+    text-align: center;
+    color: var(--muted);
+    margin-bottom: 48px;
+    font-size: 0.95rem;
+  }
+  .suggestion {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+    margin-bottom: 36px;
+    max-width: 900px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .suggestion-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .num {
+    background: var(--accent2);
+    color: #001a1f;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.9rem;
+    flex-shrink: 0;
+  }
+  h2 { font-size: 1.2rem; color: var(--accent); }
+  .tag {
+    margin-left: auto;
+    font-size: 0.72rem;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  .tag-easy { background: #1b3a2a; color: var(--green); }
+  .tag-medium { background: #3a2a1a; color: var(--orange); }
+  .tag-hard { background: #3a1a1a; color: var(--red); }
+  p { color: var(--muted); font-size: 0.93rem; margin-bottom: 20px; }
+  .drawing-area {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: center;
+  }
+  .notes {
+    margin-top: 16px;
+    padding: 12px 16px;
+    background: #0d2030;
+    border-left: 3px solid var(--accent2);
+    border-radius: 0 8px 8px 0;
+    font-size: 0.85rem;
+    color: var(--muted);
+  }
+  .notes ul { padding-left: 16px; }
+  .notes li { margin-bottom: 4px; }
+  code {
+    background: #0d2030;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 0.82rem;
+    color: var(--blue);
+  }
+  .arch {
+    margin-top: 14px;
+    padding: 12px 16px;
+    background: #0f1a0f;
+    border: 1px solid #1a3a1a;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    color: #6a9a6a;
+  }
+  .arch strong { color: var(--green); }
+  .arch pre {
+    margin-top: 8px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.78rem;
+    line-height: 1.8;
+    color: #5a8a5a;
+  }
+</style>
+</head>
+<body>
+
+<h1>Kitzi — Functionality Improvements</h1>
+<p class="subtitle">Feature &amp; capability improvements grounded in the existing architecture</p>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<!-- 1. BOOKMARKS WITH NOTES -->
+<!-- ─────────────────────────────────────────────────────────────── -->
+<div class="suggestion">
+  <div class="suggestion-header">
+    <div class="num">1</div>
+    <h2>Bookmarks with Text Notes</h2>
+    <span class="tag tag-medium">Medium</span>
+  </div>
+  <p>The player has a bookmark concept in journal sheets but no way to attach a text note to a timestamp. Allow users to long-press the rewind button (or tap a dedicated bookmark icon) to drop a pin at the current position and optionally type a short note. Notes are stored locally and synced to ABS server if the API supports it.</p>
+
+  <div class="drawing-area">
+    <svg width="380" height="200" viewBox="0 0 380 200">
+      <rect width="380" height="200" fill="#0d0d14" rx="8"/>
+
+      <!-- Flow diagram -->
+      <!-- Step 1: Player -->
+      <rect x="10" y="20" width="80" height="50" rx="8" fill="#1a2a2a" stroke="#00bcd4" stroke-width="1"/>
+      <text x="50" y="42" fill="#80cbc4" font-size="9" text-anchor="middle" font-family="sans-serif" font-weight="bold">Player</text>
+      <text x="50" y="55" fill="#5a8888" font-size="8" text-anchor="middle" font-family="sans-serif">Long-press</text>
+      <text x="50" y="64" fill="#5a8888" font-size="8" text-anchor="middle" font-family="sans-serif">bookmark icon</text>
+
+      <line x1="90" y1="45" x2="115" y2="45" stroke="#00bcd4" stroke-width="1.5" marker-end="url(#arr)"/>
+      <defs>
+        <marker id="arr" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+          <path d="M0,0 L6,3 L0,6 Z" fill="#00bcd4"/>
+        </marker>
+      </defs>
+
+      <!-- Step 2: Note dialog -->
+      <rect x="118" y="10" width="100" height="70" rx="8" fill="#1a2a2a" stroke="#00bcd4" stroke-width="1"/>
+      <text x="168" y="28" fill="#80cbc4" font-size="9" text-anchor="middle" font-family="sans-serif" font-weight="bold">Add Bookmark</text>
+      <text x="168" y="38" fill="#3a5a5a" font-size="7" text-anchor="middle" font-family="sans-serif">at 1:23:45</text>
+      <rect x="126" y="42" width="84" height="20" rx="4" fill="#0d1a1a"/>
+      <text x="130" y="56" fill="#4a6a6a" font-size="7" font-family="sans-serif">"This is where the..."</text>
+      <rect x="126" y="66" width="38" height="10" rx="5" fill="#00bcd4"/>
+      <text x="145" y="74" fill="#001a1f" font-size="7" text-anchor="middle" font-family="sans-serif" font-weight="bold">Save</text>
+      <rect x="170" y="66" width="38" height="10" rx="5" fill="#1a2a2a" stroke="#3a5a5a" stroke-width="1"/>
+      <text x="189" y="74" fill="#5a8888" font-size="7" text-anchor="middle" font-family="sans-serif">Skip</text>
+
+      <line x1="218" y1="45" x2="243" y2="45" stroke="#00bcd4" stroke-width="1.5" marker-end="url(#arr)"/>
+
+      <!-- Step 3: Bookmark saved -->
+      <rect x="246" y="20" width="80" height="50" rx="8" fill="#1a2a2a" stroke="#00bcd4" stroke-width="1"/>
+      <text x="286" y="42" fill="#80cbc4" font-size="9" text-anchor="middle" font-family="sans-serif" font-weight="bold">Bookmark</text>
+      <text x="286" y="52" fill="#5a8888" font-size="8" text-anchor="middle" font-family="sans-serif">SQLite +</text>
+      <text x="286" y="62" fill="#5a8888" font-size="8" text-anchor="middle" font-family="sans-serif">ABS sync</text>
+
+      <!-- Bookmark list preview -->
+      <rect x="10" y="100" width="360" height="90" rx="8" fill="#111118"/>
+      <text x="20" y="118" fill="#5a8888" font-size="9" font-family="sans-serif">Bookmarks list (in journal_sheets.dart)</text>
+      <!-- Bookmark item 1 -->
+      <rect x="10" y="122" width="360" height="28" rx="4" fill="#1a2a2a"/>
+      <rect x="10" y="122" width="3" height="28" rx="2" fill="#00bcd4"/>
+      <text x="20" y="134" fill="#80cbc4" font-size="8" font-family="sans-serif" font-weight="bold">1:23:45</text>
+      <text x="65" y="134" fill="#6a8888" font-size="8" font-family="sans-serif">"This is where the plot twist happens"</text>
+      <text x="20" y="145" fill="#3a5a5a" font-size="7" font-family="sans-serif">Ch. 12 · The Final Revelation</text>
+      <!-- Bookmark item 2 -->
+      <rect x="10" y="156" width="360" height="28" rx="4" fill="#1a2a2a"/>
+      <rect x="10" y="156" width="3" height="28" rx="2" fill="#ff9800"/>
+      <text x="20" y="168" fill="#80cbc4" font-size="8" font-family="sans-serif" font-weight="bold">3:07:12</text>
+      <text x="65" y="168" fill="#6a8888" font-size="8" font-family="sans-serif">📌  (no note)</text>
+      <text x="20" y="179" fill="#3a5a5a" font-size="7" font-family="sans-serif">Ch. 28 · Aftermath</text>
+    </svg>
+  </div>
+  <div class="arch">
+    <strong>Where it fits in the codebase:</strong>
+    <pre>
+playback_journal_service.dart  →  add BookmarkEntry model with (bookId, positionMs, note, chapterId)
+journal_sheets.dart            →  extend UI to show bookmarks tab with list + tap-to-seek
+playback_repository.dart       →  expose addBookmark() / getBookmarks() streams
+SQLite (existing)              →  new 'bookmarks' table (local persistence)
+api_client.dart                →  POST to ABS /api/items/{id}/bookmarks when online</pre>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<!-- 2. MULTIPLE SERVER SUPPORT -->
+<!-- ─────────────────────────────────────────────────────────────── -->
+<div class="suggestion">
+  <div class="suggestion-header">
+    <div class="num">2</div>
+    <h2>Multiple Server Support</h2>
+    <span class="tag tag-hard">Hard</span>
+  </div>
+  <p>Many Audiobookshelf users run multiple servers (home + work, personal + family). Currently switching servers requires logging out and back in, losing all cached data. Add a server switcher: save multiple server profiles, switch with one tap, and maintain separate download caches per server.</p>
+
+  <div class="drawing-area">
+    <svg width="400" height="190" viewBox="0 0 400 190">
+      <rect width="400" height="190" fill="#0d0d14" rx="8"/>
+
+      <!-- Server profiles list -->
+      <rect x="10" y="10" width="180" height="170" rx="10" fill="#111118" stroke="#2e3e3e" stroke-width="1"/>
+      <text x="100" y="28" fill="#80cbc4" font-size="10" text-anchor="middle" font-family="sans-serif" font-weight="bold">Servers</text>
+      <text x="170" y="28" fill="#00bcd4" font-size="10" text-anchor="end" font-family="sans-serif">+</text>
+
+      <!-- Server 1 (active) -->
+      <rect x="16" y="34" width="168" height="38" rx="8" fill="#0d2a2a" stroke="#00bcd4" stroke-width="1.5"/>
+      <circle cx="30" cy="53" r="8" fill="#1a3a3a"/>
+      <text x="30" y="57" fill="#80cbc4" font-size="9" text-anchor="middle" font-family="sans-serif">🏠</text>
+      <text x="44" y="48" fill="#80cbc4" font-size="9" font-family="sans-serif" font-weight="bold">Home Server</text>
+      <text x="44" y="60" fill="#3a7a7a" font-size="7" font-family="sans-serif">abs.home.lan · Benny</text>
+      <rect x="162" y="47" width="16" height="12" rx="6" fill="#00bcd4"/>
+      <text x="170" y="57" fill="#001a1f" font-size="7" text-anchor="middle" font-family="sans-serif" font-weight="bold">✓</text>
+
+      <!-- Server 2 -->
+      <rect x="16" y="78" width="168" height="38" rx="8" fill="#161618"/>
+      <circle cx="30" cy="97" r="8" fill="#1a1a2a"/>
+      <text x="30" y="101" fill="#5a5a80" font-size="9" text-anchor="middle" font-family="sans-serif">🏢</text>
+      <text x="44" y="92" fill="#6a6a80" font-size="9" font-family="sans-serif">Work ABS</text>
+      <text x="44" y="104" fill="#3a3a50" font-size="7" font-family="sans-serif">abs.corp.com · ben</text>
+
+      <!-- Server 3 -->
+      <rect x="16" y="122" width="168" height="38" rx="8" fill="#161618"/>
+      <circle cx="30" cy="141" r="8" fill="#1a1a2a"/>
+      <text x="30" y="145" fill="#5a5a80" font-size="9" text-anchor="middle" font-family="sans-serif">👨‍👩‍👧</text>
+      <text x="44" y="136" fill="#6a6a80" font-size="9" font-family="sans-serif">Family Server</text>
+      <text x="44" y="148" fill="#3a3a50" font-size="7" font-family="sans-serif">abs.family.io · shared</text>
+
+      <!-- Arrow -->
+      <text x="205" y="100" fill="#00bcd4" font-size="20" text-anchor="middle">→</text>
+      <text x="205" y="115" fill="#3a6a6a" font-size="8" text-anchor="middle" font-family="sans-serif">one-tap switch</text>
+
+      <!-- Right side: isolated cache per server -->
+      <rect x="220" y="10" width="170" height="170" rx="10" fill="#111118" stroke="#2e3e3e" stroke-width="1"/>
+      <text x="305" y="28" fill="#80cbc4" font-size="10" text-anchor="middle" font-family="sans-serif" font-weight="bold">Isolated Data</text>
+
+      <!-- Data stores per server -->
+      <rect x="228" y="34" width="154" height="30" rx="6" fill="#0d2a2a" stroke="#00bcd4" stroke-width="1"/>
+      <text x="305" y="50" fill="#5a9090" font-size="8" text-anchor="middle" font-family="sans-serif">🏠 Home: SQLite DB + Downloads</text>
+      <rect x="228" y="70" width="154" height="30" rx="6" fill="#161618"/>
+      <text x="305" y="86" fill="#3a5a5a" font-size="8" text-anchor="middle" font-family="sans-serif">🏢 Work: SQLite DB + Downloads</text>
+      <rect x="228" y="106" width="154" height="30" rx="6" fill="#161618"/>
+      <text x="305" y="122" fill="#3a5a5a" font-size="8" text-anchor="middle" font-family="sans-serif">👨‍👩‍👧 Family: SQLite DB + Downloads</text>
+
+      <text x="305" y="158" fill="#3a5a5a" font-size="7" text-anchor="middle" font-family="sans-serif">Token stored per-server in</text>
+      <text x="305" y="168" fill="#3a5a5a" font-size="7" text-anchor="middle" font-family="sans-serif">flutter_secure_storage</text>
+    </svg>
+  </div>
+  <div class="arch">
+    <strong>Where it fits in the codebase:</strong>
+    <pre>
+auth_repository.dart     →  add ServerProfile model (url, username, token, libraryId)
+                             store list of profiles; add activeProfile getter
+api_client.dart          →  reads baseUrl + token from auth_repository.activeProfile
+books_repository.dart    →  namespace SQLite tables by server ID (or use separate DB files)
+download_storage.dart    →  separate download directories per server ID
+settings_page.dart       →  new "Manage Servers" section at top</pre>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<!-- 3. SKIP SILENCE / CHAPTER INTRO SKIP -->
+<!-- ─────────────────────────────────────────────────────────────── -->
+<div class="suggestion">
+  <div class="suggestion-header">
+    <div class="num">3</div>
+    <h2>Skip Silence + Configurable Intro/Outro Skip</h2>
+    <span class="tag tag-medium">Medium</span>
+  </div>
+  <p>Long audiobooks often have seconds of silence between chapters, intros, and outros. Add two features: (a) auto-skip silence (detect &lt;X dB threshold for &gt;0.5s and skip), and (b) configurable chapter start/end skip timings (e.g. "skip first 5s and last 8s of every chapter"). Both toggle in settings.</p>
+
+  <div class="drawing-area">
+    <svg width="380" height="180" viewBox="0 0 380 180">
+      <rect width="380" height="180" fill="#0d0d14" rx="8"/>
+
+      <!-- Waveform with silence zones -->
+      <text x="190" y="18" fill="#5a8888" font-size="9" text-anchor="middle" font-family="sans-serif">Chapter waveform — skip zones shown in orange</text>
+
+      <!-- Waveform track background -->
+      <rect x="20" y="28" width="340" height="60" rx="6" fill="#1a2a2a"/>
+
+      <!-- Silence at start (orange skip zone) -->
+      <rect x="20" y="28" width="40" height="60" rx="6" fill="#ff9800" opacity="0.15"/>
+      <text x="40" y="68" fill="#ff9800" font-size="7" text-anchor="middle" font-family="sans-serif">skip start</text>
+      <text x="40" y="79" fill="#ff9800" font-size="7" text-anchor="middle" font-family="sans-serif">5s</text>
+
+      <!-- Waveform bars (active audio region) -->
+      <rect x="62" y="44" width="3" height="30" rx="1" fill="#00bcd4" opacity="0.7"/>
+      <rect x="67" y="38" width="3" height="42" rx="1" fill="#00bcd4"/>
+      <rect x="72" y="48" width="3" height="22" rx="1" fill="#00bcd4" opacity="0.8"/>
+      <rect x="77" y="36" width="3" height="46" rx="1" fill="#00bcd4"/>
+      <rect x="82" y="50" width="3" height="18" rx="1" fill="#00bcd4" opacity="0.6"/>
+      <rect x="87" y="42" width="3" height="34" rx="1" fill="#00bcd4" opacity="0.9"/>
+      <rect x="92" y="46" width="3" height="26" rx="1" fill="#00bcd4" opacity="0.7"/>
+      <rect x="97" y="40" width="3" height="38" rx="1" fill="#00bcd4"/>
+      <rect x="102" y="44" width="3" height="30" rx="1" fill="#00bcd4" opacity="0.8"/>
+      <!-- Silence in middle -->
+      <rect x="108" y="55" width="3" height="5" rx="1" fill="#3a5a5a" opacity="0.4"/>
+      <rect x="113" y="57" width="3" height="3" rx="1" fill="#3a5a5a" opacity="0.3"/>
+      <rect x="118" y="56" width="3" height="4" rx="1" fill="#3a5a5a" opacity="0.4"/>
+      <!-- Silence skip marker -->
+      <rect x="106" y="28" width="20" height="60" fill="#ff9800" opacity="0.1"/>
+      <line x1="106" y1="28" x2="106" y2="88" stroke="#ff9800" stroke-width="1.5" stroke-dasharray="3,2"/>
+      <line x1="126" y1="28" x2="126" y2="88" stroke="#ff9800" stroke-width="1.5" stroke-dasharray="3,2"/>
+      <text x="116" y="24" fill="#ff9800" font-size="7" text-anchor="middle" font-family="sans-serif">⚡</text>
+      <!-- More audio -->
+      <rect x="128" y="46" width="3" height="26" rx="1" fill="#00bcd4" opacity="0.7"/>
+      <rect x="133" y="40" width="3" height="38" rx="1" fill="#00bcd4"/>
+      <rect x="138" y="44" width="3" height="30" rx="1" fill="#00bcd4" opacity="0.8"/>
+      <rect x="143" y="36" width="3" height="46" rx="1" fill="#00bcd4"/>
+      <rect x="148" y="50" width="3" height="18" rx="1" fill="#00bcd4" opacity="0.6"/>
+      <rect x="153" y="42" width="3" height="34" rx="1" fill="#00bcd4" opacity="0.9"/>
+      <rect x="158" y="44" width="3" height="30" rx="1" fill="#00bcd4" opacity="0.7"/>
+      <rect x="163" y="38" width="3" height="42" rx="1" fill="#00bcd4"/>
+      <rect x="168" y="48" width="3" height="22" rx="1" fill="#00bcd4" opacity="0.8"/>
+      <rect x="173" y="46" width="3" height="26" rx="1" fill="#00bcd4" opacity="0.6"/>
+      <rect x="178" y="36" width="3" height="46" rx="1" fill="#00bcd4"/>
+      <rect x="183" y="50" width="3" height="18" rx="1" fill="#00bcd4" opacity="0.9"/>
+      <rect x="188" y="44" width="3" height="30" rx="1" fill="#00bcd4" opacity="0.7"/>
+      <rect x="193" y="40" width="3" height="38" rx="1" fill="#00bcd4"/>
+      <rect x="198" y="44" width="3" height="30" rx="1" fill="#00bcd4" opacity="0.8"/>
+      <rect x="203" y="46" width="3" height="26" rx="1" fill="#00bcd4" opacity="0.7"/>
+      <rect x="208" y="38" width="3" height="42" rx="1" fill="#00bcd4"/>
+      <rect x="213" y="50" width="3" height="18" rx="1" fill="#00bcd4" opacity="0.6"/>
+      <rect x="218" y="44" width="3" height="30" rx="1" fill="#00bcd4"/>
+      <rect x="223" y="36" width="3" height="46" rx="1" fill="#00bcd4"/>
+      <rect x="228" y="42" width="3" height="34" rx="1" fill="#00bcd4" opacity="0.8"/>
+      <rect x="233" y="48" width="3" height="22" rx="1" fill="#00bcd4" opacity="0.7"/>
+      <rect x="238" y="40" width="3" height="38" rx="1" fill="#00bcd4"/>
+      <rect x="243" y="44" width="3" height="30" rx="1" fill="#00bcd4" opacity="0.8"/>
+      <rect x="248" y="36" width="3" height="46" rx="1" fill="#00bcd4"/>
+      <rect x="253" y="50" width="3" height="18" rx="1" fill="#00bcd4" opacity="0.6"/>
+      <rect x="258" y="42" width="3" height="34" rx="1" fill="#00bcd4"/>
+      <rect x="263" y="44" width="3" height="30" rx="1" fill="#00bcd4" opacity="0.8"/>
+      <rect x="268" y="36" width="3" height="46" rx="1" fill="#00bcd4"/>
+      <rect x="273" y="48" width="3" height="22" rx="1" fill="#00bcd4" opacity="0.7"/>
+      <rect x="278" y="40" width="3" height="38" rx="1" fill="#00bcd4"/>
+      <rect x="283" y="46" width="3" height="26" rx="1" fill="#00bcd4"/>
+      <rect x="288" y="44" width="3" height="30" rx="1" fill="#00bcd4" opacity="0.8"/>
+      <rect x="293" y="38" width="3" height="42" rx="1" fill="#00bcd4"/>
+      <rect x="298" y="50" width="3" height="18" rx="1" fill="#00bcd4" opacity="0.6"/>
+      <rect x="303" y="46" width="3" height="26" rx="1" fill="#00bcd4"/>
+
+      <!-- End skip zone -->
+      <rect x="316" y="28" width="44" height="60" rx="6" fill="#ff9800" opacity="0.15"/>
+      <text x="338" y="68" fill="#ff9800" font-size="7" text-anchor="middle" font-family="sans-serif">skip end</text>
+      <text x="338" y="79" fill="#ff9800" font-size="7" text-anchor="middle" font-family="sans-serif">8s</text>
+
+      <!-- Settings preview -->
+      <rect x="20" y="100" width="160" height="70" rx="8" fill="#111118" stroke="#2e3e3e" stroke-width="1"/>
+      <text x="100" y="116" fill="#5a8888" font-size="8" text-anchor="middle" font-family="sans-serif">Settings → Playback</text>
+      <text x="30" y="132" fill="#6a9090" font-size="8" font-family="sans-serif">Skip Silence</text>
+      <rect x="145" y="125" width="28" height="14" rx="7" fill="#00bcd4"/>
+      <circle cx="166" cy="132" r="6" fill="white"/>
+      <text x="30" y="148" fill="#6a9090" font-size="8" font-family="sans-serif">Intro skip  5s</text>
+      <rect x="90" y="142" width="50" height="11" rx="4" fill="#1a2a2a" stroke="#2e4e4e" stroke-width="1"/>
+      <text x="115" y="152" fill="#5a8888" font-size="8" text-anchor="middle" font-family="sans-serif">▼  5s</text>
+      <text x="30" y="163" fill="#6a9090" font-size="8" font-family="sans-serif">Outro skip  8s</text>
+      <rect x="90" y="157" width="50" height="11" rx="4" fill="#1a2a2a" stroke="#2e4e4e" stroke-width="1"/>
+      <text x="115" y="167" fill="#5a8888" font-size="8" text-anchor="middle" font-family="sans-serif">▼  8s</text>
+
+      <!-- Note -->
+      <text x="260" y="118" fill="#5a8888" font-size="8" text-anchor="middle" font-family="sans-serif">⚡ = auto-skip silence detected</text>
+      <text x="260" y="132" fill="#5a8888" font-size="8" text-anchor="middle" font-family="sans-serif">by just_audio amplitude stream</text>
+    </svg>
+  </div>
+  <div class="arch">
+    <strong>Where it fits in the codebase:</strong>
+    <pre>
+playback_speed_service.dart  →  add silence detection using just_audio's playerStateStream
+smart_rewind_service.dart    →  new SilenceSkipService follows same pattern
+playback_repository.dart     →  add introSkipSeconds / outroSkipSeconds prefs
+settings_page.dart           →  two new numeric pickers under Playback section
+ui_prefs.dart                →  persist introSkipMs, outroSkipMs, skipSilenceEnabled</pre>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<!-- 4. LISTENING GOALS + STREAK -->
+<!-- ─────────────────────────────────────────────────────────────── -->
+<div class="suggestion">
+  <div class="suggestion-header">
+    <div class="num">4</div>
+    <h2>Listening Goals &amp; Daily Streak</h2>
+    <span class="tag tag-medium">Medium</span>
+  </div>
+  <p>Users have detailed listening history already tracked but no motivational goal system. Add a daily listening goal (e.g. 30 minutes/day), a streak counter for consecutive days meeting the goal, and a local notification reminder if the day's goal hasn't been reached by a configurable time.</p>
+
+  <div class="drawing-area">
+    <svg width="380" height="200" viewBox="0 0 380 200">
+      <rect width="380" height="200" fill="#0d0d14" rx="8"/>
+
+      <!-- Goals card -->
+      <rect x="10" y="10" width="180" height="175" rx="12" fill="#111118" stroke="#2e3e3e" stroke-width="1"/>
+      <text x="100" y="30" fill="#80cbc4" font-size="11" text-anchor="middle" font-family="sans-serif" font-weight="bold">Today's Goal</text>
+
+      <!-- Circular progress ring -->
+      <circle cx="100" cy="90" r="45" fill="none" stroke="#1a2a2a" stroke-width="8"/>
+      <!-- 70% progress arc (circumference ~282, 70% = 197) -->
+      <circle cx="100" cy="90" r="45" fill="none" stroke="#00bcd4" stroke-width="8"
+              stroke-dasharray="197 282" stroke-dashoffset="70" stroke-linecap="round"
+              transform="rotate(-90 100 90)"/>
+      <text x="100" y="86" fill="#80cbc4" font-size="16" text-anchor="middle" font-family="sans-serif" font-weight="bold">21m</text>
+      <text x="100" y="100" fill="#3a6a6a" font-size="8" text-anchor="middle" font-family="sans-serif">of 30m goal</text>
+
+      <!-- Streak -->
+      <rect x="30" y="148" width="140" height="28" rx="14" fill="#1a2010"/>
+      <text x="100" y="166" fill="#ff9800" font-size="11" text-anchor="middle" font-family="sans-serif" font-weight="bold">🔥 12 day streak!</text>
+
+      <!-- Separator -->
+      <line x1="200" y1="10" x2="200" y2="185" stroke="#2e3e3e" stroke-width="1"/>
+
+      <!-- Notification reminder setting -->
+      <rect x="208" y="10" width="165" height="175" rx="12" fill="#111118" stroke="#2e3e3e" stroke-width="1"/>
+      <text x="290" y="30" fill="#80cbc4" font-size="10" text-anchor="middle" font-family="sans-serif" font-weight="bold">Goal Settings</text>
+
+      <text x="216" y="52" fill="#5a8888" font-size="8" font-family="sans-serif">Daily goal</text>
+      <rect x="280" y="42" width="85" height="18" rx="4" fill="#1a2a2a" stroke="#2e4e4e" stroke-width="1"/>
+      <text x="322" y="55" fill="#80cbc4" font-size="9" text-anchor="middle" font-family="sans-serif">30 minutes  ▾</text>
+
+      <text x="216" y="82" fill="#5a8888" font-size="8" font-family="sans-serif">Daily reminder</text>
+      <rect x="335" y="72" width="28" height="14" rx="7" fill="#00bcd4"/>
+      <circle cx="356" cy="79" r="6" fill="white"/>
+
+      <text x="216" y="104" fill="#5a8888" font-size="8" font-family="sans-serif">Remind me at</text>
+      <rect x="280" y="94" width="58" height="18" rx="4" fill="#1a2a2a" stroke="#2e4e4e" stroke-width="1"/>
+      <text x="309" y="107" fill="#80cbc4" font-size="9" text-anchor="middle" font-family="sans-serif">9:00 PM  ▾</text>
+
+      <!-- Notification preview -->
+      <rect x="214" y="124" width="156" height="56" rx="8" fill="#1a1a1a" stroke="#2e2e2e" stroke-width="1"/>
+      <text x="224" y="140" fill="#5a5a5a" font-size="7" font-family="sans-serif" font-weight="bold">Kitzi</text>
+      <text x="362" y="140" fill="#4a4a4a" font-size="7" font-family="sans-serif" text-anchor="end">9:00 PM</text>
+      <text x="224" y="154" fill="#7a7a8a" font-size="8" font-family="sans-serif">You're 9 min from today's goal 🎧</text>
+      <text x="224" y="167" fill="#5a5a5a" font-size="7" font-family="sans-serif">Tap to start listening</text>
+    </svg>
+  </div>
+  <div class="arch">
+    <strong>Where it fits in the codebase:</strong>
+    <pre>
+play_history_service.dart    →  todayListenedMinutes() — already has session data
+ui_prefs.dart                →  add dailyGoalMinutes, reminderEnabled, reminderTime
+stats_page.dart              →  add Goals card using circular progress indicator
+notification_service.dart    →  schedule daily reminder notification via flutter_local_notifications</pre>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<!-- 5. CHAPTER-LEVEL DOWNLOAD -->
+<!-- ─────────────────────────────────────────────────────────────── -->
+<div class="suggestion">
+  <div class="suggestion-header">
+    <div class="num">5</div>
+    <h2>Chapter-Level Download Selection</h2>
+    <span class="tag tag-hard">Hard</span>
+  </div>
+  <p>Full book downloads are large. For users with limited storage, let them download only specific chapters. On the Book Detail page, show a chapter list with individual download buttons. The player detects which chapters are local vs. streamed and handles the mix transparently.</p>
+
+  <div class="drawing-area">
+    <svg width="380" height="220" viewBox="0 0 380 220">
+      <rect width="380" height="220" fill="#0d0d14" rx="8"/>
+
+      <!-- Book detail chapter list section -->
+      <text x="190" y="18" fill="#5a8888" font-size="9" text-anchor="middle" font-family="sans-serif">Book Detail — Chapters section (enhanced)</text>
+
+      <!-- Toggle buttons -->
+      <rect x="10" y="24" width="80" height="18" rx="9" fill="#00bcd4"/>
+      <text x="50" y="37" fill="#001a1f" font-size="8" text-anchor="middle" font-family="sans-serif" font-weight="bold">Download All</text>
+      <rect x="96" y="24" width="90" height="18" rx="9" fill="#1a2a2a" stroke="#2e4e4e" stroke-width="1"/>
+      <text x="141" y="37" fill="#5a8888" font-size="8" text-anchor="middle" font-family="sans-serif">Select Chapters</text>
+
+      <!-- Chapter list -->
+      <!-- Ch 1 - downloaded -->
+      <rect x="10" y="48" width="360" height="28" rx="6" fill="#0d2a2a"/>
+      <text x="22" y="62" fill="#3a7a7a" font-size="8" font-family="sans-serif" font-weight="bold">Ch. 1</text>
+      <text x="50" y="62" fill="#80cbc4" font-size="9" font-family="sans-serif">The Beginning</text>
+      <text x="220" y="62" fill="#3a7a7a" font-size="7" font-family="sans-serif">45:32</text>
+      <text x="240" y="62" fill="#3a7a7a" font-size="7" font-family="sans-serif">· 52 MB</text>
+      <!-- Downloaded checkmark -->
+      <circle cx="360" cy="62" r="9" fill="#1b3a2a"/>
+      <text x="360" y="66" fill="#69f0ae" font-size="10" text-anchor="middle">✓</text>
+      <text x="22" y="72" fill="#1a5a5a" font-size="6" font-family="sans-serif">Downloaded</text>
+
+      <!-- Ch 2 - downloading (progress) -->
+      <rect x="10" y="82" width="360" height="28" rx="6" fill="#111820"/>
+      <text x="22" y="96" fill="#5a7a80" font-size="8" font-family="sans-serif" font-weight="bold">Ch. 2</text>
+      <text x="50" y="96" fill="#6a9090" font-size="9" font-family="sans-serif">A Strange Discovery</text>
+      <text x="220" y="96" fill="#3a5a5a" font-size="7" font-family="sans-serif">1:02:18</text>
+      <text x="240" y="96" fill="#3a5a5a" font-size="7" font-family="sans-serif">· 71 MB</text>
+      <!-- Download progress -->
+      <rect x="10" y="108" width="360" height="2" rx="1" fill="#1a2a2a"/>
+      <rect x="10" y="108" width="180" height="2" rx="1" fill="#00bcd4"/>
+      <text x="22" y="104" fill="#00bcd4" font-size="6" font-family="sans-serif">Downloading... 50%</text>
+
+      <!-- Ch 3 - not downloaded -->
+      <rect x="10" y="116" width="360" height="28" rx="6" fill="#111118"/>
+      <text x="22" y="130" fill="#5a5a70" font-size="8" font-family="sans-serif" font-weight="bold">Ch. 3</text>
+      <text x="50" y="130" fill="#6a6a80" font-size="9" font-family="sans-serif">Into the Unknown</text>
+      <text x="220" y="130" fill="#3a3a50" font-size="7" font-family="sans-serif">38:44</text>
+      <text x="240" y="130" fill="#3a3a50" font-size="7" font-family="sans-serif">· 44 MB</text>
+      <!-- Download button -->
+      <circle cx="360" cy="130" r="9" fill="#1a2a2a" stroke="#2e4e4e" stroke-width="1"/>
+      <text x="360" y="134" fill="#00bcd4" font-size="11" text-anchor="middle">↓</text>
+
+      <!-- Ch 4 - not downloaded -->
+      <rect x="10" y="150" width="360" height="28" rx="6" fill="#111118"/>
+      <text x="22" y="164" fill="#5a5a70" font-size="8" font-family="sans-serif" font-weight="bold">Ch. 4</text>
+      <text x="50" y="164" fill="#6a6a80" font-size="9" font-family="sans-serif">The Confrontation</text>
+      <text x="220" y="164" fill="#3a3a50" font-size="7" font-family="sans-serif">55:01</text>
+      <text x="240" y="164" fill="#3a3a50" font-size="7" font-family="sans-serif">· 63 MB</text>
+      <circle cx="360" cy="164" r="9" fill="#1a2a2a" stroke="#2e4e4e" stroke-width="1"/>
+      <text x="360" y="168" fill="#00bcd4" font-size="11" text-anchor="middle">↓</text>
+
+      <!-- Storage note -->
+      <text x="190" y="198" fill="#3a6a6a" font-size="8" text-anchor="middle" font-family="sans-serif">Tap ↓ to download individual chapters · 52 MB of 230 MB used</text>
+    </svg>
+  </div>
+  <div class="arch">
+    <strong>Where it fits in the codebase:</strong>
+    <pre>
+downloads_repository.dart    →  add downloadChapter(bookId, chapterId) alongside downloadBook()
+book_detail_page.dart        →  replace single download button with chapter-level list
+playback_repository.dart     →  when seeking, check if chapter is local or needs streaming
+download_storage.dart        →  store chapters keyed by (bookId, chapterId)
+download_button.dart         →  extend to accept optional chapterId</pre>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<!-- 6. ANDROID HOME SCREEN WIDGET -->
+<!-- ─────────────────────────────────────────────────────────────── -->
+<div class="suggestion">
+  <div class="suggestion-header">
+    <div class="num">6</div>
+    <h2>Android Home Screen Widget</h2>
+    <span class="tag tag-hard">Hard</span>
+  </div>
+  <p>Power users want playback controls on their home screen. A 4×2 widget showing cover art, title, progress, and play/pause + skip buttons would reduce friction enormously — no need to open the app to resume an audiobook.</p>
+
+  <div class="drawing-area">
+    <svg width="380" height="180" viewBox="0 0 380 180">
+      <rect width="380" height="180" fill="#0d0d14" rx="8"/>
+      <!-- Home screen background simulation -->
+      <rect x="40" y="10" width="300" height="160" rx="12" fill="#1a1020"/>
+      <!-- Widget card -->
+      <rect x="60" y="28" width="260" height="120" rx="16" fill="#2a1a40"/>
+      <rect x="60" y="28" width="260" height="120" rx="16" fill="none" stroke="#5a3a80" stroke-width="1"/>
+      <!-- Cover art -->
+      <rect x="72" y="38" width="84" height="100" rx="10" fill="#3a1a50"/>
+      <text x="114" y="95" fill="#5a3080" font-size="32" text-anchor="middle">♪</text>
+      <!-- Info area -->
+      <rect x="166" y="44" width="140" height="9" rx="3" fill="#5a3a80" opacity="0.7"/>
+      <rect x="166" y="58" width="100" height="7" rx="3" fill="#3a2a50" opacity="0.8"/>
+      <!-- Progress bar -->
+      <rect x="166" y="76" width="140" height="4" rx="2" fill="#1a1030"/>
+      <rect x="166" y="76" width="70" height="4" rx="2" fill="#b39ddb"/>
+      <text x="166" y="90" fill="#5a3a70" font-size="7" font-family="sans-serif">50% · Ch. 3 of 8</text>
+      <!-- Controls -->
+      <circle cx="190" cy="116" r="14" fill="#1a1030"/>
+      <text x="190" y="121" fill="#8888aa" font-size="14" text-anchor="middle">⏮</text>
+      <circle cx="226" cy="116" r="18" fill="#7c4dff"/>
+      <polygon points="221,108 221,124 237,116" fill="white"/>
+      <circle cx="262" cy="116" r="14" fill="#1a1030"/>
+      <text x="262" y="121" fill="#8888aa" font-size="14" text-anchor="middle">⏭</text>
+      <!-- Labels -->
+      <text x="190" y="164" fill="#3a3a50" font-size="8" text-anchor="middle" font-family="sans-serif">4×2 widget</text>
+      <text x="280" y="164" fill="#3a3a50" font-size="8" text-anchor="middle" font-family="sans-serif">Also works on lock screen</text>
+    </svg>
+  </div>
+  <div class="arch">
+    <strong>Where it fits in the codebase:</strong>
+    <pre>
+android/app/src/main/        →  new HomeWidgetProvider.kt (AppWidgetProvider)
+                                uses Android RemoteViews, communicates via SharedPreferences
+MainActivity.kt              →  handle widget action intents (play/pause/skip)
+audio_service_handler.dart   →  emit widget-update broadcasts on state change
+pubspec.yaml                 →  add home_widget: ^0.6.0 Flutter plugin for widget bridge</pre>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<!-- 7. PLAYBACK QUEUE (UPCOMING BOOKS) -->
+<!-- ─────────────────────────────────────────────────────────────── -->
+<div class="suggestion">
+  <div class="suggestion-header">
+    <div class="num">7</div>
+    <h2>Playback Queue — "Up Next" for Audiobooks</h2>
+    <span class="tag tag-medium">Medium</span>
+  </div>
+  <p>Currently the app plays one book and stops. Add a lightweight "Up Next" queue. Long-press a book cover to "Add to Queue", and when the current book finishes, the next one auto-starts. Queue is visible from the player with drag-to-reorder.</p>
+
+  <div class="drawing-area">
+    <svg width="380" height="190" viewBox="0 0 380 190">
+      <rect width="380" height="190" fill="#0d0d14" rx="8"/>
+
+      <!-- Queue panel -->
+      <rect x="10" y="10" width="360" height="170" rx="12" fill="#111118" stroke="#2e3e3e" stroke-width="1"/>
+      <text x="190" y="30" fill="#80cbc4" font-size="11" text-anchor="middle" font-family="sans-serif" font-weight="bold">Up Next</text>
+
+      <!-- Currently playing -->
+      <text x="20" y="50" fill="#3a6a6a" font-size="8" font-family="sans-serif">NOW PLAYING</text>
+      <rect x="10" y="54" width="360" height="36" rx="8" fill="#0d2a2a" stroke="#00bcd4" stroke-width="1"/>
+      <rect x="18" y="60" width="24" height="24" rx="4" fill="#1a3a3a"/>
+      <rect x="48" y="62" width="120" height="8" rx="2" fill="#4a8a8a" opacity="0.8"/>
+      <rect x="48" y="74" width="70" height="6" rx="2" fill="#2a5a5a"/>
+      <text x="358" y="76" fill="#3a7a7a" font-size="8" text-anchor="end" font-family="sans-serif">▶ 1:23:45 / 8:12:00</text>
+
+      <!-- Queue items -->
+      <text x="20" y="106" fill="#3a5a5a" font-size="8" font-family="sans-serif">QUEUE (3)</text>
+
+      <!-- Queue item 1 -->
+      <rect x="10" y="110" width="360" height="30" rx="6" fill="#161618"/>
+      <text x="22" y="129" fill="#4a4a60" font-size="12">⠿</text>
+      <rect x="40" y="116" width="20" height="18" rx="3" fill="#2a2a3a"/>
+      <rect x="66" y="118" width="100" height="7" rx="2" fill="#4a4a60"/>
+      <rect x="66" y="129" width="60" height="5" rx="2" fill="#3a3a50"/>
+      <text x="358" y="128" fill="#4a4a60" font-size="9" text-anchor="end" font-family="sans-serif">6:32:00 · ✗</text>
+
+      <!-- Queue item 2 -->
+      <rect x="10" y="146" width="360" height="30" rx="6" fill="#161618"/>
+      <text x="22" y="165" fill="#4a4a60" font-size="12">⠿</text>
+      <rect x="40" y="152" width="20" height="18" rx="3" fill="#2a2a3a"/>
+      <rect x="66" y="154" width="80" height="7" rx="2" fill="#4a4a60"/>
+      <rect x="66" y="165" width="50" height="5" rx="2" fill="#3a3a50"/>
+      <text x="358" y="164" fill="#4a4a60" font-size="9" text-anchor="end" font-family="sans-serif">9:10:00 · ✗</text>
+
+      <!-- Drag handle label -->
+      <text x="24" y="182" fill="#2e4e4e" font-size="7" font-family="sans-serif">⠿ drag to reorder</text>
+      <text x="190" y="182" fill="#2e4e4e" font-size="7" text-anchor="middle" font-family="sans-serif">✗ tap to remove</text>
+    </svg>
+  </div>
+  <div class="arch">
+    <strong>Where it fits in the codebase:</strong>
+    <pre>
+playback_repository.dart     →  add playbackQueue: List&lt;Book&gt;, addToQueue(), onBookFinished()
+audio_service_handler.dart   →  when track ends and queue non-empty, start next item
+full_player_overlay.dart     →  add "Queue" tab alongside chapter list
+books_page.dart              →  long-press context menu: "Play Next", "Add to Queue"
+ui_prefs.dart                →  persist queue across app restarts</pre>
+  </div>
+</div>
+
+</body>
+</html>

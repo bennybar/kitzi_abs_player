@@ -13,6 +13,7 @@ class SleepTimerService {
 
   Timer? _sleepTimer;
   Duration? _remainingTime;
+  Duration? _initialDuration;
   bool _isActive = false;
   PlaybackRepository? _playbackRepository;
   final StreamController<Duration?> _remainingCtr = StreamController.broadcast();
@@ -24,6 +25,7 @@ class SleepTimerService {
   Stream<Duration?> get remainingTimeStream => _remainingCtr.stream;
   SleepTimerMode get mode => _mode;
   bool get isChapterMode => _mode == SleepTimerMode.chapterEnd;
+  Duration? get initialDuration => _initialDuration;
 
   void initialize(PlaybackRepository playbackRepository) {
     _playbackRepository = playbackRepository;
@@ -32,8 +34,9 @@ class SleepTimerService {
   /// Start sleep timer with specified duration
   void startTimer(Duration duration) {
     _stopTimer(); // Stop any existing timer
-    
+
     _mode = SleepTimerMode.duration;
+    _initialDuration = duration;
     _remainingTime = duration;
     _isActive = true;
     _remainingCtr.add(_remainingTime);
@@ -73,6 +76,7 @@ class SleepTimerService {
     _targetChapterEnd = metrics.end;
     _targetItemId = np.libraryItemId;
     _remainingTime = metrics.duration - metrics.elapsed;
+    _initialDuration = _remainingTime;
     if (_remainingTime != null && _remainingTime!.isNegative) {
       _remainingTime = Duration.zero;
     }
@@ -170,6 +174,7 @@ class SleepTimerService {
     _sleepTimer = null;
     _isActive = false;
     _remainingTime = null;
+    _initialDuration = null;
     _targetChapterEnd = null;
     _targetItemId = null;
     _mode = SleepTimerMode.none;

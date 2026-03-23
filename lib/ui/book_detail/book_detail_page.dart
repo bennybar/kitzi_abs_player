@@ -1346,6 +1346,11 @@ class _BookDetailPageState extends State<BookDetailPage> {
                               ),
                               const SizedBox(height: 14),
                               _ProgressSummary(playback: playbackRepo, book: b),
+                              const SizedBox(height: 10),
+                              _ChapterTimeline(
+                                book: b,
+                                playback: playbackRepo,
+                              ),
                               const SizedBox(height: 18),
                               Row(
                                 children: [
@@ -1400,6 +1405,9 @@ class _BookDetailPageState extends State<BookDetailPage> {
                                   child: _MetaOrDescription(book: b),
                                 ),
                               ],
+                              // Related books row
+                              const SizedBox(height: 18),
+                              _RelatedBooksSection(book: b),
                             ],
                           ),
                         );
@@ -1411,6 +1419,324 @@ class _BookDetailPageState extends State<BookDetailPage> {
     );
   }
 }
+
+// ── Chapter Timeline ─────────────────────────────────────────────────────────
+
+class _ChapterTimeline extends StatefulWidget {
+  const _ChapterTimeline({required this.book, required this.playback});
+
+  final Book book;
+  final PlaybackRepository playback;
+
+  @override
+  State<_ChapterTimeline> createState() => _ChapterTimelineState();
+}
+
+class _ChapterTimelineState extends State<_ChapterTimeline> {
+  double? _savedProgressFraction;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedProgress();
+  }
+
+  Future<void> _loadSavedProgress() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final sec = prefs.getDouble('abs_progress:${widget.book.id}');
+      final totalMs = widget.book.durationMs;
+      if (sec != null && totalMs != null && totalMs > 0 && mounted) {
+        setState(() {
+          _savedProgressFraction = (sec / (totalMs / 1000)).clamp(0.0, 1.0);
+        });
+      }
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final playback = widget.playback;
+
+    return StreamBuilder<Duration>(
+      stream: playback.positionStream,
+      initialData: playback.player.position,
+      builder: (ctx, posSnap) {
+        final np = playback.nowPlaying;
+        final isActive = np?.libraryItemId == widget.book.id;
+
+        if (isActive && np!.chapters.length > 1) {
+          // Chapter-segmented bar when book is currently playing
+          final totalDur = playback.totalBookDuration ?? Duration.zero;
+          final pos =
+              playback.globalBookPosition ?? posSnap.data ?? Duration.zero;
+          if (totalDur == Duration.zero) return const SizedBox.shrink();
+
+          final totalSec = totalDur.inMilliseconds / 1000.0;
+          final posSec = pos.inMilliseconds / 1000.0;
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'CHAPTERS',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: cs.onSurfaceVariant.withOpacity(0.6),
+                  letterSpacing: 0.8,
+                ),
+              ),
+              const SizedBox(height: 6),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: SizedBox(
+                  height: 8,
+                  child: LayoutBuilder(
+                    builder: (_, constraints) {
+                      final chapters = np.chapters;
+                      return Stack(
+                        children: [
+                          // Background track
+                          Container(
+                            color: cs.surfaceContainerHighest,
+                          ),
+                          // Completed fill up to current position
+                          FractionallySizedBox(
+                            widthFactor: (posSec / totalSec).clamp(0.0, 1.0),
+                            child: Container(
+                              color: cs.primary.withOpacity(0.7),
+                            ),
+                          ),
+                          // Chapter dividers
+                          for (int i = 1; i < chapters.length; i++)
+                            Positioned(
+                              left:
+                                  constraints.maxWidth *
+                                  (chapters[i].start.inMilliseconds /
+                                          (totalDur.inMilliseconds))
+                                      .clamp(0.0, 1.0),
+                              top: 0,
+                              bottom: 0,
+                              child: Container(
+                                width: 1.5,
+                                color: cs.surface.withOpacity(0.6),
+                              ),
+                            ),
+                          // Current position marker
+                          Positioned(
+                            left:
+                                constraints.maxWidth *
+                                    (posSec / totalSec).clamp(0.0, 1.0) -
+                                1.5,
+                            top: 0,
+                            bottom: 0,
+                            child: Container(
+                              width: 3,
+                              decoration: BoxDecoration(
+                                color: cs.onSurface,
+                                borderRadius: BorderRadius.circular(1.5),
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                () {
+                  // Find current chapter index
+                  int chIdx = 0;
+                  for (int i = np.chapters.length - 1; i >= 0; i--) {
+                    if (pos >= np.chapters[i].start) {
+                      chIdx = i;
+                      break;
+                    }
+                  }
+                  return 'Chapter ${chIdx + 1} of ${np.chapters.length}';
+                }(),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: cs.primary,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          );
+        }
+
+        // Fallback: simple progress bar from saved progress
+        final fraction = _savedProgressFraction;
+        if (fraction == null || fraction <= 0) return const SizedBox.shrink();
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'PROGRESS',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: cs.onSurfaceVariant.withOpacity(0.6),
+                letterSpacing: 0.8,
+              ),
+            ),
+            const SizedBox(height: 6),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: fraction,
+                minHeight: 8,
+                backgroundColor: cs.surfaceContainerHighest,
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  cs.primary.withOpacity(0.7),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+// ── Related Books ─────────────────────────────────────────────────────────────
+
+class _RelatedBooksSection extends StatefulWidget {
+  const _RelatedBooksSection({required this.book});
+
+  final Book book;
+
+  @override
+  State<_RelatedBooksSection> createState() => _RelatedBooksSectionState();
+}
+
+class _RelatedBooksSectionState extends State<_RelatedBooksSection> {
+  List<Book> _related = const [];
+  bool _loaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRelated();
+  }
+
+  Future<void> _loadRelated() async {
+    try {
+      final repo = await BooksRepository.create();
+      List<Book> books;
+      final seriesName = widget.book.series;
+      if (seriesName != null && seriesName.isNotEmpty) {
+        books = await repo.listBooksInSeries(
+          seriesName,
+          excludeId: widget.book.id,
+        );
+      } else if (widget.book.author != null &&
+          widget.book.author!.isNotEmpty) {
+        books = await repo.listBooksByAuthor(
+          widget.book.author!,
+          excludeId: widget.book.id,
+        );
+      } else {
+        books = const [];
+      }
+      if (mounted) {
+        setState(() {
+          _related = books.take(10).toList();
+          _loaded = true;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loaded = true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_loaded || _related.isEmpty) return const SizedBox.shrink();
+
+    final cs = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    final hasSeries =
+        widget.book.series != null && widget.book.series!.isNotEmpty;
+    final label = hasSeries ? 'More in Series' : 'More by Author';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SectionHeader(title: label),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 148,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: _related.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 10),
+            itemBuilder: (ctx, i) {
+              final b = _related[i];
+              return GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    ctx,
+                    MaterialPageRoute<void>(
+                      builder: (_) => BookDetailPage(bookId: b.id),
+                    ),
+                  );
+                },
+                child: SizedBox(
+                  width: 88,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: AspectRatio(
+                          aspectRatio: 2 / 3,
+                          child: CachedNetworkImage(
+                            imageUrl: b.coverUrl,
+                            fit: BoxFit.cover,
+                            errorWidget:
+                                (_, __, ___) => Container(
+                                  color: cs.surfaceContainerHighest,
+                                  child: Icon(
+                                    Icons.menu_book_outlined,
+                                    color: cs.onSurfaceVariant,
+                                    size: 24,
+                                  ),
+                                ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        b.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: text.bodySmall?.copyWith(
+                          fontWeight: FontWeight.w500,
+                          height: 1.2,
+                        ),
+                      ),
+                      if (hasSeries && b.seriesSequence != null)
+                        Text(
+                          '#${b.seriesSequence!.toStringAsFixed(b.seriesSequence! % 1 == 0 ? 0 : 1)}',
+                          style: text.bodySmall?.copyWith(
+                            color: cs.primary,
+                            fontSize: 10,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _DetailSurface extends StatelessWidget {
   const _DetailSurface({
