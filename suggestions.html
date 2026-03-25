@@ -1,0 +1,978 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kitzi UI Suggestions</title>
+    <style>
+      :root {
+        --bg: #f6ebe9;
+        --bg-2: #fdf8f7;
+        --panel: rgba(255, 255, 255, 0.72);
+        --panel-strong: rgba(255, 255, 255, 0.88);
+        --text: #241d22;
+        --muted: #6e6670;
+        --line: rgba(71, 46, 55, 0.1);
+        --accent: #5f77b4;
+        --accent-2: #8ea1d5;
+        --accent-soft: rgba(95, 119, 180, 0.16);
+        --green: #2f9d64;
+        --green-soft: rgba(47, 157, 100, 0.16);
+        --red: #ca4c54;
+        --shadow: 0 24px 60px rgba(79, 50, 61, 0.12);
+        --radius-xl: 28px;
+        --radius-lg: 20px;
+        --radius-md: 14px;
+        --radius-sm: 10px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Google Sans", "Google Sans Text", "Product Sans", "Segoe UI", sans-serif;
+        color: var(--text);
+        background:
+          radial-gradient(circle at top left, rgba(255, 255, 255, 0.8), transparent 36%),
+          linear-gradient(180deg, #f4e5e4 0%, #f6ecea 35%, #fbf7f5 100%);
+      }
+
+      .page {
+        max-width: 1460px;
+        margin: 0 auto;
+        padding: 48px 28px 80px;
+      }
+
+      .hero {
+        display: grid;
+        gap: 18px;
+        margin-bottom: 34px;
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        width: fit-content;
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 12px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: clamp(34px, 5vw, 64px);
+        line-height: 0.96;
+        letter-spacing: -0.04em;
+        max-width: 900px;
+        font-family: "Google Sans", "Product Sans", "Segoe UI", sans-serif;
+      }
+
+      .lead {
+        max-width: 840px;
+        color: var(--muted);
+        font-size: 18px;
+        line-height: 1.55;
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: 360px minmax(0, 1fr);
+        gap: 24px;
+        align-items: start;
+      }
+
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-xl);
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(14px);
+      }
+
+      .sidebar {
+        position: sticky;
+        top: 24px;
+        padding: 22px;
+        display: grid;
+        gap: 18px;
+      }
+
+      .sidebar h2 {
+        font-size: 18px;
+        letter-spacing: -0.02em;
+      }
+
+      .review-list {
+        display: grid;
+        gap: 12px;
+      }
+
+      .review-item {
+        padding: 14px;
+        background: var(--panel-strong);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-md);
+      }
+
+      .review-item strong {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 14px;
+      }
+
+      .review-item span {
+        display: block;
+        margin-bottom: 6px;
+        color: var(--accent);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .review-item p {
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.45;
+      }
+
+      .canvas {
+        display: grid;
+        gap: 22px;
+      }
+
+      .section {
+        padding: 24px;
+      }
+
+      .section-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        align-items: end;
+        margin-bottom: 20px;
+      }
+
+      .section-head p {
+        max-width: 760px;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+
+      .phones {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 22px;
+      }
+
+      .phone {
+        min-height: 720px;
+        padding: 16px;
+        border-radius: 34px;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.62)),
+          linear-gradient(180deg, #f7ecea 0%, #fbf6f5 100%);
+        border: 1px solid rgba(76, 54, 62, 0.12);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 20px 36px rgba(79, 50, 61, 0.12);
+      }
+
+      .topbar,
+      .top-actions,
+      .meta-stack,
+      .player-controls,
+      .bottom-tabs,
+      .chips {
+        display: flex;
+      }
+
+      .topbar,
+      .player-controls,
+      .bottom-tabs {
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .topbar {
+        margin-bottom: 18px;
+      }
+
+      .icon-btn {
+        width: 34px;
+        height: 34px;
+        display: grid;
+        place-items: center;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.7);
+        border: 1px solid rgba(66, 46, 54, 0.08);
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .top-actions {
+        gap: 8px;
+      }
+
+      .cover {
+        width: min(100%, 248px);
+        aspect-ratio: 1;
+        margin: 0 auto;
+        border-radius: 26px;
+        overflow: hidden;
+        position: relative;
+        background:
+          radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.4), transparent 24%),
+          linear-gradient(135deg, #7d3424 0%, #d11f27 44%, #111218 44%, #242838 100%);
+        box-shadow: 0 20px 40px rgba(83, 44, 53, 0.22);
+      }
+
+      .cover::before,
+      .cover::after {
+        content: "";
+        position: absolute;
+        border-radius: 50%;
+        background: rgba(255, 248, 244, 0.96);
+      }
+
+      .cover::before {
+        width: 56%;
+        height: 56%;
+        left: 22%;
+        top: 19%;
+      }
+
+      .cover::after {
+        width: 46%;
+        height: 46%;
+        left: 27%;
+        top: 24%;
+        box-shadow: inset 0 0 0 2px rgba(125, 52, 36, 0.3);
+      }
+
+      .cover-label {
+        position: absolute;
+        inset: 35% 0 auto;
+        text-align: center;
+        padding: 0 20px;
+        font-weight: 800;
+        font-size: 13px;
+        line-height: 1.15;
+        letter-spacing: 0.06em;
+      }
+
+      .cover-sub {
+        position: absolute;
+        inset: 64% 0 auto;
+        text-align: center;
+        font-size: 10px;
+        font-weight: 700;
+        color: rgba(36, 29, 34, 0.7);
+        letter-spacing: 0.12em;
+      }
+
+      .player-main {
+        display: grid;
+        gap: 18px;
+      }
+
+      .dynamic-zone {
+        min-height: 0;
+        display: grid;
+        align-content: start;
+        gap: 14px;
+      }
+
+      .dynamic-zone.compact {
+        gap: 10px;
+      }
+
+      .meta-stack {
+        flex-direction: column;
+        gap: 6px;
+        text-align: center;
+      }
+
+      .title {
+        font-size: 31px;
+        line-height: 1.05;
+        letter-spacing: -0.04em;
+        font-weight: 760;
+        font-family: "Google Sans", "Product Sans", "Segoe UI", sans-serif;
+      }
+
+      .title.small {
+        font-size: 21px;
+      }
+
+      .author {
+        font-size: 18px;
+        color: #3d475a;
+        font-family: "Google Sans Text", "Google Sans", "Segoe UI", sans-serif;
+      }
+
+      .narrator {
+        font-size: 13px;
+        color: var(--muted);
+        font-family: "Google Sans Text", "Google Sans", "Segoe UI", sans-serif;
+      }
+
+      .progress-card {
+        padding: 14px 14px 12px;
+        border-radius: 22px;
+        background: var(--panel-strong);
+        border: 1px solid rgba(82, 57, 67, 0.08);
+      }
+
+      .progress-head,
+      .time-row,
+      .chapter-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .progress-head {
+        margin-bottom: 12px;
+      }
+
+      .label {
+        font-size: 11px;
+        letter-spacing: 0.1em;
+        color: var(--muted);
+        font-weight: 700;
+      }
+
+      .toggle {
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: var(--accent-soft);
+        color: var(--accent);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .track {
+        position: relative;
+        width: 100%;
+        height: 6px;
+        border-radius: 999px;
+        background: rgba(95, 119, 180, 0.12);
+        overflow: hidden;
+      }
+
+      .track .fill,
+      .chapter-map .fill,
+      .download-fill {
+        position: absolute;
+        inset: 0 auto 0 0;
+        background: linear-gradient(90deg, var(--accent), var(--accent-2));
+        border-radius: inherit;
+      }
+
+      .knob {
+        position: absolute;
+        top: 50%;
+        width: 16px;
+        height: 16px;
+        margin-top: -8px;
+        border-radius: 50%;
+        background: var(--accent);
+        box-shadow: 0 4px 10px rgba(95, 119, 180, 0.35);
+      }
+
+      .time-row {
+        margin-top: 10px;
+        color: var(--muted);
+        font-size: 12px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .chapter-block {
+        display: grid;
+        gap: 8px;
+        margin-top: 14px;
+      }
+
+      .chapter-map {
+        position: relative;
+        width: 100%;
+        height: 8px;
+        border-radius: 999px;
+        overflow: hidden;
+        background: rgba(56, 63, 77, 0.08);
+      }
+
+      .chapter-map .mark {
+        position: absolute;
+        top: 0;
+        width: 2px;
+        height: 100%;
+        background: rgba(255, 255, 255, 0.8);
+      }
+
+      .chapter-map .cursor {
+        position: absolute;
+        top: 0;
+        width: 3px;
+        height: 100%;
+        border-radius: 999px;
+        background: #202532;
+      }
+
+      .chapter-row {
+        align-items: start;
+      }
+
+      .chapter-row strong {
+        font-size: 13px;
+        color: var(--accent);
+      }
+
+      .chapter-row span {
+        display: block;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.4;
+      }
+
+      .player-controls {
+        gap: 12px;
+        justify-content: center;
+      }
+
+      .control {
+        width: 46px;
+        height: 46px;
+        display: grid;
+        place-items: center;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.82);
+        border: 1px solid rgba(70, 46, 56, 0.06);
+        color: var(--muted);
+      }
+
+      .control.seek {
+        width: 62px;
+        height: 42px;
+        border-radius: 999px;
+        background: rgba(95, 119, 180, 0.1);
+        color: var(--accent);
+      }
+
+      .seek-inline {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.01em;
+      }
+
+      .seek-inline .arrow {
+        font-size: 15px;
+        line-height: 1;
+      }
+
+      .seek-inline .secs {
+        font-variant-numeric: tabular-nums;
+      }
+
+      .control.main {
+        width: 66px;
+        height: 66px;
+        background: linear-gradient(180deg, #6f83ba, #5f77b4);
+        color: white;
+        box-shadow: 0 18px 32px rgba(95, 119, 180, 0.28);
+      }
+
+      .bottom-tabs {
+        gap: 8px;
+      }
+
+      .pill {
+        flex: 1;
+        padding: 9px 8px 8px;
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.76);
+        border: 1px solid rgba(64, 46, 55, 0.08);
+        font-size: 11px;
+        font-weight: 700;
+        display: grid;
+        place-items: center;
+        gap: 4px;
+      }
+
+      .pill-icon {
+        width: 22px;
+        height: 22px;
+        display: grid;
+        place-items: center;
+        border-radius: 50%;
+        background: rgba(95, 119, 180, 0.08);
+        color: var(--accent);
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .phone-footer {
+        display: grid;
+        gap: 16px;
+        margin-top: 18px;
+      }
+
+      .download {
+        padding: 14px;
+        border-radius: 18px;
+        background: var(--panel-strong);
+        border: 1px solid rgba(61, 47, 55, 0.08);
+        display: grid;
+        gap: 12px;
+      }
+
+      .download-button {
+        position: relative;
+        overflow: hidden;
+        border-radius: 14px;
+        min-height: 48px;
+        background: var(--green-soft);
+        border: 1px solid rgba(47, 157, 100, 0.14);
+      }
+
+      .download-fill {
+        width: 62%;
+        background: linear-gradient(90deg, var(--green), #52c38a);
+      }
+
+      .download-content {
+        position: relative;
+        z-index: 1;
+        min-height: 48px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 0 14px;
+        color: #f9fffb;
+        font-weight: 700;
+      }
+
+      .download-sub {
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.4;
+      }
+
+      .download-static {
+        display: grid;
+        gap: 8px;
+      }
+
+      .download-ghost {
+        width: 100%;
+        min-height: 48px;
+        border-radius: 14px;
+        background: rgba(95, 119, 180, 0.08);
+        border: 1px solid rgba(95, 119, 180, 0.1);
+        display: grid;
+        place-items: center;
+        color: var(--accent);
+        font-weight: 700;
+      }
+
+      .notes {
+        display: grid;
+        gap: 10px;
+        margin-top: 16px;
+      }
+
+      .note {
+        padding: 12px 14px;
+        border-radius: var(--radius-md);
+        background: rgba(255, 255, 255, 0.74);
+        border: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.5;
+      }
+
+      .chips {
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 12px;
+      }
+
+      .chip {
+        padding: 8px 10px;
+        border-radius: 999px;
+        background: rgba(95, 119, 180, 0.08);
+        color: var(--accent);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      @media (max-width: 1080px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+
+        .sidebar {
+          position: static;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <div class="hero">
+        <div class="eyebrow">Kitzi Review + Mockup</div>
+        <h1>UI suggestions for the player, download state, and metadata reliability.</h1>
+        <p class="lead">
+          This is a review-only deliverable based on the current Flutter code in
+          <code>full_player_page.dart</code>, <code>download_button.dart</code>,
+          <code>playback_repository.dart</code>, and the book detail page. The goal
+          is to make the full player feel tighter and more adaptive, keep download
+          progress readable, and reduce narrator disappearance for offline books.
+        </p>
+      </div>
+
+      <div class="layout">
+        <aside class="sidebar card">
+          <h2>Review Findings</h2>
+          <div class="review-list">
+            <div class="review-item">
+              <span>Layout</span>
+              <strong>Full player vertical rhythm is still too rigid.</strong>
+              <p>
+                The large center gap is caused by the screen distributing space by
+                section, not by content priority. The artwork block, metadata block,
+                waveform area, and progress area are stacked well, but their parent
+                layout still behaves like fixed zones rather than a fluid composition.
+              </p>
+            </div>
+            <div class="review-item">
+              <span>Progress</span>
+              <strong>The player currently mixes “primary progress” and “chapter context” well in concept, but not yet in presentation.</strong>
+              <p>
+                The chapter map below the main bar is the right direction. It should
+                behave like a compact context rail, not another heavy section with its
+                own visual gravity.
+              </p>
+            </div>
+            <div class="review-item">
+              <span>Download</span>
+              <strong>The in-progress button should remain a single stable control.</strong>
+              <p>
+                A filled background with <code>downloaded / total</code> and
+                percentage is the strongest pattern here. It keeps the footprint stable
+                and avoids the awkward “button shrinks and a second progress bar appears”
+                behavior.
+              </p>
+            </div>
+            <div class="review-item">
+              <span>Data</span>
+              <strong>Offline narrator loss was likely a metadata hydration gap.</strong>
+              <p>
+                The right fix is not a player-level fallback label. It is ensuring the
+                offline warm-load path hydrates narrator consistently from local book
+                metadata, cached server metadata, or both.
+              </p>
+            </div>
+          </div>
+          <div class="chips">
+            <div class="chip">Player should pack upward</div>
+            <div class="chip">One main progress bar</div>
+            <div class="chip">Compact chapter context</div>
+            <div class="chip">Stable download affordance</div>
+            <div class="chip">Offline metadata parity</div>
+          </div>
+        </aside>
+
+        <main class="canvas">
+          <section class="section card">
+            <div class="section-head">
+              <div>
+                <h2>Suggested Full Player</h2>
+                <p>
+                  The mockup below makes the upper area genuinely dynamic. When title,
+                  author, and narrator are short, the cover grows and the progress block
+                  moves upward. When metadata is long, the cover shrinks first. The main
+                  progress bar remains the user-selected primary mode, and the chapter
+                  rail sits below as lightweight context. Waveform is removed entirely
+                  from the proposed player.
+                </p>
+              </div>
+            </div>
+
+            <div class="phones">
+              <div class="phone">
+                <div class="player-main">
+                  <div class="topbar">
+                    <div class="icon-btn">⌄</div>
+                    <div class="top-actions">
+                      <div class="icon-btn">2×</div>
+                      <div class="icon-btn">↗</div>
+                      <div class="icon-btn">⋮</div>
+                    </div>
+                  </div>
+
+                  <div class="dynamic-zone compact">
+                    <div class="cover">
+                      <div class="cover-label">FALL OF<br />CIVILIZATIONS</div>
+                      <div class="cover-sub">PAUL COOPER</div>
+                    </div>
+                    <div class="meta-stack">
+                      <div class="title small">Fall of Civilizations</div>
+                      <div class="author">Paul Cooper</div>
+                      <div class="narrator">Narrated by Paul Cooper</div>
+                    </div>
+                  </div>
+
+                  <div class="progress-card">
+                    <div class="progress-head">
+                      <div class="label">BOOK PROGRESS</div>
+                      <div class="toggle">Primary</div>
+                    </div>
+                    <div class="track">
+                      <div class="fill" style="width: 23%;"></div>
+                      <div class="knob" style="left: calc(23% - 8px);"></div>
+                    </div>
+                    <div class="time-row">
+                      <span>1:54:18</span>
+                      <span>-13:37:24</span>
+                    </div>
+
+                    <div class="chapter-block">
+                      <div class="label">CHAPTERS</div>
+                      <div class="chapter-map">
+                        <div class="fill" style="width: 19%;"></div>
+                        <div class="mark" style="left: 5%;"></div>
+                        <div class="mark" style="left: 17%;"></div>
+                        <div class="mark" style="left: 29%;"></div>
+                        <div class="mark" style="left: 46%;"></div>
+                        <div class="mark" style="left: 64%;"></div>
+                        <div class="mark" style="left: 81%;"></div>
+                        <div class="cursor" style="left: calc(19% - 1px);"></div>
+                      </div>
+                      <div class="chapter-row">
+                        <div>
+                          <strong>Chapter 2 of 21 · Han China</strong>
+                          <span>Readable title if available, fallback label otherwise.</span>
+                        </div>
+                        <strong>00:48 / 1:17:02</strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="player-controls">
+                    <div class="control">|◀</div>
+                    <div class="control seek">
+                      <div class="seek-inline"><span class="arrow">‹‹</span><span class="secs">30</span></div>
+                    </div>
+                    <div class="control main">▶</div>
+                    <div class="control seek">
+                      <div class="seek-inline"><span class="secs">30</span><span class="arrow">››</span></div>
+                    </div>
+                    <div class="control">▶|</div>
+                  </div>
+
+                  <div class="phone-footer">
+                    <div class="bottom-tabs">
+                      <div class="pill"><div class="pill-icon">☰</div><div>Chapters</div></div>
+                      <div class="pill"><div class="pill-icon">⤓</div><div>Offline</div></div>
+                      <div class="pill"><div class="pill-icon">☾</div><div>Sleep</div></div>
+                      <div class="pill"><div class="pill-icon">↻</div><div>Speed</div></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="phone">
+                <div class="player-main">
+                  <div class="topbar">
+                    <div class="icon-btn">⌄</div>
+                    <div class="top-actions">
+                      <div class="icon-btn">1.5×</div>
+                      <div class="icon-btn">⇱</div>
+                      <div class="icon-btn">⋮</div>
+                    </div>
+                  </div>
+
+                  <div class="dynamic-zone">
+                    <div class="cover" style="width: min(100%, 206px);">
+                      <div class="cover-label">THE VERY LONG BOOK<br />TITLE THAT WRAPS</div>
+                      <div class="cover-sub">WITH MULTI-LINE METADATA</div>
+                    </div>
+                    <div class="meta-stack">
+                      <div class="title small">The Very Long Book Title That Wraps Across Multiple Lines</div>
+                      <div class="author">A Very Long Author Name That Also Wraps</div>
+                      <div class="narrator">Narrated by Two Performers With Long Names</div>
+                    </div>
+                  </div>
+
+                  <div class="progress-card">
+                    <div class="progress-head">
+                      <div class="label">CHAPTER PROGRESS</div>
+                      <div class="toggle">Primary</div>
+                    </div>
+                    <div class="track">
+                      <div class="fill" style="width: 61%;"></div>
+                      <div class="knob" style="left: calc(61% - 8px);"></div>
+                    </div>
+                    <div class="time-row">
+                      <span>31:14</span>
+                      <span>-20:09</span>
+                    </div>
+
+                    <div class="chapter-block">
+                      <div class="label">BOOK CHAPTER MAP</div>
+                      <div class="chapter-map">
+                        <div class="fill" style="width: 44%;"></div>
+                        <div class="mark" style="left: 9%;"></div>
+                        <div class="mark" style="left: 16%;"></div>
+                        <div class="mark" style="left: 31%;"></div>
+                        <div class="mark" style="left: 51%;"></div>
+                        <div class="mark" style="left: 73%;"></div>
+                        <div class="cursor" style="left: calc(44% - 1px);"></div>
+                      </div>
+                      <div class="chapter-row">
+                        <div>
+                          <strong>Chapter 9 of 17 · Siege and Retreat</strong>
+                          <span>This bar stays visually lighter than the primary slider.</span>
+                        </div>
+                        <strong>31:14 / 51:23</strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="player-controls">
+                    <div class="control">|◀</div>
+                    <div class="control seek">
+                      <div class="seek-inline"><span class="arrow">‹‹</span><span class="secs">15</span></div>
+                    </div>
+                    <div class="control main">❚❚</div>
+                    <div class="control seek">
+                      <div class="seek-inline"><span class="secs">15</span><span class="arrow">››</span></div>
+                    </div>
+                    <div class="control">▶|</div>
+                  </div>
+
+                  <div class="phone-footer">
+                    <div class="bottom-tabs">
+                      <div class="pill"><div class="pill-icon">☰</div><div>Chapters</div></div>
+                      <div class="pill"><div class="pill-icon">⤓</div><div>Offline</div></div>
+                      <div class="pill"><div class="pill-icon">☾</div><div>Sleep</div></div>
+                      <div class="pill"><div class="pill-icon">↻</div><div>Speed</div></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="section card">
+            <div class="section-head">
+              <div>
+                <h2>Suggested Download States</h2>
+                <p>
+                  Keep download as one stable button with zero height changes. The fill
+                  itself communicates progress. The text shows exact percentage plus
+                  downloaded amount over total amount. No second progress strip and no
+                  vertical stacking inside a constrained button.
+                </p>
+              </div>
+            </div>
+
+            <div class="phones">
+              <div class="phone" style="min-height: 470px;">
+                <div class="download">
+                  <div class="label">IN PROGRESS</div>
+                  <div class="download-button">
+                    <div class="download-fill"></div>
+                    <div class="download-content">
+                      <span>842 MB / 1.36 GB</span>
+                      <span>62%</span>
+                    </div>
+                  </div>
+                  <div class="download-sub">
+                    Suggested behavior: whole control stays 48px high, cancel lives at the
+                    far edge only if needed, and text remains single-line. This avoids the
+                    vertical overflow that happens when the button tries to hold too many
+                    stacked children.
+                  </div>
+                </div>
+              </div>
+
+              <div class="phone" style="min-height: 470px;">
+                <div class="download">
+                  <div class="label">OTHER STATES</div>
+                  <div class="download-static">
+                    <div class="download-ghost">Download</div>
+                    <div class="download-ghost" style="color: var(--red); border-color: rgba(202, 76, 84, 0.16); background: rgba(202, 76, 84, 0.06);">Remove Download</div>
+                  </div>
+                  <div class="download-sub">
+                    Visual rule: default, downloading, and downloaded should all occupy the
+                    same footprint. The state change should feel like a semantic change, not
+                    a layout shift.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="section card">
+            <div class="section-head">
+              <div>
+                <h2>Implementation Notes</h2>
+                <p>
+                  These are the concrete code-level changes I would recommend when you want
+                  to move from review to implementation.
+                </p>
+              </div>
+            </div>
+
+            <div class="notes">
+              <div class="note">
+                <strong>Full player layout:</strong> replace the current “large flexible
+                top section plus fixed lower sections” mentality with a content-priority
+                layout. The cover should be the elastic element. Metadata, progress, and
+                controls should keep tight intrinsic spacing.
+              </div>
+              <div class="note">
+                <strong>Chapter context:</strong> keep the existing primary progress
+                behavior from settings, but always render the book-level chapter map below
+                it in a lighter style. Add chapter name and chapter elapsed/total only once.
+              </div>
+              <div class="note">
+                <strong>Download button:</strong> keep the active state to a single
+                horizontal row. Avoid any inner vertical layout that can overflow within a
+                fixed-height button.
+              </div>
+              <div class="note">
+                <strong>Narrator reliability:</strong> make offline warm load follow the
+                same metadata hydration rules as the online path, and prefer cached book DB
+                values when server metadata is unavailable.
+              </div>
+              <div class="note">
+                <strong>Settings cleanup:</strong> remove waveform animation as a feature,
+                remove its settings toggle, and reclaim that space for cleaner progress and
+                transport hierarchy.
+              </div>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+  </body>
+</html>

@@ -19,8 +19,6 @@ import '../../core/sleep_timer_service.dart';
 import '../../core/ui_prefs.dart';
 import '../../core/downloads_repository.dart';
 import '../../main.dart'; // ServicesScope
-import '../../widgets/audio_waveform.dart';
-import '../../widgets/download_button.dart';
 import 'full_player_overlay.dart';
 import 'player_visual_cache.dart';
 import '../../core/playback_journal_service.dart';
@@ -3156,6 +3154,40 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                                                 .ellipsis,
                                                       ),
                                                     ],
+                                                    if (np.narrator != null &&
+                                                        np
+                                                            .narrator!
+                                                            .isNotEmpty) ...[
+                                                      const SizedBox(height: 6),
+                                                      Text(
+                                                        'Narrated by ${np.narrator!}',
+                                                        textAlign:
+                                                            TextAlign.center,
+                                                        style: text.bodySmall
+                                                            ?.copyWith(
+                                                              fontSize:
+                                                                  (text
+                                                                          .bodySmall
+                                                                          ?.fontSize ??
+                                                                      13) *
+                                                                  _metadataTextScale,
+                                                              color: cs
+                                                                  .onSurfaceVariant
+                                                                  .withOpacity(
+                                                                    0.58,
+                                                                  ),
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w500,
+                                                              letterSpacing:
+                                                                  0.15,
+                                                            ),
+                                                        maxLines: 2,
+                                                        overflow:
+                                                            TextOverflow
+                                                                .ellipsis,
+                                                      ),
+                                                    ],
                                                   ],
                                                 ),
                                               ),
@@ -3163,26 +3195,6 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                           );
                                         },
                                       ),
-                                      if (np.narrator != null &&
-                                          np.narrator!.isNotEmpty) ...[
-                                        const SizedBox(height: 8),
-                                        Text(
-                                          'Narrated by ${np.narrator!}',
-                                          textAlign: TextAlign.center,
-                                          style: text.bodyMedium?.copyWith(
-                                            fontSize:
-                                                (text.bodyMedium?.fontSize ??
-                                                    15) *
-                                                _metadataTextScale,
-                                            color: cs.onSurfaceVariant
-                                                .withOpacity(0.68),
-                                            fontWeight: FontWeight.w500,
-                                            letterSpacing: 0.15,
-                                          ),
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ],
                                       const SizedBox(height: 2),
                                     ],
                                   ),
@@ -3192,53 +3204,10 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                           ),
                         ),
 
-                        // Waveform visualization (only visible when playing and enabled in settings)
-                        ValueListenableBuilder<bool>(
-                          valueListenable: UiPrefs.waveformAnimationEnabled,
-                          builder: (_, waveformEnabled, __) {
-                            if (!waveformEnabled) {
-                              return const SizedBox(height: 4);
-                            }
 
-                            return StreamBuilder<bool>(
-                              stream: playback.playingStream,
-                              initialData: playback.player.playing,
-                              builder: (_, playSnap) {
-                                final playing = playSnap.data ?? false;
-                                return AnimatedSize(
-                                  duration: const Duration(milliseconds: 350),
-                                  curve: Curves.easeInOut,
-                                  child:
-                                      playing
-                                          ? Padding(
-                                            padding: const EdgeInsets.symmetric(
-                                              vertical: 12,
-                                            ),
-                                            child: Center(
-                                              child: AudioWaveform(
-                                                isPlaying: playing,
-                                                barCount: 7,
-                                                height: 28,
-                                                spacing: 3.5,
-                                                color: cs.primary.withOpacity(
-                                                  0.8,
-                                                ),
-                                                animationSpeed: const Duration(
-                                                  milliseconds: 300,
-                                                ),
-                                              ),
-                                            ),
-                                          )
-                                          : const SizedBox(height: 4),
-                                );
-                              },
-                            );
-                          },
-                        ),
-
-                        // POSITION + SLIDER - Material Design 3 Enhanced
+                        // POSITION + SLIDER
                         Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
                           child: StreamBuilder<Duration>(
                             stream: playback.positionStream,
                             initialData: playback.player.position,
@@ -3348,15 +3317,90 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                 );
                               }
 
-                              return Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [progressContent],
+                              return Container(
+                                decoration: BoxDecoration(
+                                  color: cs.surfaceContainerHighest
+                                      .withOpacity(0.52),
+                                  borderRadius: BorderRadius.circular(22),
+                                  border: Border.all(
+                                    color: cs.outlineVariant.withOpacity(0.14),
+                                  ),
+                                ),
+                                padding: const EdgeInsets.fromLTRB(
+                                  14,
+                                  14,
+                                  14,
+                                  12,
+                                ),
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(
+                                          preferChapter
+                                              ? 'CHAPTER PROGRESS'
+                                              : 'BOOK PROGRESS',
+                                          style: text.labelSmall?.copyWith(
+                                            letterSpacing: 0.8,
+                                            color: cs.onSurfaceVariant
+                                                .withOpacity(0.6),
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                        GestureDetector(
+                                          onTap:
+                                              hasGlobal
+                                                  ? () {
+                                                    final next =
+                                                        _progressPrimary ==
+                                                                ProgressPrimary
+                                                                    .chapter
+                                                            ? ProgressPrimary
+                                                                .book
+                                                            : ProgressPrimary
+                                                                .chapter;
+                                                    UiPrefs.setProgressPrimary(
+                                                      next,
+                                                    );
+                                                  }
+                                                  : null,
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 10,
+                                              vertical: 5,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: cs.primary.withOpacity(
+                                                0.12,
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(999),
+                                            ),
+                                            child: Text(
+                                              preferChapter ? 'Chapter' : 'Book',
+                                              style: text.labelSmall?.copyWith(
+                                                color: cs.primary,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 12),
+                                    progressContent,
+                                  ],
+                                ),
                               );
                             },
                           ),
                         ),
 
-                        const SizedBox(height: 14),
+                        const SizedBox(height: 8),
 
                         // CONTROLS + CHAPTERS
                         AnimatedBuilder(
