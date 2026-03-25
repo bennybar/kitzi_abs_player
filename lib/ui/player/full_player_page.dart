@@ -55,6 +55,53 @@ class _EdgeToEdgeSliderTrackShape extends RoundedRectSliderTrackShape {
   }
 }
 
+class _LineSliderThumbShape extends SliderComponentShape {
+  const _LineSliderThumbShape({
+    this.width = 4,
+    this.height = 28,
+    this.radius = 999,
+  });
+
+  final double width;
+  final double height;
+  final double radius;
+
+  @override
+  Size getPreferredSize(bool isEnabled, bool isDiscrete) {
+    return Size(width, height);
+  }
+
+  @override
+  void paint(
+    PaintingContext context,
+    Offset center, {
+    required Animation<double> activationAnimation,
+    required Animation<double> enableAnimation,
+    required bool isDiscrete,
+    required TextPainter labelPainter,
+    required RenderBox parentBox,
+    required SliderThemeData sliderTheme,
+    required TextDirection textDirection,
+    required double value,
+    required double textScaleFactor,
+    required Size sizeWithOverflow,
+  }) {
+    final canvas = context.canvas;
+    final colorTween = ColorTween(
+      begin: sliderTheme.disabledThumbColor,
+      end: sliderTheme.thumbColor,
+    );
+    final color = colorTween.evaluate(enableAnimation) ?? sliderTheme.thumbColor;
+    final rect = Rect.fromCenter(
+      center: center,
+      width: width,
+      height: height,
+    );
+    final rRect = RRect.fromRectAndRadius(rect, Radius.circular(radius));
+    canvas.drawRRect(rRect, Paint()..color = color ?? Colors.white);
+  }
+}
+
 String _formatPlaybackSpeedLabel(double speed) {
   if ((speed - speed.roundToDouble()).abs() < 0.001) {
     return '${speed.toStringAsFixed(0)}×';
@@ -781,26 +828,19 @@ class _FullPlayerPageState extends State<FullPlayerPage>
     final value = position.inMilliseconds.toDouble().clamp(0.0, sliderMax);
     final remaining =
         (total - position).isNegative ? Duration.zero : total - position;
-    final primaryThumbRadius = 15 * _progressThumbScale;
-    final secondaryThumbRadius = 12 * _progressThumbScale;
-    final primaryOverlayRadius = 30 * _progressThumbScale;
-    final secondaryOverlayRadius = 26 * _progressThumbScale;
     final sliderHeight = isPrimary ? 30.0 : 26.0;
 
     final sliderTheme = SliderTheme.of(context).copyWith(
+      trackHeight: 4,
       padding: EdgeInsets.zero,
-      thumbShape: RoundSliderThumbShape(
-        enabledThumbRadius:
-            isPrimary ? primaryThumbRadius : secondaryThumbRadius,
+      thumbShape: _LineSliderThumbShape(
+        width: isPrimary ? 5 : 4,
+        height: isPrimary ? 30 : 24,
       ),
-      overlayShape: RoundSliderOverlayShape(
-        overlayRadius:
-            isPrimary ? primaryOverlayRadius : secondaryOverlayRadius,
-      ),
+      overlayShape: SliderComponentShape.noOverlay,
       activeTrackColor: cs.primary,
       inactiveTrackColor: cs.surfaceContainerHighest,
       thumbColor: cs.primary,
-      overlayColor: cs.primary.withOpacity(isPrimary ? 0.16 : 0.12),
       trackShape: const _EdgeToEdgeSliderTrackShape(horizontalInset: 0),
     );
 
@@ -875,8 +915,6 @@ class _FullPlayerPageState extends State<FullPlayerPage>
     final max = duration.inMilliseconds.toDouble();
     final value = metrics.elapsed.inMilliseconds.toDouble().clamp(0.0, max);
     final remaining = duration - metrics.elapsed;
-    final thumbRadius = 15 * _progressThumbScale;
-    final overlayRadius = 30 * _progressThumbScale;
     const sliderHeight = 30.0;
 
     return RepaintBoundary(
@@ -885,19 +923,16 @@ class _FullPlayerPageState extends State<FullPlayerPage>
         children: [
           SliderTheme(
             data: SliderTheme.of(context).copyWith(
+              trackHeight: 4,
               padding: EdgeInsets.zero,
-              thumbShape: RoundSliderThumbShape(
-                enabledThumbRadius: thumbRadius,
-                elevation: 6,
-                pressedElevation: 8,
+              thumbShape: const _LineSliderThumbShape(
+                width: 5,
+                height: 30,
               ),
-              overlayShape: RoundSliderOverlayShape(
-                overlayRadius: overlayRadius,
-              ),
+              overlayShape: SliderComponentShape.noOverlay,
               activeTrackColor: cs.primary,
               inactiveTrackColor: cs.surfaceContainerHighest,
               thumbColor: cs.primary,
-              overlayColor: cs.primary.withOpacity(0.16),
               trackShape: const _EdgeToEdgeSliderTrackShape(
                 horizontalInset: 0,
               ),
@@ -1190,27 +1225,22 @@ class _FullPlayerPageState extends State<FullPlayerPage>
       0.0,
       max > 0 ? max : 1.0,
     );
-    final thumbRadius = 15 * _progressThumbScale;
-    final overlayRadius = 30 * _progressThumbScale;
 
     return RepaintBoundary(
       child: Column(
         children: [
           SliderTheme(
             data: SliderTheme.of(context).copyWith(
+              trackHeight: 4,
               padding: EdgeInsets.zero,
-              thumbShape: RoundSliderThumbShape(
-                enabledThumbRadius: thumbRadius,
-                elevation: 6,
-                pressedElevation: 8,
+              thumbShape: const _LineSliderThumbShape(
+                width: 5,
+                height: 30,
               ),
-              overlayShape: RoundSliderOverlayShape(
-                overlayRadius: overlayRadius,
-              ),
+              overlayShape: SliderComponentShape.noOverlay,
               activeTrackColor: cs.primary,
               inactiveTrackColor: cs.surfaceContainerHighest,
               thumbColor: cs.primary,
-              overlayColor: cs.primary.withOpacity(0.16),
               trackShape: const _EdgeToEdgeSliderTrackShape(
                 horizontalInset: 0,
               ),
