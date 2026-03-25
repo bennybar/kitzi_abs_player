@@ -59,12 +59,10 @@ class _LineSliderThumbShape extends SliderComponentShape {
   const _LineSliderThumbShape({
     this.width = 4,
     this.height = 28,
-    this.radius = 999,
   });
 
   final double width;
   final double height;
-  final double radius;
 
   @override
   Size getPreferredSize(bool isEnabled, bool isDiscrete) {
@@ -97,7 +95,7 @@ class _LineSliderThumbShape extends SliderComponentShape {
       width: width,
       height: height,
     );
-    final rRect = RRect.fromRectAndRadius(rect, Radius.circular(radius));
+    final rRect = RRect.fromRectAndRadius(rect, Radius.circular(width / 2));
     canvas.drawRRect(rRect, Paint()..color = color ?? Colors.white);
   }
 }
@@ -462,7 +460,6 @@ class _FullPlayerRoute extends PageRouteBuilder<void> {
 class _FullPlayerPageState extends State<FullPlayerPage>
     with TickerProviderStateMixin, WidgetsBindingObserver {
   static const double _metadataTextScale = 0.85;
-  static const double _progressThumbScale = 0.75;
   bool _dualProgressEnabled = true;
   ProgressPrimary _progressPrimary = UiPrefs.progressPrimary.value;
   VoidCallback? _progressPrefListener;

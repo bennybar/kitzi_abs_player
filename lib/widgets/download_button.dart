@@ -8,6 +8,64 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../core/downloads_repository.dart';
 import '../main.dart'; // ServicesScope for DI
 
+enum DownloadButtonProgressStyle { fill, outlineRing }
+
+class _OutlineProgressBorderPainter extends CustomPainter {
+  const _OutlineProgressBorderPainter({
+    required this.progress,
+    required this.trackColor,
+    required this.progressColor,
+    required this.radius,
+    required this.strokeWidth,
+  });
+
+  final double progress;
+  final Color trackColor;
+  final Color progressColor;
+  final double radius;
+  final double strokeWidth;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final rrect = RRect.fromRectAndRadius(
+      rect.deflate(strokeWidth / 2),
+      Radius.circular(radius),
+    );
+    final trackPaint =
+        Paint()
+          ..color = trackColor
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = strokeWidth;
+    final progressPaint =
+        Paint()
+          ..color = progressColor
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = strokeWidth
+          ..strokeCap = StrokeCap.round;
+
+    canvas.drawRRect(rrect, trackPaint);
+
+    final clamped = progress.clamp(0.0, 1.0);
+    if (clamped <= 0) return;
+
+    final path = Path()..addRRect(rrect);
+    final metric = path.computeMetrics().firstOrNull;
+    if (metric == null) return;
+    final progressPath = metric.extractPath(0, metric.length * clamped);
+    canvas.drawPath(progressPath, progressPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _OutlineProgressBorderPainter oldDelegate) {
+    return oldDelegate.progress != progress ||
+        oldDelegate.trackColor != trackColor ||
+        oldDelegate.progressColor != progressColor ||
+        oldDelegate.radius != radius ||
+        oldDelegate.strokeWidth != strokeWidth;
+  }
+}
+
 /// A smart download action that:
 /// - Shows "Download" when nothing is queued
 /// - Shows a filling button while queued/running with percent
@@ -19,12 +77,14 @@ class DownloadButton extends StatefulWidget {
     required this.libraryItemId,
     this.episodeId,
     this.fullWidth = true,
+    this.progressStyle = DownloadButtonProgressStyle.fill,
     this.titleForNotification, // optional label some callers pass in
   });
 
   final String libraryItemId;
   final String? episodeId;
   final bool fullWidth;
+  final DownloadButtonProgressStyle progressStyle;
 
   /// Optional: a human title for notifications/UI. Not all backends need it,
   /// but we accept it so callers can pass it without compile errors.
@@ -304,6 +364,8 @@ class _DownloadButtonState extends State<DownloadButton> {
   @override
   Widget build(BuildContext context) {
     final snap = _snap;
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
 
     Widget child;
 
@@ -329,107 +391,175 @@ class _DownloadButtonState extends State<DownloadButton> {
           (downloadedBytes != null && totalBytes != null)
               ? '${_formatBytes(downloadedBytes)} / ${_formatBytes(totalBytes)}'
               : 'Calculating size…';
-      child = SizedBox(
-        height: 44,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  Container(
-                    color: Theme.of(context).colorScheme.primaryContainer,
-                  ),
-                  FractionallySizedBox(
-                    alignment: Alignment.centerLeft,
-                    widthFactor: snap.progress.clamp(0.0, 1.0),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.centerLeft,
-                          end: Alignment.centerRight,
-                          colors: [
-                            Theme.of(context).colorScheme.primary,
-                            Theme.of(
-                              context,
-                            ).colorScheme.primary.withOpacity(0.82),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.only(left: 12, right: 56),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
+      if (widget.progressStyle == DownloadButtonProgressStyle.outlineRing) {
+        const borderRadius = 16.0;
+        const strokeWidth = 3.0;
+        child = SizedBox(
+          height: 54,
+          child: CustomPaint(
+            painter: _OutlineProgressBorderPainter(
+              progress: snap.progress,
+              trackColor: cs.outlineVariant.withOpacity(0.35),
+              progressColor: cs.primary,
+              radius: borderRadius,
+              strokeWidth: strokeWidth,
+            ),
+            child: Material(
+              color: cs.surfaceContainerHighest.withOpacity(0.45),
+              borderRadius: BorderRadius.circular(borderRadius),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            '$pct%',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              color: cs.onSurface,
+                              fontFeatures: const [
+                                FontFeature.tabularFigures(),
+                              ],
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
                             amountLabel,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: Theme.of(
-                              context,
-                            ).textTheme.bodySmall?.copyWith(
-                              color: Theme.of(context).colorScheme.onPrimary,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: cs.onSurfaceVariant,
                               fontFeatures: const [
                                 FontFeature.tabularFigures(),
                               ],
                               fontWeight: FontWeight.w700,
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 10),
-                        Text(
-                          '$pct%',
-                          style: Theme.of(
-                            context,
-                          ).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context).colorScheme.onPrimary,
-                            fontFeatures: const [FontFeature.tabularFigures()],
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 12),
+                    IconButton(
+                      onPressed: _busy ? null : _cancelCurrent,
+                      icon: const Icon(Icons.close, size: 20),
+                      visualDensity: VisualDensity.compact,
+                      style: IconButton.styleFrom(
+                        foregroundColor: cs.onSurfaceVariant,
+                        backgroundColor: cs.surface.withOpacity(0.6),
+                        minimumSize: const Size(36, 36),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-            Positioned(
-              right: 0,
-              top: 0,
-              bottom: 0,
-              width: 48,
-              child: Material(
-                color: Colors.transparent,
-                child: Ink(
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.error,
-                    borderRadius: const BorderRadius.only(
-                      topRight: Radius.circular(12),
-                      bottomRight: Radius.circular(12),
+          ),
+        );
+      } else {
+        child = SizedBox(
+          height: 44,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Container(color: cs.primaryContainer),
+                    FractionallySizedBox(
+                      alignment: Alignment.centerLeft,
+                      widthFactor: snap.progress.clamp(0.0, 1.0),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.centerLeft,
+                            end: Alignment.centerRight,
+                            colors: [
+                              cs.primary,
+                              cs.primary.withOpacity(0.82),
+                            ],
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
-                  child: InkWell(
-                    borderRadius: const BorderRadius.only(
-                      topRight: Radius.circular(12),
-                      bottomRight: Radius.circular(12),
+                    Padding(
+                      padding: const EdgeInsets.only(left: 12, right: 56),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              amountLabel,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: cs.onPrimary,
+                                fontFeatures: const [
+                                  FontFeature.tabularFigures(),
+                                ],
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Text(
+                            '$pct%',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: cs.onPrimary,
+                              fontFeatures: const [
+                                FontFeature.tabularFigures(),
+                              ],
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                    onTap: _busy ? null : _cancelCurrent,
-                    child: Icon(
-                      Icons.close,
-                      size: 20,
-                      color: Theme.of(context).colorScheme.onError,
+                  ],
+                ),
+              ),
+              Positioned(
+                right: 0,
+                top: 0,
+                bottom: 0,
+                width: 48,
+                child: Material(
+                  color: Colors.transparent,
+                  child: Ink(
+                    decoration: BoxDecoration(
+                      color: cs.error,
+                      borderRadius: const BorderRadius.only(
+                        topRight: Radius.circular(12),
+                        bottomRight: Radius.circular(12),
+                      ),
+                    ),
+                    child: InkWell(
+                      borderRadius: const BorderRadius.only(
+                        topRight: Radius.circular(12),
+                        bottomRight: Radius.circular(12),
+                      ),
+                      onTap: _busy ? null : _cancelCurrent,
+                      child: Icon(
+                        Icons.close,
+                        size: 20,
+                        color: cs.onError,
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-          ],
-        ),
-      );
+            ],
+          ),
+        );
+      }
     }
     // 3) Default -> "Download"
     else {

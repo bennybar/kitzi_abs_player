@@ -1384,6 +1384,9 @@ class _BookDetailPageState extends State<BookDetailPage> {
                                       ),
                                       child: DownloadButton(
                                         libraryItemId: b.id,
+                                        progressStyle:
+                                            DownloadButtonProgressStyle
+                                                .outlineRing,
                                         titleForNotification: b.title,
                                       ),
                                     ),
