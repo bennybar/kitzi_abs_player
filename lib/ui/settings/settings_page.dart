@@ -5,7 +5,6 @@ import 'dart:io';
 import 'package:flutter/services.dart' show SystemNavigator;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:sqflite/sqflite.dart';
-import 'package:path_provider/path_provider.dart';
 import '../../main.dart'; // ServicesScope
 import '../../core/audio_service_binding.dart';
 import '../../core/books_repository.dart';
@@ -52,7 +51,6 @@ class _SettingsPageState extends State<SettingsPage> {
   bool? _letterScrollEnabled;
   bool? _letterScrollBooksAlpha;
   bool? _smartRewindEnabled;
-  bool? _legacyFullScreenPlayer;
   ProgressPrimary? _progressPrimary;
   String? _activeLibraryId;
   List<Map<String, String>> _libraries = const [];
@@ -81,7 +79,6 @@ class _SettingsPageState extends State<SettingsPage> {
     'ui_squiggly_progress_bar',
     'ui_letter_scroll_enabled',
     'ui_letter_scroll_books_alpha',
-    'ui_legacy_full_screen_player',
     'ui_resume_from_history_enabled',
     'ui_sync_from_server_confirm',
     'ui_progress_primary',
@@ -378,8 +375,6 @@ class _SettingsPageState extends State<SettingsPage> {
             prefs.getBool('ui_letter_scroll_enabled') ?? false;
         _letterScrollBooksAlpha =
             prefs.getBool('ui_letter_scroll_books_alpha') ?? false;
-        _legacyFullScreenPlayer =
-            prefs.getBool('ui_legacy_full_screen_player') ?? false;
         _progressPrimary = UiPrefs.progressPrimary.value;
 
         _activeLibraryId = prefs.getString('books_library_id');
@@ -1360,21 +1355,6 @@ class _SettingsPageState extends State<SettingsPage> {
                         }
                         : null,
               ),
-            ),
-            SwitchListTile(
-              title: const Text('Legacy full screen player'),
-              subtitle: const Text(
-                'Use the old full screen page navigation instead of drawer',
-              ),
-              value: _legacyFullScreenPlayer ?? false,
-              onChanged: (v) async {
-                final prefs = await SharedPreferences.getInstance();
-                await prefs.setBool('ui_legacy_full_screen_player', v);
-                if (mounted)
-                  setState(() {
-                    _legacyFullScreenPlayer = v;
-                  });
-              },
             ),
             // Live-bind to ThemeService.mode
             ValueListenableBuilder<ThemeMode>(

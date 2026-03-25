@@ -390,37 +390,24 @@ class FullPlayerPage extends StatefulWidget {
       final playback = ServicesScope.of(context).services.playback;
       final coverUrl = playback.nowPlaying?.coverUrl;
       unawaited(PlayerVisualCache.prewarmCover(coverUrl, context));
-
-      // Check if legacy full screen player is enabled
-      final prefs = await SharedPreferences.getInstance();
-      final legacyMode = prefs.getBool('ui_legacy_full_screen_player') ?? false;
-
-      if (legacyMode) {
-        // Legacy mode: use Navigator.push (original behavior)
-        await Navigator.of(
-          context,
-        ).push(_FullPlayerRoute(const FullPlayerPage()));
-      } else {
-        // New mode: show as drawer (like book details) - use exact same approach
-        await showModalBottomSheet(
-          context: context,
-          isScrollControlled: true,
-          useSafeArea: true,
-          backgroundColor: Colors.transparent,
-          builder:
-              (context) => Container(
-                height: MediaQuery.of(context).size.height * 0.95,
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surface,
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(24),
-                  ),
+      await showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        backgroundColor: Colors.transparent,
+        builder:
+            (context) => Container(
+              height: MediaQuery.of(context).size.height * 0.95,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(24),
                 ),
-                clipBehavior: Clip.antiAlias,
-                child: const FullPlayerPage(),
               ),
-        );
-      }
+              clipBehavior: Clip.antiAlias,
+              child: const FullPlayerPage(),
+            ),
+      );
     } finally {
       _isOpen = false;
       FullPlayerOverlay.isVisible.value = false;
@@ -429,32 +416,6 @@ class FullPlayerPage extends StatefulWidget {
 
   @override
   State<FullPlayerPage> createState() => _FullPlayerPageState();
-}
-
-class _FullPlayerRoute extends PageRouteBuilder<void> {
-  _FullPlayerRoute(Widget child)
-    : super(
-        pageBuilder: (context, animation, secondaryAnimation) => child,
-        transitionDuration: const Duration(milliseconds: 260),
-        reverseTransitionDuration: const Duration(milliseconds: 220),
-        fullscreenDialog: true,
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          final curved = CurvedAnimation(
-            parent: animation,
-            curve: Curves.easeOutCubic,
-            reverseCurve: Curves.easeInCubic,
-          );
-          final slide = Tween<Offset>(
-            begin: const Offset(0, 0.06),
-            end: Offset.zero,
-          ).animate(curved);
-          final fade = Tween<double>(begin: 0, end: 1).animate(curved);
-          return FadeTransition(
-            opacity: fade,
-            child: SlideTransition(position: slide, child: child),
-          );
-        },
-      );
 }
 
 class _FullPlayerPageState extends State<FullPlayerPage>
