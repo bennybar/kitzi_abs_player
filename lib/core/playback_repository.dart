@@ -28,15 +28,11 @@ import 'smart_rewind_service.dart';
 import 'streaming_cache_service.dart';
 import 'detailed_play_history_service.dart';
 
-enum ProgressResetChoice {
-  useServer,
-  useLocal,
-  cancel,
-}
+enum ProgressResetChoice { useServer, useLocal, cancel }
 
 const _kProgressPing = Duration(seconds: 26);
-const _kLocalProgPrefix = 'abs_progress:';      // local fallback per item
-const _kLastItemKey = 'abs_last_item_id';       // last played item id
+const _kLocalProgPrefix = 'abs_progress:'; // local fallback per item
+const _kLastItemKey = 'abs_last_item_id'; // last played item id
 
 /// UI-facing indicator for whether progress was synced recently, or is pending sync.
 class ProgressSyncStatus {
@@ -152,19 +148,18 @@ class NowPlaying {
     List<PlaybackTrack>? tracks,
     String? coverUrl,
     double? durationSec,
-  }) =>
-      NowPlaying(
-        libraryItemId: libraryItemId,
-        title: title,
-        author: author,
-        narrator: narrator,
-        coverUrl: coverUrl ?? this.coverUrl,
-        tracks: tracks ?? this.tracks,
-        currentIndex: currentIndex ?? this.currentIndex,
-        chapters: chapters,
-        durationSec: durationSec ?? this.durationSec,
-        episodeId: episodeId,
-      );
+  }) => NowPlaying(
+    libraryItemId: libraryItemId,
+    title: title,
+    author: author,
+    narrator: narrator,
+    coverUrl: coverUrl ?? this.coverUrl,
+    tracks: tracks ?? this.tracks,
+    currentIndex: currentIndex ?? this.currentIndex,
+    chapters: chapters,
+    durationSec: durationSec ?? this.durationSec,
+    episodeId: episodeId,
+  );
 }
 
 class PlaybackRepository {
@@ -188,15 +183,16 @@ class PlaybackRepository {
       ValueNotifier<ProgressSyncStatus>(const ProgressSyncStatus());
 
   final StreamController<NowPlaying?> _nowPlayingCtr =
-  StreamController.broadcast();
+      StreamController.broadcast();
   NowPlaying? _nowPlaying;
   Stream<NowPlaying?> get nowPlayingStream => _nowPlayingCtr.stream;
   NowPlaying? get nowPlaying => _nowPlaying;
 
   // Book completion status stream
   final StreamController<Map<String, bool>> _completionStatusCtr =
-  StreamController.broadcast();
-  Stream<Map<String, bool>> get completionStatusStream => _completionStatusCtr.stream;
+      StreamController.broadcast();
+  Stream<Map<String, bool>> get completionStatusStream =>
+      _completionStatusCtr.stream;
   final Map<String, bool> completionCache = {};
 
   Stream<bool> get playingStream => player.playingStream;
@@ -208,7 +204,8 @@ class PlaybackRepository {
 
   String? _progressItemId;
   String? _activeSessionId; // Remote streaming session id (if any)
-  final Map<String, _CachedProgressValue> _serverProgressCache = <String, _CachedProgressValue>{};
+  final Map<String, _CachedProgressValue> _serverProgressCache =
+      <String, _CachedProgressValue>{};
   final Map<String, DateTime> _completionTimestamps = <String, DateTime>{};
   static const _progressCacheTtl = Duration(seconds: 20);
   static const _completionCacheTtl = Duration(seconds: 30);
@@ -226,7 +223,8 @@ class PlaybackRepository {
     final np = _nowPlaying;
     if (np == null) return;
     _listeningStartedAt = DateTime.now();
-    _listeningStartPositionSeconds = startPositionSeconds ?? (_computeGlobalPositionSec() ?? 0.0);
+    _listeningStartPositionSeconds =
+        startPositionSeconds ?? (_computeGlobalPositionSec() ?? 0.0);
     _listeningItemId = np.libraryItemId;
     _listeningTitle = np.title;
     _listeningAuthor = np.author;
@@ -262,7 +260,10 @@ class PlaybackRepository {
       author: _listeningAuthor,
       narrator: _listeningNarrator,
       coverUrl: _listeningCoverUrl,
-      startPositionSeconds: (_listeningStartPositionSeconds ?? 0.0).clamp(0.0, double.infinity),
+      startPositionSeconds: (_listeningStartPositionSeconds ?? 0.0).clamp(
+        0.0,
+        double.infinity,
+      ),
       playDurationSeconds: elapsed.inMilliseconds / 1000.0,
       timestamp: DateTime.now(),
     );
@@ -319,24 +320,34 @@ class PlaybackRepository {
     },
   );
 
-  Future<List<PlaybackTrack>> getPlayableTracks(String libraryItemId,
-      {String? episodeId}) =>
-      _getTracksPreferLocal(libraryItemId, episodeId: episodeId);
+  Future<List<PlaybackTrack>> getPlayableTracks(
+    String libraryItemId, {
+    String? episodeId,
+  }) => _getTracksPreferLocal(libraryItemId, episodeId: episodeId);
 
   /// Always fetch remote/stream tracks (ignores local files) for metadata like total count.
-  Future<List<PlaybackTrack>> getRemoteTracks(String libraryItemId, {String? episodeId}) {
+  Future<List<PlaybackTrack>> getRemoteTracks(
+    String libraryItemId, {
+    String? episodeId,
+  }) {
     return _streamTracks(libraryItemId, episodeId: episodeId);
   }
 
   /// Expose opening a streaming session to callers that need the session id
   /// (e.g., downloads) without affecting the player's own active session.
-  Future<StreamTracksResult> openSessionAndGetTracks(String libraryItemId, {String? episodeId}) {
+  Future<StreamTracksResult> openSessionAndGetTracks(
+    String libraryItemId, {
+    String? episodeId,
+  }) {
     return _openSessionAndGetTracks(libraryItemId, episodeId: episodeId);
   }
 
   /// Total number of tracks for an item (local preferred to avoid opening sessions).
   /// Only opens a session if local tracks are not available and we actually need the count.
-  Future<int> getTotalTrackCount(String libraryItemId, {String? episodeId}) async {
+  Future<int> getTotalTrackCount(
+    String libraryItemId, {
+    String? episodeId,
+  }) async {
     // Prefer local tracks to avoid opening unnecessary sessions
     final local = await _localTracks(libraryItemId);
     if (local.isNotEmpty) {
@@ -359,9 +370,11 @@ class PlaybackRepository {
       final last = prefs.getString(_kLastItemKey);
       if (last == null || last.isEmpty) return;
 
-      // If we're already playing the same item and playAfterLoad is true, 
+      // If we're already playing the same item and playAfterLoad is true,
       // don't restart playback - just ensure we're ready to continue
-      if (playAfterLoad && _nowPlaying?.libraryItemId == last && player.playing) {
+      if (playAfterLoad &&
+          _nowPlaying?.libraryItemId == last &&
+          player.playing) {
         _log('Warm load: already playing $last, skipping restart');
         return;
       }
@@ -369,10 +382,13 @@ class PlaybackRepository {
       // Try fast local path first for offline support
       final localTracks = await _localTracks(last);
       if (localTracks.isNotEmpty) {
-        _log('Warm load (offline/local): found ${localTracks.length} local tracks');
+        _log(
+          'Warm load (offline/local): found ${localTracks.length} local tracks',
+        );
         // Try to get cached book metadata from local DB
         String title = 'Audiobook';
         String? author;
+        String? narrator;
         String? coverUrl;
         try {
           final repo = await BooksRepository.create();
@@ -380,27 +396,34 @@ class PlaybackRepository {
           if (b != null) {
             title = b.title.isNotEmpty ? b.title : title;
             author = b.author; // Do not fall back to narrator for artist
+            narrator =
+                (b.narrators != null && b.narrators!.isNotEmpty)
+                    ? b.narrators!.join(', ')
+                    : null;
             coverUrl = b.coverUrl;
           }
         } catch (_) {}
 
         // Always fetch a fresh cover URL (tokenized) to avoid stale/expired images
         final refreshedCover = await _coverUrl(last);
-        final effectiveCoverUrl = (refreshedCover != null && refreshedCover.isNotEmpty)
-            ? refreshedCover
-            : coverUrl;
+        final effectiveCoverUrl =
+            (refreshedCover != null && refreshedCover.isNotEmpty)
+                ? refreshedCover
+                : coverUrl;
 
         // Do not attempt to ensure durations online; play with what we have
         // But try to get proper chapter metadata from server for better chapter titles
         List<Chapter> chapters = _chaptersFromTracks(localTracks);
-        
+
         // Try to fetch proper chapter metadata from server
         try {
           final meta = await _getItemMeta(last);
           final serverChapters = _extractChapters(meta);
           if (serverChapters.isNotEmpty) {
             chapters = serverChapters;
-            _log('Warm load: using server chapter metadata (${chapters.length} chapters)');
+            _log(
+              'Warm load: using server chapter metadata (${chapters.length} chapters)',
+            );
             // Cache the server chapters for future use
             await _cacheChapterMetadata(last, serverChapters);
           } else {
@@ -409,48 +432,64 @@ class PlaybackRepository {
             final cachedChapters = await _loadCachedChapterMetadata(last);
             if (cachedChapters.isNotEmpty) {
               chapters = cachedChapters;
-              _log('Warm load: using cached chapter metadata (${chapters.length} chapters)');
+              _log(
+                'Warm load: using cached chapter metadata (${chapters.length} chapters)',
+              );
             } else {
-              _log('Warm load: no cached chapters found, using local track-based chapters');
+              _log(
+                'Warm load: no cached chapters found, using local track-based chapters',
+              );
             }
           }
         } catch (e) {
-          _log('Warm load: failed to fetch server chapter metadata: $e, trying cached chapters');
+          _log(
+            'Warm load: failed to fetch server chapter metadata: $e, trying cached chapters',
+          );
           // Try to load cached chapter metadata as fallback
           final cachedChapters = await _loadCachedChapterMetadata(last);
           if (cachedChapters.isNotEmpty) {
             chapters = cachedChapters;
-            _log('Warm load: using cached chapter metadata (${chapters.length} chapters)');
+            _log(
+              'Warm load: using cached chapter metadata (${chapters.length} chapters)',
+            );
           } else {
-            _log('Warm load: no cached chapters available, using local track-based chapters');
+            _log(
+              'Warm load: no cached chapters available, using local track-based chapters',
+            );
           }
         }
-        
+
         final np = NowPlaying(
           libraryItemId: last,
           title: title,
           author: author,
-          narrator: null, // Narrator not available from local cache
+          narrator: narrator,
           coverUrl: effectiveCoverUrl,
           tracks: localTracks,
           currentIndex: 0,
           chapters: chapters,
           durationSec: null,
         );
-        _log('Warm load: setting nowPlaying for downloaded book: ${np.title}, tracks: ${np.tracks.length}, playAfterLoad: $playAfterLoad');
+        _log(
+          'Warm load: setting nowPlaying for downloaded book: ${np.title}, tracks: ${np.tracks.length}, playAfterLoad: $playAfterLoad',
+        );
         _setNowPlaying(np);
         _progressItemId = last;
 
         // Resume from cached position (local or server if available)
         // Force refresh to get latest server progress and avoid stale cache
         double? resumeSec;
-        try { resumeSec = await fetchServerProgress(last, forceRefresh: true); } catch (_) {}
+        try {
+          resumeSec = await fetchServerProgress(last, forceRefresh: true);
+        } catch (_) {}
         resumeSec ??= prefs.getDouble('$_kLocalProgPrefix$last');
 
         if (resumeSec != null && resumeSec > 0) {
           final map = _mapGlobalSecondsToTrack(resumeSec, np.tracks);
           await _setTrackAt(map.index, preload: true);
-          await player.seek(Duration(milliseconds: (map.offsetSec * 1000).round()));
+          await player.seek(
+            Duration(milliseconds: (map.offsetSec * 1000).round()),
+          );
         } else {
           await _setTrackAt(0, preload: true);
         }
@@ -468,14 +507,14 @@ class PlaybackRepository {
           } catch (_) {}
 
           await player.play();
-          
+
           // Apply saved playback speed
           try {
             await PlaybackSpeedService.instance.applyCurrentSpeed();
           } catch (e) {
             _log('Failed to apply current playback speed: $e');
           }
-          
+
           await _sendProgressImmediate();
         }
         return;
@@ -485,19 +524,25 @@ class PlaybackRepository {
       // IMPORTANT: Do not open a remote streaming session here unless we will actually play.
       // Avoid calling /play on warm load to prevent opening sessions prematurely.
       if (!playAfterLoad) {
-        _log('Warm load: skipping remote /play to avoid opening session. Will defer until actual playback.');
+        _log(
+          'Warm load: skipping remote /play to avoid opening session. Will defer until actual playback.',
+        );
         return;
       }
 
       final meta = await _getItemMeta(last);
-      _log('Warm load (playAfterLoad=true) metadata for $last: keys=${meta.keys.toList()}');
+      _log(
+        'Warm load (playAfterLoad=true) metadata for $last: keys=${meta.keys.toList()}',
+      );
       var chapters = _extractChapters(meta);
       _log('Warm load extracted ${chapters.length} chapters');
 
       final open = await _openSessionAndGetTracks(last);
       final tracksWithDur = open.tracks;
       _activeSessionId = open.sessionId;
-      _log('Warm load opened playback session: ${_activeSessionId ?? 'none'} with ${tracksWithDur.length} tracks');
+      _log(
+        'Warm load opened playback session: ${_activeSessionId ?? 'none'} with ${tracksWithDur.length} tracks',
+      );
       if (chapters.isEmpty && tracksWithDur.isNotEmpty) {
         chapters = _chaptersFromTracks(tracksWithDur);
         _log('Warm load generated ${chapters.length} chapters from tracks');
@@ -506,7 +551,9 @@ class PlaybackRepository {
       final np = NowPlaying(
         libraryItemId: last,
         title: _titleFromMeta(meta) ?? 'Audiobook',
-        author: _authorFromMeta(meta), // Writer only; no narrator fallback for artist
+        author: _authorFromMeta(
+          meta,
+        ), // Writer only; no narrator fallback for artist
         narrator: _narratorFromMeta(meta),
         coverUrl: await _coverUrl(last),
         tracks: tracksWithDur,
@@ -518,13 +565,16 @@ class PlaybackRepository {
       _progressItemId = last;
 
       // Force refresh to get latest server progress and avoid stale cache
-      final resumeSec = await fetchServerProgress(last, forceRefresh: true) ??
+      final resumeSec =
+          await fetchServerProgress(last, forceRefresh: true) ??
           prefs.getDouble('$_kLocalProgPrefix$last');
 
       if (resumeSec != null && resumeSec > 0) {
         final map = _mapGlobalSecondsToTrack(resumeSec, np.tracks);
         await _setTrackAt(map.index, preload: true);
-        await player.seek(Duration(milliseconds: (map.offsetSec * 1000).round()));
+        await player.seek(
+          Duration(milliseconds: (map.offsetSec * 1000).round()),
+        );
       } else {
         await _setTrackAt(0, preload: true);
       }
@@ -540,24 +590,28 @@ class PlaybackRepository {
         }
       } catch (_) {}
       await player.play();
-      
+
       // Apply saved playback speed
       try {
         await PlaybackSpeedService.instance.applyCurrentSpeed();
       } catch (e) {
         _log('Failed to apply current playback speed: $e');
       }
-      
+
       await _sendProgressImmediate();
     } catch (e) {
       _log('warmLoadLastItem error: $e');
     }
   }
 
-  Future<double?> fetchServerProgress(String libraryItemId, {bool forceRefresh = false}) async {
+  Future<double?> fetchServerProgress(
+    String libraryItemId, {
+    bool forceRefresh = false,
+  }) async {
     if (!forceRefresh) {
       final cached = _serverProgressCache[libraryItemId];
-      if (cached != null && DateTime.now().difference(cached.timestamp) < _progressCacheTtl) {
+      if (cached != null &&
+          DateTime.now().difference(cached.timestamp) < _progressCacheTtl) {
         return cached.seconds;
       }
     }
@@ -570,12 +624,18 @@ class PlaybackRepository {
         if (data is Map<String, dynamic>) {
           if (data['currentTime'] is num) {
             final value = (data['currentTime'] as num).toDouble();
-            _serverProgressCache[libraryItemId] = _CachedProgressValue(value, DateTime.now());
+            _serverProgressCache[libraryItemId] = _CachedProgressValue(
+              value,
+              DateTime.now(),
+            );
             return value;
           }
           if (data['currentTime'] is String) {
             final value = double.tryParse(data['currentTime'] as String);
-            _serverProgressCache[libraryItemId] = _CachedProgressValue(value, DateTime.now());
+            _serverProgressCache[libraryItemId] = _CachedProgressValue(
+              value,
+              DateTime.now(),
+            );
             return value;
           }
           final first = _firstMapValue(data);
@@ -583,12 +643,18 @@ class PlaybackRepository {
             final v = first['currentTime'];
             if (v is num) {
               final value = v.toDouble();
-              _serverProgressCache[libraryItemId] = _CachedProgressValue(value, DateTime.now());
+              _serverProgressCache[libraryItemId] = _CachedProgressValue(
+                value,
+                DateTime.now(),
+              );
               return value;
             }
             if (v is String) {
               final value = double.tryParse(v);
-              _serverProgressCache[libraryItemId] = _CachedProgressValue(value, DateTime.now());
+              _serverProgressCache[libraryItemId] = _CachedProgressValue(
+                value,
+                DateTime.now(),
+              );
               return value;
             }
           }
@@ -599,23 +665,32 @@ class PlaybackRepository {
       // Offline
       return null;
     } finally {
-      _serverProgressCache.putIfAbsent(libraryItemId, () => _CachedProgressValue(null, DateTime.now()));
+      _serverProgressCache.putIfAbsent(
+        libraryItemId,
+        () => _CachedProgressValue(null, DateTime.now()),
+      );
     }
   }
 
   /// Check if a book is marked as finished/completed on the server
-  Future<bool> isBookCompleted(String libraryItemId, {bool forceRefresh = false}) async {
+  Future<bool> isBookCompleted(
+    String libraryItemId, {
+    bool forceRefresh = false,
+  }) async {
     if (!forceRefresh) {
       final cached = completionCache[libraryItemId];
       final stamp = _completionTimestamps[libraryItemId];
-      if (cached != null && stamp != null && DateTime.now().difference(stamp) < _completionCacheTtl) {
+      if (cached != null &&
+          stamp != null &&
+          DateTime.now().difference(stamp) < _completionCacheTtl) {
         return cached;
       }
     }
     try {
       final api = _auth.api;
       final resp = await api.request('GET', '/api/me/progress/$libraryItemId');
-      if (resp.statusCode != 200) return completionCache[libraryItemId] ?? false;
+      if (resp.statusCode != 200)
+        return completionCache[libraryItemId] ?? false;
       try {
         final data = jsonDecode(resp.body);
         if (data is Map<String, dynamic>) {
@@ -650,7 +725,10 @@ class PlaybackRepository {
   }
 
   /// Update book completion status and notify all listeners
-  Future<void> updateBookCompletionStatus(String libraryItemId, bool isCompleted) async {
+  Future<void> updateBookCompletionStatus(
+    String libraryItemId,
+    bool isCompleted,
+  ) async {
     completionCache[libraryItemId] = isCompleted;
     _completionTimestamps[libraryItemId] = DateTime.now();
     final newCache = Map<String, bool>.from(completionCache);
@@ -688,15 +766,20 @@ class PlaybackRepository {
   Future<bool> _checkSyncRequirement({BuildContext? context}) async {
     final shouldSync = await _shouldSyncProgressBeforePlay();
     if (!shouldSync) return true; // Sync not required, proceed
-    
+
     try {
       final api = _auth.api;
-      await api.request('GET', '/api/me', auth: true).timeout(
-        const Duration(seconds: 3),
-        onTimeout: () {
-          throw TimeoutException('Request timeout', const Duration(seconds: 3));
-        },
-      );
+      await api
+          .request('GET', '/api/me', auth: true)
+          .timeout(
+            const Duration(seconds: 3),
+            onTimeout: () {
+              throw TimeoutException(
+                'Request timeout',
+                const Duration(seconds: 3),
+              );
+            },
+          );
       return true; // Server is available
     } catch (e) {
       _log('Sync preflight failed: $e');
@@ -712,70 +795,71 @@ class PlaybackRepository {
   Future<bool> _showOfflineSyncDialog(BuildContext context) async {
     final cs = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
-    
+
     final result = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(
-          'No Internet Connection',
-          style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'You are currently offline. "Sync progress before play" is enabled, but progress cannot be synced right now.',
-              style: text.bodyMedium,
+      builder:
+          (context) => AlertDialog(
+            title: Text(
+              'No Internet Connection',
+              style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600),
             ),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: cs.primaryContainer,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: cs.primary.withOpacity(0.3),
-                  width: 1,
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'You are currently offline. "Sync progress before play" is enabled, but progress cannot be synced right now.',
+                  style: text.bodyMedium,
                 ),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.info_outline_rounded,
-                    size: 20,
-                    color: cs.onPrimaryContainer,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Your progress will sync automatically when you come back online.',
-                      style: text.bodyMedium?.copyWith(
-                        color: cs.onPrimaryContainer,
-                      ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: cs.primaryContainer,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: cs.primary.withOpacity(0.3),
+                      width: 1,
                     ),
                   ),
-                ],
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.info_outline_rounded,
+                        size: 20,
+                        color: cs.onPrimaryContainer,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Your progress will sync automatically when you come back online.',
+                          style: text.bodyMedium?.copyWith(
+                            color: cs.onPrimaryContainer,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: Text(
+                  'Cancel',
+                  style: TextStyle(color: cs.onSurfaceVariant),
+                ),
               ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text(
-              'Cancel',
-              style: TextStyle(color: cs.onSurfaceVariant),
-            ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Play Anyway'),
+              ),
+            ],
           ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Play Anyway'),
-          ),
-        ],
-      ),
     );
-    
+
     return result ?? false;
   }
 
@@ -784,15 +868,15 @@ class PlaybackRepository {
     try {
       // Pause any active playback
       await player.pause();
-      
+
       // Clear now playing state
       _setNowPlaying(null);
       _progressItemId = null;
       _activeSessionId = null;
-      
+
       // Stop progress sync
       _stopProgressSync();
-      
+
       // Clear local progress cache
       final prefs = await SharedPreferences.getInstance();
       final keys = prefs.getKeys();
@@ -801,7 +885,7 @@ class PlaybackRepository {
           await prefs.remove(key);
         }
       }
-      
+
       _log('Playback state cleared');
     } catch (e) {
       _log('Error clearing playback state: $e');
@@ -811,15 +895,15 @@ class PlaybackRepository {
   /// Validate and clear invalid cover image cache
   Future<void> _validateCoverImageCache(String? coverUrl) async {
     if (coverUrl == null || coverUrl.isEmpty) return;
-    
+
     try {
       final cacheManager = DefaultCacheManager();
       final fileInfo = await cacheManager.getFileFromCache(coverUrl);
-      
+
       if (fileInfo != null) {
         final file = fileInfo.file;
         bool shouldClear = false;
-        
+
         if (await file.exists()) {
           final length = await file.length();
           if (length == 0) {
@@ -845,13 +929,13 @@ class PlaybackRepository {
         } else {
           shouldClear = true;
         }
-        
+
         if (shouldClear) {
           await cacheManager.removeFile(coverUrl);
           _log('Cleared invalid cover image cache for $coverUrl');
         }
       }
-      
+
       // Prewarm the image after validation/clearing
       try {
         // Use a BuildContext if available, otherwise just clear cache
@@ -864,11 +948,17 @@ class PlaybackRepository {
     }
   }
 
-  Future<bool> playItem(String libraryItemId, {String? episodeId, BuildContext? context}) async {
+  Future<bool> playItem(
+    String libraryItemId, {
+    String? episodeId,
+    BuildContext? context,
+  }) async {
     // Guard: do not attempt playback if item appears to be non-audiobook
     try {
       final repo = await BooksRepository.create();
-      final b = await repo.getBookFromDb(libraryItemId) ?? await repo.getBook(libraryItemId);
+      final b =
+          await repo.getBookFromDb(libraryItemId) ??
+          await repo.getBook(libraryItemId);
       if (b.isAudioBook == false) {
         _log('Blocked play for non-audiobook item $libraryItemId');
         return false;
@@ -878,7 +968,9 @@ class PlaybackRepository {
     // Check if sync is required and server is available
     final canProceed = await _checkSyncRequirement(context: context);
     if (!canProceed) {
-      _log('Cannot play: server unavailable and sync progress is required, or user cancelled');
+      _log(
+        'Cannot play: server unavailable and sync progress is required, or user cancelled',
+      );
       return false;
     }
 
@@ -892,7 +984,7 @@ class PlaybackRepository {
     _log('Loaded item metadata for $libraryItemId: keys=${meta.keys.toList()}');
     var chapters = _extractChapters(meta);
     _log('Extracted ${chapters.length} chapters');
-    
+
     // Cache server chapters if we got them
     if (chapters.isNotEmpty) {
       await _cacheChapterMetadata(libraryItemId, chapters);
@@ -904,23 +996,36 @@ class PlaybackRepository {
     final localTracks = await _localTracks(libraryItemId);
     if (localTracks.isNotEmpty) {
       // Try to ensure local track durations by merging with remote metadata when available
-      tracks = await _ensureDurations(localTracks, libraryItemId, episodeId: episodeId);
+      tracks = await _ensureDurations(
+        localTracks,
+        libraryItemId,
+        episodeId: episodeId,
+      );
       _log('Using ${tracks.length} local tracks (no remote session opened)');
     } else {
-      final open = await _openSessionAndGetTracks(libraryItemId, episodeId: episodeId);
+      final open = await _openSessionAndGetTracks(
+        libraryItemId,
+        episodeId: episodeId,
+      );
       tracks = open.tracks;
       openedSessionId = open.sessionId;
-      _log('Opened remote session ${openedSessionId ?? 'none'}; fetched ${tracks.length} streaming tracks');
+      _log(
+        'Opened remote session ${openedSessionId ?? 'none'}; fetched ${tracks.length} streaming tracks',
+      );
     }
     if (chapters.isEmpty && tracks.isNotEmpty) {
       chapters = _chaptersFromTracks(tracks);
-      _log('No chapters from metadata; generated ${chapters.length} from tracks');
+      _log(
+        'No chapters from metadata; generated ${chapters.length} from tracks',
+      );
     }
 
     final np = NowPlaying(
       libraryItemId: libraryItemId,
       title: _titleFromMeta(meta) ?? 'Audiobook',
-      author: _authorFromMeta(meta), // Writer only; no narrator fallback for artist
+      author: _authorFromMeta(
+        meta,
+      ), // Writer only; no narrator fallback for artist
       narrator: _narratorFromMeta(meta),
       coverUrl: await _coverUrl(libraryItemId),
       tracks: tracks,
@@ -929,7 +1034,7 @@ class PlaybackRepository {
       episodeId: episodeId,
       durationSec: _durationFromMeta(meta),
     );
-    
+
     // Add to play history
     try {
       final book = await _getBookForHistory(libraryItemId);
@@ -957,7 +1062,11 @@ class PlaybackRepository {
     }
 
     // Check for progress reset/mismatch and get user confirmation if needed
-    final decision = await _handleProgressResetConfirmation(libraryItemId, prefs, context);
+    final decision = await _handleProgressResetConfirmation(
+      libraryItemId,
+      prefs,
+      context,
+    );
     if (decision.cancelled) {
       _log('Playback cancelled by user during progress confirmation');
       return false;
@@ -982,36 +1091,40 @@ class PlaybackRepository {
         if (next < cur.tracks.length) {
           await _setTrackAt(next, preload: true);
           await player.play();
-          
+
           // Apply saved playback speed
           try {
             await PlaybackSpeedService.instance.applyCurrentSpeed();
           } catch (e) {
             _log('Failed to apply current playback speed: $e');
           }
-          
+
           await _sendProgressImmediate();
         } else {
           // Completed last track; mark finished and close session to stop transcodes
           _endListeningSession();
           await _sendProgressImmediate(finished: true);
           await _closeActiveSession();
-          unawaited(StreamingCacheService.instance.evictForItem(cur.libraryItemId));
+          unawaited(
+            StreamingCacheService.instance.evictForItem(cur.libraryItemId),
+          );
         }
       }
     });
 
     // Begin local listening session tracking (optional, enabled in settings).
-    _beginListeningSession(startPositionSeconds: resumeSec ?? (_computeGlobalPositionSec() ?? 0.0));
+    _beginListeningSession(
+      startPositionSeconds: resumeSec ?? (_computeGlobalPositionSec() ?? 0.0),
+    );
     await player.play();
-    
+
     // Apply saved playback speed
     try {
       await PlaybackSpeedService.instance.applyCurrentSpeed();
     } catch (e) {
       _log('Failed to apply current playback speed: $e');
     }
-    
+
     await _sendProgressImmediate();
     return true;
   }
@@ -1033,17 +1146,24 @@ class PlaybackRepository {
     _endListeningSession();
     await _sendProgressImmediate(paused: true);
     await _closeActiveSession();
-    try { await SmartRewindService.instance.recordPauseNow(); } catch (_) {}
+    try {
+      await SmartRewindService.instance.recordPauseNow();
+    } catch (_) {}
     if (np != null && globalPos != null) {
-      final chapterTitle = chapterMetrics?.title ??
-          (chapterMetrics != null ? 'Chapter ${chapterMetrics.index + 1}' : null);
-      unawaited(PlaybackJournalService.instance.recordHistoryEntry(
-        libraryItemId: np.libraryItemId,
-        bookTitle: np.title,
-        positionMs: globalPos.inMilliseconds,
-        chapterTitle: chapterTitle,
-        chapterIndex: chapterMetrics?.index,
-      ));
+      final chapterTitle =
+          chapterMetrics?.title ??
+          (chapterMetrics != null
+              ? 'Chapter ${chapterMetrics.index + 1}'
+              : null);
+      unawaited(
+        PlaybackJournalService.instance.recordHistoryEntry(
+          libraryItemId: np.libraryItemId,
+          bookTitle: np.title,
+          positionMs: globalPos.inMilliseconds,
+          chapterTitle: chapterTitle,
+          chapterIndex: chapterMetrics?.index,
+        ),
+      );
     }
   }
 
@@ -1051,12 +1171,14 @@ class PlaybackRepository {
   Future<bool> resume({bool skipSync = false, BuildContext? context}) async {
     final itemId = _progressItemId;
     final np = _nowPlaying;
-    
+
     // Refresh cover URL (tokenized) and validate cache to avoid missing images after reopen
     if (np != null) {
       try {
         final freshCover = await _coverUrl(np.libraryItemId);
-        if (freshCover != null && freshCover.isNotEmpty && freshCover != np.coverUrl) {
+        if (freshCover != null &&
+            freshCover.isNotEmpty &&
+            freshCover != np.coverUrl) {
           final updated = np.copyWith(coverUrl: freshCover);
           _setNowPlaying(updated);
           unawaited(_validateCoverImageCache(freshCover));
@@ -1067,7 +1189,7 @@ class PlaybackRepository {
         unawaited(_validateCoverImageCache(np.coverUrl));
       }
     }
-    
+
     // Check if sync is required and server is available (unless skipSync is true)
     if (!skipSync) {
       final canProceed = await _checkSyncRequirement(context: context);
@@ -1076,18 +1198,24 @@ class PlaybackRepository {
         return false;
       }
     }
-    
+
     if (itemId != null && np != null && !skipSync) {
       // Force refresh from server to avoid using cached progress when resuming in-place.
       await _syncPositionFromServer(forceRefresh: true);
-      if ((_activeSessionId == null || _activeSessionId!.isEmpty) && np.tracks.isNotEmpty && !np.tracks.first.isLocal) {
+      if ((_activeSessionId == null || _activeSessionId!.isEmpty) &&
+          np.tracks.isNotEmpty &&
+          !np.tracks.first.isLocal) {
         // Re-open streaming session after pause/close
         try {
-          final open = await _openSessionAndGetTracks(itemId, episodeId: np.episodeId);
+          final open = await _openSessionAndGetTracks(
+            itemId,
+            episodeId: np.episodeId,
+          );
           _activeSessionId = open.sessionId;
           final tracks = open.tracks;
           // Preserve current global position
-          final curSec = _computeGlobalPositionSec() ?? _trackOnlyPosSec() ?? 0.0;
+          final curSec =
+              _computeGlobalPositionSec() ?? _trackOnlyPosSec() ?? 0.0;
           // Update nowPlaying with fresh tracks and seek appropriately
           final updated = np.copyWith(tracks: tracks);
           _setNowPlaying(updated);
@@ -1095,7 +1223,9 @@ class PlaybackRepository {
           unawaited(_validateCoverImageCache(updated.coverUrl));
           final map = _mapGlobalSecondsToTrack(curSec, tracks);
           await _setTrackAt(map.index, preload: true);
-          await player.seek(Duration(milliseconds: (map.offsetSec * 1000).round()));
+          await player.seek(
+            Duration(milliseconds: (map.offsetSec * 1000).round()),
+          );
         } catch (e) {
           _log('Failed to reopen session on resume: $e');
         }
@@ -1113,16 +1243,19 @@ class PlaybackRepository {
     } catch (_) {}
 
     // Begin local listening session tracking (optional, enabled in settings).
-    _beginListeningSession(startPositionSeconds: _computeGlobalPositionSec() ?? (_trackOnlyPosSec() ?? 0.0));
+    _beginListeningSession(
+      startPositionSeconds:
+          _computeGlobalPositionSec() ?? (_trackOnlyPosSec() ?? 0.0),
+    );
     await player.play();
-    
+
     // Apply saved playback speed
     try {
       await PlaybackSpeedService.instance.applyCurrentSpeed();
     } catch (e) {
       _log('Failed to apply current playback speed: $e');
     }
-    
+
     await _sendProgressImmediate();
     return true;
   }
@@ -1135,7 +1268,10 @@ class PlaybackRepository {
 
     try {
       _log('Checking server position before resume...');
-      final serverSec = await fetchServerProgress(itemId, forceRefresh: forceRefresh);
+      final serverSec = await fetchServerProgress(
+        itemId,
+        forceRefresh: forceRefresh,
+      );
       if (serverSec == null) return false;
 
       // Get current local position
@@ -1147,7 +1283,9 @@ class PlaybackRepository {
       final diff = (serverSec - currentSec).abs();
 
       if (diff > threshold) {
-        _log('Server position ($serverSec) differs from local ($currentSec) by ${diff.toStringAsFixed(1)}s. Syncing...');
+        _log(
+          'Server position ($serverSec) differs from local ($currentSec) by ${diff.toStringAsFixed(1)}s. Syncing...',
+        );
 
         final map = _mapGlobalSecondsToTrack(serverSec, np.tracks);
 
@@ -1157,12 +1295,18 @@ class PlaybackRepository {
         }
 
         // Seek to the correct position
-        await player.seek(Duration(milliseconds: (map.offsetSec * 1000).round()));
+        await player.seek(
+          Duration(milliseconds: (map.offsetSec * 1000).round()),
+        );
 
-        _log('Synced to server position: track ${map.index}, offset ${map.offsetSec.toStringAsFixed(1)}s');
+        _log(
+          'Synced to server position: track ${map.index}, offset ${map.offsetSec.toStringAsFixed(1)}s',
+        );
         return true;
       }
-      _log('Server position matches local position (diff: ${diff.toStringAsFixed(1)}s)');
+      _log(
+        'Server position matches local position (diff: ${diff.toStringAsFixed(1)}s)',
+      );
       return true;
     } catch (e) {
       _log('Error syncing position from server: $e');
@@ -1174,7 +1318,10 @@ class PlaybackRepository {
   /// Decide which position to start from (server/local) and allow cancel.
   /// Returns a record: position (nullable) and cancelled flag.
   Future<({double? position, bool cancelled})> _handleProgressResetConfirmation(
-      String libraryItemId, SharedPreferences prefs, BuildContext? context) async {
+    String libraryItemId,
+    SharedPreferences prefs,
+    BuildContext? context,
+  ) async {
     try {
       // Get server progress
       double? serverSec;
@@ -1183,10 +1330,10 @@ class PlaybackRepository {
       } catch (_) {
         // offline: ignore
       }
-      
+
       // Get local progress
       final localSec = prefs.getDouble('$_kLocalProgPrefix$libraryItemId');
-      
+
       // Check if we have a progress reset scenario:
       // - Server progress is 0 or null (reset)
       // - Local progress exists and is > 0
@@ -1196,23 +1343,36 @@ class PlaybackRepository {
       final serverReset = serverSec != null && serverSec <= 0;
       final hasLocalProgress = localSec != null && localSec > 0;
       final shouldSync = await _shouldSyncProgressBeforePlay();
-      
+
       if (serverReset && hasLocalProgress) {
-        _log('Progress reset detected: server=${serverSec ?? 0}, local=$localSec');
-        
+        _log(
+          'Progress reset detected: server=${serverSec ?? 0}, local=$localSec',
+        );
+
         // Show confirmation dialog
-        final choice = await _showProgressResetDialog(libraryItemId, localSec, context, shouldSync);
-        
+        final choice = await _showProgressResetDialog(
+          libraryItemId,
+          localSec,
+          context,
+          shouldSync,
+        );
+
         switch (choice) {
           case ProgressResetChoice.useServer:
             _log('User chose to use server position (reset)');
-            return (position: serverSec, cancelled: false); // Will be 0 or null, so starts from beginning
+            return (
+              position: serverSec,
+              cancelled: false,
+            ); // Will be 0 or null, so starts from beginning
           case ProgressResetChoice.useLocal:
             _log('User chose to use local position');
             return (position: localSec, cancelled: false);
           case ProgressResetChoice.cancel:
             _log('User cancelled playback');
-            return (position: null, cancelled: true); // This will cause playItem to return false
+            return (
+              position: null,
+              cancelled: true,
+            ); // This will cause playItem to return false
         }
       }
 
@@ -1239,10 +1399,12 @@ class PlaybackRepository {
           }
         }
       }
-      
+
       // Default behavior: prefer server only if it's > 0; otherwise prefer local when available
-      if (serverSec != null && serverSec > 0) return (position: serverSec, cancelled: false);
-      if (localSec != null && localSec > 0) return (position: localSec, cancelled: false);
+      if (serverSec != null && serverSec > 0)
+        return (position: serverSec, cancelled: false);
+      if (localSec != null && localSec > 0)
+        return (position: localSec, cancelled: false);
       return (position: serverSec ?? localSec, cancelled: false);
     } catch (e) {
       _log('Error in progress reset confirmation: $e');
@@ -1250,8 +1412,10 @@ class PlaybackRepository {
       try {
         final serverSec = await fetchServerProgress(libraryItemId);
         final localSec = prefs.getDouble('$_kLocalProgPrefix$libraryItemId');
-        if (serverSec != null && serverSec > 0) return (position: serverSec, cancelled: false);
-        if (localSec != null && localSec > 0) return (position: localSec, cancelled: false);
+        if (serverSec != null && serverSec > 0)
+          return (position: serverSec, cancelled: false);
+        if (localSec != null && localSec > 0)
+          return (position: localSec, cancelled: false);
         return (position: serverSec ?? localSec, cancelled: false);
       } catch (_) {
         final localSec = prefs.getDouble('$_kLocalProgPrefix$libraryItemId');
@@ -1261,9 +1425,16 @@ class PlaybackRepository {
   }
 
   /// Show confirmation dialog for progress reset scenario
-  Future<ProgressResetChoice> _showProgressResetDialog(String libraryItemId, double localSec, BuildContext? context, bool syncEnabled) async {
+  Future<ProgressResetChoice> _showProgressResetDialog(
+    String libraryItemId,
+    double localSec,
+    BuildContext? context,
+    bool syncEnabled,
+  ) async {
     if (context == null) {
-      _log('No context available for progress reset dialog, defaulting to local position');
+      _log(
+        'No context available for progress reset dialog, defaulting to local position',
+      );
       return ProgressResetChoice.useLocal;
     }
 
@@ -1272,67 +1443,78 @@ class PlaybackRepository {
     final localTimeStr = _formatDuration(localDuration);
 
     return await showDialog<ProgressResetChoice>(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Progress Reset Detected'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                syncEnabled 
-                  ? 'The server progress for this book has been reset, but you have local progress saved.'
-                  : 'The server progress for this book has been reset. You have local progress that will be lost if you start from the beginning.',
-                style: const TextStyle(fontSize: 16),
-              ),
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.play_circle_outline,
-                      color: Theme.of(context).colorScheme.primary,
-                      size: 20,
+          context: context,
+          barrierDismissible: false,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              title: const Text('Progress Reset Detected'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    syncEnabled
+                        ? 'The server progress for this book has been reset, but you have local progress saved.'
+                        : 'The server progress for this book has been reset. You have local progress that will be lost if you start from the beginning.',
+                    style: const TextStyle(fontSize: 16),
+                  ),
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color:
+                          Theme.of(context).colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(8),
                     ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Your local progress: $localTimeStr',
-                      style: const TextStyle(fontWeight: FontWeight.w500),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.play_circle_outline,
+                          color: Theme.of(context).colorScheme.primary,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Your local progress: $localTimeStr',
+                          style: const TextStyle(fontWeight: FontWeight.w500),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'What would you like to do?',
+                    style: TextStyle(fontWeight: FontWeight.w500),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed:
+                      () =>
+                          Navigator.of(context).pop(ProgressResetChoice.cancel),
+                  child: const Text('Cancel'),
                 ),
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'What would you like to do?',
-                style: TextStyle(fontWeight: FontWeight.w500),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(ProgressResetChoice.cancel),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(ProgressResetChoice.useServer),
-              child: const Text('Start from beginning'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(ProgressResetChoice.useLocal),
-              child: Text('Resume from $localTimeStr'),
-            ),
-          ],
-        );
-      },
-    ) ?? ProgressResetChoice.useServer; // Default to server if dialog is dismissed
+                TextButton(
+                  onPressed:
+                      () => Navigator.of(
+                        context,
+                      ).pop(ProgressResetChoice.useServer),
+                  child: const Text('Start from beginning'),
+                ),
+                FilledButton(
+                  onPressed:
+                      () => Navigator.of(
+                        context,
+                      ).pop(ProgressResetChoice.useLocal),
+                  child: Text('Resume from $localTimeStr'),
+                ),
+              ],
+            );
+          },
+        ) ??
+        ProgressResetChoice
+            .useServer; // Default to server if dialog is dismissed
   }
 
   /// Format duration for display
@@ -1340,7 +1522,7 @@ class PlaybackRepository {
     final hours = duration.inHours;
     final minutes = duration.inMinutes.remainder(60);
     final seconds = duration.inSeconds.remainder(60);
-    
+
     if (hours > 0) {
       return '${hours}h ${minutes}m ${seconds}s';
     } else if (minutes > 0) {
@@ -1352,7 +1534,11 @@ class PlaybackRepository {
 
   /// Show dialog when server/local positions differ significantly
   Future<ProgressResetChoice> _showProgressMismatchDialog(
-      String libraryItemId, double serverSec, double localSec, BuildContext? context) async {
+    String libraryItemId,
+    double serverSec,
+    double localSec,
+    BuildContext? context,
+  ) async {
     if (context == null) {
       _log('No context for mismatch dialog, defaulting to local position');
       return ProgressResetChoice.useLocal;
@@ -1373,53 +1559,76 @@ class PlaybackRepository {
 
     final result = await showDialog<ProgressResetChoice>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(
-          'Choose position to start',
-          style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Server and local positions differ by ${diff.toStringAsFixed(0)} seconds. Which one should we use?',
-              style: text.bodyMedium,
+      builder:
+          (context) => AlertDialog(
+            title: Text(
+              'Choose position to start',
+              style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600),
             ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: cs.primaryContainer,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: cs.primary.withOpacity(0.3), width: 1),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Server: ${_fmt(serverSec)}', style: text.bodyMedium?.copyWith(color: cs.onPrimaryContainer)),
-                  const SizedBox(height: 4),
-                  Text('Local: ${_fmt(localSec)}', style: text.bodyMedium?.copyWith(color: cs.onPrimaryContainer)),
-                ],
-              ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Server and local positions differ by ${diff.toStringAsFixed(0)} seconds. Which one should we use?',
+                  style: text.bodyMedium,
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: cs.primaryContainer,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: cs.primary.withOpacity(0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Server: ${_fmt(serverSec)}',
+                        style: text.bodyMedium?.copyWith(
+                          color: cs.onPrimaryContainer,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Local: ${_fmt(localSec)}',
+                        style: text.bodyMedium?.copyWith(
+                          color: cs.onPrimaryContainer,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(ProgressResetChoice.cancel),
-            child: Text('Cancel', style: TextStyle(color: cs.onSurfaceVariant)),
+            actions: [
+              TextButton(
+                onPressed:
+                    () => Navigator.of(context).pop(ProgressResetChoice.cancel),
+                child: Text(
+                  'Cancel',
+                  style: TextStyle(color: cs.onSurfaceVariant),
+                ),
+              ),
+              TextButton(
+                onPressed:
+                    () =>
+                        Navigator.of(context).pop(ProgressResetChoice.useLocal),
+                child: const Text('Use Local'),
+              ),
+              FilledButton(
+                onPressed:
+                    () => Navigator.of(
+                      context,
+                    ).pop(ProgressResetChoice.useServer),
+                child: const Text('Use Server'),
+              ),
+            ],
           ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(ProgressResetChoice.useLocal),
-            child: const Text('Use Local'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(ProgressResetChoice.useServer),
-            child: const Text('Use Server'),
-          ),
-        ],
-      ),
     );
 
     return result ?? ProgressResetChoice.cancel;
@@ -1470,7 +1679,10 @@ class PlaybackRepository {
     final itemId = _progressItemId;
     if (itemId == null || itemId.isEmpty) return false;
     try {
-      final history = await PlaybackJournalService.instance.historyFor(itemId, limit: 1);
+      final history = await PlaybackJournalService.instance.historyFor(
+        itemId,
+        limit: 1,
+      );
       if (history.isEmpty) return false;
       final entry = history.first;
       final pos = Duration(milliseconds: entry.positionMs);
@@ -1483,7 +1695,10 @@ class PlaybackRepository {
 
   /// Seek using a global position from the start of the book across tracks.
   /// Falls back to clamped range when the target exceeds known total.
-  Future<void> seekGlobal(Duration globalPosition, {bool reportNow = true}) async {
+  Future<void> seekGlobal(
+    Duration globalPosition, {
+    bool reportNow = true,
+  }) async {
     final np = _nowPlaying;
     if (np == null) return;
 
@@ -1495,7 +1710,7 @@ class PlaybackRepository {
 
     final map = _mapGlobalSecondsToTrack(targetSec, np.tracks);
     final targetOffset = Duration(milliseconds: (map.offsetSec * 1000).round());
-    
+
     // If switching tracks, preserve playback state
     final wasPlaying = player.playing;
     if (map.index != np.currentIndex) {
@@ -1503,15 +1718,15 @@ class PlaybackRepository {
       // Small delay to ensure track is loaded before seeking
       await Future.delayed(const Duration(milliseconds: 50));
     }
-    
+
     // Seek to the target position
     await player.seek(targetOffset);
-    
+
     // Restore playback state if it was playing
     if (wasPlaying && !player.playing) {
       await player.play();
     }
-    
+
     if (reportNow) {
       await _sendProgressImmediate(overrideTrackPosSec: map.offsetSec);
     }
@@ -1535,7 +1750,10 @@ class PlaybackRepository {
 
     final chapter = np.chapters[chapterIdx];
     final start = chapter.start;
-    final end = (chapterIdx + 1 < np.chapters.length) ? np.chapters[chapterIdx + 1].start : total;
+    final end =
+        (chapterIdx + 1 < np.chapters.length)
+            ? np.chapters[chapterIdx + 1].start
+            : total;
     if (end <= start) return null;
     final duration = end - start;
     var elapsed = globalPos - start;
@@ -1603,24 +1821,24 @@ class PlaybackRepository {
   bool get hasPrev => _nowPlaying != null && _nowPlaying!.currentIndex > 0;
   bool get hasNext =>
       _nowPlaying != null &&
-          _nowPlaying!.currentIndex + 1 < _nowPlaying!.tracks.length;
+      _nowPlaying!.currentIndex + 1 < _nowPlaying!.tracks.length;
 
   /// Smart availability check for previous: considers both tracks and chapters
   bool get hasSmartPrev {
     final np = _nowPlaying;
     if (np == null) return false;
-    
+
     // Multi-track books: use track-based logic
     if (np.tracks.length > 1) {
       return hasPrev;
     }
-    
+
     // Single-track books with chapters: check if there's a previous chapter
     if (np.tracks.length == 1 && np.chapters.isNotEmpty) {
       final chapterNav = ChapterNavigationService.instance;
       return chapterNav.getPreviousChapter() != null;
     }
-    
+
     // Fallback to track-based logic
     return hasPrev;
   }
@@ -1629,18 +1847,18 @@ class PlaybackRepository {
   bool get hasSmartNext {
     final np = _nowPlaying;
     if (np == null) return false;
-    
+
     // Multi-track books: use track-based logic
     if (np.tracks.length > 1) {
       return hasNext;
     }
-    
+
     // Single-track books with chapters: check if there's a next chapter
     if (np.tracks.length == 1 && np.chapters.isNotEmpty) {
       final chapterNav = ChapterNavigationService.instance;
       return chapterNav.getNextChapter() != null;
     }
-    
+
     // Fallback to track-based logic
     return hasNext;
   }
@@ -1651,14 +1869,14 @@ class PlaybackRepository {
     final idx = _nowPlaying!.currentIndex - 1;
     await _setTrackAt(idx, preload: true);
     await player.play();
-    
+
     // Apply saved playback speed
     try {
       await PlaybackSpeedService.instance.applyCurrentSpeed();
     } catch (e) {
       _log('Failed to apply current playback speed: $e');
     }
-    
+
     await _sendProgressImmediate();
   }
 
@@ -1667,13 +1885,13 @@ class PlaybackRepository {
     final np = _nowPlaying;
     if (np == null) return;
     SleepTimerService.instance.cancelChapterSleepIfActive();
-    
+
     // If we have multiple tracks, use track-based navigation
     if (np.tracks.length > 1 && hasPrev) {
       await prevTrack();
       return;
     }
-    
+
     // If we have a single track with chapters, use chapter navigation
     if (np.tracks.length == 1 && np.chapters.isNotEmpty) {
       final chapterNav = ChapterNavigationService.instance;
@@ -1684,7 +1902,7 @@ class PlaybackRepository {
       }
       return;
     }
-    
+
     // Fallback to regular track navigation
     if (hasPrev) {
       await prevTrack();
@@ -1697,14 +1915,14 @@ class PlaybackRepository {
     final idx = _nowPlaying!.currentIndex + 1;
     await _setTrackAt(idx, preload: true);
     await player.play();
-    
+
     // Apply saved playback speed
     try {
       await PlaybackSpeedService.instance.applyCurrentSpeed();
     } catch (e) {
       _log('Failed to apply current playback speed: $e');
     }
-    
+
     await _sendProgressImmediate();
   }
 
@@ -1713,13 +1931,13 @@ class PlaybackRepository {
     final np = _nowPlaying;
     if (np == null) return;
     SleepTimerService.instance.cancelChapterSleepIfActive();
-    
+
     // If we have multiple tracks, use track-based navigation
     if (np.tracks.length > 1 && hasNext) {
       await nextTrack();
       return;
     }
-    
+
     // If we have a single track with chapters, use chapter navigation
     if (np.tracks.length == 1 && np.chapters.isNotEmpty) {
       final chapterNav = ChapterNavigationService.instance;
@@ -1730,7 +1948,7 @@ class PlaybackRepository {
       }
       return;
     }
-    
+
     // Fallback to regular track navigation
     if (hasNext) {
       await nextTrack();
@@ -1739,7 +1957,9 @@ class PlaybackRepository {
 
   Future<void> stop() async {
     // Also stop any active sleep timer
-    try { SleepTimerService.instance.stopTimer(); } catch (_) {}
+    try {
+      SleepTimerService.instance.stopTimer();
+    } catch (_) {}
     _endListeningSession();
     await player.stop();
     await _sendProgressImmediate(finished: true);
@@ -1747,7 +1967,7 @@ class PlaybackRepository {
     _setNowPlaying(null);
     _progressItemId = null;
     await _closeActiveSession();
-    
+
     // Stop Dynamic Island Live Activity
     AudioServiceManager.instance.stopDynamicIsland();
   }
@@ -1771,7 +1991,8 @@ class PlaybackRepository {
     // CRITICAL: Use global position to preserve position across tracks - calculate BEFORE updating tracks
     final globalPosSec = _computeGlobalPositionSec();
     final curIndex = np.currentIndex;
-    final curTrackPos = player.position; // Also save current track position as backup
+    final curTrackPos =
+        player.position; // Also save current track position as backup
 
     // Merge known durations from current tracks to local tracks by index
     // CRITICAL: Preserve all durations from current tracks to ensure accurate position mapping
@@ -1781,18 +2002,23 @@ class PlaybackRepository {
         double dur = lt.duration;
         try {
           // Find matching track by index to preserve duration
-          final match = np.tracks.firstWhere((t) => t.index == lt.index, orElse: () => lt);
+          final match = np.tracks.firstWhere(
+            (t) => t.index == lt.index,
+            orElse: () => lt,
+          );
           if (match.duration > 0) {
             dur = match.duration; // Use existing duration from streaming track
           }
         } catch (_) {}
-        merged.add(PlaybackTrack(
-          index: lt.index,
-          url: lt.url,
-          mimeType: lt.mimeType,
-          duration: dur,
-          isLocal: true,
-        ));
+        merged.add(
+          PlaybackTrack(
+            index: lt.index,
+            url: lt.url,
+            mimeType: lt.mimeType,
+            duration: dur,
+            isLocal: true,
+          ),
+        );
       }
       // Replace tracks with local (with merged durations) without changing metadata/author
       final updated = np.copyWith(tracks: merged);
@@ -1806,20 +2032,21 @@ class PlaybackRepository {
     // CRITICAL: Restore position using global position - this ensures accuracy across tracks
     if (globalPosSec != null && globalPosSec > 0) {
       // Map global position to track index and offset using UPDATED tracks (with local URLs but preserved durations)
-      final updatedNp = _nowPlaying; // Get the updated nowPlaying after track switch
+      final updatedNp =
+          _nowPlaying; // Get the updated nowPlaying after track switch
       if (updatedNp != null && updatedNp.tracks.isNotEmpty) {
         // Calculate target track and offset BEFORE loading the track
         final map = _mapGlobalSecondsToTrack(globalPosSec, updatedNp.tracks);
         final targetIndex = map.index.clamp(0, updatedNp.tracks.length - 1);
         final targetOffsetSec = map.offsetSec;
         final targetOffsetMs = (targetOffsetSec * 1000).round();
-        
+
         // CRITICAL: Load the target track first
         final needsTrackSwitch = targetIndex != updatedNp.currentIndex;
         if (needsTrackSwitch) {
           await _setTrackAt(targetIndex, preload: true);
         }
-        
+
         // Wait for track to be fully loaded and ready
         int retries = 0;
         while (retries < 20) {
@@ -1835,22 +2062,23 @@ class PlaybackRepository {
           }
           retries++;
         }
-        
+
         // Get actual track duration from player (may differ from track metadata)
         final actualTrackDuration = player.duration;
-        final maxOffsetMs = actualTrackDuration != null 
-            ? actualTrackDuration.inMilliseconds 
-            : (updatedNp.tracks[targetIndex].duration > 0 
-                ? (updatedNp.tracks[targetIndex].duration * 1000).round() 
-                : targetOffsetMs);
-        
+        final maxOffsetMs =
+            actualTrackDuration != null
+                ? actualTrackDuration.inMilliseconds
+                : (updatedNp.tracks[targetIndex].duration > 0
+                    ? (updatedNp.tracks[targetIndex].duration * 1000).round()
+                    : targetOffsetMs);
+
         // Clamp offset to valid range
         final clampedOffsetMs = targetOffsetMs.clamp(0, maxOffsetMs);
         final clampedOffset = Duration(milliseconds: clampedOffsetMs);
-        
+
         // CRITICAL: Seek to the exact position
         await player.seek(clampedOffset);
-        
+
         // Verify position was set correctly
         await Future.delayed(const Duration(milliseconds: 150));
         final actualPos = player.position;
@@ -1862,7 +2090,10 @@ class PlaybackRepository {
         }
       } else {
         // Fallback: use seekGlobal
-        await seekGlobal(Duration(milliseconds: (globalPosSec * 1000).round()), reportNow: false);
+        await seekGlobal(
+          Duration(milliseconds: (globalPosSec * 1000).round()),
+          reportNow: false,
+        );
       }
     } else {
       // Fallback: if global position not available, use current track position
@@ -1879,7 +2110,7 @@ class PlaybackRepository {
     }
     if (wasPlaying) {
       await player.play();
-      
+
       // Apply saved playback speed
       try {
         await PlaybackSpeedService.instance.applyCurrentSpeed();
@@ -1927,24 +2158,25 @@ class PlaybackRepository {
     // Throttle position stream updates to reduce battery drain
     _positionSub = player.positionStream.listen((pos) {
       final now = DateTime.now();
-      
+
       // Throttle position updates (max once per 500ms)
-      if (_lastPositionUpdate != null && 
+      if (_lastPositionUpdate != null &&
           now.difference(_lastPositionUpdate!) < _positionUpdateThrottle) {
         return; // Skip if updated too recently
       }
       _lastPositionUpdate = now;
-      
+
       final cur = _computeGlobalPositionSec() ?? _trackOnlyPosSec();
       final total = _computeTotalDurationSec();
       if (cur == null) return;
 
       final bigJump = (_lastSentSec - cur).abs() >= 30;
-      final isDone = (total != null && total > 0) ? (cur / total) >= 0.999 : false;
+      final isDone =
+          (total != null && total > 0) ? (cur / total) >= 0.999 : false;
       if (bigJump || isDone) {
         _sendProgressImmediate(finished: isDone);
       }
-      
+
       // Update Dynamic Island with current position (throttled)
       _updateDynamicIsland();
     });
@@ -1958,24 +2190,29 @@ class PlaybackRepository {
     _positionSub?.cancel();
     _positionSub = null;
   }
-  
+
   /// Update Dynamic Island with current playback state (throttled to save battery)
   void _updateDynamicIsland() {
     final np = _nowPlaying;
     if (np == null) return;
-    
+
     // Throttle Dynamic Island updates (max once per 2 seconds)
     final now = DateTime.now();
-    if (_lastDynamicIslandUpdate != null && 
-        now.difference(_lastDynamicIslandUpdate!) < _dynamicIslandUpdateThrottle) {
+    if (_lastDynamicIslandUpdate != null &&
+        now.difference(_lastDynamicIslandUpdate!) <
+            _dynamicIslandUpdateThrottle) {
       return; // Skip if updated less than 2 seconds ago
     }
     _lastDynamicIslandUpdate = now;
-    
-    final position = Duration(milliseconds: (_computeGlobalPositionSec() ?? 0.0).round() * 1000);
-    final duration = Duration(milliseconds: (_computeTotalDurationSec() ?? 0.0).round() * 1000);
+
+    final position = Duration(
+      milliseconds: (_computeGlobalPositionSec() ?? 0.0).round() * 1000,
+    );
+    final duration = Duration(
+      milliseconds: (_computeTotalDurationSec() ?? 0.0).round() * 1000,
+    );
     final isPlaying = player.playing;
-    
+
     // Update Dynamic Island asynchronously
     AudioServiceManager.instance.updateDynamicIsland(
       isPlaying: isPlaying,
@@ -1996,12 +2233,15 @@ class PlaybackRepository {
     if (itemId == null || np == null) return;
 
     final total = _computeTotalDurationSec();
-    final cur = (overrideTrackPosSec != null)
-        ? _computeGlobalFromTrackPos(overrideTrackPosSec)
-        : (_computeGlobalPositionSec() ?? _trackOnlyPosSec());
+    final cur =
+        (overrideTrackPosSec != null)
+            ? _computeGlobalFromTrackPos(overrideTrackPosSec)
+            : (_computeGlobalPositionSec() ?? _trackOnlyPosSec());
 
     if (cur == null) return;
-    _log('Progress sync start: item=$itemId cur=$cur total=$total finished=$finished paused=$paused session=$_activeSessionId');
+    _log(
+      'Progress sync start: item=$itemId cur=$cur total=$total finished=$finished paused=$paused session=$_activeSessionId',
+    );
 
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -2035,9 +2275,10 @@ class PlaybackRepository {
 
     // Fallback: legacy progress update endpoint
     final api = _auth.api;
-    final path = (np.episodeId == null)
-        ? '/api/me/progress/$itemId'
-        : '/api/me/progress/$itemId/${np.episodeId}';
+    final path =
+        (np.episodeId == null)
+            ? '/api/me/progress/$itemId'
+            : '/api/me/progress/$itemId/${np.episodeId}';
 
     final bodyMap = <String, dynamic>{
       'currentTime': cur,
@@ -2054,12 +2295,17 @@ class PlaybackRepository {
     }
 
     http.Response? resp;
-    _log("Sending progress via PATCH/PUT/POST fallback: cur=$cur, total=$total, finished=$finished");
+    _log(
+      "Sending progress via PATCH/PUT/POST fallback: cur=$cur, total=$total, finished=$finished",
+    );
 
     try {
-      resp = await api.request('PATCH', path,
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode(bodyMap));
+      resp = await api.request(
+        'PATCH',
+        path,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(bodyMap),
+      );
       _log("PATCH ${resp.statusCode} ${resp.body}");
       if (resp.statusCode == 200 || resp.statusCode == 204) {
         _markSyncSuccess();
@@ -2072,9 +2318,12 @@ class PlaybackRepository {
 
     // Fallbacks
     try {
-      resp = await api.request('PUT', path,
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode(bodyMap));
+      resp = await api.request(
+        'PUT',
+        path,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(bodyMap),
+      );
       _log("PUT ${resp.statusCode} ${resp.body}");
       if (resp.statusCode == 200 || resp.statusCode == 204) {
         _markSyncSuccess();
@@ -2086,9 +2335,12 @@ class PlaybackRepository {
     }
 
     try {
-      resp = await api.request('POST', path,
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode(bodyMap));
+      resp = await api.request(
+        'POST',
+        path,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(bodyMap),
+      );
       _log("POST ${resp.statusCode} ${resp.body}");
       if (resp.statusCode == 200 || resp.statusCode == 204) {
         _markSyncSuccess();
@@ -2164,10 +2416,10 @@ class PlaybackRepository {
     final session = await AudioSession.instance;
     await _configureAudioSession(session);
     WidgetsBinding.instance.addObserver(_lifecycleHook);
-    
+
     // Initialize playback speed service early
     await PlaybackSpeedService.instance.initialize(this);
-    
+
     // Apply the loaded speed to the player immediately
     try {
       await PlaybackSpeedService.instance.applyCurrentSpeed();
@@ -2186,7 +2438,9 @@ class PlaybackRepository {
       if (event.begin) {
         // For transient ducks (e.g., navigation prompts), briefly rewind before pausing
         if (event.type == AudioInterruptionType.duck) {
-          try { await nudgeSeconds(-3); } catch (_) {}
+          try {
+            await nudgeSeconds(-3);
+          } catch (_) {}
         }
         await pause();
       }
@@ -2222,10 +2476,7 @@ class PlaybackRepository {
       } catch (_) {
         source = AudioSource.uri(uri, headers: headers);
       }
-      loadedDuration = await player.setAudioSource(
-        source,
-        preload: preload,
-      );
+      loadedDuration = await player.setAudioSource(source, preload: preload);
       unawaited(StreamingCacheService.instance.trimToLimit());
     }
     // If we obtained the track's duration upon loading, update the nowPlaying track list
@@ -2235,7 +2486,9 @@ class PlaybackRepository {
       if (d != null) {
         final list = List<PlaybackTrack>.from(cur.tracks);
         if (index >= 0 && index < list.length) {
-          list[index] = list[index].copyWith(duration: d.inMilliseconds / 1000.0);
+          list[index] = list[index].copyWith(
+            duration: d.inMilliseconds / 1000.0,
+          );
           maybeUpdatedTracks = list;
         }
       }
@@ -2246,13 +2499,13 @@ class PlaybackRepository {
       tracks: maybeUpdatedTracks,
     );
     _setNowPlaying(updatedNowPlaying);
-    
+
     // Notify audio service about track change
     _notifyAudioServiceTrackChange(index);
-    
+
     // Update chapter navigation service
     ChapterNavigationService.instance.initialize(this);
-    
+
     // Update sleep timer service
     SleepTimerService.instance.initialize(this);
 
@@ -2284,52 +2537,64 @@ class PlaybackRepository {
     AudioServiceBinding.instance.updateCurrentTrack(trackIndex);
   }
 
-  Future<List<PlaybackTrack>> _getTracksPreferLocal(String libraryItemId,
-      {String? episodeId}) async {
+  Future<List<PlaybackTrack>> _getTracksPreferLocal(
+    String libraryItemId, {
+    String? episodeId,
+  }) async {
     final local = await _localTracks(libraryItemId);
     if (local.isNotEmpty) return local;
     return _streamTracks(libraryItemId, episodeId: episodeId);
   }
 
   Future<List<PlaybackTrack>> _ensureDurations(
-      List<PlaybackTrack> tracks, String libraryItemId,
-      {String? episodeId}) async {
+    List<PlaybackTrack> tracks,
+    String libraryItemId, {
+    String? episodeId,
+  }) async {
     final missing = tracks.any((t) => t.duration <= 0);
     if (!missing) return tracks;
 
     // Don't open a session just to get durations - this causes unnecessary server load
     // If durations are missing, we'll use 0 and they'll be resolved when actually playing
     // or we can get them from book metadata if available
-    _log('Local tracks missing durations, but skipping session open to avoid unnecessary server load');
+    _log(
+      'Local tracks missing durations, but skipping session open to avoid unnecessary server load',
+    );
     return tracks;
   }
 
-  Future<List<PlaybackTrack>> _streamTracks(String libraryItemId,
-      {String? episodeId}) async {
+  Future<List<PlaybackTrack>> _streamTracks(
+    String libraryItemId, {
+    String? episodeId,
+  }) async {
     final api = _auth.api;
     final token = await api.accessToken();
     final baseStr = api.baseUrl ?? '';
     final base = Uri.parse(baseStr);
 
-    final path = episodeId == null
-        ? '/api/items/$libraryItemId/play'
-        : '/api/items/$libraryItemId/play/$episodeId';
+    final path =
+        episodeId == null
+            ? '/api/items/$libraryItemId/play'
+            : '/api/items/$libraryItemId/play/$episodeId';
 
-    final resp = await api.request('POST', path,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'deviceInfo': {'clientVersion': 'kitzi-android-0.1.0'},
-          // Include opus/ogg to match Audiobookshelf defaults and avoid server-side rejection
-          'supportedMimeTypes': [
-            'audio/mpeg',
-            'audio/mp4',
-            'audio/aac',
-            'audio/flac',
-            'audio/ogg',
-            'audio/opus',
-            'audio/webm'
-          ]
-        }));
+    final resp = await api.request(
+      'POST',
+      path,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'deviceInfo': {'clientVersion': 'kitzi-android-0.1.0'},
+        // Include opus/ogg to match Audiobookshelf defaults and avoid server-side rejection
+        'supportedMimeTypes': [
+          'audio/mpeg',
+          'audio/mp4',
+          'audio/aac',
+          'audio/flac',
+          'audio/ogg',
+          'audio/opus',
+          'audio/webm',
+        ],
+      }),
+    );
 
     if (resp.statusCode != 200) {
       throw Exception('Failed to get tracks: ${resp.statusCode}');
@@ -2338,85 +2603,98 @@ class PlaybackRepository {
     final data = jsonDecode(resp.body) as Map<String, dynamic>;
     final tracks = (data['audioTracks'] as List?) ?? const [];
     return tracks.map((t) {
-      final m = (t as Map).cast<String, dynamic>();
-      final idx = (m['index'] as num?)?.toInt() ?? 0;
-      final dur = (m['duration'] as num?)?.toDouble() ?? 0.0; // seconds
-      final mime = (m['mimeType'] ?? 'audio/mpeg').toString();
-      final contentUrl = (m['contentUrl'] ?? '').toString();
+        final m = (t as Map).cast<String, dynamic>();
+        final idx = (m['index'] as num?)?.toInt() ?? 0;
+        final dur = (m['duration'] as num?)?.toDouble() ?? 0.0; // seconds
+        final mime = (m['mimeType'] ?? 'audio/mpeg').toString();
+        final contentUrl = (m['contentUrl'] ?? '').toString();
 
-      Uri abs = Uri.tryParse(contentUrl) ?? Uri(path: contentUrl);
-      if (!abs.hasScheme) {
-        final rel = contentUrl.startsWith('/') ? contentUrl.substring(1) : contentUrl;
-        abs = base.resolve(rel);
-      }
+        Uri abs = Uri.tryParse(contentUrl) ?? Uri(path: contentUrl);
+        if (!abs.hasScheme) {
+          final rel =
+              contentUrl.startsWith('/') ? contentUrl.substring(1) : contentUrl;
+          abs = base.resolve(rel);
+        }
 
-      return PlaybackTrack(
-        index: idx,
-        url: abs.toString(),
-        mimeType: mime,
-        duration: dur,
-        isLocal: false,
-      );
-    }).toList()
+        return PlaybackTrack(
+          index: idx,
+          url: abs.toString(),
+          mimeType: mime,
+          duration: dur,
+          isLocal: false,
+        );
+      }).toList()
       ..sort((a, b) => a.index.compareTo(b.index));
   }
 
   // Open a streaming session and return tracks + session id
-  Future<StreamTracksResult> _openSessionAndGetTracks(String libraryItemId, {String? episodeId}) async {
+  Future<StreamTracksResult> _openSessionAndGetTracks(
+    String libraryItemId, {
+    String? episodeId,
+  }) async {
     final api = _auth.api;
     final token = await api.accessToken();
     final baseStr = api.baseUrl ?? '';
     final base = Uri.parse(baseStr);
 
-    final path = episodeId == null
-        ? '/api/items/$libraryItemId/play'
-        : '/api/items/$libraryItemId/play/$episodeId';
+    final path =
+        episodeId == null
+            ? '/api/items/$libraryItemId/play'
+            : '/api/items/$libraryItemId/play/$episodeId';
 
-    final resp = await api.request('POST', path,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'deviceInfo': {'clientVersion': 'kitzi-android-0.1.0'},
-          // Include opus/ogg to match Audiobookshelf defaults and avoid server-side rejection
-          'supportedMimeTypes': [
-            'audio/mpeg',
-            'audio/mp4',
-            'audio/aac',
-            'audio/flac',
-            'audio/ogg',
-            'audio/opus',
-            'audio/webm'
-          ]
-        }));
+    final resp = await api.request(
+      'POST',
+      path,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'deviceInfo': {'clientVersion': 'kitzi-android-0.1.0'},
+        // Include opus/ogg to match Audiobookshelf defaults and avoid server-side rejection
+        'supportedMimeTypes': [
+          'audio/mpeg',
+          'audio/mp4',
+          'audio/aac',
+          'audio/flac',
+          'audio/ogg',
+          'audio/opus',
+          'audio/webm',
+        ],
+      }),
+    );
 
     if (resp.statusCode != 200) {
       throw Exception('Failed to open session: ${resp.statusCode}');
     }
 
     final data = jsonDecode(resp.body) as Map<String, dynamic>;
-    final sessionId = (data['sessionId'] ?? data['id'] ?? data['_id'])?.toString();
+    final sessionId =
+        (data['sessionId'] ?? data['id'] ?? data['_id'])?.toString();
     final tracks = (data['audioTracks'] as List?) ?? const [];
-    final list = tracks.map((t) {
-      final m = (t as Map).cast<String, dynamic>();
-      final idx = (m['index'] as num?)?.toInt() ?? 0;
-      final dur = (m['duration'] as num?)?.toDouble() ?? 0.0; // seconds
-      final mime = (m['mimeType'] ?? 'audio/mpeg').toString();
-      final contentUrl = (m['contentUrl'] ?? '').toString();
+    final list =
+        tracks.map((t) {
+            final m = (t as Map).cast<String, dynamic>();
+            final idx = (m['index'] as num?)?.toInt() ?? 0;
+            final dur = (m['duration'] as num?)?.toDouble() ?? 0.0; // seconds
+            final mime = (m['mimeType'] ?? 'audio/mpeg').toString();
+            final contentUrl = (m['contentUrl'] ?? '').toString();
 
-      Uri abs = Uri.tryParse(contentUrl) ?? Uri(path: contentUrl);
-      if (!abs.hasScheme) {
-        final rel = contentUrl.startsWith('/') ? contentUrl.substring(1) : contentUrl;
-        abs = Uri.parse(baseStr).resolve(rel);
-      }
+            Uri abs = Uri.tryParse(contentUrl) ?? Uri(path: contentUrl);
+            if (!abs.hasScheme) {
+              final rel =
+                  contentUrl.startsWith('/')
+                      ? contentUrl.substring(1)
+                      : contentUrl;
+              abs = Uri.parse(baseStr).resolve(rel);
+            }
 
-      return PlaybackTrack(
-        index: idx,
-        url: abs.toString(),
-        mimeType: mime,
-        duration: dur,
-        isLocal: false,
-      );
-    }).toList()
-      ..sort((a, b) => a.index.compareTo(b.index));
+            return PlaybackTrack(
+              index: idx,
+              url: abs.toString(),
+              mimeType: mime,
+              duration: dur,
+              isLocal: false,
+            );
+          }).toList()
+          ..sort((a, b) => a.index.compareTo(b.index));
 
     return StreamTracksResult(tracks: list, sessionId: sessionId);
   }
@@ -2434,13 +2712,22 @@ class PlaybackRepository {
       final np = _nowPlaying;
       if (np != null) {
         try {
-          _log('Session sync: opening session for ${np.libraryItemId} (no active session)');
-          final opened = await _openSessionAndGetTracks(np.libraryItemId, episodeId: np.episodeId);
+          _log(
+            'Session sync: opening session for ${np.libraryItemId} (no active session)',
+          );
+          final opened = await _openSessionAndGetTracks(
+            np.libraryItemId,
+            episodeId: np.episodeId,
+          );
           sessionId = opened.sessionId;
           _activeSessionId = sessionId;
-          _log('Session sync: obtained session $sessionId for ${np.libraryItemId}');
+          _log(
+            'Session sync: obtained session $sessionId for ${np.libraryItemId}',
+          );
         } catch (e) {
-          _log('Session sync: failed to open session for ${np.libraryItemId}: $e');
+          _log(
+            'Session sync: failed to open session for ${np.libraryItemId}: $e',
+          );
         }
       }
       if (sessionId == null || sessionId.isEmpty) {
@@ -2477,9 +2764,12 @@ class PlaybackRepository {
       ];
       for (final c in candidates) {
         try {
-          final r = await api.request(c[0], c[1],
-              headers: {'Content-Type': 'application/json'},
-              body: jsonEncode(payload));
+          final r = await api.request(
+            c[0],
+            c[1],
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(payload),
+          );
           if (r.statusCode == 200 || r.statusCode == 204) {
             _log('Session sync OK via ${c[0]} ${c[1]}');
             return true;
@@ -2505,8 +2795,14 @@ class PlaybackRepository {
       ];
       for (final c in candidates) {
         try {
-          final r = await api.request(c[0], c[1], headers: {'Content-Type': 'application/json'});
-          if (r.statusCode == 200 || r.statusCode == 204 || r.statusCode == 404) {
+          final r = await api.request(
+            c[0],
+            c[1],
+            headers: {'Content-Type': 'application/json'},
+          );
+          if (r.statusCode == 200 ||
+              r.statusCode == 204 ||
+              r.statusCode == 404) {
             _log('Closed session via ${c[0]} ${c[1]} (status ${r.statusCode})');
             break;
           }
@@ -2529,8 +2825,14 @@ class PlaybackRepository {
       ];
       for (final c in candidates) {
         try {
-          final r = await api.request(c[0], c[1], headers: {'Content-Type': 'application/json'});
-          if (r.statusCode == 200 || r.statusCode == 204 || r.statusCode == 404) {
+          final r = await api.request(
+            c[0],
+            c[1],
+            headers: {'Content-Type': 'application/json'},
+          );
+          if (r.statusCode == 200 ||
+              r.statusCode == 204 ||
+              r.statusCode == 404) {
             break;
           }
         } catch (_) {}
@@ -2542,31 +2844,35 @@ class PlaybackRepository {
     try {
       final dir = await DownloadStorage.itemDir(libraryItemId);
       if (!await dir.exists()) return const [];
-      final files = (await dir.list().toList()).whereType<File>().toList()
-        ..sort((a, b) => a.path.compareTo(b.path));
+      final files =
+          (await dir.list().toList()).whereType<File>().toList()
+            ..sort((a, b) => a.path.compareTo(b.path));
       if (files.isEmpty) return const [];
       final list = <PlaybackTrack>[];
       for (var i = 0; i < files.length; i++) {
         final f = files[i];
         final ext = f.path.split('.').last.toLowerCase();
-        final mime = ext == 'mp3'
-            ? 'audio/mpeg'
-            : (ext == 'm4a' || ext == 'aac' || ext == 'm4b')
+        final mime =
+            ext == 'mp3'
+                ? 'audio/mpeg'
+                : (ext == 'm4a' || ext == 'aac' || ext == 'm4b')
                 ? 'audio/mp4'
                 : ext == 'flac'
-                    ? 'audio/flac'
-                    : (ext == 'ogg' || ext == 'oga')
-                        ? 'audio/ogg'
-                        : ext == 'opus'
-                            ? 'audio/opus'
-                            : 'audio/mpeg';
-        list.add(PlaybackTrack(
-          index: i,
-          url: f.path,
-          mimeType: mime,
-          duration: 0.0, // unknown until merged
-          isLocal: true,
-        ));
+                ? 'audio/flac'
+                : (ext == 'ogg' || ext == 'oga')
+                ? 'audio/ogg'
+                : ext == 'opus'
+                ? 'audio/opus'
+                : 'audio/mpeg';
+        list.add(
+          PlaybackTrack(
+            index: i,
+            url: f.path,
+            mimeType: mime,
+            duration: 0.0, // unknown until merged
+            isLocal: true,
+          ),
+        );
       }
       return list;
     } catch (_) {
@@ -2581,10 +2887,9 @@ class PlaybackRepository {
 
     Uri meta = base.resolve('api/items/$libraryItemId');
     if (token != null && token.isNotEmpty) {
-      meta = meta.replace(queryParameters: {
-        ...meta.queryParameters,
-        'token': token,
-      });
+      meta = meta.replace(
+        queryParameters: {...meta.queryParameters, 'token': token},
+      );
     }
 
     final r = await http.get(
@@ -2593,7 +2898,8 @@ class PlaybackRepository {
     );
     try {
       final j = jsonDecode(r.body) as Map<String, dynamic>;
-      return (j['item'] as Map?)?.cast<String, dynamic>() ?? j.cast<String, dynamic>();
+      return (j['item'] as Map?)?.cast<String, dynamic>() ??
+          j.cast<String, dynamic>();
     } catch (_) {
       return <String, dynamic>{};
     }
@@ -2606,10 +2912,9 @@ class PlaybackRepository {
 
     Uri cov = base.resolve('api/items/$libraryItemId/cover');
     if (token != null && token.isNotEmpty) {
-      cov = cov.replace(queryParameters: {
-        ...cov.queryParameters,
-        'token': token,
-      });
+      cov = cov.replace(
+        queryParameters: {...cov.queryParameters, 'token': token},
+      );
     }
     return cov.toString();
   }
@@ -2617,7 +2922,7 @@ class PlaybackRepository {
   void _setNowPlaying(NowPlaying? np) {
     _nowPlaying = np;
     _nowPlayingCtr.add(np);
-    
+
     // Start Dynamic Island Live Activity when new content starts playing
     if (np != null && DynamicIslandService.instance.isSupported) {
       _updateDynamicIsland();
@@ -2704,7 +3009,10 @@ class PlaybackRepository {
       remain -= d;
     }
     final last = tracks.isNotEmpty ? tracks.length - 1 : 0;
-    return _TrackMap(index: last, offsetSec: tracks.isNotEmpty ? tracks[last].duration : 0.0);
+    return _TrackMap(
+      index: last,
+      offsetSec: tracks.isNotEmpty ? tracks[last].duration : 0.0,
+    );
   }
 
   String? _titleFromMeta(Map<String, dynamic> meta) {
@@ -2717,7 +3025,8 @@ class PlaybackRepository {
     String? pick(String? s) => (s != null && s.trim().isNotEmpty) ? s : null;
 
     // Prefer simple string fields across common locations
-    final simple = pick(meta['author'] as String?) ??
+    final simple =
+        pick(meta['author'] as String?) ??
         pick(meta['authorName'] as String?) ??
         pick(meta['media']?['metadata']?['author'] as String?) ??
         pick(meta['media']?['metadata']?['authorName'] as String?) ??
@@ -2726,7 +3035,8 @@ class PlaybackRepository {
     if (simple != null) return simple;
 
     // Fallback to authors list across possible locations
-    List<dynamic>? list = (meta['authors'] as List?) ??
+    List<dynamic>? list =
+        (meta['authors'] as List?) ??
         (meta['media']?['metadata']?['authors'] as List?) ??
         (meta['book']?['authors'] as List?);
     if (list != null && list.isNotEmpty) {
@@ -2746,7 +3056,8 @@ class PlaybackRepository {
   }
 
   String? _narratorFromMeta(Map<String, dynamic> meta) {
-    final narrList = meta['narrators'] ?? meta['media']?['metadata']?['narrators'];
+    final narrList =
+        meta['narrators'] ?? meta['media']?['metadata']?['narrators'];
     if (narrList is List) {
       final names = <String>[];
       for (final it in narrList) {
@@ -2763,7 +3074,8 @@ class PlaybackRepository {
   List<Chapter> _extractChapters(Map<String, dynamic> meta) {
     final chapters = <Chapter>[];
     // Try common locations used by Audiobookshelf and derivatives
-    final toc = meta['chapters'] ??
+    final toc =
+        meta['chapters'] ??
         meta['tableOfContents'] ??
         meta['media']?['metadata']?['chapters'] ??
         meta['media']?['chapters'] ??
@@ -2773,19 +3085,23 @@ class PlaybackRepository {
       for (final c in list) {
         if (c is Map) {
           final map = c.cast<String, dynamic>();
-          final title = (map['title'] ?? map['name'] ?? map['chapter'] ?? '').toString();
-          final startMs = (map['start'] is num)
-              ? (map['start'] as num).toDouble() * 1000
-              : (map['startMs'] is num)
+          final title =
+              (map['title'] ?? map['name'] ?? map['chapter'] ?? '').toString();
+          final startMs =
+              (map['start'] is num)
+                  ? (map['start'] as num).toDouble() * 1000
+                  : (map['startMs'] is num)
                   ? (map['startMs'] as num).toDouble()
                   : (map['time'] is num)
-                      ? (map['time'] as num).toDouble() * 1000
-                      : null;
+                  ? (map['time'] as num).toDouble() * 1000
+                  : null;
           if (startMs != null) {
-            chapters.add(Chapter(
-              title: title,
-              start: Duration(milliseconds: startMs.round()),
-            ));
+            chapters.add(
+              Chapter(
+                title: title,
+                start: Duration(milliseconds: startMs.round()),
+              ),
+            );
           }
         }
       }
@@ -2811,29 +3127,37 @@ class PlaybackRepository {
         try {
           final parts = t.url.split(Platform.pathSeparator);
           final base = parts.isNotEmpty ? parts.last : t.url;
-          final withoutExt = base.contains('.') ? base.substring(0, base.lastIndexOf('.')) : base;
+          final withoutExt =
+              base.contains('.')
+                  ? base.substring(0, base.lastIndexOf('.'))
+                  : base;
           if (withoutExt.trim().isNotEmpty) {
             title = withoutExt.trim();
           }
         } catch (_) {}
       }
-      chapters.add(Chapter(
-        title: title,
-        start: Duration(milliseconds: (cursorSec * 1000).round()),
-      ));
+      chapters.add(
+        Chapter(
+          title: title,
+          start: Duration(milliseconds: (cursorSec * 1000).round()),
+        ),
+      );
       cursorSec += t.duration > 0 ? t.duration : 0.0;
     }
     return chapters;
   }
 
   /// Cache chapter metadata locally for offline use
-  Future<void> _cacheChapterMetadata(String libraryItemId, List<Chapter> chapters) async {
+  Future<void> _cacheChapterMetadata(
+    String libraryItemId,
+    List<Chapter> chapters,
+  ) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final chapterData = chapters.map((c) => {
-        'title': c.title,
-        'startMs': c.start.inMilliseconds,
-      }).toList();
+      final chapterData =
+          chapters
+              .map((c) => {'title': c.title, 'startMs': c.start.inMilliseconds})
+              .toList();
       await prefs.setString('chapters_$libraryItemId', jsonEncode(chapterData));
       _log('Cached ${chapters.length} chapters for $libraryItemId');
     } catch (e) {
@@ -2847,16 +3171,19 @@ class PlaybackRepository {
       final prefs = await SharedPreferences.getInstance();
       final cachedData = prefs.getString('chapters_$libraryItemId');
       if (cachedData == null || cachedData.isEmpty) return [];
-      
+
       final List<dynamic> chapterList = jsonDecode(cachedData);
-      final chapters = chapterList.map((data) {
-        final map = data as Map<String, dynamic>;
-        return Chapter(
-          title: map['title'] as String? ?? '',
-          start: Duration(milliseconds: (map['startMs'] as num?)?.toInt() ?? 0),
-        );
-      }).toList();
-      
+      final chapters =
+          chapterList.map((data) {
+            final map = data as Map<String, dynamic>;
+            return Chapter(
+              title: map['title'] as String? ?? '',
+              start: Duration(
+                milliseconds: (map['startMs'] as num?)?.toInt() ?? 0,
+              ),
+            );
+          }).toList();
+
       _log('Loaded ${chapters.length} cached chapters for $libraryItemId');
       return chapters;
     } catch (e) {
@@ -2869,12 +3196,12 @@ class PlaybackRepository {
   Future<void> refreshChapterMetadata() async {
     final np = _nowPlaying;
     if (np == null) return;
-    
+
     try {
       _log('Refreshing chapter metadata for ${np.libraryItemId}');
       final meta = await _getItemMeta(np.libraryItemId);
       final serverChapters = _extractChapters(meta);
-      
+
       if (serverChapters.isNotEmpty) {
         // Update the current NowPlaying with fresh chapter data
         final updatedNp = NowPlaying(
@@ -2889,7 +3216,7 @@ class PlaybackRepository {
           episodeId: np.episodeId,
         );
         _setNowPlaying(updatedNp);
-        
+
         // Cache the fresh chapters
         await _cacheChapterMetadata(np.libraryItemId, serverChapters);
         _log('Refreshed chapter metadata: ${serverChapters.length} chapters');
@@ -2909,15 +3236,15 @@ class PlaybackRepository {
     }
     return null;
   }
-  
+
   /// Helper method to get book information for play history
   Future<Book?> _getBookForHistory(String libraryItemId) async {
     try {
       final meta = await _getItemMeta(libraryItemId);
-      
+
       final coverUrl = await _coverUrl(libraryItemId);
       if (coverUrl == null) return null; // Skip if no cover available
-      
+
       return Book(
         id: libraryItemId,
         title: _titleFromMeta(meta) ?? 'Unknown Title',

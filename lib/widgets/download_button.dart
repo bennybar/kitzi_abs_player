@@ -40,6 +40,8 @@ class _DownloadButtonState extends State<DownloadButton> {
   ItemProgress? _snap;
   bool _busy = false;
   bool _mounted = false;
+  int? _estimatedTotalBytes;
+  bool _loadingEstimatedBytes = false;
 
   @override
   void didChangeDependencies() {
@@ -52,13 +54,14 @@ class _DownloadButtonState extends State<DownloadButton> {
       _downloads = repo;
       // Ensure repo is initialized
       _downloads!.init();
-      _sub = _downloads!
-          .watchItemProgress(widget.libraryItemId)
-          .listen((p) {
-            if (_mounted) {
-              setState(() => _snap = p);
-            }
-          });
+      _sub = _downloads!.watchItemProgress(widget.libraryItemId).listen((p) {
+        if (_mounted) {
+          setState(() => _snap = p);
+        }
+        if (p.status == 'running' || p.status == 'queued') {
+          unawaited(_ensureEstimatedBytes());
+        }
+      });
       // Pull a fresh snapshot immediately when attaching to a (possibly new) repo
       _refreshSnap();
     }
@@ -84,6 +87,8 @@ class _DownloadButtonState extends State<DownloadButton> {
     super.didUpdateWidget(oldWidget);
     // When navigating back to details, refresh current status
     if (_downloads != null && oldWidget.libraryItemId != widget.libraryItemId) {
+      _estimatedTotalBytes = null;
+      _loadingEstimatedBytes = false;
       _refreshSnap();
     } else {
       _refreshSnap();
@@ -105,7 +110,46 @@ class _DownloadButtonState extends State<DownloadButton> {
           _snap = snap;
         });
       }
+      if (snap.status == 'running' || snap.status == 'queued') {
+        unawaited(_ensureEstimatedBytes());
+      }
     } catch (_) {}
+  }
+
+  Future<void> _ensureEstimatedBytes() async {
+    if (_downloads == null ||
+        _loadingEstimatedBytes ||
+        _estimatedTotalBytes != null) {
+      return;
+    }
+    _loadingEstimatedBytes = true;
+    try {
+      final total = await _downloads!.estimateTotalBytes(
+        widget.libraryItemId,
+        episodeId: widget.episodeId,
+      );
+      if (_mounted && total != null && total > 0) {
+        setState(() {
+          _estimatedTotalBytes = total;
+        });
+      }
+    } catch (_) {
+      // Best-effort only.
+    } finally {
+      _loadingEstimatedBytes = false;
+    }
+  }
+
+  String _formatBytes(int bytes) {
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    double value = bytes.toDouble();
+    int unitIndex = 0;
+    while (value >= 1024 && unitIndex < units.length - 1) {
+      value /= 1024;
+      unitIndex++;
+    }
+    final decimals = value >= 100 || unitIndex == 0 ? 0 : 1;
+    return '${value.toStringAsFixed(decimals)} ${units[unitIndex]}';
   }
 
   Future<void> _enqueue() async {
@@ -113,40 +157,44 @@ class _DownloadButtonState extends State<DownloadButton> {
     setState(() => _busy = true);
     try {
       // If this item is already active, ignore duplicate enqueue taps
-      if (_snap != null && (_snap!.status == 'running' || _snap!.status == 'queued')) {
+      if (_snap != null &&
+          (_snap!.status == 'running' || _snap!.status == 'queued')) {
         return;
       }
 
       // Check wifi-only setting and connectivity
       final prefs = await SharedPreferences.getInstance();
       final wifiOnly = prefs.getBool('downloads_wifi_only') ?? false;
-      
+
       if (wifiOnly) {
         final connectivity = await Connectivity().checkConnectivity();
-        final isOnCellular = connectivity.contains(ConnectivityResult.mobile) &&
+        final isOnCellular =
+            connectivity.contains(ConnectivityResult.mobile) &&
             !connectivity.contains(ConnectivityResult.wifi) &&
             !connectivity.contains(ConnectivityResult.ethernet);
-        
+
         if (isOnCellular) {
           final changeSetting = await showDialog<bool>(
             context: context,
-            builder: (context) => AlertDialog(
-              title: const Text('Wi‑Fi only downloads enabled'),
-              content: const Text(
-                  'Downloads are restricted to Wi‑Fi only. You are currently on cellular data. Would you like to allow downloads on cellular data?'),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: const Text('No'),
+            builder:
+                (context) => AlertDialog(
+                  title: const Text('Wi‑Fi only downloads enabled'),
+                  content: const Text(
+                    'Downloads are restricted to Wi‑Fi only. You are currently on cellular data. Would you like to allow downloads on cellular data?',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: const Text('No'),
+                    ),
+                    FilledButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      child: const Text('Yes, allow cellular'),
+                    ),
+                  ],
                 ),
-                FilledButton(
-                  onPressed: () => Navigator.pop(context, true),
-                  child: const Text('Yes, allow cellular'),
-                ),
-              ],
-            ),
           );
-          
+
           if (changeSetting == true) {
             await prefs.setBool('downloads_wifi_only', false);
           } else {
@@ -162,7 +210,9 @@ class _DownloadButtonState extends State<DownloadButton> {
         // If only this item is tracked or active, allow enqueue directly
         try {
           final tracked = await _downloads!.listTrackedItemIds();
-          final onlyThis = tracked.isNotEmpty && tracked.every((id) => id == widget.libraryItemId);
+          final onlyThis =
+              tracked.isNotEmpty &&
+              tracked.every((id) => id == widget.libraryItemId);
           if (!onlyThis) requireCancelOthers = true;
         } catch (_) {
           requireCancelOthers = true; // be conservative if unknown
@@ -174,21 +224,23 @@ class _DownloadButtonState extends State<DownloadButton> {
       if (requireCancelOthers) {
         final ans = await showDialog<bool>(
           context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Single download at a time'),
-            content: const Text(
-                'Another book is downloading. Cancel it and download this book now?'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('No'),
+          builder:
+              (context) => AlertDialog(
+                title: const Text('Single download at a time'),
+                content: const Text(
+                  'Another book is downloading. Cancel it and download this book now?',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('No'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    child: const Text('Yes, switch downloads'),
+                  ),
+                ],
               ),
-              FilledButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('Yes, switch downloads'),
-              ),
-            ],
-          ),
         );
         proceed = ans == true;
         cancelOthers = ans == true;
@@ -209,7 +261,9 @@ class _DownloadButtonState extends State<DownloadButton> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Download started – follow progress from Downloads tab.'),
+            content: Text(
+              'Download started – follow progress from Downloads tab.',
+            ),
             duration: Duration(seconds: 3),
           ),
         );
@@ -265,110 +319,84 @@ class _DownloadButtonState extends State<DownloadButton> {
     else if (snap != null &&
         (snap.status == 'running' || snap.status == 'queued')) {
       final pctRaw = (snap.progress * 100).clamp(0, 100);
-      final pct = pctRaw >= 1
-          ? pctRaw.toStringAsFixed(pctRaw >= 10 ? 0 : 1)
-          : '';
-      final frac = (snap.completed > 0 || snap.totalTasks > 0)
-          ? '${snap.completed}/${snap.totalTasks}'
-          : '';
+      final pct = pctRaw.toStringAsFixed(pctRaw >= 10 ? 0 : 1);
+      final totalBytes = _estimatedTotalBytes;
+      final downloadedBytes =
+          totalBytes != null
+              ? (totalBytes * snap.progress).round().clamp(0, totalBytes)
+              : null;
+      final amountLabel =
+          (downloadedBytes != null && totalBytes != null)
+              ? '${_formatBytes(downloadedBytes)} / ${_formatBytes(totalBytes)}'
+              : 'Calculating size…';
       child = SizedBox(
-        height: 40, // keep aligned with play button
+        height: 44,
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // Main button content (no long text to avoid overlap)
-            Padding(
-              padding: EdgeInsets.zero,
-              child: FilledButton(
-                onPressed: null, // disabled while running
-                style: FilledButton.styleFrom(
-                  disabledBackgroundColor: Theme.of(context).colorScheme.primary,
-                  disabledForegroundColor: Theme.of(context).colorScheme.onPrimary,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Container(
+                    color: Theme.of(context).colorScheme.primaryContainer,
                   ),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.only(left: 12, right: 48),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Row(
-                          children: [
-                            if (frac.isNotEmpty)
-                              Flexible(
-                                child: Text(
-                                  frac,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                        color: Theme.of(context).colorScheme.onPrimary,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                ),
-                              ),
-                            if (frac.isNotEmpty) const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                pct.isNotEmpty ? '$pct%' : 'Downloading…',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: Theme.of(context).colorScheme.onPrimary,
-                                      fontFeatures: const [FontFeature.tabularFigures()],
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                              ),
-                            ),
+                  FractionallySizedBox(
+                    alignment: Alignment.centerLeft,
+                    widthFactor: snap.progress.clamp(0.0, 1.0),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                          colors: [
+                            Theme.of(context).colorScheme.primary,
+                            Theme.of(
+                              context,
+                            ).colorScheme.primary.withOpacity(0.82),
                           ],
                         ),
                       ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            // Slim bottom progress bar for an elegant Material feel
-            Positioned(
-              left: 12,
-              right: 56, // stop before the cancel segment so the end is visible
-              bottom: 6,
-              height: 6,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(999),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    // Track
-                    Container(
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.16),
-                      ),
                     ),
-                    // Filled bar with subtle Material-ish gradient
-                    FractionallySizedBox(
-                      alignment: Alignment.centerLeft,
-                      widthFactor: (snap.progress).clamp(0.0, 1.0),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(999),
-                          gradient: LinearGradient(
-                            begin: Alignment.centerLeft,
-                            end: Alignment.centerRight,
-                            colors: [
-                              Theme.of(context).colorScheme.onPrimary.withOpacity(0.9),
-                              Theme.of(context).colorScheme.onPrimary,
-                            ],
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 12, right: 56),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            amountLabel,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(
+                              context,
+                            ).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context).colorScheme.onPrimary,
+                              fontFeatures: const [
+                                FontFeature.tabularFigures(),
+                              ],
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                         ),
-                      ),
+                        const SizedBox(width: 10),
+                        Text(
+                          '$pct%',
+                          style: Theme.of(
+                            context,
+                          ).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context).colorScheme.onPrimary,
+                            fontFeatures: const [FontFeature.tabularFigures()],
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
-            // Removed overlay progress text; information is now inside the button content
-            // Integrated cancel segment on the right (per-book cancel), flush with main button
             Positioned(
               right: 0,
               top: 0,
@@ -407,10 +435,14 @@ class _DownloadButtonState extends State<DownloadButton> {
     else {
       child = FilledButton.icon(
         onPressed: _busy ? null : _enqueue,
-        icon: _busy
-            ? const SizedBox(
-            width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-            : const Icon(Icons.download),
+        icon:
+            _busy
+                ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+                : const Icon(Icons.download),
         label: Text(_busy ? 'Adding…' : 'Download'),
       );
     }
@@ -421,4 +453,3 @@ class _DownloadButtonState extends State<DownloadButton> {
     return child;
   }
 }
-

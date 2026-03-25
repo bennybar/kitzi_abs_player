@@ -718,8 +718,10 @@ class _FullPlayerPageState extends State<FullPlayerPage>
 
   _CoverDims _coverDimensionsForSize(
     BuildContext context,
-    PlayerCoverSize size,
-  ) {
+    PlayerCoverSize size, {
+    double? availableHeight,
+    int metadataLineCount = 3,
+  }) {
     final widthFactor = switch (size) {
       PlayerCoverSize.small => 0.54,
       PlayerCoverSize.medium => 0.62,
@@ -732,8 +734,41 @@ class _FullPlayerPageState extends State<FullPlayerPage>
       PlayerCoverSize.large => 24.0,
       PlayerCoverSize.extraLarge => 26.0,
     };
-    final width = MediaQuery.of(context).size.width * widthFactor;
+    final screenWidth = MediaQuery.of(context).size.width;
+    var width = screenWidth * widthFactor;
+
+    if (availableHeight != null && availableHeight > 0) {
+      final reservedHeight = 104.0 + metadataLineCount * 24.0;
+      final dynamicMax =
+          (availableHeight - reservedHeight)
+              .clamp(screenWidth * 0.46, screenWidth * 0.84)
+              .toDouble();
+      final growth = ((6 - metadataLineCount).clamp(0, 4) * 20).toDouble();
+      width = math.min(dynamicMax, width + growth);
+    }
+
     return _CoverDims(width: width, radius: radius);
+  }
+
+  int _estimatedMetadataLineCount(NowPlaying np) {
+    int lines = 1;
+
+    final titleLength = np.title.trim().length;
+    if (titleLength > 26) lines++;
+    if (titleLength > 52) lines++;
+
+    final author = np.author?.trim() ?? '';
+    if (author.isNotEmpty) {
+      lines += author.length > 30 ? 2 : 1;
+    }
+
+    final narrator = np.narrator?.trim() ?? '';
+    if (narrator.isNotEmpty) {
+      final narratorLabelLength = narrator.length + 12;
+      lines += narratorLabelLength > 34 ? 2 : 1;
+    }
+
+    return lines.clamp(2, 6);
   }
 
   Widget _buildBookProgressSection({
@@ -754,6 +789,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
     final secondaryThumbRadius = 12 * _progressThumbScale;
     final primaryOverlayRadius = 30 * _progressThumbScale;
     final secondaryOverlayRadius = 26 * _progressThumbScale;
+    final sliderHeight = isPrimary ? 30.0 : 26.0;
 
     final sliderTheme = SliderTheme.of(context).copyWith(
       trackHeight: isPrimary ? 14 : 10,
@@ -807,25 +843,28 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                       builder: (context, animatedAmplitude, _) {
                         return SliderTheme(
                           data: sliderTheme.copyWith(trackHeight: 5.0),
-                          child: SquigglySlider(
-                            value: value,
-                            min: 0.0,
-                            max: sliderMax,
-                            onChanged: (v) async {
-                              await playback.seekGlobal(
-                                Duration(milliseconds: v.round()),
-                                reportNow: false,
-                              );
-                            },
-                            onChangeEnd: (v) async {
-                              await playback.seekGlobal(
-                                Duration(milliseconds: v.round()),
-                                reportNow: true,
-                              );
-                            },
-                            squiggleAmplitude: animatedAmplitude,
-                            squiggleWavelength: isPrimary ? 7.0 : 8.0,
-                            squiggleSpeed: playing ? 0.2 : 0.0,
+                          child: SizedBox(
+                            height: sliderHeight,
+                            child: SquigglySlider(
+                              value: value,
+                              min: 0.0,
+                              max: sliderMax,
+                              onChanged: (v) async {
+                                await playback.seekGlobal(
+                                  Duration(milliseconds: v.round()),
+                                  reportNow: false,
+                                );
+                              },
+                              onChangeEnd: (v) async {
+                                await playback.seekGlobal(
+                                  Duration(milliseconds: v.round()),
+                                  reportNow: true,
+                                );
+                              },
+                              squiggleAmplitude: animatedAmplitude,
+                              squiggleWavelength: isPrimary ? 7.0 : 8.0,
+                              squiggleSpeed: playing ? 0.2 : 0.0,
+                            ),
                           ),
                         );
                       },
@@ -835,22 +874,25 @@ class _FullPlayerPageState extends State<FullPlayerPage>
               } else {
                 return SliderTheme(
                   data: sliderTheme,
-                  child: Slider(
-                    min: 0.0,
-                    max: sliderMax,
-                    value: value,
-                    onChanged: (v) async {
-                      await playback.seekGlobal(
-                        Duration(milliseconds: v.round()),
-                        reportNow: false,
-                      );
-                    },
-                    onChangeEnd: (v) async {
-                      await playback.seekGlobal(
-                        Duration(milliseconds: v.round()),
-                        reportNow: true,
-                      );
-                    },
+                  child: SizedBox(
+                    height: sliderHeight,
+                    child: Slider(
+                      min: 0.0,
+                      max: sliderMax,
+                      value: value,
+                      onChanged: (v) async {
+                        await playback.seekGlobal(
+                          Duration(milliseconds: v.round()),
+                          reportNow: false,
+                        );
+                      },
+                      onChangeEnd: (v) async {
+                        await playback.seekGlobal(
+                          Duration(milliseconds: v.round()),
+                          reportNow: true,
+                        );
+                      },
+                    ),
                   ),
                 );
               }
@@ -901,6 +943,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
     final remaining = duration - metrics.elapsed;
     final thumbRadius = 15 * _progressThumbScale;
     final overlayRadius = 30 * _progressThumbScale;
+    const sliderHeight = 30.0;
 
     return RepaintBoundary(
       child: Column(
@@ -943,27 +986,30 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                               horizontalInset: 6,
                             ),
                           ),
-                          child: SquigglySlider(
-                            value: value,
-                            min: 0.0,
-                            max: max > 0 ? max : 1.0,
-                            onChanged: (v) async {
-                              await playback.seekGlobal(
-                                metrics.start +
-                                    Duration(milliseconds: v.round()),
-                                reportNow: false,
-                              );
-                            },
-                            onChangeEnd: (v) async {
-                              await playback.seekGlobal(
-                                metrics.start +
-                                    Duration(milliseconds: v.round()),
-                                reportNow: true,
-                              );
-                            },
-                            squiggleAmplitude: animatedAmplitude,
-                            squiggleWavelength: 7.0,
-                            squiggleSpeed: playing ? 0.2 : 0.0,
+                          child: SizedBox(
+                            height: sliderHeight,
+                            child: SquigglySlider(
+                              value: value,
+                              min: 0.0,
+                              max: max > 0 ? max : 1.0,
+                              onChanged: (v) async {
+                                await playback.seekGlobal(
+                                  metrics.start +
+                                      Duration(milliseconds: v.round()),
+                                  reportNow: false,
+                                );
+                              },
+                              onChangeEnd: (v) async {
+                                await playback.seekGlobal(
+                                  metrics.start +
+                                      Duration(milliseconds: v.round()),
+                                  reportNow: true,
+                                );
+                              },
+                              squiggleAmplitude: animatedAmplitude,
+                              squiggleWavelength: 7.0,
+                              squiggleSpeed: playing ? 0.2 : 0.0,
+                            ),
                           ),
                         );
                       },
@@ -990,22 +1036,25 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                       horizontalInset: 6,
                     ),
                   ),
-                  child: Slider(
-                    min: 0.0,
-                    max: max > 0 ? max : 1.0,
-                    value: value,
-                    onChanged: (v) async {
-                      await playback.seekGlobal(
-                        metrics.start + Duration(milliseconds: v.round()),
-                        reportNow: false,
-                      );
-                    },
-                    onChangeEnd: (v) async {
-                      await playback.seekGlobal(
-                        metrics.start + Duration(milliseconds: v.round()),
-                        reportNow: true,
-                      );
-                    },
+                  child: SizedBox(
+                    height: sliderHeight,
+                    child: Slider(
+                      min: 0.0,
+                      max: max > 0 ? max : 1.0,
+                      value: value,
+                      onChanged: (v) async {
+                        await playback.seekGlobal(
+                          metrics.start + Duration(milliseconds: v.round()),
+                          reportNow: false,
+                        );
+                      },
+                      onChangeEnd: (v) async {
+                        await playback.seekGlobal(
+                          metrics.start + Duration(milliseconds: v.round()),
+                          reportNow: true,
+                        );
+                      },
+                    ),
                   ),
                 );
               }
@@ -1101,6 +1150,130 @@ class _FullPlayerPageState extends State<FullPlayerPage>
             color: cs.onSurfaceVariant,
             fontWeight: FontWeight.w600,
           ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBookDetailStyleChapterTimeline({
+    required TextTheme text,
+    required ColorScheme cs,
+    required Duration position,
+    required Duration total,
+    required List<Chapter> chapters,
+    required ChapterProgressMetrics? metrics,
+  }) {
+    if (total <= Duration.zero || chapters.length <= 1) {
+      return const SizedBox.shrink();
+    }
+
+    final totalSec = total.inMilliseconds / 1000.0;
+    final posSec = position.inMilliseconds / 1000.0;
+
+    int chapterIndex = metrics?.index ?? 0;
+    if (metrics == null) {
+      for (int i = chapters.length - 1; i >= 0; i--) {
+        if (position >= chapters[i].start) {
+          chapterIndex = i;
+          break;
+        }
+      }
+    }
+
+    final chapterLabel =
+        metrics != null
+            ? _chapterDescriptor(metrics)
+            : 'Chapter ${chapterIndex + 1} of ${chapters.length}';
+    final chapterTimeLabel =
+        metrics != null
+            ? '${_fmt(metrics.elapsed)} / ${_fmt(metrics.duration)}'
+            : null;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'CHAPTERS',
+          style: text.labelSmall?.copyWith(
+            color: cs.onSurfaceVariant.withOpacity(0.6),
+            letterSpacing: 0.8,
+          ),
+        ),
+        const SizedBox(height: 6),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: SizedBox(
+            height: 8,
+            child: LayoutBuilder(
+              builder: (_, constraints) {
+                return Stack(
+                  children: [
+                    Container(color: cs.surfaceContainerHighest),
+                    FractionallySizedBox(
+                      widthFactor: (posSec / totalSec).clamp(0.0, 1.0),
+                      child: Container(color: cs.primary.withOpacity(0.7)),
+                    ),
+                    for (int i = 1; i < chapters.length; i++)
+                      Positioned(
+                        left:
+                            constraints.maxWidth *
+                            (chapters[i].start.inMilliseconds /
+                                    total.inMilliseconds)
+                                .clamp(0.0, 1.0),
+                        top: 0,
+                        bottom: 0,
+                        child: Container(
+                          width: 1.5,
+                          color: cs.surface.withOpacity(0.6),
+                        ),
+                      ),
+                    Positioned(
+                      left:
+                          constraints.maxWidth *
+                              (posSec / totalSec).clamp(0.0, 1.0) -
+                          1.5,
+                      top: 0,
+                      bottom: 0,
+                      child: Container(
+                        width: 3,
+                        decoration: BoxDecoration(
+                          color: cs.onSurface,
+                          borderRadius: BorderRadius.circular(1.5),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Text(
+                chapterLabel,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: text.bodySmall?.copyWith(
+                  color: cs.primary,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            if (chapterTimeLabel != null) ...[
+              const SizedBox(width: 12),
+              Text(
+                chapterTimeLabel,
+                style: text.bodySmall?.copyWith(
+                  color: cs.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ],
         ),
       ],
     );
@@ -2665,328 +2838,357 @@ class _FullPlayerPageState extends State<FullPlayerPage>
 
                         // ARTWORK + TITLE
                         Expanded(
-                          child: RepaintBoundary(
-                            child: SingleChildScrollView(
-                              physics: const BouncingScrollPhysics(),
-                              padding: const EdgeInsets.fromLTRB(
-                                20,
-                                20,
-                                20,
-                                24,
-                              ),
-                              child: Column(
-                                children: [
-                                  // Cover with adjustable size
-                                  ValueListenableBuilder<PlayerCoverSize>(
-                                    valueListenable: UiPrefs.playerCoverSize,
-                                    builder: (context, coverSize, _) {
-                                      final dims = _coverDimensionsForSize(
-                                        context,
-                                        coverSize,
-                                      );
-                                      return StreamBuilder<bool>(
-                                        stream: playback.playingStream,
-                                        initialData: playback.player.playing,
-                                        builder: (_, playSnap) {
-                                          final isPlaying =
-                                              playSnap.data ?? false;
-                                          return AnimatedBuilder(
-                                            animation: _coverAnimation,
-                                            builder: (context, child) {
-                                              final t = _coverAnimation.value;
-                                              final fade = Curves.easeOut
-                                                  .transform(t);
-                                              final entranceScale =
-                                                  0.975 +
-                                                  0.0325 *
-                                                      Curves.easeOut.transform(
-                                                        t,
-                                                      );
-                                              final translateY = 14 * (1 - t);
-                                              return Transform.translate(
-                                                offset: Offset(0, translateY),
-                                                child: Opacity(
-                                                  opacity: fade,
-                                                  child: Transform.scale(
-                                                    scale: entranceScale,
-                                                    child: AnimatedScale(
-                                                      scale:
-                                                          isPlaying
-                                                              ? 1.018
-                                                              : 1.0,
-                                                      duration: const Duration(
-                                                        milliseconds: 650,
+                          child: LayoutBuilder(
+                            builder: (context, sectionConstraints) {
+                              final metadataLineCount =
+                                  _estimatedMetadataLineCount(np);
+                              return RepaintBoundary(
+                                child: SingleChildScrollView(
+                                  physics: const BouncingScrollPhysics(),
+                                  padding: const EdgeInsets.fromLTRB(
+                                    20,
+                                    20,
+                                    20,
+                                    24,
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      ValueListenableBuilder<PlayerCoverSize>(
+                                        valueListenable:
+                                            UiPrefs.playerCoverSize,
+                                        builder: (context, coverSize, _) {
+                                          final dims = _coverDimensionsForSize(
+                                            context,
+                                            coverSize,
+                                            availableHeight:
+                                                sectionConstraints.maxHeight,
+                                            metadataLineCount:
+                                                metadataLineCount,
+                                          );
+                                          return StreamBuilder<bool>(
+                                            stream: playback.playingStream,
+                                            initialData:
+                                                playback.player.playing,
+                                            builder: (_, playSnap) {
+                                              final isPlaying =
+                                                  playSnap.data ?? false;
+                                              return AnimatedBuilder(
+                                                animation: _coverAnimation,
+                                                builder: (context, child) {
+                                                  final t =
+                                                      _coverAnimation.value;
+                                                  final fade = Curves.easeOut
+                                                      .transform(t);
+                                                  final entranceScale =
+                                                      0.975 +
+                                                      0.0325 *
+                                                          Curves.easeOut
+                                                              .transform(t);
+                                                  final translateY =
+                                                      14 * (1 - t);
+                                                  return Transform.translate(
+                                                    offset: Offset(
+                                                      0,
+                                                      translateY,
+                                                    ),
+                                                    child: Opacity(
+                                                      opacity: fade,
+                                                      child: Transform.scale(
+                                                        scale: entranceScale,
+                                                        child: AnimatedScale(
+                                                          scale:
+                                                              isPlaying
+                                                                  ? 1.018
+                                                                  : 1.0,
+                                                          duration:
+                                                              const Duration(
+                                                                milliseconds:
+                                                                    650,
+                                                              ),
+                                                          curve:
+                                                              Curves
+                                                                  .easeOutCubic,
+                                                          child: child,
+                                                        ),
                                                       ),
-                                                      curve:
-                                                          Curves.easeOutCubic,
-                                                      child: child,
+                                                    ),
+                                                  );
+                                                },
+                                                child: Center(
+                                                  child: SizedBox(
+                                                    width: dims.width,
+                                                    child: AspectRatio(
+                                                      aspectRatio: 1,
+                                                      child: Stack(
+                                                        children: [
+                                                          AnimatedContainer(
+                                                            duration:
+                                                                const Duration(
+                                                                  milliseconds:
+                                                                      650,
+                                                                ),
+                                                            curve:
+                                                                Curves
+                                                                    .easeOutCubic,
+                                                            decoration: BoxDecoration(
+                                                              borderRadius:
+                                                                  BorderRadius.circular(
+                                                                    dims.radius,
+                                                                  ),
+                                                              border: Border.all(
+                                                                color: cs
+                                                                    .outline
+                                                                    .withOpacity(
+                                                                      0.6,
+                                                                    ),
+                                                                width: 2.0,
+                                                              ),
+                                                              boxShadow:
+                                                                  _artworkShadows(
+                                                                    dims,
+                                                                    cs,
+                                                                    isPlaying,
+                                                                  ),
+                                                            ),
+                                                          ),
+                                                          ClipRRect(
+                                                            borderRadius:
+                                                                BorderRadius.circular(
+                                                                  dims.radius,
+                                                                ),
+                                                            child: Transform.scale(
+                                                              scale: 1.024,
+                                                              child:
+                                                                  np.coverUrl !=
+                                                                              null &&
+                                                                          np.coverUrl!.isNotEmpty
+                                                                      ? _ValidatedCachedNetworkImage(
+                                                                        imageUrl:
+                                                                            np.coverUrl!,
+                                                                        fit:
+                                                                            BoxFit.cover,
+                                                                        fadeInDuration: const Duration(
+                                                                          milliseconds:
+                                                                              220,
+                                                                        ),
+                                                                        fadeOutDuration: const Duration(
+                                                                          milliseconds:
+                                                                              120,
+                                                                        ),
+                                                                        placeholder:
+                                                                            (
+                                                                              _,
+                                                                              __,
+                                                                            ) => Container(
+                                                                              decoration: BoxDecoration(
+                                                                                gradient: LinearGradient(
+                                                                                  colors: [
+                                                                                    cs.surfaceContainerHighest,
+                                                                                    cs.surfaceContainerHigh.withOpacity(
+                                                                                      0.9,
+                                                                                    ),
+                                                                                  ],
+                                                                                  begin:
+                                                                                      Alignment.topLeft,
+                                                                                  end:
+                                                                                      Alignment.bottomRight,
+                                                                                ),
+                                                                              ),
+                                                                              child: Icon(
+                                                                                Icons.menu_book_outlined,
+                                                                                size:
+                                                                                    88,
+                                                                                color: cs.onSurfaceVariant.withOpacity(
+                                                                                  0.75,
+                                                                                ),
+                                                                              ),
+                                                                            ),
+                                                                        errorWidget:
+                                                                            (
+                                                                              _,
+                                                                              __,
+                                                                              ___,
+                                                                            ) => Container(
+                                                                              color:
+                                                                                  cs.surfaceContainerHighest,
+                                                                              child: Icon(
+                                                                                Icons.menu_book_outlined,
+                                                                                size:
+                                                                                    88,
+                                                                                color:
+                                                                                    cs.onSurfaceVariant,
+                                                                              ),
+                                                                            ),
+                                                                      )
+                                                                      : Container(
+                                                                        color:
+                                                                            cs.surfaceContainerHighest,
+                                                                        child: Icon(
+                                                                          Icons
+                                                                              .menu_book_outlined,
+                                                                          size:
+                                                                              88,
+                                                                          color:
+                                                                              cs.onSurfaceVariant,
+                                                                        ),
+                                                                      ),
+                                                            ),
+                                                          ),
+                                                          Positioned.fill(
+                                                            child:
+                                                                _SleepTimerArcOverlay(),
+                                                          ),
+                                                          Positioned(
+                                                            left: 10,
+                                                            bottom: 10,
+                                                            child:
+                                                                _ResumeFromHistoryButton(),
+                                                          ),
+                                                        ],
+                                                      ),
                                                     ),
                                                   ),
                                                 ),
                                               );
                                             },
-                                            child: Center(
-                                              child: SizedBox(
-                                                width: dims.width,
-                                                child: AspectRatio(
-                                                  aspectRatio: 1,
-                                                  child: Stack(
-                                                    children: [
-                                                      AnimatedContainer(
-                                                        duration:
-                                                            const Duration(
-                                                              milliseconds: 650,
-                                                            ),
-                                                        curve:
-                                                            Curves.easeOutCubic,
-                                                        decoration: BoxDecoration(
-                                                          borderRadius:
-                                                              BorderRadius.circular(
-                                                                dims.radius,
-                                                              ),
-                                                          border: Border.all(
-                                                            color: cs.outline
-                                                                .withOpacity(
-                                                                  0.6,
-                                                                ),
-                                                            width: 2.0,
+                                          );
+                                        },
+                                      ),
+                                      const SizedBox(height: 28),
+                                      AnimatedBuilder(
+                                        animation: _titleAnimation,
+                                        builder: (context, child) {
+                                          return Transform.translate(
+                                            offset: Offset(
+                                              0,
+                                              20 * (1 - _titleAnimation.value),
+                                            ),
+                                            child: Opacity(
+                                              opacity: _titleAnimation.value,
+                                              child: ConstrainedBox(
+                                                constraints:
+                                                    const BoxConstraints(
+                                                      maxWidth: 460,
+                                                    ),
+                                                child: Column(
+                                                  children: [
+                                                    ValueListenableBuilder<
+                                                      bool
+                                                    >(
+                                                      valueListenable:
+                                                          UiPrefs
+                                                              .playerScrollingSingleLineTitle,
+                                                      builder: (
+                                                        context,
+                                                        singleLineScrollingTitle,
+                                                        _,
+                                                      ) {
+                                                        final titleStyle = text
+                                                            .headlineSmall
+                                                            ?.copyWith(
+                                                              fontSize:
+                                                                  (text
+                                                                          .headlineSmall
+                                                                          ?.fontSize ??
+                                                                      28) *
+                                                                  _metadataTextScale,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w700,
+                                                              height: 1.14,
+                                                              letterSpacing:
+                                                                  -0.2,
+                                                            );
+                                                        if (!singleLineScrollingTitle) {
+                                                          return Text(
+                                                            np.title,
+                                                            textAlign:
+                                                                TextAlign
+                                                                    .center,
+                                                            style: titleStyle,
+                                                            maxLines: 3,
+                                                            overflow:
+                                                                TextOverflow
+                                                                    .ellipsis,
+                                                          );
+                                                        }
+                                                        return _LoopingMarqueeText(
+                                                          text: np.title,
+                                                          style: titleStyle,
+                                                          gap: 40,
+                                                          pause: const Duration(
+                                                            milliseconds: 900,
                                                           ),
-                                                          boxShadow:
-                                                              _artworkShadows(
-                                                                dims,
-                                                                cs,
-                                                                isPlaying,
+                                                          pixelsPerSecond: 36,
+                                                        );
+                                                      },
+                                                    ),
+                                                    if (np.author != null &&
+                                                        np
+                                                            .author!
+                                                            .isNotEmpty) ...[
+                                                      const SizedBox(
+                                                        height: 10,
+                                                      ),
+                                                      Text(
+                                                        np.author!,
+                                                        textAlign:
+                                                            TextAlign.center,
+                                                        style: text.titleLarge?.copyWith(
+                                                          fontSize:
+                                                              (text
+                                                                      .titleLarge
+                                                                      ?.fontSize ??
+                                                                  18) *
+                                                              _metadataTextScale,
+                                                          color: cs
+                                                              .onSurfaceVariant
+                                                              .withOpacity(
+                                                                0.88,
                                                               ),
+                                                          fontWeight:
+                                                              FontWeight.w500,
+                                                          letterSpacing: 0.1,
                                                         ),
-                                                      ),
-                                                      ClipRRect(
-                                                        borderRadius:
-                                                            BorderRadius.circular(
-                                                              dims.radius,
-                                                            ),
-                                                        child: Transform.scale(
-                                                          scale: 1.024,
-                                                          child:
-                                                              np.coverUrl !=
-                                                                          null &&
-                                                                      np
-                                                                          .coverUrl!
-                                                                          .isNotEmpty
-                                                                  ? _ValidatedCachedNetworkImage(
-                                                                    imageUrl:
-                                                                        np.coverUrl!,
-                                                                    fit:
-                                                                        BoxFit
-                                                                            .cover,
-                                                                    fadeInDuration:
-                                                                        const Duration(
-                                                                          milliseconds:
-                                                                              220,
-                                                                        ),
-                                                                    fadeOutDuration:
-                                                                        const Duration(
-                                                                          milliseconds:
-                                                                              120,
-                                                                        ),
-                                                                    placeholder:
-                                                                        (
-                                                                          _,
-                                                                          __,
-                                                                        ) => Container(
-                                                                          decoration: BoxDecoration(
-                                                                            gradient: LinearGradient(
-                                                                              colors: [
-                                                                                cs.surfaceContainerHighest,
-                                                                                cs.surfaceContainerHigh.withOpacity(
-                                                                                  0.9,
-                                                                                ),
-                                                                              ],
-                                                                              begin:
-                                                                                  Alignment.topLeft,
-                                                                              end:
-                                                                                  Alignment.bottomRight,
-                                                                            ),
-                                                                          ),
-                                                                          child: Icon(
-                                                                            Icons.menu_book_outlined,
-                                                                            size:
-                                                                                88,
-                                                                            color: cs.onSurfaceVariant.withOpacity(
-                                                                              0.75,
-                                                                            ),
-                                                                          ),
-                                                                        ),
-                                                                    errorWidget:
-                                                                        (
-                                                                          _,
-                                                                          __,
-                                                                          ___,
-                                                                        ) => Container(
-                                                                          color:
-                                                                              cs.surfaceContainerHighest,
-                                                                          child: Icon(
-                                                                            Icons.menu_book_outlined,
-                                                                            size:
-                                                                                88,
-                                                                            color:
-                                                                                cs.onSurfaceVariant,
-                                                                          ),
-                                                                        ),
-                                                                  )
-                                                                  : Container(
-                                                                    color:
-                                                                        cs.surfaceContainerHighest,
-                                                                    child: Icon(
-                                                                      Icons
-                                                                          .menu_book_outlined,
-                                                                      size: 88,
-                                                                      color:
-                                                                          cs.onSurfaceVariant,
-                                                                    ),
-                                                                  ),
-                                                        ),
-                                                      ),
-                                                      // Sleep timer countdown arc
-                                                      Positioned.fill(
-                                                        child:
-                                                            _SleepTimerArcOverlay(),
-                                                      ),
-                                                      Positioned(
-                                                        left: 10,
-                                                        bottom: 10,
-                                                        child:
-                                                            _ResumeFromHistoryButton(),
+                                                        maxLines: 2,
+                                                        overflow:
+                                                            TextOverflow
+                                                                .ellipsis,
                                                       ),
                                                     ],
-                                                  ),
+                                                  ],
                                                 ),
                                               ),
                                             ),
                                           );
                                         },
-                                      );
-                                    },
-                                  ),
-                                  const SizedBox(height: 28),
-
-                                  // Title / author / narrator with enhanced typography
-                                  AnimatedBuilder(
-                                    animation: _titleAnimation,
-                                    builder: (context, child) {
-                                      return Transform.translate(
-                                        offset: Offset(
-                                          0,
-                                          20 * (1 - _titleAnimation.value),
-                                        ),
-                                        child: Opacity(
-                                          opacity: _titleAnimation.value,
-                                          child: ConstrainedBox(
-                                            constraints: const BoxConstraints(
-                                              maxWidth: 460,
-                                            ),
-                                            child: Column(
-                                              children: [
-                                                ValueListenableBuilder<bool>(
-                                                  valueListenable:
-                                                      UiPrefs
-                                                          .playerScrollingSingleLineTitle,
-                                                  builder: (
-                                                    context,
-                                                    singleLineScrollingTitle,
-                                                    _,
-                                                  ) {
-                                                    final titleStyle = text
-                                                        .headlineSmall
-                                                        ?.copyWith(
-                                                          fontSize:
-                                                              (text
-                                                                      .headlineSmall
-                                                                      ?.fontSize ??
-                                                                  28) *
-                                                              _metadataTextScale,
-                                                          fontWeight:
-                                                              FontWeight.w700,
-                                                          height: 1.14,
-                                                          letterSpacing: -0.2,
-                                                        );
-                                                    if (!singleLineScrollingTitle) {
-                                                      return Text(
-                                                        np.title,
-                                                        textAlign:
-                                                            TextAlign.center,
-                                                        style: titleStyle,
-                                                        maxLines: 3,
-                                                        overflow:
-                                                            TextOverflow
-                                                                .ellipsis,
-                                                      );
-                                                    }
-                                                    return _LoopingMarqueeText(
-                                                      text: np.title,
-                                                      style: titleStyle,
-                                                      gap: 40,
-                                                      pause: const Duration(
-                                                        milliseconds: 900,
-                                                      ),
-                                                      pixelsPerSecond: 36,
-                                                    );
-                                                  },
-                                                ),
-                                                if (np.author != null &&
-                                                    np.author!.isNotEmpty) ...[
-                                                  const SizedBox(height: 10),
-                                                  Text(
-                                                    np.author!,
-                                                    textAlign: TextAlign.center,
-                                                    style: text.titleLarge?.copyWith(
-                                                      fontSize:
-                                                          (text
-                                                                  .titleLarge
-                                                                  ?.fontSize ??
-                                                              18) *
-                                                          _metadataTextScale,
-                                                      color: cs.onSurfaceVariant
-                                                          .withOpacity(0.88),
-                                                      fontWeight:
-                                                          FontWeight.w500,
-                                                      letterSpacing: 0.1,
-                                                    ),
-                                                    maxLines: 2,
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
-                                                  ),
-                                                ],
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                  if (np.narrator != null &&
-                                      np.narrator!.isNotEmpty) ...[
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      'Narrated by ${np.narrator!}',
-                                      textAlign: TextAlign.center,
-                                      style: text.bodyMedium?.copyWith(
-                                        fontSize:
-                                            (text.bodyMedium?.fontSize ?? 15) *
-                                            _metadataTextScale,
-                                        color: cs.onSurfaceVariant.withOpacity(
-                                          0.68,
-                                        ),
-                                        fontWeight: FontWeight.w500,
-                                        letterSpacing: 0.15,
                                       ),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ],
-                                  const SizedBox(height: 2),
-                                ],
-                              ),
-                            ),
+                                      if (np.narrator != null &&
+                                          np.narrator!.isNotEmpty) ...[
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          'Narrated by ${np.narrator!}',
+                                          textAlign: TextAlign.center,
+                                          style: text.bodyMedium?.copyWith(
+                                            fontSize:
+                                                (text.bodyMedium?.fontSize ??
+                                                    15) *
+                                                _metadataTextScale,
+                                            color: cs.onSurfaceVariant
+                                                .withOpacity(0.68),
+                                            fontWeight: FontWeight.w500,
+                                            letterSpacing: 0.15,
+                                          ),
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ],
+                                      const SizedBox(height: 2),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
                           ),
                         ),
 
@@ -3050,6 +3252,9 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                   hasGlobal
                                       ? playback.currentChapterProgress
                                       : null;
+                              final chapters =
+                                  playback.nowPlaying?.chapters ??
+                                  const <Chapter>[];
                               final preferChapter =
                                   hasGlobal &&
                                   chapterMetrics != null &&
@@ -3061,6 +3266,8 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                     playback.globalBookPosition ??
                                     Duration.zero;
                                 progressContent = Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
                                   children: [
                                     _buildChapterProgressPrimary(
                                       context: context,
@@ -3069,7 +3276,8 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                       playback: playback,
                                       metrics: chapterMetrics!,
                                     ),
-                                    if (globalTotal != null) ...[
+                                    if (globalTotal != null &&
+                                        chapters.length > 1) ...[
                                       const SizedBox(height: 14),
                                       Divider(
                                         height: 1,
@@ -3078,11 +3286,13 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                         ),
                                       ),
                                       const SizedBox(height: 14),
-                                      _buildBookSummaryRow(
+                                      _buildBookDetailStyleChapterTimeline(
                                         text: text,
                                         cs: cs,
                                         position: globalPos,
                                         total: globalTotal,
+                                        chapters: chapters,
+                                        metrics: chapterMetrics,
                                       ),
                                     ],
                                   ],
@@ -3104,7 +3314,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                       total: globalTotal!,
                                       isPrimary: true,
                                     ),
-                                    if (chapterMetrics != null) ...[
+                                    if (chapters.length > 1) ...[
                                       const SizedBox(height: 14),
                                       Divider(
                                         height: 1,
@@ -3113,9 +3323,12 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                         ),
                                       ),
                                       const SizedBox(height: 14),
-                                      _buildChapterSummaryRow(
+                                      _buildBookDetailStyleChapterTimeline(
                                         text: text,
                                         cs: cs,
+                                        position: globalPos,
+                                        total: globalTotal,
+                                        chapters: chapters,
                                         metrics: chapterMetrics,
                                       ),
                                     ],
@@ -3812,7 +4025,6 @@ class _ChaptersDownloadButton extends StatefulWidget {
   final bool iconOnly;
   final double heightScale;
 
-
   @override
   State<_ChaptersDownloadButton> createState() =>
       _ChaptersDownloadButtonState();
@@ -4339,13 +4551,9 @@ class _SleepTimerArcOverlay extends StatelessWidget {
         if (remaining == null || initial == null || initial == Duration.zero) {
           return const SizedBox.shrink();
         }
-        final fraction =
-            (remaining.inMilliseconds / initial.inMilliseconds).clamp(
-              0.0,
-              1.0,
-            );
-        final isAlmostDone =
-            remaining.inMinutes < 5 && remaining.inSeconds > 0;
+        final fraction = (remaining.inMilliseconds / initial.inMilliseconds)
+            .clamp(0.0, 1.0);
+        final isAlmostDone = remaining.inMinutes < 5 && remaining.inSeconds > 0;
         final arcColor =
             isAlmostDone ? Colors.deepOrange : Colors.orange.shade400;
         final label =
