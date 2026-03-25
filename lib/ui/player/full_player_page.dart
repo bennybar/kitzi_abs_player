@@ -1188,7 +1188,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
             : null;
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
           'CHAPTERS',
