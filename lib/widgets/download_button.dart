@@ -389,11 +389,11 @@ class _DownloadButtonState extends State<DownloadButton> {
               : null;
       final amountLabel =
           (downloadedBytes != null && totalBytes != null)
-              ? '${_formatBytes(downloadedBytes)} / ${_formatBytes(totalBytes)}'
+              ? _formatBytes(totalBytes)
               : 'Calculating size…';
       if (widget.progressStyle == DownloadButtonProgressStyle.outlineRing) {
         const borderRadius = 16.0;
-        const strokeWidth = 3.0;
+        const strokeWidth = 4.0;
         child = SizedBox(
           height: 54,
           child: CustomPaint(
