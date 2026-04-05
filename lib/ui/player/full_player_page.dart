@@ -723,7 +723,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
     int metadataLineCount = 3,
   }) {
     final widthFactor = switch (size) {
-      PlayerCoverSize.small => 0.54,
+      PlayerCoverSize.small => 0.48,
       PlayerCoverSize.medium => 0.62,
       PlayerCoverSize.large => 0.7,
       PlayerCoverSize.extraLarge => 0.78,
@@ -738,12 +738,12 @@ class _FullPlayerPageState extends State<FullPlayerPage>
     var width = screenWidth * widthFactor;
 
     if (availableHeight != null && availableHeight > 0) {
-      final reservedHeight = 104.0 + metadataLineCount * 24.0;
+      final reservedHeight = 92.0 + metadataLineCount * 22.0;
       final dynamicMax =
           (availableHeight - reservedHeight)
-              .clamp(screenWidth * 0.46, screenWidth * 0.84)
+              .clamp(screenWidth * 0.4, screenWidth * 0.78)
               .toDouble();
-      final growth = ((6 - metadataLineCount).clamp(0, 4) * 20).toDouble();
+      final growth = ((6 - metadataLineCount).clamp(0, 4) * 14).toDouble();
       width = math.min(dynamicMax, width + growth);
     }
 
@@ -2619,9 +2619,9 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                   physics: const BouncingScrollPhysics(),
                                   padding: const EdgeInsets.fromLTRB(
                                     20,
+                                    14,
                                     20,
-                                    20,
-                                    24,
+                                    18,
                                   ),
                                   child: Column(
                                     children: [
@@ -2826,7 +2826,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                           );
                                         },
                                       ),
-                                      const SizedBox(height: 28),
+                                      const SizedBox(height: 18),
                                       AnimatedBuilder(
                                         animation: _titleAnimation,
                                         builder: (context, child) {
@@ -2962,7 +2962,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                                                 .ellipsis,
                                                       ),
                                                     ],
-                                                    const SizedBox(height: 14),
+                                                    const SizedBox(height: 10),
                                                     Wrap(
                                                       alignment:
                                                           WrapAlignment.center,
@@ -3133,10 +3133,10 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                   cs.surfaceContainerHighest.withOpacity(0.62),
                                 ),
                                 padding: const EdgeInsets.fromLTRB(
-                                  14,
-                                  14,
-                                  14,
                                   12,
+                                  12,
+                                  12,
+                                  10,
                                 ),
                                 child: Column(
                                   crossAxisAlignment:
@@ -3197,7 +3197,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                         ),
                                       ],
                                     ),
-                                    const SizedBox(height: 12),
+                                    const SizedBox(height: 10),
                                     progressContent,
                                   ],
                                 ),
@@ -3220,13 +3220,13 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                               child: Opacity(
                                 opacity: _controlsAnimation.value,
                                 child: RepaintBoundary(
-                                  child: Padding(
-                                    padding: const EdgeInsets.fromLTRB(
-                                      16,
-                                      8,
-                                      16,
-                                      20,
-                                    ),
+                                    child: Padding(
+                                      padding: const EdgeInsets.fromLTRB(
+                                        16,
+                                        6,
+                                        16,
+                                        16,
+                                      ),
                                     child: _GlassPanel(
                                       borderRadius: 28,
                                       tint: Color.alphaBlend(
@@ -3236,10 +3236,10 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                         ),
                                       ),
                                       padding: const EdgeInsets.fromLTRB(
-                                        14,
-                                        14,
-                                        14,
-                                        14,
+                                        12,
+                                        12,
+                                        12,
+                                        12,
                                       ),
                                       child: Column(
                                         children: [
@@ -3266,7 +3266,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                               ),
                                             ],
                                           ),
-                                          const SizedBox(height: 14),
+                                          const SizedBox(height: 10),
                                         // Large transport controls (Material 3) - single row, auto-sized
                                         LayoutBuilder(
                                           builder: (context, constraints) {
@@ -3446,7 +3446,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                           },
                                         ),
 
-                                        const SizedBox(height: 22),
+                                        const SizedBox(height: 16),
 
                                         Column(
                                           crossAxisAlignment:
