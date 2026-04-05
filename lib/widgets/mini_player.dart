@@ -40,7 +40,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
         return Padding(
           padding: const EdgeInsets.fromLTRB(4, 4, 4, 2),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(26),
             child: DecoratedBox(
               decoration: _miniBackgroundDecoration(
                 gradientEnabled,
@@ -109,7 +109,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                     // Album art with PixelPlay-inspired rounded corners and shadow
                     Container(
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: BorderRadius.circular(16),
                         boxShadow: [
                           BoxShadow(
                             color: cs.shadow.withOpacity(0.12),
@@ -120,8 +120,8 @@ class _MiniPlayerState extends State<MiniPlayer> {
                         ],
                       ),
                       child: ClipRRect(
-                        borderRadius: BorderRadius.circular(14),
-                          child: Transform.scale(
+                        borderRadius: BorderRadius.circular(16),
+                        child: Transform.scale(
                             scale: 1.024,
                           child: _MiniCover(
                             url: np.coverUrl,

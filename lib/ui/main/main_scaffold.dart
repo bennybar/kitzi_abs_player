@@ -268,7 +268,7 @@ class _MainScaffoldState extends State<MainScaffold> {
                                               Brightness.dark
                                           ? 0.18
                                           : 0.14,
-                                  borderRadius: BorderRadius.circular(26),
+                                  borderRadius: BorderRadius.circular(30),
                                   tint: Color.alphaBlend(
                                     Colors.black.withValues(
                                       alpha:
@@ -283,7 +283,7 @@ class _MainScaffoldState extends State<MainScaffold> {
                                   lightenAmount: 0.10,
                                   child: DecoratedBox(
                                     decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(26),
+                                      borderRadius: BorderRadius.circular(30),
                                       border: Border.all(
                                         color: cs.outlineVariant.withOpacity(
                                           0.16,
@@ -371,7 +371,7 @@ class _MainScaffoldState extends State<MainScaffold> {
           blur: 20,
           opacity:
               Theme.of(context).brightness == Brightness.dark ? 0.22 : 0.10,
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(28),
           tint: Color.alphaBlend(
             Colors.black.withValues(
               alpha:
@@ -381,10 +381,10 @@ class _MainScaffoldState extends State<MainScaffold> {
           ),
           liveBlur: true,
           lightenAmount: 0.06,
-          padding: const EdgeInsets.fromLTRB(6, 4, 6, 2),
+          padding: const EdgeInsets.fromLTRB(8, 5, 8, 3),
           child: DecoratedBox(
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(22),
+              borderRadius: BorderRadius.circular(28),
               border: Border.all(
                 color: colorScheme.outlineVariant.withOpacity(0.10),
               ),
@@ -397,7 +397,7 @@ class _MainScaffoldState extends State<MainScaffold> {
               ],
             ),
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: BorderRadius.circular(24),
               child: SizedBox(
                 height: height,
                 child: Row(
@@ -484,7 +484,7 @@ class _NavTab extends StatelessWidget {
 
     final iconWidget = Icon(
       destination.icon,
-      size: 21,
+      size: selected ? 24 : 21,
       fill: selected ? 1 : 0,
       color:
           selected
@@ -506,10 +506,7 @@ class _NavTab extends StatelessWidget {
             children: [
               selected
                   ? AppLiquidGlassPill(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 7,
-                    ),
+                    padding: EdgeInsets.zero,
                     blur: 10,
                     opacity:
                         Theme.of(context).brightness == Brightness.dark
@@ -530,10 +527,14 @@ class _NavTab extends StatelessWidget {
                     elevation: 4,
                     liveBlur: true,
                     lightenAmount: 0.08,
-                    child: iconWidget,
+                    child: SizedBox(
+                      width: 50,
+                      height: 40,
+                      child: Center(child: iconWidget),
+                    ),
                   )
                   : SizedBox(
-                    height: 34,
+                    height: 36,
                     child: Center(child: iconWidget),
                   ),
               const SizedBox(height: 2),
