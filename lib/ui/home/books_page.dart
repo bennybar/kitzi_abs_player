@@ -50,6 +50,9 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
   List<Book> _recentBooks = [];
   bool _loading = true;
   String? _error;
+  bool _homeStatsLoading = false;
+  int _todayListeningSeconds = 0;
+  int _currentStreakDays = 0;
   Timer? _timer;
   StreamSubscription<List<ConnectivityResult>>? _connSub;
   bool _isOnline = true;
@@ -108,6 +111,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
     _restorePrefs().then((_) {
       // Load recent first so the section appears immediately
       _loadRecentBooks();
+      _loadHomeStats();
       // Then refresh library: DB first, server in background
       _refresh(initial: true);
       _setupAutoRefresh();
@@ -476,6 +480,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       await _loadBooksFromCache(showSpinner: false);
       debugPrint('[REFRESH] After reload, have ${_books.length} books in list');
       if (!initial) _loadRecentBooks();
+      _loadHomeStats();
       debugPrint('[REFRESH] Refresh complete');
     } catch (e, stackTrace) {
       debugPrint('[REFRESH] Error during refresh: $e');
@@ -622,6 +627,35 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       });
     } catch (_) {
       // ignore; fallback already shown
+    }
+  }
+
+  Future<void> _loadHomeStats() async {
+    if (_homeStatsLoading || !mounted) return;
+    _homeStatsLoading = true;
+    try {
+      final auth = await AuthRepository.ensure();
+      final api = auth.api;
+      final response = await api.request(
+        'GET',
+        '/api/me/listening-stats',
+        auth: true,
+      );
+      if (response.statusCode != 200) return;
+      final data = jsonDecode(response.body);
+      if (data is! Map<String, dynamic>) return;
+      final daysMap =
+          (data['days'] as Map<String, dynamic>?) ?? const <String, dynamic>{};
+      final todayKey = _dayKey(DateTime.now());
+      if (!mounted) return;
+      setState(() {
+        _todayListeningSeconds = _normalizeDaySeconds(daysMap)[todayKey] ?? 0;
+        _currentStreakDays = _computeCurrentStreakDays(daysMap);
+      });
+    } catch (_) {
+      // Keep home usable without stats when offline or unauthenticated.
+    } finally {
+      _homeStatsLoading = false;
     }
   }
 
@@ -903,6 +937,78 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
     );
   }
 
+  int _computeCurrentStreakDays(Map<String, dynamic> days) {
+    if (days.isEmpty) return 0;
+    final daySeconds = _normalizeDaySeconds(days);
+    var today = DateTime.now();
+    today = DateTime(today.year, today.month, today.day);
+    var streak = 0;
+    for (var i = 0; i < 3650; i++) {
+      final d = today.subtract(Duration(days: i));
+      final sec = daySeconds[_dayKey(d)] ?? 0;
+      if (sec > 0) {
+        streak += 1;
+      } else {
+        break;
+      }
+    }
+    return streak;
+  }
+
+  String _dayKey(DateTime d) {
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${d.year}-${two(d.month)}-${two(d.day)}';
+  }
+
+  Map<String, int> _normalizeDaySeconds(Map<String, dynamic> days) {
+    final out = <String, int>{};
+    days.forEach((k, v) {
+      out[k.toString()] = _extractSeconds(v);
+    });
+    return out;
+  }
+
+  int _extractSeconds(dynamic value) {
+    if (value == null) return 0;
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value) ?? 0;
+    if (value is Map) {
+      final m = value.cast<String, dynamic>();
+      final candidates = [
+        m['timeListening'],
+        m['totalTime'],
+        m['seconds'],
+        m['time'],
+        m['duration'],
+      ];
+      for (final c in candidates) {
+        if (c is num) return c.toInt();
+        if (c is String) {
+          final parsed = int.tryParse(c);
+          if (parsed != null) return parsed;
+        }
+      }
+    }
+    return 0;
+  }
+
+  String _formatListeningTime(int seconds) {
+    if (seconds <= 0) return '0m';
+    final duration = Duration(seconds: seconds);
+    final hours = duration.inHours;
+    final minutes = duration.inMinutes.remainder(60);
+    if (hours > 0) {
+      return minutes > 0 ? '${hours}h ${minutes}m' : '${hours}h';
+    }
+    return '${duration.inMinutes}m';
+  }
+
+  String _estimatePages(int seconds) {
+    if (seconds <= 0) return 'No pages yet';
+    final pages = math.max(1, (seconds / 105).round());
+    return 'about $pages pages';
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -935,19 +1041,50 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                   titleSpacing: 20,
                   title: Row(
                     children: [
-                      Icon(
-                        Icons.library_music_rounded,
-                        color: cs.primary,
-                        size: 22,
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Color.alphaBlend(
+                            cs.primary.withOpacity(0.12),
+                            cs.surface,
+                          ),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.graphic_eq_rounded,
+                              color: cs.primary,
+                              size: 16,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Audiobooks',
+                              style: Theme.of(context).textTheme.labelLarge
+                                  ?.copyWith(
+                                    color: cs.onSurface,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                            ),
+                          ],
+                        ),
                       ),
-                      const SizedBox(width: 10),
-                      Text(
-                        _query.trim().isEmpty ? 'Audiobooks' : 'Library',
-                        style: Theme.of(
-                          context,
-                        ).textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: -0.2,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          _query.trim().isEmpty ? 'Home' : 'Search',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(
+                            context,
+                          ).textTheme.headlineSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: -0.3,
+                          ),
                         ),
                       ),
                     ],
@@ -1176,6 +1313,11 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                   ),
                 ),
 
+                if (_query.trim().isEmpty)
+                  SliverToBoxAdapter(
+                    child: _buildHomeHero(visible),
+                  ),
+
                 // Content
                 if (_loading)
                   SliverFillRemaining(child: _buildLoadingSkeleton(context))
@@ -1273,12 +1415,14 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                   )
                 else ...[
                   if (_recentBooks.isNotEmpty && _query.trim().isEmpty)
-                    _buildResumePlayingSection(),
+                    _buildContinueListeningSection(),
+                  if (_query.trim().isEmpty)
+                    _buildRecentlyAddedShelf(visible),
                   if (_query.trim().isEmpty)
                     SliverToBoxAdapter(
                       child: _SectionHeader(
                         icon: Icons.library_books_rounded,
-                        title: 'Audiobooks',
+                        title: 'All Audiobooks',
                         padding: const EdgeInsets.fromLTRB(20, 6, 20, 14),
                       ),
                     ),
@@ -1324,7 +1468,92 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildResumePlayingSection() {
+  Widget _buildHomeHero(List<Book> visible) {
+    final cs = Theme.of(context).colorScheme;
+    final continueCount = _recentBooks.where((b) => b.isAudioBook).length;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 2, 20, 16),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Color.alphaBlend(
+            cs.primary.withOpacity(0.08),
+            cs.surfaceContainerLow,
+          ),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: cs.outlineVariant.withOpacity(0.14),
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: _HomeStatCard(
+                    title: 'Listening Time',
+                    value: _formatListeningTime(_todayListeningSeconds),
+                    subtitle: _estimatePages(_todayListeningSeconds),
+                    icon: Icons.schedule_rounded,
+                    chipLabel:
+                        _homeStatsLoading && _todayListeningSeconds == 0
+                            ? 'Syncing'
+                            : 'Today',
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _HomeStatCard(
+                    title: 'Streak',
+                    value:
+                        _currentStreakDays > 0
+                            ? '$_currentStreakDays days'
+                            : 'Start today',
+                    subtitle:
+                        _currentStreakDays > 0
+                            ? 'Keep momentum'
+                            : 'No active streak',
+                    icon: Icons.local_fire_department_rounded,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: _HomeStatCard(
+                    title: 'Continue Listening',
+                    value: '$continueCount books',
+                    subtitle:
+                        continueCount > 0
+                            ? 'Jump back in quickly'
+                            : 'Recent books will appear here',
+                    icon: Icons.play_circle_fill_rounded,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _HomeStatCard(
+                    title: 'Library',
+                    value: '${visible.length} titles',
+                    subtitle: 'Freshest shelf on top',
+                    icon: Icons.library_books_rounded,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildContinueListeningSection() {
     if (_isEbookLibrary)
       return const SliverToBoxAdapter(child: SizedBox.shrink());
     return SliverToBoxAdapter(
@@ -1335,11 +1564,10 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
           children: [
             const _SectionHeader(
               icon: Icons.play_circle_outline_rounded,
-              title: 'Resume Playing',
+              title: 'Continue Listening',
               padding: EdgeInsets.zero,
             ),
             const SizedBox(height: 18),
-            // One-row, horizontally scrollable list (up to 6 books)
             Builder(
               builder: (context) {
                 final visible = _recentBooks
@@ -1382,6 +1610,48 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
               },
             ),
             const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRecentlyAddedShelf(List<Book> list) {
+    final shelf = list.take(10).toList(growable: false);
+    if (shelf.isEmpty) return const SliverToBoxAdapter(child: SizedBox.shrink());
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 22),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const _SectionHeader(
+              icon: Icons.fiber_new_rounded,
+              title: 'Recently Added',
+              padding: EdgeInsets.zero,
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              height: 214,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                physics: const BouncingScrollPhysics(),
+                itemCount: shelf.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 12),
+                itemBuilder: (context, index) {
+                  final book = shelf[index];
+                  return SizedBox(
+                    width: 132,
+                    height: 214,
+                    child: _ShelfBookCard(
+                      key: ValueKey('recent-${book.id}'),
+                      book: book,
+                      onTap: () => _openDetails(book),
+                    ),
+                  );
+                },
+              ),
+            ),
           ],
         ),
       ),
@@ -1711,6 +1981,117 @@ class _ToolbarSurfaceButton extends StatelessWidget {
   }
 }
 
+class _HomeStatCard extends StatelessWidget {
+  const _HomeStatCard({
+    required this.title,
+    required this.value,
+    required this.subtitle,
+    required this.icon,
+    this.chipLabel,
+  });
+
+  final String title;
+  final String value;
+  final String subtitle;
+  final IconData icon;
+  final String? chipLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+
+    return Container(
+      constraints: const BoxConstraints(minHeight: 102),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Color.alphaBlend(cs.surface.withOpacity(0.72), cs.surface),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: cs.outlineVariant.withOpacity(0.12)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: text.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.2,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+              if (chipLabel != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: cs.surfaceContainerHighest.withOpacity(0.9),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    chipLabel!,
+                    style: text.labelSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: cs.onSurfaceVariant,
+                      fontSize: 10,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: cs.primary.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, size: 16, color: cs.primary),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: text.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.4,
+                    fontSize: 20,
+                    height: 1.15,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            subtitle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: text.bodySmall?.copyWith(
+              color: cs.onSurfaceVariant,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _SectionHeader extends StatelessWidget {
   const _SectionHeader({
     required this.icon,
@@ -1749,6 +2130,72 @@ class _SectionHeader extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ShelfBookCard extends StatelessWidget {
+  const _ShelfBookCard({
+    super.key,
+    required this.book,
+    required this.onTap,
+  });
+
+  final Book book;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: cs.outline.withOpacity(0.08)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Padding(
+          padding: const EdgeInsets.all(8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: EnhancedCoverImage(url: book.coverUrl),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                book.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  height: 1.12,
+                  fontSize: 13,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                book.author?.isNotEmpty == true ? book.author! : 'Unknown author',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: cs.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

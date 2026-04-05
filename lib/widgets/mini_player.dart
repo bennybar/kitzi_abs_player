@@ -38,9 +38,9 @@ class _MiniPlayerState extends State<MiniPlayer> {
       valueListenable: UiPrefs.playerGradientBackground,
       builder: (_, gradientEnabled, __) {
         return Padding(
-          padding: const EdgeInsets.fromLTRB(14, 6, 14, 0),
+          padding: const EdgeInsets.fromLTRB(6, 6, 6, 4),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(20),
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
               child: DecoratedBox(
@@ -104,8 +104,8 @@ class _MiniPlayerState extends State<MiniPlayer> {
                 children: [
                   Padding(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 8,
+                      horizontal: 12,
+                      vertical: 7,
                     ),
                     child: Row(
                   children: [

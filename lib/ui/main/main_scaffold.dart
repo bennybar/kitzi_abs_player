@@ -248,25 +248,37 @@ class _MainScaffoldState extends State<MainScaffold> {
                 final chrome = Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Mini player with animated size - only takes space when visible (120Hz optimized)
                     AnimatedSize(
-                      duration: const Duration(
-                        milliseconds: 350,
-                      ), // Max smoothness at 120Hz (42 frames)
-                      curve: const Cubic(
-                        0.05,
-                        0.7,
-                        0.1,
-                        1.0,
-                      ), // Material Design 3 emphasized decelerate
+                      duration: const Duration(milliseconds: 350),
+                      curve: const Cubic(0.05, 0.7, 0.1, 1.0),
                       child:
                           hasMini
-                              ? const Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  MiniPlayer(height: 68),
-                                  SizedBox(height: 6),
-                                ],
+                              ? Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  10,
+                                  0,
+                                  10,
+                                  4,
+                                ),
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: cs.surface.withOpacity(0.84),
+                                    borderRadius: BorderRadius.circular(26),
+                                    border: Border.all(
+                                      color: cs.outlineVariant.withOpacity(
+                                        0.14,
+                                      ),
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: cs.shadow.withOpacity(0.1),
+                                        blurRadius: 20,
+                                        offset: const Offset(0, 8),
+                                      ),
+                                    ],
+                                  ),
+                                  child: const MiniPlayer(height: 66),
+                                ),
                               )
                               : const SizedBox.shrink(),
                     ),
@@ -330,26 +342,42 @@ class _MainScaffoldState extends State<MainScaffold> {
     required bool showAuthors,
     required bool showSeries,
   }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: colorScheme.surface.withOpacity(0.96),
-        border: Border(
-          top: BorderSide(color: colorScheme.outlineVariant.withOpacity(0.16)),
+    return SafeArea(
+      top: false,
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(10, 0, 10, 8),
+        padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
+        decoration: BoxDecoration(
+          color: colorScheme.surface.withOpacity(0.94),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: colorScheme.outlineVariant.withOpacity(0.16),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: colorScheme.shadow.withOpacity(0.14),
+              blurRadius: 24,
+              offset: const Offset(0, 10),
+            ),
+          ],
         ),
-      ),
-      child: NavigationBar(
-        selectedIndex: selectedIndex,
-        onDestinationSelected: onDestinationSelected,
-        backgroundColor: Colors.transparent,
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
-        height: height,
-        indicatorColor: Color.alphaBlend(
-          colorScheme.primary.withOpacity(0.12),
-          colorScheme.surface,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: NavigationBar(
+            selectedIndex: selectedIndex,
+            onDestinationSelected: onDestinationSelected,
+            backgroundColor: Colors.transparent,
+            surfaceTintColor: Colors.transparent,
+            elevation: 0,
+            height: height,
+            indicatorColor: Color.alphaBlend(
+              colorScheme.primary.withOpacity(0.12),
+              colorScheme.surface,
+            ),
+            labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+            destinations: _buildDestinations(showAuthors, showSeries),
+          ),
         ),
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        destinations: _buildDestinations(showAuthors, showSeries),
       ),
     );
   }

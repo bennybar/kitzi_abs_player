@@ -1,0 +1,1241 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kitzi Suggestion</title>
+    <style>
+      :root {
+        --page: #c18d66;
+        --page-deep: #ab7a58;
+        --ink: #12100f;
+        --muted: #65564b;
+        --line: rgba(30, 18, 12, 0.12);
+        --panel: rgba(255, 248, 242, 0.78);
+        --panel-strong: rgba(255, 251, 247, 0.92);
+        --yes: #1d8d56;
+        --yes-soft: rgba(29, 141, 86, 0.12);
+        --no: #a24f39;
+        --no-soft: rgba(162, 79, 57, 0.12);
+        --phone: #070707;
+        --phone-2: #171414;
+        --phone-3: #262120;
+        --phone-4: #332d2b;
+        --phone-line: rgba(255, 255, 255, 0.09);
+        --phone-muted: #978e89;
+        --phone-text: #f6f0eb;
+        --phone-accent: #efcfaa;
+        --phone-green: #44d266;
+        --phone-shadow: 0 30px 70px rgba(28, 13, 8, 0.34);
+        --card-shadow: 0 24px 60px rgba(54, 24, 10, 0.14);
+        --radius-xl: 30px;
+        --radius-lg: 22px;
+        --radius-md: 16px;
+        --radius-sm: 12px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: var(--ink);
+        font-family: "Avenir Next", "SF Pro Display", "Segoe UI", sans-serif;
+        background:
+          radial-gradient(circle at top left, rgba(255, 240, 226, 0.36), transparent 28%),
+          radial-gradient(circle at bottom right, rgba(91, 46, 23, 0.18), transparent 32%),
+          linear-gradient(180deg, var(--page) 0%, var(--page-deep) 100%);
+      }
+
+      img {
+        display: block;
+        max-width: 100%;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      .page {
+        max-width: 1500px;
+        margin: 0 auto;
+        padding: 42px 26px 64px;
+      }
+
+      .hero {
+        display: grid;
+        gap: 16px;
+        margin-bottom: 28px;
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        width: fit-content;
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: rgba(255, 247, 240, 0.36);
+        border: 1px solid rgba(255, 246, 241, 0.25);
+        color: rgba(31, 16, 10, 0.78);
+        font-size: 12px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        font-weight: 700;
+      }
+
+      h1 {
+        max-width: 980px;
+        font-size: clamp(38px, 5.6vw, 72px);
+        line-height: 0.94;
+        letter-spacing: -0.05em;
+      }
+
+      .hero p {
+        max-width: 900px;
+        color: rgba(25, 14, 10, 0.76);
+        font-size: 18px;
+        line-height: 1.56;
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: minmax(360px, 460px) minmax(0, 1fr);
+        gap: 22px;
+        align-items: start;
+      }
+
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-xl);
+        box-shadow: var(--card-shadow);
+        backdrop-filter: blur(18px);
+      }
+
+      .card-inner {
+        padding: 24px;
+      }
+
+      .sidebar {
+        position: sticky;
+        top: 20px;
+        display: grid;
+        gap: 18px;
+      }
+
+      .section-title {
+        font-size: 20px;
+        letter-spacing: -0.03em;
+        margin-bottom: 16px;
+      }
+
+      .decision {
+        display: grid;
+        gap: 12px;
+      }
+
+      .decision-item {
+        padding: 16px;
+        border-radius: 18px;
+        border: 1px solid rgba(30, 18, 12, 0.08);
+        background: var(--panel-strong);
+      }
+
+      .decision-item .label {
+        display: inline-flex;
+        margin-bottom: 8px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        font-size: 11px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        font-weight: 800;
+      }
+
+      .decision-item.take .label {
+        color: var(--yes);
+        background: var(--yes-soft);
+      }
+
+      .decision-item.skip .label {
+        color: var(--no);
+        background: var(--no-soft);
+      }
+
+      .decision-item h3 {
+        font-size: 16px;
+        letter-spacing: -0.02em;
+        margin-bottom: 6px;
+      }
+
+      .decision-item p {
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.48;
+      }
+
+      .canvas {
+        display: grid;
+        gap: 22px;
+      }
+
+      .canvas-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 18px;
+        align-items: end;
+        margin-bottom: 18px;
+      }
+
+      .canvas-head p {
+        max-width: 720px;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+
+      .compare {
+        display: grid;
+        grid-template-columns: minmax(240px, 320px) minmax(320px, 1fr);
+        gap: 22px;
+        align-items: center;
+      }
+
+      .reference {
+        display: grid;
+        gap: 14px;
+      }
+
+      .reference-shot {
+        border-radius: 28px;
+        overflow: hidden;
+        border: 1px solid rgba(36, 18, 11, 0.14);
+        background: rgba(255, 251, 246, 0.88);
+        box-shadow: 0 22px 52px rgba(51, 25, 11, 0.16);
+      }
+
+      .reference-note {
+        padding: 16px;
+        border-radius: 18px;
+        background: rgba(255, 250, 245, 0.82);
+        border: 1px solid rgba(30, 18, 12, 0.08);
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.48;
+      }
+
+      .phone-stage {
+        display: grid;
+        place-items: center;
+        min-height: 980px;
+        padding: 10px 10px 6px;
+        border-radius: 30px;
+        background:
+          radial-gradient(circle at top, rgba(255, 255, 255, 0.18), transparent 26%),
+          linear-gradient(180deg, rgba(255, 247, 239, 0.46), rgba(252, 243, 236, 0.24));
+        border: 1px solid rgba(43, 19, 9, 0.08);
+      }
+
+      .phone-shell {
+        position: relative;
+        width: 390px;
+        height: 844px;
+        padding: 14px;
+        border-radius: 56px;
+        background:
+          linear-gradient(180deg, #121212, #090909 26%, #111010 100%);
+        box-shadow:
+          inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+          inset 0 -12px 24px rgba(255, 255, 255, 0.02),
+          var(--phone-shadow);
+      }
+
+      .phone-shell::before {
+        content: "";
+        position: absolute;
+        inset: 7px;
+        border-radius: 50px;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        pointer-events: none;
+      }
+
+      .screen {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        border-radius: 46px;
+        background:
+          linear-gradient(180deg, #050505 0%, #090909 54%, #1f1a19 100%);
+      }
+
+      .notch {
+        position: absolute;
+        top: 8px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 148px;
+        height: 30px;
+        border-radius: 0 0 18px 18px;
+        background: #0a0a0a;
+        box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.04);
+        z-index: 6;
+      }
+
+      .statusbar {
+        position: absolute;
+        top: 28px;
+        left: 28px;
+        right: 28px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        color: rgba(255, 255, 255, 0.9);
+        font-size: 16px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+        z-index: 5;
+      }
+
+      .status-icons {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .signal {
+        width: 16px;
+        height: 12px;
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 2px;
+        align-items: end;
+      }
+
+      .signal span {
+        display: block;
+        border-radius: 3px 3px 0 0;
+        background: rgba(255, 255, 255, 0.8);
+      }
+
+      .signal span:nth-child(1) { height: 4px; opacity: 0.45; }
+      .signal span:nth-child(2) { height: 6px; opacity: 0.58; }
+      .signal span:nth-child(3) { height: 8px; opacity: 0.76; }
+      .signal span:nth-child(4) { height: 10px; }
+
+      .wifi {
+        width: 14px;
+        height: 10px;
+        border: 2px solid rgba(255, 255, 255, 0.86);
+        border-top-color: transparent;
+        border-left-color: transparent;
+        transform: rotate(-45deg);
+        border-radius: 0 0 10px 0;
+      }
+
+      .battery {
+        position: relative;
+        width: 24px;
+        height: 12px;
+        border: 1.8px solid rgba(255, 255, 255, 0.88);
+        border-radius: 4px;
+      }
+
+      .battery::before {
+        content: "";
+        position: absolute;
+        top: 3px;
+        right: -4px;
+        width: 2px;
+        height: 5px;
+        border-radius: 1px;
+        background: rgba(255, 255, 255, 0.88);
+      }
+
+      .battery::after {
+        content: "";
+        position: absolute;
+        inset: 2px;
+        border-radius: 2px;
+        background: rgba(255, 255, 255, 0.88);
+      }
+
+      .screen-content {
+        position: absolute;
+        inset: 0;
+        padding: 78px 24px 152px;
+      }
+
+      .toprow {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 22px;
+      }
+
+      .mode-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 13px 18px;
+        border-radius: 999px;
+        background: linear-gradient(180deg, rgba(35, 35, 35, 0.98), rgba(22, 22, 22, 0.98));
+        box-shadow: inset 0 0 0 1px var(--phone-line);
+        color: rgba(255, 255, 255, 0.92);
+        font-size: 14px;
+        font-weight: 700;
+      }
+
+      .mode-pill::before {
+        content: "";
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--phone-green);
+        box-shadow: 0 0 14px rgba(68, 210, 102, 0.54);
+      }
+
+      .utility-group {
+        display: flex;
+        gap: 10px;
+      }
+
+      .utility {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background: rgba(243, 242, 239, 0.96);
+        color: #1b1716;
+        font-size: 17px;
+        font-weight: 800;
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.82),
+          0 12px 20px rgba(0, 0, 0, 0.24);
+      }
+
+      .home-title {
+        font-family: Georgia, "Times New Roman", serif;
+        color: var(--phone-text);
+        font-size: 28px;
+        letter-spacing: -0.04em;
+        margin-bottom: 18px;
+      }
+
+      .stats {
+        display: grid;
+        grid-template-columns: 1.45fr 1fr;
+        gap: 14px;
+        margin-bottom: 26px;
+      }
+
+      .stat-card {
+        min-height: 98px;
+        padding: 16px 16px 14px;
+        border-radius: 22px;
+        background:
+          linear-gradient(180deg, rgba(38, 35, 36, 0.96), rgba(28, 25, 26, 0.94));
+        box-shadow:
+          inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+          0 18px 36px rgba(0, 0, 0, 0.24);
+      }
+
+      .stat-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 14px;
+      }
+
+      .stat-head .title {
+        color: rgba(255, 244, 235, 0.7);
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: 15px;
+        letter-spacing: -0.02em;
+      }
+
+      .tiny-pill {
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: rgba(58, 54, 55, 0.98);
+        color: rgba(255, 244, 235, 0.86);
+        font-size: 11px;
+        font-weight: 700;
+      }
+
+      .stat-main {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .icon-disc {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background: rgba(255, 255, 255, 0.88);
+        color: #1d1918;
+        font-size: 12px;
+      }
+
+      .stat-value {
+        color: var(--phone-text);
+        font-size: 18px;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+      }
+
+      .stat-sub {
+        margin-top: 4px;
+        padding-left: 34px;
+        color: rgba(235, 224, 215, 0.58);
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      .streak-dots {
+        display: flex;
+        gap: 6px;
+        margin-top: 10px;
+        padding-left: 34px;
+      }
+
+      .streak-dots span {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: rgba(120, 115, 113, 0.48);
+      }
+
+      .streak-dots span.active {
+        background: var(--phone-green);
+        box-shadow: 0 0 8px rgba(68, 210, 102, 0.32);
+      }
+
+      .section-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin: 0 0 14px;
+        color: rgba(255, 244, 235, 0.76);
+      }
+
+      .section-row h3 {
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: 16px;
+        letter-spacing: -0.02em;
+      }
+
+      .section-row .arrow {
+        color: rgba(255, 244, 235, 0.38);
+        font-size: 20px;
+      }
+
+      .continue-row {
+        display: flex;
+        gap: 12px;
+        margin-bottom: 34px;
+      }
+
+      .listen-card {
+        width: 88px;
+      }
+
+      .cover {
+        position: relative;
+        height: 118px;
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 16px 26px rgba(0, 0, 0, 0.26);
+      }
+
+      .coin {
+        position: absolute;
+        top: -7px;
+        right: -6px;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: radial-gradient(circle at 30% 30%, #f6dfb0, #c9a067 68%, #9a7441 100%);
+        border: 1px solid rgba(255, 244, 214, 0.4);
+        box-shadow: 0 8px 14px rgba(0, 0, 0, 0.24);
+      }
+
+      .cover.hobbit {
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.26), transparent 30%),
+          linear-gradient(180deg, #c2c1d2 0%, #a0a1b0 22%, #5e6b6c 48%, #3d413a 70%, #27251d 100%);
+      }
+
+      .cover.guards {
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.25), transparent 24%),
+          linear-gradient(180deg, #d7d0d2 0%, #b4a8b5 26%, #9c8a67 52%, #64707a 76%, #373739 100%);
+      }
+
+      .cover.added-1 {
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.22), transparent 26%),
+          linear-gradient(180deg, #d4974a 0%, #8c531c 48%, #5d2f11 100%);
+      }
+
+      .cover.added-2 {
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.2), transparent 24%),
+          linear-gradient(180deg, #8d628e 0%, #5a365f 58%, #30203b 100%);
+      }
+
+      .cover.added-3 {
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.22), transparent 24%),
+          linear-gradient(180deg, #caa24e 0%, #6f7336 56%, #2d3321 100%);
+      }
+
+      .cover::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.2), transparent 40%);
+      }
+
+      .cover .cover-text {
+        position: absolute;
+        left: 10px;
+        right: 10px;
+        bottom: 10px;
+        color: rgba(255, 248, 240, 0.95);
+        text-shadow: 0 2px 8px rgba(0, 0, 0, 0.42);
+      }
+
+      .cover .cover-text strong {
+        display: block;
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: 13px;
+        line-height: 1.02;
+        letter-spacing: 0.02em;
+      }
+
+      .cover .cover-text span {
+        display: block;
+        margin-top: 3px;
+        font-size: 9px;
+        letter-spacing: 0.08em;
+        opacity: 0.86;
+      }
+
+      .listen-card p {
+        margin-top: 8px;
+        color: rgba(235, 224, 215, 0.56);
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      .recent-row {
+        display: flex;
+        gap: 12px;
+      }
+
+      .recent-row .cover {
+        width: 88px;
+        height: 122px;
+      }
+
+      .mini-player {
+        position: absolute;
+        left: 18px;
+        right: 18px;
+        bottom: 76px;
+        padding: 10px 12px;
+        border-radius: 22px;
+        background:
+          linear-gradient(180deg, rgba(111, 86, 64, 0.84), rgba(86, 67, 51, 0.88));
+        backdrop-filter: blur(18px);
+        box-shadow:
+          inset 0 0 0 1px rgba(255, 255, 255, 0.12),
+          0 20px 40px rgba(0, 0, 0, 0.32);
+      }
+
+      .mini-progress {
+        position: absolute;
+        inset: auto 10px 8px 10px;
+        height: 4px;
+        border-radius: 999px;
+        background: rgba(255, 244, 235, 0.18);
+        overflow: hidden;
+      }
+
+      .mini-progress::after {
+        content: "";
+        display: block;
+        width: 58%;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #f8dfbe, #fff6e6);
+      }
+
+      .mini-inner {
+        display: grid;
+        grid-template-columns: 48px minmax(0, 1fr) auto;
+        gap: 12px;
+        align-items: center;
+      }
+
+      .mini-cover {
+        position: relative;
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        overflow: hidden;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.24), transparent 25%),
+          linear-gradient(180deg, #c1b8cb 0%, #8e7898 42%, #4f404f 100%);
+      }
+
+      .mini-cover::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.18), transparent 40%);
+      }
+
+      .mini-text strong,
+      .mini-text span {
+        display: block;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .mini-text strong {
+        color: var(--phone-text);
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: 15px;
+        letter-spacing: -0.02em;
+      }
+
+      .mini-text span {
+        margin-top: 4px;
+        color: rgba(244, 232, 223, 0.78);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .mini-actions {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .mini-badge {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background: rgba(255, 247, 239, 0.16);
+        color: rgba(255, 248, 242, 0.96);
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .pause-btn {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background: rgba(255, 250, 245, 0.96);
+        color: #30231c;
+        box-shadow: 0 10px 18px rgba(0, 0, 0, 0.24);
+      }
+
+      .pause-icon {
+        display: flex;
+        gap: 3px;
+      }
+
+      .pause-icon span {
+        width: 4px;
+        height: 12px;
+        border-radius: 2px;
+        background: currentColor;
+      }
+
+      .bottom-nav {
+        position: absolute;
+        left: 18px;
+        right: 18px;
+        bottom: 18px;
+        height: 70px;
+        border-radius: 24px;
+        background:
+          linear-gradient(180deg, rgba(40, 36, 35, 0.98), rgba(23, 21, 20, 0.98));
+        box-shadow:
+          inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+          0 18px 34px rgba(0, 0, 0, 0.3);
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        padding: 11px 10px 9px;
+      }
+
+      .nav-item {
+        display: grid;
+        justify-items: center;
+        align-content: center;
+        gap: 5px;
+        color: rgba(244, 233, 224, 0.68);
+        font-size: 10px;
+        font-weight: 700;
+      }
+
+      .nav-item.active {
+        color: var(--phone-accent);
+      }
+
+      .nav-icon {
+        position: relative;
+        width: 22px;
+        height: 20px;
+      }
+
+      .nav-icon.house::before,
+      .nav-icon.house::after,
+      .nav-icon.books::before,
+      .nav-icon.books::after,
+      .nav-icon.author::before,
+      .nav-icon.author::after,
+      .nav-icon.stack::before,
+      .nav-icon.stack::after,
+      .nav-icon.gear::before,
+      .nav-icon.gear::after {
+        content: "";
+        position: absolute;
+      }
+
+      .nav-icon.house::before {
+        left: 2px;
+        right: 2px;
+        bottom: 1px;
+        height: 11px;
+        border: 2px solid currentColor;
+        border-top: none;
+        border-radius: 0 0 4px 4px;
+      }
+
+      .nav-icon.house::after {
+        left: 1px;
+        top: 0;
+        width: 20px;
+        height: 20px;
+        border-left: 2px solid currentColor;
+        border-top: 2px solid currentColor;
+        transform: rotate(45deg) scale(0.56);
+      }
+
+      .nav-icon.books::before {
+        left: 2px;
+        top: 2px;
+        width: 6px;
+        height: 14px;
+        border: 2px solid currentColor;
+        border-radius: 2px;
+      }
+
+      .nav-icon.books::after {
+        right: 2px;
+        top: 2px;
+        width: 10px;
+        height: 14px;
+        border: 2px solid currentColor;
+        border-radius: 2px;
+      }
+
+      .nav-icon.author::before {
+        left: 6px;
+        top: 1px;
+        width: 10px;
+        height: 10px;
+        border: 2px solid currentColor;
+        border-radius: 50%;
+      }
+
+      .nav-icon.author::after {
+        left: 3px;
+        bottom: 2px;
+        width: 16px;
+        height: 8px;
+        border: 2px solid currentColor;
+        border-top-left-radius: 10px;
+        border-top-right-radius: 10px;
+        border-bottom: none;
+      }
+
+      .nav-icon.stack::before {
+        left: 2px;
+        top: 3px;
+        width: 18px;
+        height: 4px;
+        border: 2px solid currentColor;
+        border-radius: 3px;
+      }
+
+      .nav-icon.stack::after {
+        left: 4px;
+        top: 10px;
+        width: 14px;
+        height: 8px;
+        border-top: 2px solid currentColor;
+        border-bottom: 2px solid currentColor;
+      }
+
+      .nav-icon.gear::before {
+        inset: 2px;
+        border: 2px solid currentColor;
+        border-radius: 50%;
+      }
+
+      .nav-icon.gear::after {
+        inset: -1px;
+        border: 2px dashed currentColor;
+        border-radius: 50%;
+      }
+
+      .summary {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .summary .pill {
+        padding: 16px;
+        border-radius: 18px;
+        background: rgba(255, 250, 245, 0.86);
+        border: 1px solid rgba(30, 18, 12, 0.08);
+      }
+
+      .summary .pill strong {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 14px;
+        letter-spacing: -0.02em;
+      }
+
+      .summary .pill span {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      @media (max-width: 1180px) {
+        .layout,
+        .compare {
+          grid-template-columns: 1fr;
+        }
+
+        .sidebar {
+          position: static;
+        }
+      }
+
+      @media (max-width: 760px) {
+        .page {
+          padding: 28px 16px 44px;
+        }
+
+        .card-inner {
+          padding: 18px;
+        }
+
+        .summary {
+          grid-template-columns: 1fr;
+        }
+
+        .phone-stage {
+          min-height: auto;
+          padding: 8px;
+        }
+
+        .phone-shell {
+          width: min(100%, 390px);
+          height: auto;
+          aspect-ratio: 390 / 844;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <section class="hero">
+        <span class="eyebrow">Kitzi Direction From Reference</span>
+        <h1>Yes, there are a few things here worth taking. The value is in the home-to-player system, not in copying the whole visual style.</h1>
+        <p>
+          The screenshot gets three things right: it makes listening progress feel rewarding, it keeps the player present without taking over, and it uses shelves/cards to create a calm audiobook-first home. For Kitzi, I would adopt those structural ideas, keep the dark immersive tone, and avoid copying the cramped text sizing and generic utility clutter.
+        </p>
+      </section>
+
+      <div class="layout">
+        <aside class="sidebar">
+          <section class="card">
+            <div class="card-inner">
+              <h2 class="section-title">What To Take</h2>
+              <div class="decision">
+                <article class="decision-item take">
+                  <span class="label">Adopt</span>
+                  <h3>Make home progress-driven</h3>
+                  <p>Bring listening time, streak, and the current book closer to the top. This gives Kitzi a stronger reason to reopen daily and immediately makes playback history feel alive.</p>
+                </article>
+                <article class="decision-item take">
+                  <span class="label">Adopt</span>
+                  <h3>Dock the mini player above navigation</h3>
+                  <p>The floating bar is the strongest pattern in the shot. It reads as persistent, tactile, and clearly linked to the current book without eating vertical space.</p>
+                </article>
+                <article class="decision-item take">
+                  <span class="label">Adopt</span>
+                  <h3>Use shelves instead of dense lists</h3>
+                  <p>Small horizontal rails for Continue Listening and Recently Added fit audiobook browsing better than a flat feed and create better cover visibility.</p>
+                </article>
+                <article class="decision-item take">
+                  <span class="label">Adopt</span>
+                  <h3>Keep the dark cinema-like canvas</h3>
+                  <p>A deep black-to-warm-charcoal background works well for book art and makes the player feel premium. This matches the more immersive direction already present in Kitzi.</p>
+                </article>
+              </div>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="card-inner">
+              <h2 class="section-title">What Not To Copy</h2>
+              <div class="decision">
+                <article class="decision-item skip">
+                  <span class="label">Skip</span>
+                  <h3>Text that is too small and too dim</h3>
+                  <p>The screenshot looks polished, but some metadata is close to decorative. Kitzi should keep the hierarchy, but raise contrast and size so the app stays readable during actual use.</p>
+                </article>
+                <article class="decision-item skip">
+                  <span class="label">Skip</span>
+                  <h3>Too many generic icon circles</h3>
+                  <p>The top-right actions are visually neat but semantically vague. Kitzi should keep one clear utility action or move these controls into a more explicit overflow surface.</p>
+                </article>
+                <article class="decision-item skip">
+                  <span class="label">Skip</span>
+                  <h3>Replica-level imitation of another app</h3>
+                  <p>The goal should be: same clarity and pacing, different identity. Keep Kitzi’s Google Sans core, warmer materials, and the stronger playback affordances already in the app.</p>
+                </article>
+              </div>
+            </div>
+          </section>
+        </aside>
+
+        <main class="canvas">
+          <section class="card">
+            <div class="card-inner">
+              <div class="canvas-head">
+                <div>
+                  <h2 class="section-title">Recommended Mockup</h2>
+                  <p>This mockup keeps the reference composition but translates it into a likely final Kitzi home surface: stronger stat cards, more legible metadata, and a more intentional mini player dock.</p>
+                </div>
+              </div>
+
+              <div class="compare">
+                <div class="reference">
+                  <div class="reference-shot">
+                    <img src="screenshot-home.webp" alt="Reference audiobook app screenshot" />
+                  </div>
+                  <div class="reference-note">
+                    Best idea in the reference: the mini player and nav behave like one bottom system. That is the piece most worth lifting into Kitzi.
+                  </div>
+                </div>
+
+                <div class="phone-stage">
+                  <div class="phone-shell">
+                    <div class="screen">
+                      <div class="notch"></div>
+
+                      <div class="statusbar">
+                        <span>9:41</span>
+                        <div class="status-icons">
+                          <div class="signal">
+                            <span></span>
+                            <span></span>
+                            <span></span>
+                            <span></span>
+                          </div>
+                          <div class="wifi"></div>
+                          <div class="battery"></div>
+                        </div>
+                      </div>
+
+                      <div class="screen-content">
+                        <div class="toprow">
+                          <div class="mode-pill">Audiobooks</div>
+                          <div class="utility-group">
+                            <div class="utility">i</div>
+                            <div class="utility">&#8645;</div>
+                          </div>
+                        </div>
+
+                        <h2 class="home-title">Home</h2>
+
+                        <div class="stats">
+                          <div class="stat-card">
+                            <div class="stat-head">
+                              <span class="title">Listening Time</span>
+                              <span class="tiny-pill">Today</span>
+                            </div>
+                            <div class="stat-main">
+                              <div class="icon-disc">&#9681;</div>
+                              <div class="stat-value">1h 36m</div>
+                            </div>
+                            <div class="stat-sub">about 55 pages</div>
+                          </div>
+
+                          <div class="stat-card">
+                            <div class="stat-head">
+                              <span class="title">Streak</span>
+                            </div>
+                            <div class="stat-main">
+                              <div class="icon-disc">&#9638;</div>
+                              <div class="stat-value">2 days</div>
+                            </div>
+                            <div class="streak-dots">
+                              <span class="active"></span>
+                              <span class="active"></span>
+                              <span></span>
+                              <span></span>
+                              <span></span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div class="section-row">
+                          <h3>Continue Listening</h3>
+                          <span class="arrow">&#8250;</span>
+                        </div>
+
+                        <div class="continue-row">
+                          <div class="listen-card">
+                            <div class="cover hobbit">
+                              <span class="coin"></span>
+                              <div class="cover-text">
+                                <strong>THE HOBBIT</strong>
+                                <span>J.R.R. TOLKIEN</span>
+                              </div>
+                            </div>
+                            <p>8h remaining</p>
+                          </div>
+
+                          <div class="listen-card">
+                            <div class="cover guards">
+                              <span class="coin"></span>
+                              <div class="cover-text">
+                                <strong>GUARDS!</strong>
+                                <span>TERRY PRATCHETT</span>
+                              </div>
+                            </div>
+                            <p>7h remaining</p>
+                          </div>
+                        </div>
+
+                        <div class="section-row">
+                          <h3>Recently Added</h3>
+                          <span class="arrow">&#8250;</span>
+                        </div>
+
+                        <div class="recent-row">
+                          <div class="cover added-1">
+                            <div class="cover-text">
+                              <strong>The Path of Daggers</strong>
+                              <span>ROBERT JORDAN</span>
+                            </div>
+                          </div>
+                          <div class="cover added-2">
+                            <div class="cover-text">
+                              <strong>Winters Heart</strong>
+                              <span>ROBERT JORDAN</span>
+                            </div>
+                          </div>
+                          <div class="cover added-3">
+                            <div class="cover-text">
+                              <strong>Terry Pratchett</strong>
+                              <span>COLLECTION</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div class="mini-player">
+                        <div class="mini-inner">
+                          <div class="mini-cover"></div>
+                          <div class="mini-text">
+                            <strong>The Hobbit</strong>
+                            <span>Chapter 8 of 19</span>
+                          </div>
+                          <div class="mini-actions">
+                            <div class="mini-badge">15</div>
+                            <div class="pause-btn">
+                              <div class="pause-icon">
+                                <span></span>
+                                <span></span>
+                              </div>
+                            </div>
+                            <div class="mini-badge">&#8635;</div>
+                          </div>
+                        </div>
+                        <div class="mini-progress"></div>
+                      </div>
+
+                      <div class="bottom-nav">
+                        <div class="nav-item active">
+                          <div class="nav-icon house"></div>
+                          <span>Home</span>
+                        </div>
+                        <div class="nav-item">
+                          <div class="nav-icon books"></div>
+                          <span>Books</span>
+                        </div>
+                        <div class="nav-item">
+                          <div class="nav-icon author"></div>
+                          <span>Authors</span>
+                        </div>
+                        <div class="nav-item">
+                          <div class="nav-icon stack"></div>
+                          <span>Collections</span>
+                        </div>
+                        <div class="nav-item">
+                          <div class="nav-icon gear"></div>
+                          <span>Settings</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="summary">
+            <article class="pill">
+              <strong>Immediate takeaway</strong>
+              <span>Move Kitzi toward a home screen that starts with progress, not a plain library listing.</span>
+            </article>
+            <article class="pill">
+              <strong>Highest-impact UI change</strong>
+              <span>Rebuild the mini player and bottom nav as one coordinated docked layer.</span>
+            </article>
+            <article class="pill">
+              <strong>Guardrail</strong>
+              <span>Keep the atmosphere and layout rhythm, but do not inherit the weaker readability decisions.</span>
+            </article>
+          </section>
+        </main>
+      </div>
+    </div>
+  </body>
+</html>
