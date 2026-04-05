@@ -38,7 +38,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
       valueListenable: UiPrefs.playerGradientBackground,
       builder: (_, gradientEnabled, __) {
         return Padding(
-          padding: const EdgeInsets.fromLTRB(6, 6, 6, 4),
+          padding: const EdgeInsets.fromLTRB(4, 4, 4, 2),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(20),
             child: DecoratedBox(
@@ -101,8 +101,8 @@ class _MiniPlayerState extends State<MiniPlayer> {
                 children: [
                   Padding(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 7,
+                      horizontal: 10,
+                      vertical: 5,
                     ),
                     child: Row(
                   children: [
@@ -121,16 +121,16 @@ class _MiniPlayerState extends State<MiniPlayer> {
                       ),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(14),
-                        child: Transform.scale(
-                          scale: 1.024,
+                          child: Transform.scale(
+                            scale: 1.024,
                           child: _MiniCover(
                             url: np.coverUrl,
-                            size: widget.height - 14,
+                            size: widget.height - 12,
                           ),
                         ),
                       ),
                     ),
-                    const SizedBox(width: 14),
+                    const SizedBox(width: 12),
 
                     // Title/author with progress (YouTube Music style)
                     Expanded(

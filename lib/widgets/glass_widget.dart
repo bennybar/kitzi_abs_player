@@ -11,6 +11,8 @@ class AppLiquidGlass extends StatelessWidget {
     this.borderRadius = const BorderRadius.all(Radius.circular(28)),
     this.tint,
     this.elevation = 18,
+    this.liveBlur = false,
+    this.lightenAmount,
   });
 
   final Widget child;
@@ -20,6 +22,8 @@ class AppLiquidGlass extends StatelessWidget {
   final BorderRadius borderRadius;
   final Color? tint;
   final double elevation;
+  final bool liveBlur;
+  final double? lightenAmount;
 
   @override
   Widget build(BuildContext context) {
@@ -29,61 +33,67 @@ class AppLiquidGlass extends StatelessWidget {
     final glassTint = Color.lerp(
       baseTint,
       Colors.white,
-      isDark ? 0.18 : 0.58,
+      lightenAmount ?? (isDark ? 0.18 : 0.58),
     )!;
 
-    return LiquidGlass(
-      blur: blur,
-      opacity: isDark ? opacity + 0.04 : opacity + 0.02,
-      borderRadius: borderRadius,
-      tint: glassTint,
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: borderRadius,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.24 : 0.08),
-              blurRadius: elevation,
-              offset: Offset(0, elevation * 0.35),
-            ),
-            BoxShadow(
-              color: Colors.white.withValues(alpha: isDark ? 0.02 : 0.12),
-              blurRadius: elevation * 0.5,
-              offset: const Offset(0, 1),
-            ),
+    final decorated = Container(
+      decoration: BoxDecoration(
+        borderRadius: borderRadius,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.18 : 0.06),
+            blurRadius: elevation,
+            offset: Offset(0, elevation * 0.35),
+          ),
+          BoxShadow(
+            color: Colors.white.withValues(alpha: isDark ? 0.015 : 0.08),
+            blurRadius: elevation * 0.4,
+            offset: const Offset(0, 1),
+          ),
+        ],
+        border: Border.all(
+          color:
+              isDark
+                  ? Colors.white.withValues(alpha: 0.12)
+                  : Colors.white.withValues(alpha: 0.36),
+        ),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            glassTint.withValues(alpha: isDark ? 0.20 : 0.18),
+            glassTint.withValues(alpha: isDark ? 0.12 : 0.10),
           ],
-          border: Border.all(
-            color:
-                isDark
-                    ? Colors.white.withValues(alpha: 0.12)
-                    : Colors.white.withValues(alpha: 0.42),
-          ),
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Colors.white.withValues(alpha: isDark ? 0.10 : 0.22),
-              Colors.white.withValues(alpha: isDark ? 0.03 : 0.07),
-            ],
-          ),
         ),
-        foregroundDecoration: BoxDecoration(
-          borderRadius: borderRadius,
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color.fromARGB(38, 255, 255, 255),
-              Color.fromARGB(10, 255, 255, 255),
-              Color.fromARGB(0, 255, 255, 255),
-            ],
-            stops: [0, 0.3, 0.85],
-          ),
+      ),
+      foregroundDecoration: BoxDecoration(
+        borderRadius: borderRadius,
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color.fromARGB(34, 255, 255, 255),
+            Color.fromARGB(8, 255, 255, 255),
+            Color.fromARGB(0, 255, 255, 255),
+          ],
+          stops: [0, 0.28, 0.85],
         ),
-        child: Padding(
-          padding: padding ?? EdgeInsets.zero,
-          child: child,
-        ),
+      ),
+      child: Padding(
+        padding: padding ?? EdgeInsets.zero,
+        child: child,
+      ),
+    );
+
+    if (!liveBlur) return decorated;
+
+    return RepaintBoundary(
+      child: LiquidGlass(
+        blur: blur,
+        opacity: isDark ? opacity + 0.03 : opacity + 0.015,
+        borderRadius: borderRadius,
+        tint: glassTint,
+        child: decorated,
       ),
     );
   }
@@ -98,6 +108,8 @@ class AppLiquidGlassPill extends StatelessWidget {
     this.opacity = 0.18,
     this.tint,
     this.elevation = 10,
+    this.liveBlur = false,
+    this.lightenAmount,
   });
 
   final Widget child;
@@ -106,6 +118,8 @@ class AppLiquidGlassPill extends StatelessWidget {
   final double opacity;
   final Color? tint;
   final double elevation;
+  final bool liveBlur;
+  final double? lightenAmount;
 
   @override
   Widget build(BuildContext context) {
@@ -115,6 +129,8 @@ class AppLiquidGlassPill extends StatelessWidget {
       borderRadius: const BorderRadius.all(Radius.circular(999)),
       tint: tint,
       elevation: elevation,
+      liveBlur: liveBlur,
+      lightenAmount: lightenAmount,
       padding: padding,
       child: child,
     );

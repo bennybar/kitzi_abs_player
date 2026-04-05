@@ -199,7 +199,7 @@ class _MainScaffoldState extends State<MainScaffold> {
         final hasMini =
             snap.data != null &&
             safeIndex != hideOnSettingsIndex; // hide on Settings
-        const double navHeight = 72;
+        const double navHeight = 64;
 
         return PopScope(
           canPop: false, // Never allow pop - prevent app exit
@@ -262,14 +262,25 @@ class _MainScaffoldState extends State<MainScaffold> {
                                   4,
                                 ),
                                 child: AppLiquidGlass(
-                                  blur: 46,
+                                  blur: 22,
                                   opacity:
                                       Theme.of(context).brightness ==
                                               Brightness.dark
                                           ? 0.18
                                           : 0.14,
                                   borderRadius: BorderRadius.circular(26),
-                                  tint: cs.surface,
+                                  tint: Color.alphaBlend(
+                                    Colors.black.withValues(
+                                      alpha:
+                                          Theme.of(context).brightness ==
+                                                  Brightness.dark
+                                              ? 0.18
+                                              : 0.12,
+                                    ),
+                                    cs.surface,
+                                  ),
+                                  liveBlur: true,
+                                  lightenAmount: 0.10,
                                   child: DecoratedBox(
                                     decoration: BoxDecoration(
                                       borderRadius: BorderRadius.circular(26),
@@ -286,7 +297,7 @@ class _MainScaffoldState extends State<MainScaffold> {
                                         ),
                                       ],
                                     ),
-                                    child: const MiniPlayer(height: 66),
+                                  child: const MiniPlayer(height: 62),
                                   ),
                                 ),
                               )
@@ -357,41 +368,55 @@ class _MainScaffoldState extends State<MainScaffold> {
       child: Padding(
         padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
         child: AppLiquidGlass(
-          blur: 52,
+          blur: 20,
           opacity:
-              Theme.of(context).brightness == Brightness.dark ? 0.2 : 0.14,
-          borderRadius: BorderRadius.circular(24),
-          tint: colorScheme.surface,
-          padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
+              Theme.of(context).brightness == Brightness.dark ? 0.22 : 0.10,
+          borderRadius: BorderRadius.circular(22),
+          tint: Color.alphaBlend(
+            Colors.black.withValues(
+              alpha:
+                  Theme.of(context).brightness == Brightness.dark ? 0.22 : 0.18,
+            ),
+            colorScheme.surface,
+          ),
+          liveBlur: true,
+          lightenAmount: 0.06,
+          padding: const EdgeInsets.fromLTRB(6, 4, 6, 2),
           child: DecoratedBox(
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(24),
+              borderRadius: BorderRadius.circular(22),
               border: Border.all(
-                color: colorScheme.outlineVariant.withOpacity(0.16),
+                color: colorScheme.outlineVariant.withOpacity(0.10),
               ),
               boxShadow: [
                 BoxShadow(
-                  color: colorScheme.shadow.withOpacity(0.14),
-                  blurRadius: 24,
-                  offset: const Offset(0, 10),
+                  color: colorScheme.shadow.withOpacity(0.10),
+                  blurRadius: 18,
+                  offset: const Offset(0, 8),
                 ),
               ],
             ),
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(20),
-              child: NavigationBar(
-                selectedIndex: selectedIndex,
-                onDestinationSelected: onDestinationSelected,
-                backgroundColor: Colors.transparent,
-                surfaceTintColor: Colors.transparent,
-                elevation: 0,
+              borderRadius: BorderRadius.circular(18),
+              child: SizedBox(
                 height: height,
-                indicatorColor: Color.alphaBlend(
-                  colorScheme.primary.withOpacity(0.12),
-                  colorScheme.surface,
+                child: Row(
+                  children:
+                      _buildDestinations(showAuthors, showSeries)
+                          .asMap()
+                          .entries
+                          .map(
+                            (entry) => Expanded(
+                              child: _NavTab(
+                                destination: entry.value,
+                                selected: entry.key == selectedIndex,
+                                onTap:
+                                    () => onDestinationSelected(entry.key),
+                              ),
+                            ),
+                          )
+                          .toList(growable: false),
                 ),
-                labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-                destinations: _buildDestinations(showAuthors, showSeries),
               ),
             ),
           ),
@@ -400,54 +425,138 @@ class _MainScaffoldState extends State<MainScaffold> {
     );
   }
 
-  List<NavigationDestination> _buildDestinations(
+  List<_NavDestinationData> _buildDestinations(
     bool showAuthors,
     bool showSeries,
   ) {
     return [
-      const NavigationDestination(
-        icon: Icon(Symbols.library_books, semanticLabel: 'Books'),
-        selectedIcon: Icon(
-          Symbols.library_books,
-          fill: 1,
-          semanticLabel: 'Books',
-        ),
+      const _NavDestinationData(
+        icon: Symbols.library_books,
         label: 'Books',
       ),
       if (showAuthors)
-        const NavigationDestination(
-          icon: Icon(Symbols.person, semanticLabel: 'Authors'),
-          selectedIcon: Icon(Symbols.person, fill: 1, semanticLabel: 'Authors'),
+        const _NavDestinationData(
+          icon: Symbols.person,
           label: 'Authors',
         ),
       if (showSeries)
-        const NavigationDestination(
-          icon: Icon(Symbols.collections_bookmark, semanticLabel: 'Series'),
-          selectedIcon: Icon(
-            Symbols.collections_bookmark,
-            fill: 1,
-            semanticLabel: 'Series',
-          ),
+        const _NavDestinationData(
+          icon: Symbols.collections_bookmark,
           label: 'Series',
         ),
-      const NavigationDestination(
-        icon: Icon(Symbols.download_for_offline, semanticLabel: 'Downloads'),
-        selectedIcon: Icon(
-          Symbols.download_for_offline,
-          fill: 1,
-          semanticLabel: 'Downloads',
-        ),
+      const _NavDestinationData(
+        icon: Symbols.download_for_offline,
         label: 'Downloads',
       ),
-      const NavigationDestination(
-        icon: Icon(Symbols.settings, semanticLabel: 'Settings'),
-        selectedIcon: Icon(
-          Symbols.settings,
-          fill: 1,
-          semanticLabel: 'Settings',
-        ),
+      const _NavDestinationData(
+        icon: Symbols.settings,
         label: 'Settings',
       ),
     ];
+  }
+}
+
+class _NavDestinationData {
+  const _NavDestinationData({
+    required this.icon,
+    required this.label,
+  });
+
+  final IconData icon;
+  final String label;
+}
+
+class _NavTab extends StatelessWidget {
+  const _NavTab({
+    required this.destination,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final _NavDestinationData destination;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+
+    final iconWidget = Icon(
+      destination.icon,
+      size: 21,
+      fill: selected ? 1 : 0,
+      color:
+          selected
+              ? cs.primary
+              : Theme.of(context).brightness == Brightness.dark
+              ? Colors.white.withValues(alpha: 0.82)
+              : cs.onSurface.withValues(alpha: 0.72),
+      semanticLabel: destination.label,
+    );
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(2, 2, 2, 2),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              selected
+                  ? AppLiquidGlassPill(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 7,
+                    ),
+                    blur: 10,
+                    opacity:
+                        Theme.of(context).brightness == Brightness.dark
+                            ? 0.18
+                            : 0.11,
+                    tint: Color.alphaBlend(
+                      cs.primary.withOpacity(0.06),
+                      Color.alphaBlend(
+                        Colors.black.withValues(
+                          alpha:
+                              Theme.of(context).brightness == Brightness.dark
+                                  ? 0.16
+                                  : 0.10,
+                        ),
+                        cs.surface,
+                      ),
+                    ),
+                    elevation: 4,
+                    liveBlur: true,
+                    lightenAmount: 0.08,
+                    child: iconWidget,
+                  )
+                  : SizedBox(
+                    height: 34,
+                    child: Center(child: iconWidget),
+                  ),
+              const SizedBox(height: 2),
+              Text(
+                destination.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: text.labelSmall?.copyWith(
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  color:
+                      selected
+                          ? cs.primary
+                          : Theme.of(context).brightness == Brightness.dark
+                          ? Colors.white.withValues(alpha: 0.78)
+                          : cs.onSurface.withValues(alpha: 0.70),
+                  letterSpacing: -0.1,
+                  fontSize: 10.5,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
