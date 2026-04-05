@@ -40,7 +40,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
         return Padding(
           padding: const EdgeInsets.fromLTRB(4, 4, 4, 2),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(26),
+            borderRadius: BorderRadius.circular(30),
             child: DecoratedBox(
               decoration: _miniBackgroundDecoration(
                 gradientEnabled,

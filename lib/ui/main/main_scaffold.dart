@@ -256,9 +256,9 @@ class _MainScaffoldState extends State<MainScaffold> {
                           hasMini
                               ? Padding(
                                 padding: const EdgeInsets.fromLTRB(
-                                  10,
+                                  4,
                                   0,
-                                  10,
+                                  4,
                                   4,
                                 ),
                                 child: AppLiquidGlass(
@@ -268,7 +268,7 @@ class _MainScaffoldState extends State<MainScaffold> {
                                               Brightness.dark
                                           ? 0.18
                                           : 0.14,
-                                  borderRadius: BorderRadius.circular(30),
+                                  borderRadius: BorderRadius.circular(34),
                                   tint: Color.alphaBlend(
                                     Colors.black.withValues(
                                       alpha:
@@ -283,7 +283,7 @@ class _MainScaffoldState extends State<MainScaffold> {
                                   lightenAmount: 0.10,
                                   child: DecoratedBox(
                                     decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(30),
+                                      borderRadius: BorderRadius.circular(34),
                                       border: Border.all(
                                         color: cs.outlineVariant.withOpacity(
                                           0.16,
@@ -366,7 +366,7 @@ class _MainScaffoldState extends State<MainScaffold> {
     return SafeArea(
       top: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
+        padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
         child: AppLiquidGlass(
           blur: 20,
           opacity:
@@ -381,7 +381,7 @@ class _MainScaffoldState extends State<MainScaffold> {
           ),
           liveBlur: true,
           lightenAmount: 0.06,
-          padding: const EdgeInsets.fromLTRB(8, 5, 8, 3),
+          padding: const EdgeInsets.all(2),
           child: DecoratedBox(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(34),
@@ -485,7 +485,7 @@ class _NavTab extends StatelessWidget {
 
     final iconWidget = Icon(
       destination.icon,
-      size: selected ? 23 : 21,
+      size: selected ? 24 : 21,
       fill: selected ? 1 : 0,
       color:
           selected
@@ -510,10 +510,10 @@ class _NavTab extends StatelessWidget {
     );
 
     final selectedContent = SizedBox(
-      width: 64,
-      height: 50,
+      width: 72,
+      height: 45,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(8, 4, 8, 5),
+        padding: const EdgeInsets.fromLTRB(10, 3, 10, 4),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -540,7 +540,7 @@ class _NavTab extends StatelessWidget {
         focusColor: Colors.transparent,
         overlayColor: WidgetStateProperty.all(Colors.transparent),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(2, 1, 2, 1),
+          padding: EdgeInsets.zero,
           child: Center(
             child:
                 selected
