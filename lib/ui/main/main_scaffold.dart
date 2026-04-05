@@ -499,6 +499,11 @@ class _NavTab extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
+        splashColor: Colors.transparent,
+        highlightColor: Colors.transparent,
+        hoverColor: Colors.transparent,
+        focusColor: Colors.transparent,
+        overlayColor: WidgetStateProperty.all(Colors.transparent),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(2, 2, 2, 2),
           child: Column(
