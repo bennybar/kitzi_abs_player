@@ -371,7 +371,7 @@ class _MainScaffoldState extends State<MainScaffold> {
           blur: 20,
           opacity:
               Theme.of(context).brightness == Brightness.dark ? 0.22 : 0.10,
-          borderRadius: BorderRadius.circular(28),
+          borderRadius: BorderRadius.circular(34),
           tint: Color.alphaBlend(
             Colors.black.withValues(
               alpha:
@@ -384,7 +384,7 @@ class _MainScaffoldState extends State<MainScaffold> {
           padding: const EdgeInsets.fromLTRB(8, 5, 8, 3),
           child: DecoratedBox(
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(28),
+              borderRadius: BorderRadius.circular(34),
               border: Border.all(
                 color: colorScheme.outlineVariant.withOpacity(0.10),
               ),
@@ -397,7 +397,7 @@ class _MainScaffoldState extends State<MainScaffold> {
               ],
             ),
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(24),
+              borderRadius: BorderRadius.circular(30),
               child: SizedBox(
                 height: height,
                 child: Row(
@@ -481,18 +481,53 @@ class _NavTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     final iconWidget = Icon(
       destination.icon,
-      size: selected ? 24 : 21,
+      size: selected ? 23 : 21,
       fill: selected ? 1 : 0,
       color:
           selected
               ? cs.primary
-              : Theme.of(context).brightness == Brightness.dark
+              : isDark
               ? Colors.white.withValues(alpha: 0.82)
               : cs.onSurface.withValues(alpha: 0.72),
       semanticLabel: destination.label,
+    );
+
+    final labelStyle = text.labelSmall?.copyWith(
+      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+      color:
+          selected
+              ? cs.primary
+              : isDark
+              ? Colors.white.withValues(alpha: 0.78)
+              : cs.onSurface.withValues(alpha: 0.70),
+      letterSpacing: -0.1,
+      fontSize: selected ? 10.0 : 10.5,
+      height: 1,
+    );
+
+    final selectedContent = SizedBox(
+      width: 64,
+      height: 50,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(8, 4, 8, 5),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            iconWidget,
+            const SizedBox(height: 1),
+            Text(
+              destination.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: labelStyle,
+            ),
+          ],
+        ),
+      ),
     );
 
     return Material(
@@ -505,61 +540,44 @@ class _NavTab extends StatelessWidget {
         focusColor: Colors.transparent,
         overlayColor: WidgetStateProperty.all(Colors.transparent),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(2, 2, 2, 2),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              selected
-                  ? AppLiquidGlassPill(
-                    padding: EdgeInsets.zero,
-                    blur: 10,
-                    opacity:
-                        Theme.of(context).brightness == Brightness.dark
-                            ? 0.18
-                            : 0.11,
-                    tint: Color.alphaBlend(
-                      cs.primary.withOpacity(0.06),
-                      Color.alphaBlend(
-                        Colors.black.withValues(
-                          alpha:
-                              Theme.of(context).brightness == Brightness.dark
-                                  ? 0.16
-                                  : 0.10,
+          padding: const EdgeInsets.fromLTRB(2, 1, 2, 1),
+          child: Center(
+            child:
+                selected
+                    ? AppLiquidGlassPill(
+                      padding: EdgeInsets.zero,
+                      blur: 10,
+                      opacity: isDark ? 0.18 : 0.11,
+                      tint: Color.alphaBlend(
+                        cs.primary.withOpacity(0.06),
+                        Color.alphaBlend(
+                          Colors.black.withValues(
+                            alpha: isDark ? 0.16 : 0.10,
+                          ),
+                          cs.surface,
                         ),
-                        cs.surface,
                       ),
+                      elevation: 4,
+                      liveBlur: true,
+                      lightenAmount: 0.08,
+                      child: selectedContent,
+                    )
+                    : Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        SizedBox(
+                          height: 26,
+                          child: Center(child: iconWidget),
+                        ),
+                        const SizedBox(height: 1),
+                        Text(
+                          destination.label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: labelStyle,
+                        ),
+                      ],
                     ),
-                    elevation: 4,
-                    liveBlur: true,
-                    lightenAmount: 0.08,
-                    child: SizedBox(
-                      width: 50,
-                      height: 40,
-                      child: Center(child: iconWidget),
-                    ),
-                  )
-                  : SizedBox(
-                    height: 36,
-                    child: Center(child: iconWidget),
-                  ),
-              const SizedBox(height: 2),
-              Text(
-                destination.label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: text.labelSmall?.copyWith(
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                  color:
-                      selected
-                          ? cs.primary
-                          : Theme.of(context).brightness == Brightness.dark
-                          ? Colors.white.withValues(alpha: 0.78)
-                          : cs.onSurface.withValues(alpha: 0.70),
-                  letterSpacing: -0.1,
-                  fontSize: 10.5,
-                ),
-              ),
-            ],
           ),
         ),
       ),
