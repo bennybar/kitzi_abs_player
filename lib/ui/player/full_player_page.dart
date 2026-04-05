@@ -2378,6 +2378,10 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                     }
 
                     _schedulePaletteUpdate(np);
+                    final totalDuration =
+                        np.durationSec != null && np.durationSec! > 0
+                            ? Duration(seconds: np.durationSec!.round())
+                            : null;
 
                     return Column(
                       children: [
@@ -2979,6 +2983,41 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                                                 .ellipsis,
                                                       ),
                                                     ],
+                                                    const SizedBox(height: 14),
+                                                    Wrap(
+                                                      alignment:
+                                                          WrapAlignment.center,
+                                                      spacing: 8,
+                                                      runSpacing: 8,
+                                                      children: [
+                                                        const _InfoPill(
+                                                          icon:
+                                                              Symbols.graphic_eq,
+                                                          label: 'Audiobook',
+                                                          highlighted: true,
+                                                        ),
+                                                        _InfoPill(
+                                                          icon:
+                                                              Symbols.library_books,
+                                                          label:
+                                                              np.chapters
+                                                                      .length >
+                                                                  1
+                                                              ? '${np.chapters.length} chapters'
+                                                              : 'Single part',
+                                                        ),
+                                                        if (totalDuration !=
+                                                            null)
+                                                          _InfoPill(
+                                                            icon:
+                                                                Symbols.schedule,
+                                                            label:
+                                                                _formatDuration(
+                                                                  totalDuration,
+                                                                ),
+                                                          ),
+                                                      ],
+                                                    ),
                                                   ],
                                                 ),
                                               ),
@@ -3108,14 +3147,11 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                 );
                               }
 
-                              return Container(
-                                decoration: BoxDecoration(
-                                  color: cs.surfaceContainerHighest
-                                      .withOpacity(0.52),
-                                  borderRadius: BorderRadius.circular(22),
-                                  border: Border.all(
-                                    color: cs.outlineVariant.withOpacity(0.14),
-                                  ),
+                              return _GlassPanel(
+                                borderRadius: 24,
+                                tint: Color.alphaBlend(
+                                  cs.surface.withOpacity(0.28),
+                                  cs.surfaceContainerHighest.withOpacity(0.62),
                                 ),
                                 padding: const EdgeInsets.fromLTRB(
                                   14,
@@ -3212,8 +3248,46 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                       16,
                                       20,
                                     ),
-                                    child: Column(
-                                      children: [
+                                    child: _GlassPanel(
+                                      borderRadius: 28,
+                                      tint: Color.alphaBlend(
+                                        cs.surface.withOpacity(0.3),
+                                        cs.surfaceContainerHigh.withOpacity(
+                                          0.68,
+                                        ),
+                                      ),
+                                      padding: const EdgeInsets.fromLTRB(
+                                        14,
+                                        14,
+                                        14,
+                                        14,
+                                      ),
+                                      child: Column(
+                                        children: [
+                                          Row(
+                                            children: [
+                                              Text(
+                                                'PLAYBACK',
+                                                style: text.labelSmall
+                                                    ?.copyWith(
+                                                      letterSpacing: 0.8,
+                                                      color: cs.onSurfaceVariant
+                                                          .withOpacity(0.62),
+                                                      fontWeight:
+                                                          FontWeight.w700,
+                                                    ),
+                                              ),
+                                              const Spacer(),
+                                              _InfoPill(
+                                                icon: Symbols.auto_stories,
+                                                label:
+                                                    np.chapters.length > 1
+                                                        ? 'Chapter ${(playback.currentChapterProgress?.index ?? 0) + 1}'
+                                                        : 'Ready',
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 14),
                                         // Large transport controls (Material 3) - single row, auto-sized
                                         LayoutBuilder(
                                           builder: (context, constraints) {
@@ -3393,7 +3467,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                           },
                                         ),
 
-                                        const SizedBox(height: 28),
+                                        const SizedBox(height: 22),
 
                                         Column(
                                           crossAxisAlignment:
@@ -3472,7 +3546,8 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                           ],
                                         ),
                                         // Removed redundant countdown widget (countdown shown on Sleep button only)
-                                      ],
+                                        ],
+                                      ),
                                     ),
                                   ),
                                 ),
