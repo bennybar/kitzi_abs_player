@@ -16,6 +16,7 @@ import '../../core/playback_speed_service.dart';
 import '../../core/sleep_timer_service.dart';
 import '../../core/ui_prefs.dart';
 import '../../core/downloads_repository.dart';
+import '../../widgets/glass_widget.dart';
 import '../../main.dart'; // ServicesScope
 import 'full_player_overlay.dart';
 import 'player_visual_cache.dart';
@@ -3564,26 +3565,14 @@ class _GlassPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return ClipRRect(
+    return AppLiquidGlass(
+      blur: 42,
+      opacity: Theme.of(context).brightness == Brightness.dark ? 0.2 : 0.15,
       borderRadius: BorderRadius.circular(borderRadius),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: tint ?? cs.surface.withOpacity(0.42),
-            borderRadius: BorderRadius.circular(borderRadius),
-            border: Border.all(color: cs.outlineVariant.withOpacity(0.16)),
-            boxShadow: [
-              BoxShadow(
-                color: cs.shadow.withOpacity(0.08),
-                blurRadius: 20,
-                offset: const Offset(0, 8),
-              ),
-            ],
-          ),
-          child: Padding(padding: padding, child: child),
-        ),
-      ),
+      tint: tint ?? cs.surface,
+      elevation: 16,
+      padding: padding,
+      child: child,
     );
   }
 }
@@ -3602,25 +3591,16 @@ class _InfoPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final bg =
-        highlighted
-            ? Color.alphaBlend(cs.primary.withOpacity(0.16), cs.surface)
-            : cs.surface.withOpacity(0.42);
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOutCubic,
+    return AppLiquidGlassPill(
+      blur: 26,
+      opacity: highlighted ? 0.22 : 0.16,
+      tint:
+          highlighted
+              ? Color.alphaBlend(cs.primary.withOpacity(0.14), cs.surface)
+              : cs.surface,
+      elevation: highlighted ? 8 : 5,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color:
-              highlighted
-                  ? cs.primary.withOpacity(0.18)
-                  : cs.outlineVariant.withOpacity(0.16),
-        ),
-      ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -3683,23 +3663,13 @@ class _PlayerActionTile extends StatelessWidget {
 
     final tile = SizedBox(
       height: tileHeight,
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: radius,
-          color: enabled ? bg : bg.withOpacity(0.7),
-          border: Border.all(
-            color: cs.outlineVariant.withOpacity(enabled ? 0.16 : 0.1),
-            width: 1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: cs.shadow.withOpacity(0.05),
-              blurRadius: 16,
-              spreadRadius: 0,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
+      child: AppLiquidGlass(
+        blur: 28,
+        opacity: enabled ? 0.17 : 0.11,
+        borderRadius: radius,
+        tint: enabled ? bg : bg.withOpacity(0.8),
+        elevation: 8,
+        padding: EdgeInsets.zero,
         child: Material(
           color: Colors.transparent,
           borderRadius: radius,

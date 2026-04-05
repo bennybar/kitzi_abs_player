@@ -1,5 +1,125 @@
 import 'package:flutter/material.dart';
-import 'dart:ui';
+import 'package:liquid_glass/liquid_glass.dart';
+
+class AppLiquidGlass extends StatelessWidget {
+  const AppLiquidGlass({
+    super.key,
+    required this.child,
+    this.padding,
+    this.blur = 40,
+    this.opacity = 0.2,
+    this.borderRadius = const BorderRadius.all(Radius.circular(28)),
+    this.tint,
+    this.elevation = 18,
+  });
+
+  final Widget child;
+  final EdgeInsetsGeometry? padding;
+  final double blur;
+  final double opacity;
+  final BorderRadius borderRadius;
+  final Color? tint;
+  final double elevation;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final baseTint = tint ?? cs.surface;
+    final glassTint = Color.lerp(
+      baseTint,
+      Colors.white,
+      isDark ? 0.18 : 0.58,
+    )!;
+
+    return LiquidGlass(
+      blur: blur,
+      opacity: isDark ? opacity + 0.04 : opacity + 0.02,
+      borderRadius: borderRadius,
+      tint: glassTint,
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: borderRadius,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isDark ? 0.24 : 0.08),
+              blurRadius: elevation,
+              offset: Offset(0, elevation * 0.35),
+            ),
+            BoxShadow(
+              color: Colors.white.withValues(alpha: isDark ? 0.02 : 0.12),
+              blurRadius: elevation * 0.5,
+              offset: const Offset(0, 1),
+            ),
+          ],
+          border: Border.all(
+            color:
+                isDark
+                    ? Colors.white.withValues(alpha: 0.12)
+                    : Colors.white.withValues(alpha: 0.42),
+          ),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Colors.white.withValues(alpha: isDark ? 0.10 : 0.22),
+              Colors.white.withValues(alpha: isDark ? 0.03 : 0.07),
+            ],
+          ),
+        ),
+        foregroundDecoration: BoxDecoration(
+          borderRadius: borderRadius,
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color.fromARGB(38, 255, 255, 255),
+              Color.fromARGB(10, 255, 255, 255),
+              Color.fromARGB(0, 255, 255, 255),
+            ],
+            stops: [0, 0.3, 0.85],
+          ),
+        ),
+        child: Padding(
+          padding: padding ?? EdgeInsets.zero,
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+class AppLiquidGlassPill extends StatelessWidget {
+  const AppLiquidGlassPill({
+    super.key,
+    required this.child,
+    this.padding = const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+    this.blur = 32,
+    this.opacity = 0.18,
+    this.tint,
+    this.elevation = 10,
+  });
+
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+  final double blur;
+  final double opacity;
+  final Color? tint;
+  final double elevation;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppLiquidGlass(
+      blur: blur,
+      opacity: opacity,
+      borderRadius: const BorderRadius.all(Radius.circular(999)),
+      tint: tint,
+      elevation: elevation,
+      padding: padding,
+      child: child,
+    );
+  }
+}
 
 /// A custom glass widget that provides glass morphism effects
 class GlassWidget extends StatelessWidget {
@@ -24,29 +144,27 @@ class GlassWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    
-    return ClipRRect(
+    return AppLiquidGlass(
+      blur: blur,
+      opacity: opacity,
       borderRadius: BorderRadius.circular(borderRadius),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
-        child: Container(
-          decoration: BoxDecoration(
-            color: colorScheme.surface.withOpacity(opacity),
-            borderRadius: BorderRadius.circular(borderRadius),
-            border: Border.all(
-              color: borderColor ?? colorScheme.outline.withOpacity(0.2),
-              width: borderWidth,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: colorScheme.shadow.withOpacity(0.1),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
+      tint: colorScheme.surface,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(borderRadius),
+          border: Border.all(
+            color: borderColor ?? colorScheme.outline.withOpacity(0.2),
+            width: borderWidth,
           ),
-          child: child,
+          boxShadow: [
+            BoxShadow(
+              color: colorScheme.shadow.withOpacity(0.1),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
+        child: child,
       ),
     );
   }
@@ -79,7 +197,7 @@ class GlassContainer extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    
+
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(borderRadius),
@@ -91,28 +209,28 @@ class GlassContainer extends StatelessWidget {
           ),
         ] : null,
       ),
-      child: ClipRRect(
+      child: AppLiquidGlass(
+        blur: blur,
+        opacity: opacity,
         borderRadius: BorderRadius.circular(borderRadius),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
-          child: Container(
-            decoration: BoxDecoration(
-              gradient: gradient ?? LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  colorScheme.surface.withOpacity(opacity),
-                  colorScheme.surface.withOpacity(opacity * 0.8),
-                ],
-              ),
-              borderRadius: BorderRadius.circular(borderRadius),
-              border: Border.all(
-                color: borderColor ?? colorScheme.outline.withOpacity(0.15),
-                width: borderWidth,
-              ),
+        tint: colorScheme.surface,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: gradient ?? LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                colorScheme.surface.withOpacity(opacity),
+                colorScheme.surface.withOpacity(opacity * 0.8),
+              ],
             ),
-            child: child,
+            borderRadius: BorderRadius.circular(borderRadius),
+            border: Border.all(
+              color: borderColor ?? colorScheme.outline.withOpacity(0.15),
+              width: borderWidth,
+            ),
           ),
+          child: child,
         ),
       ),
     );
@@ -138,26 +256,22 @@ class GlassNavigationBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    
-    return Container(
-      decoration: BoxDecoration(
-        border: Border(
-          top: BorderSide(
-            color: borderColor ?? colorScheme.outline.withOpacity(0.1),
-            width: 0.5,
-          ),
-        ),
-      ),
-      child: ClipRRect(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
-          child: Container(
-            decoration: BoxDecoration(
-              color: colorScheme.surface.withOpacity(opacity),
+
+    return AppLiquidGlass(
+      blur: blur,
+      opacity: opacity,
+      borderRadius: BorderRadius.zero,
+      tint: colorScheme.surface,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border(
+            top: BorderSide(
+              color: borderColor ?? colorScheme.outline.withOpacity(0.1),
+              width: 0.5,
             ),
-            child: child,
           ),
         ),
+        child: child,
       ),
     );
   }

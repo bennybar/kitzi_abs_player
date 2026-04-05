@@ -12,6 +12,7 @@ import '../home/series_page.dart';
 import '../home/authors_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/ui_prefs.dart';
+import '../../widgets/glass_widget.dart';
 
 import '../../core/downloads_repository.dart';
 import '../../core/playback_repository.dart';
@@ -260,24 +261,33 @@ class _MainScaffoldState extends State<MainScaffold> {
                                   10,
                                   4,
                                 ),
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: cs.surface.withOpacity(0.94),
-                                    borderRadius: BorderRadius.circular(26),
-                                    border: Border.all(
-                                      color: cs.outlineVariant.withOpacity(
-                                        0.16,
+                                child: AppLiquidGlass(
+                                  blur: 46,
+                                  opacity:
+                                      Theme.of(context).brightness ==
+                                              Brightness.dark
+                                          ? 0.18
+                                          : 0.14,
+                                  borderRadius: BorderRadius.circular(26),
+                                  tint: cs.surface,
+                                  child: DecoratedBox(
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(26),
+                                      border: Border.all(
+                                        color: cs.outlineVariant.withOpacity(
+                                          0.16,
+                                        ),
                                       ),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: cs.shadow.withOpacity(0.14),
+                                          blurRadius: 24,
+                                          offset: const Offset(0, 10),
+                                        ),
+                                      ],
                                     ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: cs.shadow.withOpacity(0.14),
-                                        blurRadius: 24,
-                                        offset: const Offset(0, 10),
-                                      ),
-                                    ],
+                                    child: const MiniPlayer(height: 66),
                                   ),
-                                  child: const MiniPlayer(height: 66),
                                 ),
                               )
                               : const SizedBox.shrink(),
@@ -344,38 +354,46 @@ class _MainScaffoldState extends State<MainScaffold> {
   }) {
     return SafeArea(
       top: false,
-      child: Container(
-        margin: const EdgeInsets.fromLTRB(10, 0, 10, 8),
-        padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
-        decoration: BoxDecoration(
-          color: colorScheme.surface.withOpacity(0.94),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
+        child: AppLiquidGlass(
+          blur: 52,
+          opacity:
+              Theme.of(context).brightness == Brightness.dark ? 0.2 : 0.14,
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: colorScheme.outlineVariant.withOpacity(0.16),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: colorScheme.shadow.withOpacity(0.14),
-              blurRadius: 24,
-              offset: const Offset(0, 10),
+          tint: colorScheme.surface,
+          padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                color: colorScheme.outlineVariant.withOpacity(0.16),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: colorScheme.shadow.withOpacity(0.14),
+                  blurRadius: 24,
+                  offset: const Offset(0, 10),
+                ),
+              ],
             ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(20),
-          child: NavigationBar(
-            selectedIndex: selectedIndex,
-            onDestinationSelected: onDestinationSelected,
-            backgroundColor: Colors.transparent,
-            surfaceTintColor: Colors.transparent,
-            elevation: 0,
-            height: height,
-            indicatorColor: Color.alphaBlend(
-              colorScheme.primary.withOpacity(0.12),
-              colorScheme.surface,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: NavigationBar(
+                selectedIndex: selectedIndex,
+                onDestinationSelected: onDestinationSelected,
+                backgroundColor: Colors.transparent,
+                surfaceTintColor: Colors.transparent,
+                elevation: 0,
+                height: height,
+                indicatorColor: Color.alphaBlend(
+                  colorScheme.primary.withOpacity(0.12),
+                  colorScheme.surface,
+                ),
+                labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+                destinations: _buildDestinations(showAuthors, showSeries),
+              ),
             ),
-            labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-            destinations: _buildDestinations(showAuthors, showSeries),
           ),
         ),
       ),

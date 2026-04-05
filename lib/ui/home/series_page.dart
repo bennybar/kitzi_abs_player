@@ -10,6 +10,7 @@ import '../../core/ui_prefs.dart';
 import '../../models/book.dart';
 import '../../models/series.dart';
 import '../../utils/alphabet_utils.dart';
+import '../../widgets/glass_widget.dart';
 import '../../widgets/letter_scrollbar.dart';
 import '../book_detail/book_detail_page.dart';
 import '../../main.dart';
@@ -697,42 +698,58 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
                 ),
                 actions: [
                   // Search button
-                  IconButton.filledTonal(
-                    tooltip: 'Search',
-                    onPressed: _toggleSearch,
-                    icon: Icon(
-                      _searchVisible
-                          ? Icons.search_off_rounded
-                          : Icons.search_rounded,
-                    ),
-                    style: IconButton.styleFrom(
-                      backgroundColor: cs.surfaceContainerHighest,
+                  AppLiquidGlassPill(
+                    padding: const EdgeInsets.all(4),
+                    blur: 34,
+                    opacity:
+                        Theme.of(context).brightness == Brightness.dark
+                            ? 0.2
+                            : 0.14,
+                    tint: cs.surface,
+                    child: IconButton(
+                      tooltip: 'Search',
+                      onPressed: _toggleSearch,
+                      icon: Icon(
+                        _searchVisible
+                            ? Icons.search_off_rounded
+                            : Icons.search_rounded,
+                      ),
+                      style: IconButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        foregroundColor: cs.onSurface,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 8),
                   // Toggle between series and collections - always visible
-                  Container(
-                    margin: const EdgeInsets.only(right: 16),
-                    decoration: BoxDecoration(
-                      color: cs.surfaceContainerHighest,
+                  Padding(
+                    padding: const EdgeInsets.only(right: 16),
+                    child: AppLiquidGlass(
+                      blur: 40,
+                      opacity:
+                          Theme.of(context).brightness == Brightness.dark
+                              ? 0.2
+                              : 0.14,
+                      tint: cs.surface,
                       borderRadius: BorderRadius.circular(24),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _buildToggleButton(
-                          context,
-                          'Series',
-                          SeriesViewType.series,
-                          Icons.collections_bookmark_rounded,
-                        ),
-                        _buildToggleButton(
-                          context,
-                          'Collections',
-                          SeriesViewType.collections,
-                          Icons.folder_rounded,
-                        ),
-                      ],
+                      padding: const EdgeInsets.all(4),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _buildToggleButton(
+                            context,
+                            'Series',
+                            SeriesViewType.series,
+                            Icons.collections_bookmark_rounded,
+                          ),
+                          _buildToggleButton(
+                            context,
+                            'Collections',
+                            SeriesViewType.collections,
+                            Icons.folder_rounded,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ],
@@ -749,56 +766,74 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
                             child: Column(
                               children: [
                                 // Material search bar
-                                SearchBar(
-                                  controller: _searchCtrl,
-                                  focusNode: _searchFocusNode,
-                                  leading: Icon(
-                                    Icons.search_rounded,
-                                    color: cs.onSurfaceVariant,
-                                  ),
-                                  hintText:
-                                      'Search ${_viewType.name} or books...',
-                                  hintStyle: WidgetStateProperty.all(
-                                    TextStyle(color: cs.onSurfaceVariant),
-                                  ),
-                                  backgroundColor: WidgetStateProperty.all(
-                                    cs.surfaceContainerHighest,
-                                  ),
-                                  elevation: WidgetStateProperty.all(0),
-                                  shape: WidgetStateProperty.all(
-                                    RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(16),
+                                AppLiquidGlass(
+                                  blur: 36,
+                                  opacity:
+                                      Theme.of(context).brightness ==
+                                              Brightness.dark
+                                          ? 0.18
+                                          : 0.12,
+                                  tint: cs.surface,
+                                  borderRadius: BorderRadius.circular(18),
+                                  child: SearchBar(
+                                    controller: _searchCtrl,
+                                    focusNode: _searchFocusNode,
+                                    leading: Icon(
+                                      Icons.search_rounded,
+                                      color: cs.onSurfaceVariant,
                                     ),
-                                  ),
-                                  onChanged: (val) {
-                                    setState(() => _query = val);
-                                    _saveSearchPref(val);
-                                    _searchDebounce?.cancel();
-                                    _searchDebounce = Timer(
-                                      const Duration(milliseconds: 300),
-                                      () {
-                                        if (!mounted) return;
-                                        setState(() {});
-                                      },
-                                    );
-                                  },
-                                  trailing: [
-                                    if (_query.isNotEmpty)
-                                      IconButton(
-                                        tooltip: 'Clear',
-                                        onPressed: () {
-                                          // Hide keyboard
-                                          FocusScope.of(context).unfocus();
-                                          _searchCtrl.clear();
-                                          setState(() => _query = '');
-                                          _saveSearchPref('');
-                                        },
-                                        icon: Icon(
-                                          Icons.clear_rounded,
-                                          color: cs.onSurfaceVariant,
-                                        ),
+                                    hintText:
+                                        'Search ${_viewType.name} or books...',
+                                    hintStyle: WidgetStateProperty.all(
+                                      TextStyle(color: cs.onSurfaceVariant),
+                                    ),
+                                    backgroundColor: WidgetStateProperty.all(
+                                      Colors.transparent,
+                                    ),
+                                    elevation: WidgetStateProperty.all(0),
+                                    shadowColor: WidgetStateProperty.all(
+                                      Colors.transparent,
+                                    ),
+                                    surfaceTintColor: WidgetStateProperty.all(
+                                      Colors.transparent,
+                                    ),
+                                    side: WidgetStateProperty.all(
+                                      BorderSide.none,
+                                    ),
+                                    shape: WidgetStateProperty.all(
+                                      RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(16),
                                       ),
-                                  ],
+                                    ),
+                                    onChanged: (val) {
+                                      setState(() => _query = val);
+                                      _saveSearchPref(val);
+                                      _searchDebounce?.cancel();
+                                      _searchDebounce = Timer(
+                                        const Duration(milliseconds: 300),
+                                        () {
+                                          if (!mounted) return;
+                                          setState(() {});
+                                        },
+                                      );
+                                    },
+                                    trailing: [
+                                      if (_query.isNotEmpty)
+                                        IconButton(
+                                          tooltip: 'Clear',
+                                          onPressed: () {
+                                            FocusScope.of(context).unfocus();
+                                            _searchCtrl.clear();
+                                            setState(() => _query = '');
+                                            _saveSearchPref('');
+                                          },
+                                          icon: Icon(
+                                            Icons.clear_rounded,
+                                            color: cs.onSurfaceVariant,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
                                 ),
                               ],
                             ),
@@ -1406,14 +1441,22 @@ class _SeriesCard extends StatelessWidget {
                     horizontal: 8,
                     vertical: 4,
                   ),
-                  decoration: BoxDecoration(
-                    color: cs.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    '${books.length}',
-                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      color: cs.onSurfaceVariant,
+                  child: AppLiquidGlassPill(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    blur: 30,
+                    opacity:
+                        Theme.of(context).brightness == Brightness.dark
+                            ? 0.18
+                            : 0.12,
+                    tint: cs.surface,
+                    child: Text(
+                      '${books.length}',
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: cs.onSurfaceVariant,
+                      ),
                     ),
                   ),
                 ),
@@ -1504,15 +1547,17 @@ class _CollectionCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                Container(
+                AppLiquidGlassPill(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
+                    horizontal: 10,
+                    vertical: 6,
                   ),
-                  decoration: BoxDecoration(
-                    color: cs.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+                  blur: 30,
+                  opacity:
+                      Theme.of(context).brightness == Brightness.dark
+                          ? 0.18
+                          : 0.12,
+                  tint: cs.surface,
                   child: Text(
                     '${books.length}',
                     style: Theme.of(context).textTheme.labelMedium?.copyWith(

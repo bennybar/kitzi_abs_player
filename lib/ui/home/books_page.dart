@@ -17,6 +17,7 @@ import '../../models/book.dart';
 import '../../widgets/skeleton_widgets.dart';
 import '../../widgets/letter_scrollbar.dart';
 import '../../widgets/author_card.dart';
+import '../../widgets/glass_widget.dart';
 import '../../utils/alphabet_utils.dart';
 import '../book_detail/book_detail_page.dart';
 import '../player/full_player_page.dart';
@@ -1474,18 +1475,15 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 2, 20, 16),
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Color.alphaBlend(
-            cs.primary.withOpacity(0.08),
-            cs.surfaceContainerLow,
-          ),
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: cs.outlineVariant.withOpacity(0.14),
-          ),
+      child: AppLiquidGlass(
+        blur: 42,
+        opacity: Theme.of(context).brightness == Brightness.dark ? 0.18 : 0.14,
+        borderRadius: BorderRadius.circular(24),
+        tint: Color.alphaBlend(
+          cs.primary.withOpacity(0.06),
+          cs.surfaceContainerLow,
         ),
+        padding: const EdgeInsets.all(14),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -2001,14 +1999,13 @@ class _HomeStatCard extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
 
-    return Container(
-      constraints: const BoxConstraints(minHeight: 102),
+    return AppLiquidGlass(
+      blur: 30,
+      opacity: Theme.of(context).brightness == Brightness.dark ? 0.18 : 0.13,
+      borderRadius: BorderRadius.circular(22),
+      tint: cs.surface,
+      elevation: 10,
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Color.alphaBlend(cs.surface.withOpacity(0.72), cs.surface),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: cs.outlineVariant.withOpacity(0.12)),
-      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2028,15 +2025,18 @@ class _HomeStatCard extends StatelessWidget {
                 ),
               ),
               if (chipLabel != null)
-                Container(
+                AppLiquidGlassPill(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 7,
                     vertical: 3,
                   ),
-                  decoration: BoxDecoration(
-                    color: cs.surfaceContainerHighest.withOpacity(0.9),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
+                  blur: 20,
+                  opacity:
+                      Theme.of(context).brightness == Brightness.dark
+                          ? 0.2
+                          : 0.14,
+                  tint: cs.surfaceContainerHighest,
+                  elevation: 4,
                   child: Text(
                     chipLabel!,
                     style: text.labelSmall?.copyWith(
@@ -2055,7 +2055,7 @@ class _HomeStatCard extends StatelessWidget {
                 width: 28,
                 height: 28,
                 decoration: BoxDecoration(
-                  color: cs.primary.withOpacity(0.12),
+                  color: cs.primary.withOpacity(0.15),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(icon, size: 16, color: cs.primary),
@@ -2112,14 +2112,19 @@ class _SectionHeader extends StatelessWidget {
       padding: padding,
       child: Row(
         children: [
-          Container(
-            width: 28,
-            height: 28,
-            decoration: BoxDecoration(
-              color: cs.primary.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(10),
+          AppLiquidGlass(
+            blur: 24,
+            opacity:
+                Theme.of(context).brightness == Brightness.dark ? 0.2 : 0.14,
+            borderRadius: BorderRadius.circular(10),
+            tint: cs.surface,
+            elevation: 6,
+            padding: EdgeInsets.zero,
+            child: SizedBox(
+              width: 28,
+              height: 28,
+              child: Icon(icon, size: 18, color: cs.primary),
             ),
-            child: Icon(icon, size: 18, color: cs.primary),
           ),
           const SizedBox(width: 10),
           Text(
