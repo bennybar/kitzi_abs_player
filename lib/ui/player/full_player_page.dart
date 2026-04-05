@@ -28,7 +28,6 @@ enum _TopMenuAction {
   cast,
   playHistory,
   bookmarks,
-  coverSize,
 }
 
 /// Custom slider track shape that allows tighter horizontal padding than the
@@ -2511,9 +2510,6 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                                 playback,
                                               );
                                               break;
-                                            case _TopMenuAction.coverSize:
-                                              _showCoverSizeSheet(context);
-                                              break;
                                           }
                                         },
                                         itemBuilder:
@@ -2602,23 +2598,6 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                                   ],
                                                 ),
                                               ),
-                                              PopupMenuItem(
-                                                value: _TopMenuAction.coverSize,
-                                                child: Row(
-                                                  children: [
-                                                    Icon(
-                                                      Icons
-                                                          .photo_size_select_large_rounded,
-                                                      size: 18,
-                                                      color: cs.primary,
-                                                    ),
-                                                    const SizedBox(width: 12),
-                                                    const Expanded(
-                                                      child: Text('Cover size'),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
                                             ],
                                       );
                                     },
@@ -2646,10 +2625,10 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                   ),
                                   child: Column(
                                     children: [
-                                      ValueListenableBuilder<PlayerCoverSize>(
-                                        valueListenable:
-                                            UiPrefs.playerCoverSize,
-                                        builder: (context, coverSize, _) {
+                                      Builder(
+                                        builder: (context) {
+                                          const coverSize =
+                                              PlayerCoverSize.small;
                                           final dims = _coverDimensionsForSize(
                                             context,
                                             coverSize,
@@ -3295,7 +3274,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                             double spacing = 10;
                                             double edge = 42;
                                             double skip = 52;
-                                            double center = 68;
+                                            double center = 62;
                                             final needed =
                                                 2 * edge +
                                                 2 * skip +
@@ -3491,7 +3470,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                                                   1
                                                               : 1,
                                                     ),
-                                                    label: 'Chapters',
+                                                    label: '',
                                                     onTap:
                                                         np.chapters.length > 1
                                                             ? () =>
@@ -3518,7 +3497,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                                             np.libraryItemId,
                                                         episodeId: np.episodeId,
                                                         title: np.title,
-                                                        iconOnly: false,
+                                                        iconOnly: true,
                                                         heightScale: 0.72,
                                                       ),
                                                 ),
@@ -3793,7 +3772,7 @@ class _SleepQuickAction extends StatelessWidget {
         final isChapterMode = timer.isChapterMode;
         return _PlayerActionTile(
           icon: Icon(isChapterMode ? Symbols.auto_stories : Symbols.bedtime),
-          label: 'Sleep',
+          label: '',
           onTap: onTap,
           tooltip: active ? 'Adjust sleep timer' : 'Set sleep timer',
           backgroundColor: active ? cs.primary : cs.surfaceContainerHighest,
@@ -3826,7 +3805,7 @@ class _SpeedQuickAction extends StatelessWidget {
             Symbols.speed,
             color: isNormal ? cs.onSurface : accentColor,
           ),
-          label: isNormal ? 'Speed' : _formatPlaybackSpeedLabel(cur),
+          label: '',
           tooltip: 'Playback speed',
           onTap: () => _showSpeedSheet(context, cur),
           backgroundColor:

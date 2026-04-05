@@ -41,20 +41,17 @@ class _MiniPlayerState extends State<MiniPlayer> {
           padding: const EdgeInsets.fromLTRB(6, 6, 6, 4),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(20),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-              child: DecoratedBox(
-                decoration: _miniBackgroundDecoration(
-                  gradientEnabled,
-                  cs,
-                  brightness,
-                ),
-                child: _buildContent(
-                  context,
-                  playback,
-                  cs,
-                  showTopBorder: false,
-                ),
+            child: DecoratedBox(
+              decoration: _miniBackgroundDecoration(
+                gradientEnabled,
+                cs,
+                brightness,
+              ),
+              child: _buildContent(
+                context,
+                playback,
+                cs,
+                showTopBorder: false,
               ),
             ),
           ),
@@ -547,73 +544,9 @@ class _MiniPlayerState extends State<MiniPlayer> {
     ColorScheme cs,
     Brightness brightness,
   ) {
-    if (!gradientEnabled) {
-      return BoxDecoration(
-        color: cs.surface.withOpacity(
-          brightness == Brightness.dark ? 0.8 : 0.88,
-        ),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: Colors.white.withOpacity(
-            brightness == Brightness.dark ? 0.1 : 0.22,
-          ),
-          width: 0.8,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: cs.shadow.withOpacity(0.12),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      );
-    }
-    final primary = _palettePrimary ?? cs.primary;
-    final secondary = _paletteSecondary ?? cs.secondary;
-    final colors =
-        brightness == Brightness.dark
-            ? [
-              Color.alphaBlend(
-                primary.withOpacity(0.2),
-                cs.surface.withOpacity(0.85),
-              ),
-              Color.alphaBlend(
-                secondary.withOpacity(0.16),
-                cs.surface.withOpacity(0.8),
-              ),
-              cs.surface.withOpacity(0.72),
-            ]
-            : [
-              Color.alphaBlend(
-                primary.withOpacity(0.18),
-                cs.surface.withOpacity(0.94),
-              ),
-              Color.alphaBlend(
-                secondary.withOpacity(0.14),
-                cs.surface.withOpacity(0.9),
-              ),
-              cs.surface.withOpacity(0.82),
-            ];
     return BoxDecoration(
-      borderRadius: BorderRadius.circular(24),
-      gradient: LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: colors,
-      ),
-      border: Border.all(
-        color: Colors.white.withOpacity(
-          brightness == Brightness.dark ? 0.1 : 0.22,
-        ),
-        width: 0.8,
-      ),
-      boxShadow: [
-        BoxShadow(
-          color: cs.shadow.withOpacity(0.12),
-          blurRadius: 18,
-          offset: const Offset(0, 8),
-        ),
-      ],
+      borderRadius: BorderRadius.circular(20),
+      color: Colors.transparent,
     );
   }
 }

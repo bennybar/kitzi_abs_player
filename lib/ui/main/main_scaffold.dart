@@ -262,18 +262,18 @@ class _MainScaffoldState extends State<MainScaffold> {
                                 ),
                                 child: Container(
                                   decoration: BoxDecoration(
-                                    color: cs.surface.withOpacity(0.84),
+                                    color: Colors.white.withOpacity(0.92),
                                     borderRadius: BorderRadius.circular(26),
                                     border: Border.all(
                                       color: cs.outlineVariant.withOpacity(
-                                        0.14,
+                                        0.1,
                                       ),
                                     ),
                                     boxShadow: [
                                       BoxShadow(
-                                        color: cs.shadow.withOpacity(0.1),
-                                        blurRadius: 20,
-                                        offset: const Offset(0, 8),
+                                        color: cs.shadow.withOpacity(0.06),
+                                        blurRadius: 14,
+                                        offset: const Offset(0, 6),
                                       ),
                                     ],
                                   ),
