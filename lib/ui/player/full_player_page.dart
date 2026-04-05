@@ -3274,7 +3274,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                             double spacing = 10;
                                             double edge = 42;
                                             double skip = 52;
-                                            double center = 62;
+                                            double center = 56;
                                             final needed =
                                                 2 * edge +
                                                 2 * skip +
@@ -3671,7 +3671,7 @@ class _PlayerActionTile extends StatelessWidget {
     final text = Theme.of(context).textTheme;
     final clampedScale = heightScale.clamp(0.6, 1.2);
     final radius = BorderRadius.circular(20);
-    final tileHeight = 76.0 * clampedScale;
+    final tileHeight = 66.0 * clampedScale;
     final bg =
         backgroundColor ??
         Color.alphaBlend(
@@ -3708,20 +3708,20 @@ class _PlayerActionTile extends StatelessWidget {
             onTap: enabled ? onTap : null,
             child: Padding(
               padding: EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 6 * clampedScale,
+                horizontal: 8,
+                vertical: 4 * clampedScale,
               ),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   SizedBox(
-                    width: 30 * clampedScale,
-                    height: 30 * clampedScale,
+                    width: 24 * clampedScale,
+                    height: 24 * clampedScale,
                     child: IconTheme(
                       data: IconThemeData(
                         color: iconColor,
-                        size: 22 * clampedScale,
+                        size: 20 * clampedScale,
                       ),
                       child: Center(child: icon),
                     ),
