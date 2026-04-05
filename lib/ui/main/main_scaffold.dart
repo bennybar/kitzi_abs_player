@@ -256,9 +256,9 @@ class _MainScaffoldState extends State<MainScaffold> {
                           hasMini
                               ? Padding(
                                 padding: const EdgeInsets.fromLTRB(
-                                  4,
+                                  10,
                                   0,
-                                  4,
+                                  10,
                                   4,
                                 ),
                                 child: AppLiquidGlass(
@@ -366,7 +366,7 @@ class _MainScaffoldState extends State<MainScaffold> {
     return SafeArea(
       top: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+        padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
         child: AppLiquidGlass(
           blur: 20,
           opacity:
