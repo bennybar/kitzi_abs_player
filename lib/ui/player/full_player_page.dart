@@ -3564,13 +3564,20 @@ class _GlassPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return AppLiquidGlass(
       blur: 42,
-      opacity: Theme.of(context).brightness == Brightness.dark ? 0.2 : 0.15,
+      opacity: isDark ? 0.2 : 0.09,
       borderRadius: BorderRadius.circular(borderRadius),
-      tint: tint ?? cs.surface,
+      tint:
+          tint ??
+          Color.alphaBlend(
+            Colors.black.withValues(alpha: isDark ? 0.0 : 0.05),
+            cs.surface,
+          ),
       elevation: 16,
+      lightenAmount: isDark ? null : 0.08,
       padding: padding,
       child: child,
     );
@@ -3591,15 +3598,26 @@ class _InfoPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return AppLiquidGlassPill(
       blur: 26,
-      opacity: highlighted ? 0.22 : 0.16,
+      opacity:
+          highlighted
+              ? (isDark ? 0.22 : 0.10)
+              : (isDark ? 0.16 : 0.08),
       tint:
           highlighted
-              ? Color.alphaBlend(cs.primary.withOpacity(0.14), cs.surface)
-              : cs.surface,
+              ? Color.alphaBlend(
+                cs.primary.withOpacity(isDark ? 0.14 : 0.08),
+                cs.surface,
+              )
+              : Color.alphaBlend(
+                Colors.black.withValues(alpha: isDark ? 0.0 : 0.04),
+                cs.surface,
+              ),
       elevation: highlighted ? 8 : 5,
+      lightenAmount: isDark ? null : 0.07,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -3652,10 +3670,11 @@ class _PlayerActionTile extends StatelessWidget {
     final clampedScale = heightScale.clamp(0.6, 1.2);
     final radius = BorderRadius.circular(20);
     final tileHeight = 66.0 * clampedScale;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final bg =
         backgroundColor ??
         Color.alphaBlend(
-          cs.surfaceContainerHighest.withOpacity(0.58),
+          cs.surfaceContainerHighest.withOpacity(isDark ? 0.58 : 0.34),
           cs.surface,
         );
     final fg = foregroundColor ?? cs.onSurface;
@@ -3665,10 +3684,14 @@ class _PlayerActionTile extends StatelessWidget {
       height: tileHeight,
       child: AppLiquidGlass(
         blur: 28,
-        opacity: enabled ? 0.17 : 0.11,
+        opacity:
+            enabled
+                ? (isDark ? 0.17 : 0.09)
+                : (isDark ? 0.11 : 0.06),
         borderRadius: radius,
         tint: enabled ? bg : bg.withOpacity(0.8),
         elevation: 8,
+        lightenAmount: isDark ? null : 0.06,
         padding: EdgeInsets.zero,
         child: Material(
           color: Colors.transparent,

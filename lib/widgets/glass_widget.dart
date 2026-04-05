@@ -33,7 +33,7 @@ class AppLiquidGlass extends StatelessWidget {
     final glassTint = Color.lerp(
       baseTint,
       Colors.white,
-      lightenAmount ?? (isDark ? 0.18 : 0.58),
+      lightenAmount ?? (isDark ? 0.18 : 0.34),
     )!;
 
     final decorated = Container(
@@ -46,7 +46,7 @@ class AppLiquidGlass extends StatelessWidget {
             offset: Offset(0, elevation * 0.35),
           ),
           BoxShadow(
-            color: Colors.white.withValues(alpha: isDark ? 0.015 : 0.08),
+            color: Colors.white.withValues(alpha: isDark ? 0.015 : 0.045),
             blurRadius: elevation * 0.4,
             offset: const Offset(0, 1),
           ),
@@ -55,28 +55,38 @@ class AppLiquidGlass extends StatelessWidget {
           color:
               isDark
                   ? Colors.white.withValues(alpha: 0.12)
-                  : Colors.white.withValues(alpha: 0.36),
+                  : Colors.white.withValues(alpha: 0.20),
         ),
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            glassTint.withValues(alpha: isDark ? 0.20 : 0.18),
-            glassTint.withValues(alpha: isDark ? 0.12 : 0.10),
+            glassTint.withValues(alpha: isDark ? 0.20 : 0.11),
+            glassTint.withValues(alpha: isDark ? 0.12 : 0.06),
           ],
         ),
       ),
       foregroundDecoration: BoxDecoration(
         borderRadius: borderRadius,
-        gradient: const LinearGradient(
+        gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Color.fromARGB(34, 255, 255, 255),
-            Color.fromARGB(8, 255, 255, 255),
-            Color.fromARGB(0, 255, 255, 255),
+          colors: isDark
+              ? const [
+                Color.fromARGB(34, 255, 255, 255),
+                Color.fromARGB(8, 255, 255, 255),
+                Color.fromARGB(0, 255, 255, 255),
+              ]
+              : const [
+                Color.fromARGB(16, 255, 255, 255),
+                Color.fromARGB(4, 255, 255, 255),
+                Color.fromARGB(0, 255, 255, 255),
+              ],
+          stops: const [
+            0,
+            0.28,
+            0.85,
           ],
-          stops: [0, 0.28, 0.85],
         ),
       ),
       child: Padding(
@@ -90,7 +100,7 @@ class AppLiquidGlass extends StatelessWidget {
     return RepaintBoundary(
       child: LiquidGlass(
         blur: blur,
-        opacity: isDark ? opacity + 0.03 : opacity + 0.015,
+        opacity: isDark ? opacity + 0.03 : opacity,
         borderRadius: borderRadius,
         tint: glassTint,
         child: decorated,

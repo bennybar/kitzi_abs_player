@@ -1477,12 +1477,16 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       padding: const EdgeInsets.fromLTRB(20, 2, 20, 16),
       child: AppLiquidGlass(
         blur: 42,
-        opacity: Theme.of(context).brightness == Brightness.dark ? 0.18 : 0.14,
+        opacity: Theme.of(context).brightness == Brightness.dark ? 0.18 : 0.09,
         borderRadius: BorderRadius.circular(24),
         tint: Color.alphaBlend(
-          cs.primary.withOpacity(0.06),
+          cs.primary.withOpacity(
+            Theme.of(context).brightness == Brightness.dark ? 0.06 : 0.03,
+          ),
           cs.surfaceContainerLow,
         ),
+        lightenAmount:
+            Theme.of(context).brightness == Brightness.dark ? null : 0.08,
         padding: const EdgeInsets.all(14),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -2001,10 +2005,18 @@ class _HomeStatCard extends StatelessWidget {
 
     return AppLiquidGlass(
       blur: 30,
-      opacity: Theme.of(context).brightness == Brightness.dark ? 0.18 : 0.13,
+      opacity: Theme.of(context).brightness == Brightness.dark ? 0.18 : 0.08,
       borderRadius: BorderRadius.circular(22),
-      tint: cs.surface,
+      tint: Color.alphaBlend(
+        Colors.black.withValues(
+          alpha:
+              Theme.of(context).brightness == Brightness.dark ? 0.0 : 0.04,
+        ),
+        cs.surface,
+      ),
       elevation: 10,
+      lightenAmount:
+          Theme.of(context).brightness == Brightness.dark ? null : 0.07,
       padding: const EdgeInsets.all(14),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -2034,9 +2046,21 @@ class _HomeStatCard extends StatelessWidget {
                   opacity:
                       Theme.of(context).brightness == Brightness.dark
                           ? 0.2
-                          : 0.14,
-                  tint: cs.surfaceContainerHighest,
+                          : 0.08,
+                  tint: Color.alphaBlend(
+                    Colors.black.withValues(
+                      alpha:
+                          Theme.of(context).brightness == Brightness.dark
+                              ? 0.0
+                              : 0.05,
+                    ),
+                    cs.surfaceContainerHighest,
+                  ),
                   elevation: 4,
+                  lightenAmount:
+                      Theme.of(context).brightness == Brightness.dark
+                          ? null
+                          : 0.06,
                   child: Text(
                     chipLabel!,
                     style: text.labelSmall?.copyWith(
@@ -2115,10 +2139,20 @@ class _SectionHeader extends StatelessWidget {
           AppLiquidGlass(
             blur: 24,
             opacity:
-                Theme.of(context).brightness == Brightness.dark ? 0.2 : 0.14,
+                Theme.of(context).brightness == Brightness.dark ? 0.2 : 0.08,
             borderRadius: BorderRadius.circular(10),
-            tint: cs.surface,
+            tint: Color.alphaBlend(
+              Colors.black.withValues(
+                alpha:
+                    Theme.of(context).brightness == Brightness.dark
+                        ? 0.0
+                        : 0.04,
+              ),
+              cs.surface,
+            ),
             elevation: 6,
+            lightenAmount:
+                Theme.of(context).brightness == Brightness.dark ? null : 0.06,
             padding: EdgeInsets.zero,
             child: SizedBox(
               width: 28,

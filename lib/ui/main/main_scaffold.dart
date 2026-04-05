@@ -267,7 +267,7 @@ class _MainScaffoldState extends State<MainScaffold> {
                                       Theme.of(context).brightness ==
                                               Brightness.dark
                                           ? 0.18
-                                          : 0.14,
+                                          : 0.09,
                                   borderRadius: BorderRadius.circular(34),
                                   tint: Color.alphaBlend(
                                     Colors.black.withValues(
@@ -275,12 +275,12 @@ class _MainScaffoldState extends State<MainScaffold> {
                                           Theme.of(context).brightness ==
                                                   Brightness.dark
                                               ? 0.18
-                                              : 0.12,
+                                              : 0.08,
                                     ),
                                     cs.surface,
                                   ),
                                   liveBlur: true,
-                                  lightenAmount: 0.10,
+                                  lightenAmount: 0.05,
                                   child: DecoratedBox(
                                     decoration: BoxDecoration(
                                       borderRadius: BorderRadius.circular(34),
@@ -370,17 +370,17 @@ class _MainScaffoldState extends State<MainScaffold> {
         child: AppLiquidGlass(
           blur: 20,
           opacity:
-              Theme.of(context).brightness == Brightness.dark ? 0.22 : 0.10,
+              Theme.of(context).brightness == Brightness.dark ? 0.22 : 0.08,
           borderRadius: BorderRadius.circular(34),
           tint: Color.alphaBlend(
             Colors.black.withValues(
               alpha:
-                  Theme.of(context).brightness == Brightness.dark ? 0.22 : 0.18,
+                  Theme.of(context).brightness == Brightness.dark ? 0.22 : 0.12,
             ),
             colorScheme.surface,
           ),
           liveBlur: true,
-          lightenAmount: 0.06,
+          lightenAmount: 0.03,
           padding: const EdgeInsets.all(2),
           child: DecoratedBox(
             decoration: BoxDecoration(
@@ -547,19 +547,19 @@ class _NavTab extends StatelessWidget {
                     ? AppLiquidGlassPill(
                       padding: EdgeInsets.zero,
                       blur: 10,
-                      opacity: isDark ? 0.18 : 0.11,
+                      opacity: isDark ? 0.18 : 0.08,
                       tint: Color.alphaBlend(
                         cs.primary.withOpacity(0.06),
                         Color.alphaBlend(
                           Colors.black.withValues(
-                            alpha: isDark ? 0.16 : 0.10,
+                            alpha: isDark ? 0.16 : 0.07,
                           ),
                           cs.surface,
                         ),
                       ),
                       elevation: 4,
                       liveBlur: true,
-                      lightenAmount: 0.08,
+                      lightenAmount: 0.04,
                       child: selectedContent,
                     )
                     : Column(
