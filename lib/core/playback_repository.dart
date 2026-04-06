@@ -172,6 +172,7 @@ class PlaybackRepository {
   }
 
   PlaybackRepository(this._auth) {
+    _bindSharedPositionUpdates();
     _init();
   }
 
@@ -195,12 +196,28 @@ class PlaybackRepository {
       _completionStatusCtr.stream;
   final Map<String, bool> completionCache = {};
 
+  late final Stream<Duration> _positionStream =
+      player.createPositionStream().asBroadcastStream();
+  final ValueNotifier<Duration> currentPosition = ValueNotifier<Duration>(
+    Duration.zero,
+  );
+  StreamSubscription<Duration>? _sharedPositionSub;
+
   Stream<bool> get playingStream => player.playingStream;
-  Stream<Duration> get positionStream => player.createPositionStream();
+  Stream<Duration> get positionStream => _positionStream;
   Stream<Duration?> get durationStream => player.durationStream;
   Stream<PlayerState> get playerStateStream => player.playerStateStream;
   Stream<ProcessingState> get processingStateStream =>
       player.processingStateStream;
+
+  void _bindSharedPositionUpdates() {
+    currentPosition.value = player.position;
+    _sharedPositionSub?.cancel();
+    _sharedPositionSub = _positionStream.listen((pos) {
+      if (currentPosition.value == pos) return;
+      currentPosition.value = pos;
+    });
+  }
 
   String? _progressItemId;
   String? _activeSessionId; // Remote streaming session id (if any)

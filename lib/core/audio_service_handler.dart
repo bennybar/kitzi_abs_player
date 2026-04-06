@@ -11,6 +11,8 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
   final PlaybackRepository _playback;
   final AudioPlayer _player;
   VoidCallback? _progressPrefListener;
+  DateTime? _lastPositionPushAt;
+  static const Duration _positionPushThrottle = Duration(milliseconds: 750);
   
   KitziAudioHandler(this._playback, this._player) {
     _loadEmptyPlaylist();
@@ -76,7 +78,14 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
   void _listenForPositionChanges() {
     // Push frequent position/buffer updates so Android notification/lock screen
     // show a moving progress bar between playback events.
-    _player.positionStream.listen((pos) {
+    _playback.positionStream.listen((pos) {
+      final now = DateTime.now();
+      if (_lastPositionPushAt != null &&
+          now.difference(_lastPositionPushAt!) < _positionPushThrottle) {
+        return;
+      }
+      _lastPositionPushAt = now;
+
       final progress = _resolveNotificationProgress();
       playbackState.add(playbackState.value.copyWith(
         updatePosition: progress.position,

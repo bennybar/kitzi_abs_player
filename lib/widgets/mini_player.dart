@@ -167,33 +167,56 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                     ),
                                   ),
                                 ),
-                              StreamBuilder<Duration>(
-                                stream: playback.positionStream,
-                                initialData: playback.player.position,
-                                builder: (_, posSnap) {
-                                  // Use total book progress instead of current track
-                                  final globalTotal =
-                                      playback.totalBookDuration;
-                                  final globalPos = playback.globalBookPosition;
+                              ValueListenableBuilder<Duration>(
+                                valueListenable: playback.currentPosition,
+                                builder: (_, currentPos, __) {
+                                  final duration = playback.totalBookDuration;
+                                  final resolvedPosition =
+                                      playback.globalBookPosition ?? currentPos;
 
-                                  // Prefer global book progress if available, otherwise use current track
-                                  final position =
-                                      globalPos ??
-                                      (posSnap.data ?? Duration.zero);
-                                  final duration = globalTotal;
+                                  Widget buildSyncStatus() {
+                                    return ValueListenableBuilder<
+                                      ProgressSyncStatus
+                                    >(
+                                      valueListenable: playback.progressSyncStatus,
+                                      builder: (_, status, __) {
+                                        final pending = status.pending;
+                                        final icon =
+                                            pending
+                                                ? Icons.cloud_upload_rounded
+                                                : (status.hasEverSynced
+                                                    ? Icons.cloud_done_rounded
+                                                    : Icons.cloud_off_rounded);
+                                        final color =
+                                            pending
+                                                ? cs.tertiary
+                                                : cs.onSurfaceVariant;
+                                        final tooltip =
+                                            pending
+                                                ? 'Progress pending sync'
+                                                : (status.hasEverSynced
+                                                    ? 'Progress synced'
+                                                    : 'Progress not synced yet');
+                                        return Tooltip(
+                                          message: tooltip,
+                                          child: Icon(
+                                            icon,
+                                            size: 12,
+                                            color: color,
+                                          ),
+                                        );
+                                      },
+                                    );
+                                  }
 
                                   if (duration == null ||
                                       duration == Duration.zero) {
-                                    // Fallback to current track duration if global not available
-                                    final trackDuration =
-                                        playback.player.duration;
+                                    final trackDuration = playback.player.duration;
                                     if (trackDuration == null ||
                                         trackDuration == Duration.zero) {
                                       return const SizedBox.shrink();
                                     }
-                                    final posStr = _formatTime(
-                                      posSnap.data ?? Duration.zero,
-                                    );
+                                    final posStr = _formatTime(currentPos);
                                     final durStr = _formatTime(trackDuration);
                                     return Row(
                                       mainAxisSize: MainAxisSize.min,
@@ -212,46 +235,12 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                           ),
                                         ),
                                         const SizedBox(width: 4),
-                                        ValueListenableBuilder<
-                                          ProgressSyncStatus
-                                        >(
-                                          valueListenable:
-                                              playback.progressSyncStatus,
-                                          builder: (_, status, __) {
-                                            final pending = status.pending;
-                                            final icon =
-                                                pending
-                                                    ? Icons.cloud_upload_rounded
-                                                    : (status.hasEverSynced
-                                                        ? Icons
-                                                            .cloud_done_rounded
-                                                        : Icons
-                                                            .cloud_off_rounded);
-                                            final color =
-                                                pending
-                                                    ? cs.tertiary
-                                                    : cs.onSurfaceVariant;
-                                            final tooltip =
-                                                pending
-                                                    ? 'Progress pending sync'
-                                                    : (status.hasEverSynced
-                                                        ? 'Progress synced'
-                                                        : 'Progress not synced yet');
-                                            return Tooltip(
-                                              message: tooltip,
-                                              child: Icon(
-                                                icon,
-                                                size: 12,
-                                                color: color,
-                                              ),
-                                            );
-                                          },
-                                        ),
+                                        buildSyncStatus(),
                                       ],
                                     );
                                   }
 
-                                  final posStr = _formatTime(position);
+                                  final posStr = _formatTime(resolvedPosition);
                                   final durStr = _formatTime(duration);
 
                                   return Row(
@@ -271,40 +260,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                         ),
                                       ),
                                       const SizedBox(width: 4),
-                                      ValueListenableBuilder<
-                                        ProgressSyncStatus
-                                      >(
-                                        valueListenable:
-                                            playback.progressSyncStatus,
-                                        builder: (_, status, __) {
-                                          final pending = status.pending;
-                                          final icon =
-                                              pending
-                                                  ? Icons.cloud_upload_rounded
-                                                  : (status.hasEverSynced
-                                                      ? Icons.cloud_done_rounded
-                                                      : Icons
-                                                          .cloud_off_rounded);
-                                          final color =
-                                              pending
-                                                  ? cs.tertiary
-                                                  : cs.onSurfaceVariant;
-                                          final tooltip =
-                                              pending
-                                                  ? 'Progress pending sync'
-                                                  : (status.hasEverSynced
-                                                      ? 'Progress synced'
-                                                      : 'Progress not synced yet');
-                                          return Tooltip(
-                                            message: tooltip,
-                                            child: Icon(
-                                              icon,
-                                              size: 12,
-                                              color: color,
-                                            ),
-                                          );
-                                        },
-                                      ),
+                                      buildSyncStatus(),
                                     ],
                                   );
                                 },
@@ -440,25 +396,23 @@ class _MiniPlayerState extends State<MiniPlayer> {
                 ),
                   ),
                   // Thin book-progress bar at the very bottom of the mini player
-                  Positioned(
-                    left: 14,
-                    right: 14,
-                    bottom: 4,
-                    child: StreamBuilder<Duration>(
-                      stream: playback.positionStream,
-                      initialData: playback.player.position,
-                      builder: (_, posSnap) {
-                        final pos =
-                            playback.globalBookPosition ??
-                            (posSnap.data ?? Duration.zero);
-                        final dur = playback.totalBookDuration;
-                        if (dur == null || dur == Duration.zero) {
-                          return const SizedBox.shrink();
-                        }
-                        final fraction = (pos.inMilliseconds /
-                                dur.inMilliseconds)
-                            .clamp(0.0, 1.0);
-                        return ClipRRect(
+                  ValueListenableBuilder<Duration>(
+                    valueListenable: playback.currentPosition,
+                    builder: (_, currentPos, __) {
+                      final pos =
+                          playback.globalBookPosition ?? currentPos;
+                      final dur = playback.totalBookDuration;
+                      if (dur == null || dur == Duration.zero) {
+                        return const SizedBox.shrink();
+                      }
+                      final fraction = (pos.inMilliseconds /
+                              dur.inMilliseconds)
+                          .clamp(0.0, 1.0);
+                      return Positioned(
+                        left: 14,
+                        right: 14,
+                        bottom: 4,
+                        child: ClipRRect(
                           borderRadius: BorderRadius.circular(2),
                           child: LinearProgressIndicator(
                             value: fraction,
@@ -469,9 +423,9 @@ class _MiniPlayerState extends State<MiniPlayer> {
                               cs.primary.withOpacity(0.75),
                             ),
                           ),
-                        );
-                      },
-                    ),
+                        ),
+                      );
+                    },
                   ),
                 ],
               );

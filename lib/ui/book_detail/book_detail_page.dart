@@ -1462,10 +1462,9 @@ class _ChapterTimelineState extends State<_ChapterTimeline> {
     final cs = Theme.of(context).colorScheme;
     final playback = widget.playback;
 
-    return StreamBuilder<Duration>(
-      stream: playback.positionStream,
-      initialData: playback.player.position,
-      builder: (ctx, posSnap) {
+    return ValueListenableBuilder<Duration>(
+      valueListenable: playback.currentPosition,
+      builder: (ctx, currentPos, _) {
         final np = playback.nowPlaying;
         final isActive = np?.libraryItemId == widget.book.id;
 
@@ -1473,7 +1472,7 @@ class _ChapterTimelineState extends State<_ChapterTimeline> {
           // Chapter-segmented bar when book is currently playing
           final totalDur = playback.totalBookDuration ?? Duration.zero;
           final pos =
-              playback.globalBookPosition ?? posSnap.data ?? Duration.zero;
+              playback.globalBookPosition ?? currentPos;
           if (totalDur == Duration.zero) return const SizedBox.shrink();
 
           final totalSec = totalDur.inMilliseconds / 1000.0;
@@ -2053,12 +2052,10 @@ class _ProgressSummaryState extends State<_ProgressSummary> {
     final isThis = playback.nowPlaying?.libraryItemId == book.id;
     if (isThis) {
       // Live summary based on entire book (all tracks), not per track
-      return StreamBuilder<Duration>(
-        stream: playback.positionStream,
-        initialData: playback.player.position,
-        builder: (_, pSnap) {
+      return ValueListenableBuilder<Duration>(
+        valueListenable: playback.currentPosition,
+        builder: (_, curPos, __) {
           final np = playback.nowPlaying;
-          final curPos = pSnap.data ?? Duration.zero;
           double totalSec = 0;
           double prefixSec = 0;
           if (np != null && np.tracks.isNotEmpty) {

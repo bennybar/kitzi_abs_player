@@ -1948,17 +1948,9 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                 ),
               ),
               Flexible(
-                child: StreamBuilder<Duration>(
-                  stream:
-                      ServicesScope.of(
-                        context,
-                      ).services.playback.positionStream,
-                  initialData:
-                      ServicesScope.of(
-                        context,
-                      ).services.playback.player.position,
-                  builder: (_, posSnap) {
-                    final pos = posSnap.data ?? Duration.zero;
+                child: ValueListenableBuilder<Duration>(
+                  valueListenable: playback.currentPosition,
+                  builder: (_, pos, __) {
                     final currentGlobalPos =
                         useGlobal
                             ? (playback.globalBookPosition ?? Duration.zero)
@@ -3018,10 +3010,9 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                         // POSITION + SLIDER
                         Padding(
                           padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-                          child: StreamBuilder<Duration>(
-                            stream: playback.positionStream,
-                            initialData: playback.player.position,
-                            builder: (_, posSnap) {
+                          child: ValueListenableBuilder<Duration>(
+                            valueListenable: playback.currentPosition,
+                            builder: (_, pos, __) {
                               final globalTotal = playback.totalBookDuration;
                               final hasGlobal =
                                   _dualProgressEnabled &&
@@ -3042,8 +3033,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                               Widget progressContent;
                               if (preferChapter) {
                                 final globalPos =
-                                    playback.globalBookPosition ??
-                                    Duration.zero;
+                                    playback.globalBookPosition ?? pos;
                                 progressContent = Column(
                                   crossAxisAlignment:
                                       CrossAxisAlignment.stretch,
@@ -3116,7 +3106,6 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                               } else {
                                 final total =
                                     playback.player.duration ?? Duration.zero;
-                                final pos = posSnap.data ?? Duration.zero;
                                 progressContent = _buildTrackProgressFallback(
                                   context: context,
                                   cs: cs,

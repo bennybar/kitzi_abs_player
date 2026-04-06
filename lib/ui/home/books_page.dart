@@ -1889,10 +1889,11 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
 
   Widget _buildLetterScrollbarOverlay(BuildContext context) {
     final media = MediaQuery.of(context);
+    final bottomChromeReserve = media.padding.bottom + 132.0;
     return Positioned(
       right: 4,
       top: media.padding.top + 96,
-      bottom: 32,
+      bottom: bottomChromeReserve,
       child: ValueListenableBuilder<bool>(
         valueListenable: UiPrefs.letterScrollEnabled,
         builder: (_, enabled, __) {
@@ -2346,13 +2347,12 @@ class _BookCard extends StatelessWidget {
                                   left: 0,
                                   right: 0,
                                   bottom: 0,
-                                  child: StreamBuilder<Duration>(
-                                    stream: playback.positionStream,
-                                    initialData: playback.player.position,
-                                    builder: (_, posSnap) {
+                                  child: ValueListenableBuilder<Duration>(
+                                    valueListenable: playback.currentPosition,
+                                    builder: (_, currentPos, __) {
                                       final pos =
                                           playback.globalBookPosition ??
-                                          (posSnap.data ?? Duration.zero);
+                                          currentPos;
                                       final dur = playback.totalBookDuration;
                                       final fraction =
                                           dur != null && dur != Duration.zero
