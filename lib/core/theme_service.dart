@@ -26,7 +26,7 @@ enum SurfaceTintLevel {
 /// Access current mode with [mode.value], update with [set] or [toggle].
 /// Also manages light mode surface tint strength.
 class ThemeService {
-  final ValueNotifier<ThemeMode> mode = ValueNotifier<ThemeMode>(ThemeMode.system);
+  final ValueNotifier<ThemeMode> mode = ValueNotifier<ThemeMode>(ThemeMode.dark);
   final ValueNotifier<SurfaceTintLevel> surfaceTintLevel = ValueNotifier<SurfaceTintLevel>(SurfaceTintLevel.medium);
   final ValueNotifier<int> fontScalePercent = ValueNotifier<int>(100);
 
@@ -46,7 +46,7 @@ class ThemeService {
           'light' => ThemeMode.light,
           'dark' => ThemeMode.dark,
           'system' => ThemeMode.system,
-          _ => ThemeMode.system,
+          _ => ThemeMode.dark,
         };
         mode.value = loadedMode;
       }
