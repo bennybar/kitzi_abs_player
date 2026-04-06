@@ -322,10 +322,11 @@ class _AuthorsPageState extends State<AuthorsPage> {
       return const SizedBox.shrink();
     }
     final media = MediaQuery.of(context);
+    final bottomChromeReserve = media.padding.bottom + 132.0;
     return Positioned(
       right: 4,
       top: media.padding.top + 148,
-      bottom: 32,
+      bottom: bottomChromeReserve,
       child: ValueListenableBuilder<bool>(
         valueListenable: UiPrefs.letterScrollEnabled,
         builder: (_, enabled, __) {
