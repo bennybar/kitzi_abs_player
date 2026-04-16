@@ -970,12 +970,14 @@ class PlaybackRepository {
     String? episodeId,
     BuildContext? context,
   }) async {
+    Book? cachedBook;
     // Guard: do not attempt playback if item appears to be non-audiobook
     try {
       final repo = await BooksRepository.create();
       final b =
           await repo.getBookFromDb(libraryItemId) ??
           await repo.getBook(libraryItemId);
+      cachedBook = b;
       if (b.isAudioBook == false) {
         _log('Blocked play for non-audiobook item $libraryItemId');
         return false;
@@ -1039,11 +1041,19 @@ class PlaybackRepository {
 
     final np = NowPlaying(
       libraryItemId: libraryItemId,
-      title: _titleFromMeta(meta) ?? 'Audiobook',
+      title:
+          _titleFromMeta(meta) ??
+          (cachedBook?.title.isNotEmpty == true ? cachedBook!.title : null) ??
+          'Audiobook',
       author: _authorFromMeta(
         meta,
-      ), // Writer only; no narrator fallback for artist
-      narrator: _narratorFromMeta(meta),
+      ) ??
+      cachedBook?.author, // Writer only; no narrator fallback for artist
+      narrator:
+          _narratorFromMeta(meta) ??
+          ((cachedBook?.narrators?.isNotEmpty ?? false)
+              ? cachedBook!.narrators!.join(', ')
+              : null),
       coverUrl: await _coverUrl(libraryItemId),
       tracks: tracks,
       currentIndex: 0,
