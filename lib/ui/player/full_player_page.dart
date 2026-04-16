@@ -192,23 +192,42 @@ class _ResumeFromHistoryButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     return Tooltip(
       message: 'Resume previous play position',
-      child: FilledButton(
-        style: FilledButton.styleFrom(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          minimumSize: const Size(0, 0),
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          foregroundColor: Colors.white,
-          backgroundColor: Colors.green.shade600,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(999),
+          onTap: () => _handleResume(context),
+          child: AppLiquidGlassPill(
+            blur: 26,
+            opacity: 0.18,
+            tint: Color.alphaBlend(Colors.green.shade600.withOpacity(0.22), Theme.of(context).colorScheme.surface),
+            elevation: 8,
+            lightenAmount: 0.05,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.history_rounded,
+                  size: 14,
+                  color: Colors.green.shade300,
+                ),
+                const SizedBox(width: 5),
+                Text(
+                  'Last position',
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    fontSize: 11.5,
+                    color: Colors.green.shade200,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.1,
+                  ),
+                ),
+              ],
+            ),
           ),
-          elevation: 2,
         ),
-        onPressed: () => _handleResume(context),
-        child: const Icon(Icons.history_rounded, size: 18),
       ),
     );
   }
@@ -1467,11 +1486,6 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                       ),
                     ),
                     Positioned.fill(child: _SleepTimerArcOverlay()),
-                    Positioned(
-                      left: 10,
-                      bottom: 10,
-                      child: const _ResumeFromHistoryButton(),
-                    ),
                   ],
                 ),
               ),
@@ -1581,14 +1595,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
               spacing: 8,
               runSpacing: 8,
               children: [
-                _InfoPill(
-                  icon: Symbols.auto_stories,
-                  label:
-                      np.chapters.length > 1
-                          ? 'Chapter ${(chapterMetrics?.index ?? 0) + 1}'
-                          : 'Single part',
-                  highlighted: true,
-                ),
+                const _ResumeFromHistoryButton(),
                 const _InfoPill(
                   icon: Symbols.graphic_eq,
                   label: 'Audiobook',
