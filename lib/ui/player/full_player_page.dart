@@ -397,7 +397,7 @@ class FullPlayerPage extends StatefulWidget {
         backgroundColor: Colors.transparent,
         builder:
             (context) => Container(
-              height: MediaQuery.of(context).size.height * 0.95,
+              height: MediaQuery.of(context).size.height,
               decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.surface,
                 borderRadius: const BorderRadius.vertical(
@@ -739,13 +739,12 @@ class _FullPlayerPageState extends State<FullPlayerPage>
     var width = screenWidth * widthFactor;
 
     if (availableHeight != null && availableHeight > 0) {
-      final reservedHeight = 92.0 + metadataLineCount * 22.0;
+      final reservedHeight = 24.0 + metadataLineCount * 18.0;
       final dynamicMax =
           (availableHeight - reservedHeight)
-              .clamp(screenWidth * 0.4, screenWidth * 0.78)
+              .clamp(screenWidth * 0.48, screenWidth * 0.9)
               .toDouble();
-      final growth = ((6 - metadataLineCount).clamp(0, 4) * 14).toDouble();
-      width = math.min(dynamicMax, width + growth);
+      width = dynamicMax;
     }
 
     return _CoverDims(width: width, radius: radius);
@@ -1318,6 +1317,300 @@ class _FullPlayerPageState extends State<FullPlayerPage>
         offset: const Offset(0, 14),
       ),
     ];
+  }
+
+  Widget _buildHeroArtwork({
+    required BuildContext context,
+    required PlaybackRepository playback,
+    required NowPlaying np,
+    required _CoverDims dims,
+    required ColorScheme cs,
+  }) {
+    return StreamBuilder<bool>(
+      stream: playback.playingStream,
+      initialData: playback.player.playing,
+      builder: (_, playSnap) {
+        final isPlaying = playSnap.data ?? false;
+        return AnimatedBuilder(
+          animation: _coverAnimation,
+          builder: (context, child) {
+            final t = _coverAnimation.value;
+            final fade = Curves.easeOut.transform(t);
+            final entranceScale = 0.975 + 0.0325 * Curves.easeOut.transform(t);
+            final translateY = 14 * (1 - t);
+            return Transform.translate(
+              offset: Offset(0, translateY),
+              child: Opacity(
+                opacity: fade,
+                child: Transform.scale(
+                  scale: entranceScale,
+                  child: AnimatedScale(
+                    scale: isPlaying ? 1.018 : 1.0,
+                    duration: const Duration(milliseconds: 650),
+                    curve: Curves.easeOutCubic,
+                    child: child,
+                  ),
+                ),
+              ),
+            );
+          },
+          child: Center(
+            child: SizedBox(
+              width: dims.width,
+              child: AspectRatio(
+                aspectRatio: 1,
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(dims.radius + 10),
+                          gradient: RadialGradient(
+                            center: const Alignment(-0.2, -0.35),
+                            radius: 1.0,
+                            colors: [
+                              (_palettePrimary ?? cs.primary).withOpacity(0.28),
+                              (_paletteSecondary ?? cs.secondary).withOpacity(
+                                0.14,
+                              ),
+                              Colors.transparent,
+                            ],
+                            stops: const [0.0, 0.52, 1.0],
+                          ),
+                        ),
+                      ),
+                    ),
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 650),
+                      curve: Curves.easeOutCubic,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(dims.radius),
+                        border: Border.all(
+                          color: cs.outline.withOpacity(0.6),
+                          width: 2.0,
+                        ),
+                        boxShadow: _artworkShadows(dims, cs, isPlaying),
+                      ),
+                    ),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(dims.radius),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          Transform.scale(
+                            scale: 1.024,
+                            child:
+                                np.coverUrl != null && np.coverUrl!.isNotEmpty
+                                    ? _ValidatedCachedNetworkImage(
+                                      imageUrl: np.coverUrl!,
+                                      fit: BoxFit.cover,
+                                      fadeInDuration: const Duration(
+                                        milliseconds: 220,
+                                      ),
+                                      fadeOutDuration: const Duration(
+                                        milliseconds: 120,
+                                      ),
+                                      placeholder:
+                                          (_, __) => Container(
+                                            decoration: BoxDecoration(
+                                              gradient: LinearGradient(
+                                                colors: [
+                                                  cs.surfaceContainerHighest,
+                                                  cs.surfaceContainerHigh
+                                                      .withOpacity(0.9),
+                                                ],
+                                                begin: Alignment.topLeft,
+                                                end: Alignment.bottomRight,
+                                              ),
+                                            ),
+                                            child: Icon(
+                                              Icons.menu_book_outlined,
+                                              size: 88,
+                                              color: cs.onSurfaceVariant
+                                                  .withOpacity(0.75),
+                                            ),
+                                          ),
+                                      errorWidget:
+                                          (_, __, ___) => Container(
+                                            color: cs.surfaceContainerHighest,
+                                            child: Icon(
+                                              Icons.menu_book_outlined,
+                                              size: 88,
+                                              color: cs.onSurfaceVariant,
+                                            ),
+                                          ),
+                                    )
+                                    : Container(
+                                      color: cs.surfaceContainerHighest,
+                                      child: Icon(
+                                        Icons.menu_book_outlined,
+                                        size: 88,
+                                        color: cs.onSurfaceVariant,
+                                      ),
+                                    ),
+                          ),
+                          DecoratedBox(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  Colors.transparent,
+                                  Colors.black.withOpacity(0.04),
+                                  Colors.black.withOpacity(0.4),
+                                ],
+                                stops: const [0.55, 0.72, 1.0],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Positioned.fill(child: _SleepTimerArcOverlay()),
+                    Positioned(
+                      left: 10,
+                      bottom: 10,
+                      child: const _ResumeFromHistoryButton(),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildHeroMetadata({
+    required BuildContext context,
+    required TextTheme text,
+    required ColorScheme cs,
+    required PlaybackRepository playback,
+    required NowPlaying np,
+    required Duration? totalDuration,
+  }) {
+    final chapterMetrics = playback.currentChapterProgress;
+
+    return AnimatedBuilder(
+      animation: _titleAnimation,
+      builder: (context, child) {
+        return Transform.translate(
+          offset: Offset(0, 20 * (1 - _titleAnimation.value)),
+          child: Opacity(
+            opacity: _titleAnimation.value,
+            child: SizedBox(
+              width: double.infinity,
+              child: child,
+            ),
+          ),
+        );
+      },
+      child: _GlassPanel(
+        borderRadius: 30,
+        tint: Color.alphaBlend(
+          cs.surface.withOpacity(0.34),
+          cs.surfaceContainerHigh.withOpacity(0.74),
+        ),
+        padding: const EdgeInsets.fromLTRB(18, 20, 18, 14),
+        child: Column(
+          children: [
+            ValueListenableBuilder<bool>(
+              valueListenable: UiPrefs.playerScrollingSingleLineTitle,
+              builder: (context, singleLineScrollingTitle, _) {
+                final titleStyle = text.headlineSmall?.copyWith(
+                  fontSize:
+                      (text.headlineSmall?.fontSize ?? 28) * _metadataTextScale,
+                  fontWeight: FontWeight.w800,
+                  height: 1.08,
+                  letterSpacing: -0.45,
+                );
+                if (!singleLineScrollingTitle) {
+                  return Text(
+                    np.title,
+                    textAlign: TextAlign.center,
+                    style: titleStyle,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                  );
+                }
+                return _LoopingMarqueeText(
+                  text: np.title,
+                  style: titleStyle,
+                  gap: 40,
+                  pause: const Duration(milliseconds: 900),
+                  pixelsPerSecond: 36,
+                );
+              },
+            ),
+            if (np.author != null && np.author!.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                np.author!,
+                textAlign: TextAlign.center,
+                style: text.titleMedium?.copyWith(
+                  fontSize:
+                      (text.titleMedium?.fontSize ?? 17) * _metadataTextScale,
+                  color: cs.onSurfaceVariant.withOpacity(0.92),
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.05,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+            if (np.narrator != null && np.narrator!.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                'Narrated by ${np.narrator!}',
+                textAlign: TextAlign.center,
+                style: text.bodyMedium?.copyWith(
+                  fontSize:
+                      (text.bodyMedium?.fontSize ?? 14) * _metadataTextScale,
+                  color: cs.onSurfaceVariant.withOpacity(0.66),
+                  fontWeight: FontWeight.w500,
+                  letterSpacing: 0.1,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+            const SizedBox(height: 12),
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _InfoPill(
+                  icon: Symbols.auto_stories,
+                  label:
+                      np.chapters.length > 1
+                          ? 'Chapter ${(chapterMetrics?.index ?? 0) + 1}'
+                          : 'Single part',
+                  highlighted: true,
+                ),
+                const _InfoPill(
+                  icon: Symbols.graphic_eq,
+                  label: 'Audiobook',
+                ),
+                _InfoPill(
+                  icon: Symbols.library_books,
+                  label:
+                      np.chapters.length > 1
+                          ? '${np.chapters.length} chapters'
+                          : 'Single part',
+                ),
+                if (totalDuration != null)
+                  _InfoPill(
+                    icon: Symbols.schedule,
+                    label: _formatDuration(totalDuration),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _showCastingComingSoon(BuildContext context) {
@@ -2202,8 +2495,9 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                     initialData: timer.remainingTime,
                     builder: (ctx, snap) {
                       final rem = snap.data;
-                      if (!timer.isActive || rem == null)
+                      if (!timer.isActive || rem == null) {
                         return const SizedBox.shrink();
+                      }
                       final modeLabel =
                           timer.isChapterMode
                               ? 'Until chapter ends'
@@ -2608,396 +2902,50 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                               final metadataLineCount =
                                   _estimatedMetadataLineCount(np);
                               return RepaintBoundary(
-                                child: SingleChildScrollView(
-                                  physics: const BouncingScrollPhysics(),
+                                child: Padding(
                                   padding: const EdgeInsets.fromLTRB(
                                     20,
                                     14,
                                     20,
-                                    18,
+                                    8,
                                   ),
                                   child: Column(
                                     children: [
-                                      Builder(
-                                        builder: (context) {
-                                          const coverSize =
-                                              PlayerCoverSize.small;
-                                          final dims = _coverDimensionsForSize(
-                                            context,
-                                            coverSize,
-                                            availableHeight:
-                                                sectionConstraints.maxHeight,
-                                            metadataLineCount:
-                                                metadataLineCount,
-                                          );
-                                          return StreamBuilder<bool>(
-                                            stream: playback.playingStream,
-                                            initialData:
-                                                playback.player.playing,
-                                            builder: (_, playSnap) {
-                                              final isPlaying =
-                                                  playSnap.data ?? false;
-                                              return AnimatedBuilder(
-                                                animation: _coverAnimation,
-                                                builder: (context, child) {
-                                                  final t =
-                                                      _coverAnimation.value;
-                                                  final fade = Curves.easeOut
-                                                      .transform(t);
-                                                  final entranceScale =
-                                                      0.975 +
-                                                      0.0325 *
-                                                          Curves.easeOut
-                                                              .transform(t);
-                                                  final translateY =
-                                                      14 * (1 - t);
-                                                  return Transform.translate(
-                                                    offset: Offset(
-                                                      0,
-                                                      translateY,
-                                                    ),
-                                                    child: Opacity(
-                                                      opacity: fade,
-                                                      child: Transform.scale(
-                                                        scale: entranceScale,
-                                                        child: AnimatedScale(
-                                                          scale:
-                                                              isPlaying
-                                                                  ? 1.018
-                                                                  : 1.0,
-                                                          duration:
-                                                              const Duration(
-                                                                milliseconds:
-                                                                    650,
-                                                              ),
-                                                          curve:
-                                                              Curves
-                                                                  .easeOutCubic,
-                                                          child: child,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  );
-                                                },
-                                                child: Center(
-                                                  child: SizedBox(
-                                                    width: dims.width,
-                                                    child: AspectRatio(
-                                                      aspectRatio: 1,
-                                                      child: Stack(
-                                                        children: [
-                                                          AnimatedContainer(
-                                                            duration:
-                                                                const Duration(
-                                                                  milliseconds:
-                                                                      650,
-                                                                ),
-                                                            curve:
-                                                                Curves
-                                                                    .easeOutCubic,
-                                                            decoration: BoxDecoration(
-                                                              borderRadius:
-                                                                  BorderRadius.circular(
-                                                                    dims.radius,
-                                                                  ),
-                                                              border: Border.all(
-                                                                color: cs
-                                                                    .outline
-                                                                    .withOpacity(
-                                                                      0.6,
-                                                                    ),
-                                                                width: 2.0,
-                                                              ),
-                                                              boxShadow:
-                                                                  _artworkShadows(
-                                                                    dims,
-                                                                    cs,
-                                                                    isPlaying,
-                                                                  ),
-                                                            ),
-                                                          ),
-                                                          ClipRRect(
-                                                            borderRadius:
-                                                                BorderRadius.circular(
-                                                                  dims.radius,
-                                                                ),
-                                                            child: Transform.scale(
-                                                              scale: 1.024,
-                                                              child:
-                                                                  np.coverUrl !=
-                                                                              null &&
-                                                                          np.coverUrl!.isNotEmpty
-                                                                      ? _ValidatedCachedNetworkImage(
-                                                                        imageUrl:
-                                                                            np.coverUrl!,
-                                                                        fit:
-                                                                            BoxFit.cover,
-                                                                        fadeInDuration: const Duration(
-                                                                          milliseconds:
-                                                                              220,
-                                                                        ),
-                                                                        fadeOutDuration: const Duration(
-                                                                          milliseconds:
-                                                                              120,
-                                                                        ),
-                                                                        placeholder:
-                                                                            (
-                                                                              _,
-                                                                              __,
-                                                                            ) => Container(
-                                                                              decoration: BoxDecoration(
-                                                                                gradient: LinearGradient(
-                                                                                  colors: [
-                                                                                    cs.surfaceContainerHighest,
-                                                                                    cs.surfaceContainerHigh.withOpacity(
-                                                                                      0.9,
-                                                                                    ),
-                                                                                  ],
-                                                                                  begin:
-                                                                                      Alignment.topLeft,
-                                                                                  end:
-                                                                                      Alignment.bottomRight,
-                                                                                ),
-                                                                              ),
-                                                                              child: Icon(
-                                                                                Icons.menu_book_outlined,
-                                                                                size:
-                                                                                    88,
-                                                                                color: cs.onSurfaceVariant.withOpacity(
-                                                                                  0.75,
-                                                                                ),
-                                                                              ),
-                                                                            ),
-                                                                        errorWidget:
-                                                                            (
-                                                                              _,
-                                                                              __,
-                                                                              ___,
-                                                                            ) => Container(
-                                                                              color:
-                                                                                  cs.surfaceContainerHighest,
-                                                                              child: Icon(
-                                                                                Icons.menu_book_outlined,
-                                                                                size:
-                                                                                    88,
-                                                                                color:
-                                                                                    cs.onSurfaceVariant,
-                                                                              ),
-                                                                            ),
-                                                                      )
-                                                                      : Container(
-                                                                        color:
-                                                                            cs.surfaceContainerHighest,
-                                                                        child: Icon(
-                                                                          Icons
-                                                                              .menu_book_outlined,
-                                                                          size:
-                                                                              88,
-                                                                          color:
-                                                                              cs.onSurfaceVariant,
-                                                                        ),
-                                                                      ),
-                                                            ),
-                                                          ),
-                                                          Positioned.fill(
-                                                            child:
-                                                                _SleepTimerArcOverlay(),
-                                                          ),
-                                                          Positioned(
-                                                            left: 10,
-                                                            bottom: 10,
-                                                            child:
-                                                                _ResumeFromHistoryButton(),
-                                                          ),
-                                                        ],
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-                                              );
-                                            },
-                                          );
-                                        },
+                                      Expanded(
+                                        child: LayoutBuilder(
+                                          builder: (context, coverConstraints) {
+                                            const coverSize =
+                                                PlayerCoverSize.small;
+                                            final dims = _coverDimensionsForSize(
+                                              context,
+                                              coverSize,
+                                              availableHeight:
+                                                  coverConstraints.maxHeight,
+                                              metadataLineCount: 0,
+                                            );
+                                            return Align(
+                                              alignment: Alignment.topCenter,
+                                              child: _buildHeroArtwork(
+                                                context: context,
+                                                playback: playback,
+                                                np: np,
+                                                dims: dims,
+                                                cs: cs,
+                                              ),
+                                            );
+                                          },
+                                        ),
                                       ),
                                       const SizedBox(height: 18),
-                                      AnimatedBuilder(
-                                        animation: _titleAnimation,
-                                        builder: (context, child) {
-                                          return Transform.translate(
-                                            offset: Offset(
-                                              0,
-                                              20 * (1 - _titleAnimation.value),
-                                            ),
-                                            child: Opacity(
-                                              opacity: _titleAnimation.value,
-                                              child: ConstrainedBox(
-                                                constraints:
-                                                    const BoxConstraints(
-                                                      maxWidth: 460,
-                                                    ),
-                                                child: Column(
-                                                  children: [
-                                                    ValueListenableBuilder<
-                                                      bool
-                                                    >(
-                                                      valueListenable:
-                                                          UiPrefs
-                                                              .playerScrollingSingleLineTitle,
-                                                      builder: (
-                                                        context,
-                                                        singleLineScrollingTitle,
-                                                        _,
-                                                      ) {
-                                                        final titleStyle = text
-                                                            .headlineSmall
-                                                            ?.copyWith(
-                                                              fontSize:
-                                                                  (text
-                                                                          .headlineSmall
-                                                                          ?.fontSize ??
-                                                                      28) *
-                                                                  _metadataTextScale,
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .w700,
-                                                              height: 1.14,
-                                                              letterSpacing:
-                                                                  -0.2,
-                                                            );
-                                                        if (!singleLineScrollingTitle) {
-                                                          return Text(
-                                                            np.title,
-                                                            textAlign:
-                                                                TextAlign
-                                                                    .center,
-                                                            style: titleStyle,
-                                                            maxLines: 3,
-                                                            overflow:
-                                                                TextOverflow
-                                                                    .ellipsis,
-                                                          );
-                                                        }
-                                                        return _LoopingMarqueeText(
-                                                          text: np.title,
-                                                          style: titleStyle,
-                                                          gap: 40,
-                                                          pause: const Duration(
-                                                            milliseconds: 900,
-                                                          ),
-                                                          pixelsPerSecond: 36,
-                                                        );
-                                                      },
-                                                    ),
-                                                    if (np.author != null &&
-                                                        np
-                                                            .author!
-                                                            .isNotEmpty) ...[
-                                                      const SizedBox(
-                                                        height: 10,
-                                                      ),
-                                                      Text(
-                                                        np.author!,
-                                                        textAlign:
-                                                            TextAlign.center,
-                                                        style: text.titleLarge?.copyWith(
-                                                          fontSize:
-                                                              (text
-                                                                      .titleLarge
-                                                                      ?.fontSize ??
-                                                                  18) *
-                                                              _metadataTextScale,
-                                                          color: cs
-                                                              .onSurfaceVariant
-                                                              .withOpacity(
-                                                                0.88,
-                                                              ),
-                                                          fontWeight:
-                                                              FontWeight.w500,
-                                                          letterSpacing: 0.1,
-                                                        ),
-                                                        maxLines: 2,
-                                                        overflow:
-                                                            TextOverflow
-                                                                .ellipsis,
-                                                      ),
-                                                    ],
-                                                    if (np.narrator != null &&
-                                                        np
-                                                            .narrator!
-                                                            .isNotEmpty) ...[
-                                                      const SizedBox(height: 6),
-                                                      Text(
-                                                        'Narrated by ${np.narrator!}',
-                                                        textAlign:
-                                                            TextAlign.center,
-                                                        style: text.bodySmall
-                                                            ?.copyWith(
-                                                              fontSize:
-                                                                  (text
-                                                                          .bodySmall
-                                                                          ?.fontSize ??
-                                                                      13) *
-                                                                  _metadataTextScale,
-                                                              color: cs
-                                                                  .onSurfaceVariant
-                                                                  .withOpacity(
-                                                                    0.58,
-                                                                  ),
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .w500,
-                                                              letterSpacing:
-                                                                  0.15,
-                                                            ),
-                                                        maxLines: 2,
-                                                        overflow:
-                                                            TextOverflow
-                                                                .ellipsis,
-                                                      ),
-                                                    ],
-                                                    const SizedBox(height: 10),
-                                                    Wrap(
-                                                      alignment:
-                                                          WrapAlignment.center,
-                                                      spacing: 8,
-                                                      runSpacing: 8,
-                                                      children: [
-                                                        const _InfoPill(
-                                                          icon:
-                                                              Symbols.graphic_eq,
-                                                          label: 'Audiobook',
-                                                          highlighted: true,
-                                                        ),
-                                                        _InfoPill(
-                                                          icon:
-                                                              Symbols.library_books,
-                                                          label:
-                                                              np.chapters
-                                                                      .length >
-                                                                  1
-                                                              ? '${np.chapters.length} chapters'
-                                                              : 'Single part',
-                                                        ),
-                                                        if (totalDuration !=
-                                                            null)
-                                                          _InfoPill(
-                                                            icon:
-                                                                Symbols.schedule,
-                                                            label:
-                                                                _formatDuration(
-                                                                  totalDuration,
-                                                                ),
-                                                          ),
-                                                      ],
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                            ),
-                                          );
-                                        },
+                                      _buildHeroMetadata(
+                                        context: context,
+                                        text: text,
+                                        cs: cs,
+                                        playback: playback,
+                                        np: np,
+                                        totalDuration: totalDuration,
                                       ),
-                                      const SizedBox(height: 2),
+                                      const SizedBox(height: 8),
                                     ],
                                   ),
                                 ),
