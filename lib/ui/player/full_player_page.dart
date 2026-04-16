@@ -3424,7 +3424,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                                             : 'Single chapter – no chapters list',
                                                     enabled:
                                                         np.chapters.length > 1,
-                                                    heightScale: 0.72,
+                                                    heightScale: 0.58,
                                                   ),
                                                 ),
                                                 const SizedBox(width: 10),
@@ -3436,7 +3436,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                                         episodeId: np.episodeId,
                                                         title: np.title,
                                                         iconOnly: true,
-                                                        heightScale: 0.72,
+                                                        heightScale: 0.58,
                                                       ),
                                                 ),
                                                 const SizedBox(width: 10),
@@ -3448,14 +3448,14 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                                               context,
                                                               np,
                                                             ),
-                                                    heightScale: 0.72,
+                                                    heightScale: 0.58,
                                                   ),
                                                 ),
                                                 const SizedBox(width: 10),
                                                 Expanded(
                                                   child: _SpeedQuickAction(
                                                     playback: playback,
-                                                    heightScale: 0.72,
+                                                    heightScale: 0.58,
                                                   ),
                                                 ),
                                               ],
@@ -3555,21 +3555,23 @@ class _InfoPill extends StatelessWidget {
               ),
       elevation: highlighted ? 8 : 5,
       lightenAmount: isDark ? null : 0.07,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
             icon,
-            size: 16,
+            size: 14,
             color: highlighted ? cs.primary : cs.onSurfaceVariant,
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 5),
           Text(
             label,
             style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              fontSize: 11.5,
               color: highlighted ? cs.primary : cs.onSurfaceVariant,
               fontWeight: FontWeight.w700,
+              letterSpacing: -0.1,
             ),
           ),
         ],
@@ -3604,7 +3606,7 @@ class _PlayerActionTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
-    final clampedScale = heightScale.clamp(0.6, 1.2);
+    final clampedScale = heightScale.clamp(0.5, 1.2);
     final radius = BorderRadius.circular(20);
     final tileHeight = 66.0 * clampedScale;
     final isDark = Theme.of(context).brightness == Brightness.dark;
