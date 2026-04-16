@@ -1596,9 +1596,15 @@ class _FullPlayerPageState extends State<FullPlayerPage>
               runSpacing: 8,
               children: [
                 const _ResumeFromHistoryButton(),
-                const _InfoPill(
-                  icon: Symbols.graphic_eq,
-                  label: 'Audiobook',
+                _InfoPill(
+                  icon:
+                      np.tracks.isNotEmpty && np.tracks.every((t) => t.isLocal)
+                          ? Symbols.download_done
+                          : Symbols.wifi_tethering,
+                  label:
+                      np.tracks.isNotEmpty && np.tracks.every((t) => t.isLocal)
+                          ? 'Downloaded'
+                          : 'Streaming',
                 ),
                 _InfoPill(
                   icon: Symbols.library_books,
@@ -2911,9 +2917,9 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                               return RepaintBoundary(
                                 child: Padding(
                                   padding: const EdgeInsets.fromLTRB(
-                                    20,
-                                    14,
-                                    20,
+                                    16,
+                                    9,
+                                    16,
                                     8,
                                   ),
                                   child: Column(
@@ -2943,7 +2949,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                           },
                                         ),
                                       ),
-                                      const SizedBox(height: 18),
+                                      const SizedBox(height: 2),
                                       _buildHeroMetadata(
                                         context: context,
                                         text: text,
@@ -2952,7 +2958,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                         np: np,
                                         totalDuration: totalDuration,
                                       ),
-                                      const SizedBox(height: 8),
+                                      const SizedBox(height: 6),
                                     ],
                                   ),
                                 ),
@@ -3151,7 +3157,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                           ),
                         ),
 
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 6),
 
                         // CONTROLS + CHAPTERS
                         AnimatedBuilder(
