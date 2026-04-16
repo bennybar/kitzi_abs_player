@@ -6,24 +6,23 @@
     <title>Kitzi UI Suggestions</title>
     <style>
       :root {
-        --bg: #f6ebe9;
-        --bg-2: #fdf8f7;
-        --panel: rgba(255, 255, 255, 0.72);
-        --panel-strong: rgba(255, 255, 255, 0.88);
-        --text: #241d22;
-        --muted: #6e6670;
-        --line: rgba(71, 46, 55, 0.1);
-        --accent: #5f77b4;
-        --accent-2: #8ea1d5;
-        --accent-soft: rgba(95, 119, 180, 0.16);
-        --green: #2f9d64;
-        --green-soft: rgba(47, 157, 100, 0.16);
-        --red: #ca4c54;
-        --shadow: 0 24px 60px rgba(79, 50, 61, 0.12);
-        --radius-xl: 28px;
-        --radius-lg: 20px;
-        --radius-md: 14px;
-        --radius-sm: 10px;
+        --bg: #f4eee7;
+        --bg-deep: #e7d8c7;
+        --panel: rgba(255, 252, 248, 0.84);
+        --panel-strong: rgba(255, 251, 247, 0.97);
+        --ink: #1b1712;
+        --muted: #695a4d;
+        --line: rgba(48, 32, 21, 0.11);
+        --accent: #4f6ea8;
+        --accent-soft: rgba(79, 110, 168, 0.12);
+        --warm: #b2653f;
+        --warm-soft: rgba(178, 101, 63, 0.13);
+        --green: #2e7d4b;
+        --green-soft: rgba(46, 125, 75, 0.12);
+        --shadow: 0 26px 72px rgba(53, 31, 17, 0.13);
+        --radius-xl: 30px;
+        --radius-lg: 22px;
+        --radius-md: 16px;
       }
 
       * {
@@ -32,36 +31,13 @@
 
       body {
         margin: 0;
-        font-family: "Google Sans", "Google Sans Text", "Product Sans", "Segoe UI", sans-serif;
-        color: var(--text);
+        min-height: 100vh;
+        color: var(--ink);
+        font-family: "Avenir Next", "Segoe UI", sans-serif;
         background:
-          radial-gradient(circle at top left, rgba(255, 255, 255, 0.8), transparent 36%),
-          linear-gradient(180deg, #f4e5e4 0%, #f6ecea 35%, #fbf7f5 100%);
-      }
-
-      .page {
-        max-width: 1460px;
-        margin: 0 auto;
-        padding: 48px 28px 80px;
-      }
-
-      .hero {
-        display: grid;
-        gap: 18px;
-        margin-bottom: 34px;
-      }
-
-      .eyebrow {
-        display: inline-flex;
-        width: fit-content;
-        padding: 8px 12px;
-        border-radius: 999px;
-        background: var(--panel);
-        border: 1px solid var(--line);
-        color: var(--muted);
-        font-size: 12px;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
+          radial-gradient(circle at top left, rgba(255, 255, 255, 0.7), transparent 30%),
+          radial-gradient(circle at bottom right, rgba(79, 110, 168, 0.11), transparent 28%),
+          linear-gradient(180deg, var(--bg) 0%, var(--bg-deep) 100%);
       }
 
       h1,
@@ -71,559 +47,286 @@
         margin: 0;
       }
 
-      h1 {
-        font-size: clamp(34px, 5vw, 64px);
-        line-height: 0.96;
-        letter-spacing: -0.04em;
-        max-width: 900px;
-        font-family: "Google Sans", "Product Sans", "Segoe UI", sans-serif;
+      .page {
+        max-width: 1500px;
+        margin: 0 auto;
+        padding: 40px 24px 72px;
       }
 
-      .lead {
-        max-width: 840px;
-        color: var(--muted);
-        font-size: 18px;
-        line-height: 1.55;
+      .hero {
+        display: grid;
+        gap: 18px;
+        margin-bottom: 28px;
+      }
+
+      .eyebrow {
+        width: fit-content;
+        padding: 9px 14px;
+        border-radius: 999px;
+        border: 1px solid rgba(48, 32, 21, 0.1);
+        background: rgba(255, 250, 244, 0.62);
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        max-width: 1040px;
+        font-size: clamp(40px, 6vw, 76px);
+        line-height: 0.94;
+        letter-spacing: -0.055em;
+      }
+
+      .hero p {
+        max-width: 980px;
+        color: rgba(27, 23, 18, 0.78);
+        font-size: 19px;
+        line-height: 1.6;
       }
 
       .layout {
         display: grid;
-        grid-template-columns: 360px minmax(0, 1fr);
-        gap: 24px;
+        grid-template-columns: 370px minmax(0, 1fr);
+        gap: 22px;
         align-items: start;
       }
 
       .card {
-        background: var(--panel);
-        border: 1px solid var(--line);
         border-radius: var(--radius-xl);
+        border: 1px solid var(--line);
+        background: var(--panel);
+        backdrop-filter: blur(18px);
         box-shadow: var(--shadow);
-        backdrop-filter: blur(14px);
+      }
+
+      .card-inner {
+        padding: 24px;
       }
 
       .sidebar {
         position: sticky;
-        top: 24px;
-        padding: 22px;
+        top: 18px;
         display: grid;
         gap: 18px;
       }
 
-      .sidebar h2 {
-        font-size: 18px;
-        letter-spacing: -0.02em;
+      h2 {
+        font-size: 20px;
+        letter-spacing: -0.03em;
+        margin-bottom: 14px;
       }
 
-      .review-list {
+      .stack {
         display: grid;
         gap: 12px;
       }
 
-      .review-item {
-        padding: 14px;
+      .tag-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .tag {
+        padding: 8px 12px;
+        border-radius: 999px;
         background: var(--panel-strong);
-        border: 1px solid var(--line);
-        border-radius: var(--radius-md);
-      }
-
-      .review-item strong {
-        display: block;
-        margin-bottom: 6px;
-        font-size: 14px;
-      }
-
-      .review-item span {
-        display: block;
-        margin-bottom: 6px;
-        color: var(--accent);
-        font-size: 12px;
+        border: 1px solid rgba(44, 28, 18, 0.08);
+        color: var(--muted);
+        font-size: 13px;
         font-weight: 700;
-        letter-spacing: 0.04em;
+      }
+
+      .insight {
+        padding: 16px;
+        border-radius: 18px;
+        border: 1px solid rgba(44, 28, 18, 0.08);
+        background: var(--panel-strong);
+      }
+
+      .label {
+        display: inline-flex;
+        padding: 6px 10px;
+        border-radius: 999px;
+        margin-bottom: 10px;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.12em;
         text-transform: uppercase;
       }
 
-      .review-item p {
+      .label.blue {
+        color: var(--accent);
+        background: var(--accent-soft);
+      }
+
+      .label.warm {
+        color: var(--warm);
+        background: var(--warm-soft);
+      }
+
+      .label.green {
+        color: var(--green);
+        background: var(--green-soft);
+      }
+
+      .insight h3 {
+        font-size: 16px;
+        letter-spacing: -0.02em;
+        margin-bottom: 8px;
+      }
+
+      .insight p,
+      .feature p,
+      .summary p,
+      .rank p {
+        color: var(--muted);
+        line-height: 1.55;
+      }
+
+      .content {
+        display: grid;
+        gap: 22px;
+      }
+
+      .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .summary {
+        padding: 18px;
+        border-radius: 20px;
+        border: 1px solid rgba(44, 28, 18, 0.08);
+        background: var(--panel-strong);
+      }
+
+      .summary strong {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 14px;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+      }
+
+      .feature-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .feature {
+        display: grid;
+        gap: 14px;
+        padding: 22px;
+        border-radius: 24px;
+        border: 1px solid rgba(44, 28, 18, 0.08);
+        background: var(--panel-strong);
+      }
+
+      .feature-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: start;
+      }
+
+      .feature h3 {
+        font-size: 24px;
+        letter-spacing: -0.035em;
+      }
+
+      .score {
+        min-width: 96px;
+        padding: 10px 12px;
+        border-radius: 16px;
+        background: var(--accent-soft);
+        color: var(--accent);
+        text-align: center;
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .mini-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .mini {
+        padding: 12px;
+        border-radius: 14px;
+        background: rgba(244, 238, 231, 0.72);
+        border: 1px solid rgba(44, 28, 18, 0.07);
+      }
+
+      .mini strong {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 11px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      .mini span {
         color: var(--muted);
         font-size: 14px;
         line-height: 1.45;
       }
 
-      .canvas {
+      .bottom {
         display: grid;
-        gap: 22px;
-      }
-
-      .section {
-        padding: 24px;
-      }
-
-      .section-head {
-        display: flex;
-        justify-content: space-between;
-        gap: 16px;
-        align-items: end;
-        margin-bottom: 20px;
-      }
-
-      .section-head p {
-        max-width: 760px;
-        color: var(--muted);
-        line-height: 1.5;
-      }
-
-      .phones {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-        gap: 22px;
-      }
-
-      .phone {
-        min-height: 720px;
-        padding: 16px;
-        border-radius: 34px;
-        background:
-          linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.62)),
-          linear-gradient(180deg, #f7ecea 0%, #fbf6f5 100%);
-        border: 1px solid rgba(76, 54, 62, 0.12);
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 20px 36px rgba(79, 50, 61, 0.12);
-      }
-
-      .topbar,
-      .top-actions,
-      .meta-stack,
-      .player-controls,
-      .bottom-tabs,
-      .chips {
-        display: flex;
-      }
-
-      .topbar,
-      .player-controls,
-      .bottom-tabs {
-        align-items: center;
-        justify-content: space-between;
-      }
-
-      .topbar {
-        margin-bottom: 18px;
-      }
-
-      .icon-btn {
-        width: 34px;
-        height: 34px;
-        display: grid;
-        place-items: center;
-        border-radius: 50%;
-        background: rgba(255, 255, 255, 0.7);
-        border: 1px solid rgba(66, 46, 54, 0.08);
-        color: var(--muted);
-        font-size: 14px;
-      }
-
-      .top-actions {
-        gap: 8px;
-      }
-
-      .cover {
-        width: min(100%, 248px);
-        aspect-ratio: 1;
-        margin: 0 auto;
-        border-radius: 26px;
-        overflow: hidden;
-        position: relative;
-        background:
-          radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.4), transparent 24%),
-          linear-gradient(135deg, #7d3424 0%, #d11f27 44%, #111218 44%, #242838 100%);
-        box-shadow: 0 20px 40px rgba(83, 44, 53, 0.22);
-      }
-
-      .cover::before,
-      .cover::after {
-        content: "";
-        position: absolute;
-        border-radius: 50%;
-        background: rgba(255, 248, 244, 0.96);
-      }
-
-      .cover::before {
-        width: 56%;
-        height: 56%;
-        left: 22%;
-        top: 19%;
-      }
-
-      .cover::after {
-        width: 46%;
-        height: 46%;
-        left: 27%;
-        top: 24%;
-        box-shadow: inset 0 0 0 2px rgba(125, 52, 36, 0.3);
-      }
-
-      .cover-label {
-        position: absolute;
-        inset: 35% 0 auto;
-        text-align: center;
-        padding: 0 20px;
-        font-weight: 800;
-        font-size: 13px;
-        line-height: 1.15;
-        letter-spacing: 0.06em;
-      }
-
-      .cover-sub {
-        position: absolute;
-        inset: 64% 0 auto;
-        text-align: center;
-        font-size: 10px;
-        font-weight: 700;
-        color: rgba(36, 29, 34, 0.7);
-        letter-spacing: 0.12em;
-      }
-
-      .player-main {
-        display: grid;
+        grid-template-columns: 1.15fr 0.85fr;
         gap: 18px;
       }
 
-      .dynamic-zone {
-        min-height: 0;
+      .rank-list {
         display: grid;
-        align-content: start;
-        gap: 14px;
-      }
-
-      .dynamic-zone.compact {
         gap: 10px;
       }
 
-      .meta-stack {
-        flex-direction: column;
-        gap: 6px;
-        text-align: center;
-      }
-
-      .title {
-        font-size: 31px;
-        line-height: 1.05;
-        letter-spacing: -0.04em;
-        font-weight: 760;
-        font-family: "Google Sans", "Product Sans", "Segoe UI", sans-serif;
-      }
-
-      .title.small {
-        font-size: 21px;
-      }
-
-      .author {
-        font-size: 18px;
-        color: #3d475a;
-        font-family: "Google Sans Text", "Google Sans", "Segoe UI", sans-serif;
-      }
-
-      .narrator {
-        font-size: 13px;
-        color: var(--muted);
-        font-family: "Google Sans Text", "Google Sans", "Segoe UI", sans-serif;
-      }
-
-      .progress-card {
-        padding: 14px 14px 12px;
-        border-radius: 22px;
-        background: var(--panel-strong);
-        border: 1px solid rgba(82, 57, 67, 0.08);
-      }
-
-      .progress-head,
-      .time-row,
-      .chapter-row {
-        display: flex;
-        justify-content: space-between;
-        gap: 10px;
-        align-items: center;
-      }
-
-      .progress-head {
-        margin-bottom: 12px;
-      }
-
-      .label {
-        font-size: 11px;
-        letter-spacing: 0.1em;
-        color: var(--muted);
-        font-weight: 700;
-      }
-
-      .toggle {
-        padding: 6px 10px;
-        border-radius: 999px;
-        background: var(--accent-soft);
-        color: var(--accent);
-        font-size: 12px;
-        font-weight: 700;
-      }
-
-      .track {
-        position: relative;
-        width: 100%;
-        height: 6px;
-        border-radius: 999px;
-        background: rgba(95, 119, 180, 0.12);
-        overflow: hidden;
-      }
-
-      .track .fill,
-      .chapter-map .fill,
-      .download-fill {
-        position: absolute;
-        inset: 0 auto 0 0;
-        background: linear-gradient(90deg, var(--accent), var(--accent-2));
-        border-radius: inherit;
-      }
-
-      .knob {
-        position: absolute;
-        top: 50%;
-        width: 16px;
-        height: 16px;
-        margin-top: -8px;
-        border-radius: 50%;
-        background: var(--accent);
-        box-shadow: 0 4px 10px rgba(95, 119, 180, 0.35);
-      }
-
-      .time-row {
-        margin-top: 10px;
-        color: var(--muted);
-        font-size: 12px;
-        font-variant-numeric: tabular-nums;
-      }
-
-      .chapter-block {
+      .rank {
         display: grid;
-        gap: 8px;
-        margin-top: 14px;
-      }
-
-      .chapter-map {
-        position: relative;
-        width: 100%;
-        height: 8px;
-        border-radius: 999px;
-        overflow: hidden;
-        background: rgba(56, 63, 77, 0.08);
-      }
-
-      .chapter-map .mark {
-        position: absolute;
-        top: 0;
-        width: 2px;
-        height: 100%;
-        background: rgba(255, 255, 255, 0.8);
-      }
-
-      .chapter-map .cursor {
-        position: absolute;
-        top: 0;
-        width: 3px;
-        height: 100%;
-        border-radius: 999px;
-        background: #202532;
-      }
-
-      .chapter-row {
-        align-items: start;
-      }
-
-      .chapter-row strong {
-        font-size: 13px;
-        color: var(--accent);
-      }
-
-      .chapter-row span {
-        display: block;
-        color: var(--muted);
-        font-size: 12px;
-        line-height: 1.4;
-      }
-
-      .player-controls {
+        grid-template-columns: 38px 1fr;
         gap: 12px;
-        justify-content: center;
-      }
-
-      .control {
-        width: 46px;
-        height: 46px;
-        display: grid;
-        place-items: center;
-        border-radius: 50%;
-        background: rgba(255, 255, 255, 0.82);
-        border: 1px solid rgba(70, 46, 56, 0.06);
-        color: var(--muted);
-      }
-
-      .control.seek {
-        width: 62px;
-        height: 42px;
-        border-radius: 999px;
-        background: rgba(95, 119, 180, 0.1);
-        color: var(--accent);
-      }
-
-      .seek-inline {
-        display: inline-flex;
-        align-items: center;
-        gap: 5px;
-        font-size: 12px;
-        font-weight: 800;
-        letter-spacing: 0.01em;
-      }
-
-      .seek-inline .arrow {
-        font-size: 15px;
-        line-height: 1;
-      }
-
-      .seek-inline .secs {
-        font-variant-numeric: tabular-nums;
-      }
-
-      .control.main {
-        width: 66px;
-        height: 66px;
-        background: linear-gradient(180deg, #6f83ba, #5f77b4);
-        color: white;
-        box-shadow: 0 18px 32px rgba(95, 119, 180, 0.28);
-      }
-
-      .bottom-tabs {
-        gap: 8px;
-      }
-
-      .pill {
-        flex: 1;
-        padding: 9px 8px 8px;
-        border-radius: 14px;
-        background: rgba(255, 255, 255, 0.76);
-        border: 1px solid rgba(64, 46, 55, 0.08);
-        font-size: 11px;
-        font-weight: 700;
-        display: grid;
-        place-items: center;
-        gap: 4px;
-      }
-
-      .pill-icon {
-        width: 22px;
-        height: 22px;
-        display: grid;
-        place-items: center;
-        border-radius: 50%;
-        background: rgba(95, 119, 180, 0.08);
-        color: var(--accent);
-        font-size: 12px;
-        font-weight: 800;
-      }
-
-      .phone-footer {
-        display: grid;
-        gap: 16px;
-        margin-top: 18px;
-      }
-
-      .download {
         padding: 14px;
-        border-radius: 18px;
+        border-radius: 16px;
+        border: 1px solid rgba(44, 28, 18, 0.08);
         background: var(--panel-strong);
-        border: 1px solid rgba(61, 47, 55, 0.08);
-        display: grid;
-        gap: 12px;
       }
 
-      .download-button {
-        position: relative;
-        overflow: hidden;
-        border-radius: 14px;
-        min-height: 48px;
-        background: var(--green-soft);
-        border: 1px solid rgba(47, 157, 100, 0.14);
-      }
-
-      .download-fill {
-        width: 62%;
-        background: linear-gradient(90deg, var(--green), #52c38a);
-      }
-
-      .download-content {
-        position: relative;
-        z-index: 1;
-        min-height: 48px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 10px;
-        padding: 0 14px;
-        color: #f9fffb;
-        font-weight: 700;
-      }
-
-      .download-sub {
-        color: var(--muted);
-        font-size: 12px;
-        line-height: 1.4;
-      }
-
-      .download-static {
-        display: grid;
-        gap: 8px;
-      }
-
-      .download-ghost {
-        width: 100%;
-        min-height: 48px;
-        border-radius: 14px;
-        background: rgba(95, 119, 180, 0.08);
-        border: 1px solid rgba(95, 119, 180, 0.1);
+      .num {
+        width: 38px;
+        height: 38px;
+        border-radius: 12px;
+        background: rgba(27, 23, 18, 0.06);
         display: grid;
         place-items: center;
-        color: var(--accent);
-        font-weight: 700;
+        font-weight: 800;
       }
 
-      .notes {
-        display: grid;
-        gap: 10px;
-        margin-top: 16px;
+      .rank strong {
+        display: block;
+        margin-bottom: 4px;
       }
 
-      .note {
-        padding: 12px 14px;
-        border-radius: var(--radius-md);
-        background: rgba(255, 255, 255, 0.74);
-        border: 1px solid var(--line);
-        color: var(--muted);
+      .footer {
+        margin-top: 14px;
+        color: rgba(27, 23, 18, 0.65);
         font-size: 14px;
-        line-height: 1.5;
+        line-height: 1.6;
       }
 
-      .chips {
-        gap: 8px;
-        flex-wrap: wrap;
-        margin-top: 12px;
-      }
-
-      .chip {
-        padding: 8px 10px;
-        border-radius: 999px;
-        background: rgba(95, 119, 180, 0.08);
-        color: var(--accent);
-        font-size: 12px;
-        font-weight: 700;
-      }
-
-      @media (max-width: 1080px) {
-        .layout {
+      @media (max-width: 1120px) {
+        .layout,
+        .summary-grid,
+        .feature-grid,
+        .mini-grid,
+        .bottom {
           grid-template-columns: 1fr;
         }
 
@@ -635,341 +338,321 @@
   </head>
   <body>
     <div class="page">
-      <div class="hero">
-        <div class="eyebrow">Kitzi Review + Mockup</div>
-        <h1>UI suggestions for the player, download state, and metadata reliability.</h1>
-        <p class="lead">
-          This is a review-only deliverable based on the current Flutter code in
-          <code>full_player_page.dart</code>, <code>download_button.dart</code>,
-          <code>playback_repository.dart</code>, and the book detail page. The goal
-          is to make the full player feel tighter and more adaptive, keep download
-          progress readable, and reduce narrator disappearance for offline books.
+      <section class="hero">
+        <div class="eyebrow">Kitzi / UI Strategy</div>
+        <h1>UI directions that would make Kitzi feel unmistakable, not just cleaner.</h1>
+        <p>
+          After reading the UI code and checking the current screenshots, the clearest pattern is this:
+          the player already has personality, but the library and detail surfaces still feel more generic
+          than the product deserves. The biggest UI opportunity is not polish for polish’s sake. It is
+          giving the whole app the same emotional confidence as the playback screen.
         </p>
-      </div>
+      </section>
 
       <div class="layout">
-        <aside class="sidebar card">
-          <h2>Review Findings</h2>
-          <div class="review-list">
-            <div class="review-item">
-              <span>Layout</span>
-              <strong>Full player vertical rhythm is still too rigid.</strong>
-              <p>
-                The large center gap is caused by the screen distributing space by
-                section, not by content priority. The artwork block, metadata block,
-                waveform area, and progress area are stacked well, but their parent
-                layout still behaves like fixed zones rather than a fluid composition.
-              </p>
+        <aside class="sidebar">
+          <section class="card">
+            <div class="card-inner">
+              <h2>Current UI Read</h2>
+              <div class="tag-row">
+                <div class="tag">Soft glass language</div>
+                <div class="tag">Cover-first playback</div>
+                <div class="tag">Pastel Material base</div>
+                <div class="tag">Rounded controls</div>
+                <div class="tag">Clear hierarchy</div>
+                <div class="tag">Safe library layout</div>
+                <div class="tag">Utility-first detail page</div>
+                <div class="tag">Good but restrained</div>
+              </div>
             </div>
-            <div class="review-item">
-              <span>Progress</span>
-              <strong>The player currently mixes “primary progress” and “chapter context” well in concept, but not yet in presentation.</strong>
-              <p>
-                The chapter map below the main bar is the right direction. It should
-                behave like a compact context rail, not another heavy section with its
-                own visual gravity.
-              </p>
+          </section>
+
+          <section class="card">
+            <div class="card-inner">
+              <h2>What Feels Missing</h2>
+              <div class="stack">
+                <div class="insight">
+                  <div class="label blue">Gap</div>
+                  <h3>The home and library screens do not yet feel like places.</h3>
+                  <p>They are functional lists. They do not create mood, ritual, or a sense of entering a listening room.</p>
+                </div>
+                <div class="insight">
+                  <div class="label warm">Gap</div>
+                  <h3>The player has more identity than the rest of the product.</h3>
+                  <p>That creates a handoff problem: users move from a calm, expressive player back into more ordinary collection screens.</p>
+                </div>
+                <div class="insight">
+                  <div class="label green">Opportunity</div>
+                  <h3>Kitzi can own “warm modern audiobook UI.”</h3>
+                  <p>Not a dark cyber player, not sterile productivity UI, and not fake bookshelf skeuomorphism either.</p>
+                </div>
+              </div>
             </div>
-            <div class="review-item">
-              <span>Download</span>
-              <strong>The in-progress button should remain a single stable control.</strong>
-              <p>
-                A filled background with <code>downloaded / total</code> and
-                percentage is the strongest pattern here. It keeps the footprint stable
-                and avoids the awkward “button shrinks and a second progress bar appears”
-                behavior.
-              </p>
-            </div>
-            <div class="review-item">
-              <span>Data</span>
-              <strong>Offline narrator loss was likely a metadata hydration gap.</strong>
-              <p>
-                The right fix is not a player-level fallback label. It is ensuring the
-                offline warm-load path hydrates narrator consistently from local book
-                metadata, cached server metadata, or both.
-              </p>
-            </div>
-          </div>
-          <div class="chips">
-            <div class="chip">Player should pack upward</div>
-            <div class="chip">One main progress bar</div>
-            <div class="chip">Compact chapter context</div>
-            <div class="chip">Stable download affordance</div>
-            <div class="chip">Offline metadata parity</div>
-          </div>
+          </section>
         </aside>
 
-        <main class="canvas">
-          <section class="section card">
-            <div class="section-head">
-              <div>
-                <h2>Suggested Full Player</h2>
-                <p>
-                  The mockup below makes the upper area genuinely dynamic. When title,
-                  author, and narrator are short, the cover grows and the progress block
-                  moves upward. When metadata is long, the cover shrinks first. The main
-                  progress bar remains the user-selected primary mode, and the chapter
-                  rail sits below as lightweight context. Waveform is removed entirely
-                  from the proposed player.
-                </p>
-              </div>
-            </div>
-
-            <div class="phones">
-              <div class="phone">
-                <div class="player-main">
-                  <div class="topbar">
-                    <div class="icon-btn">⌄</div>
-                    <div class="top-actions">
-                      <div class="icon-btn">2×</div>
-                      <div class="icon-btn">↗</div>
-                      <div class="icon-btn">⋮</div>
-                    </div>
-                  </div>
-
-                  <div class="dynamic-zone compact">
-                    <div class="cover">
-                      <div class="cover-label">FALL OF<br />CIVILIZATIONS</div>
-                      <div class="cover-sub">PAUL COOPER</div>
-                    </div>
-                    <div class="meta-stack">
-                      <div class="title small">Fall of Civilizations</div>
-                      <div class="author">Paul Cooper</div>
-                      <div class="narrator">Narrated by Paul Cooper</div>
-                    </div>
-                  </div>
-
-                  <div class="progress-card">
-                    <div class="progress-head">
-                      <div class="label">BOOK PROGRESS</div>
-                      <div class="toggle">Primary</div>
-                    </div>
-                    <div class="track">
-                      <div class="fill" style="width: 23%;"></div>
-                      <div class="knob" style="left: calc(23% - 8px);"></div>
-                    </div>
-                    <div class="time-row">
-                      <span>1:54:18</span>
-                      <span>-13:37:24</span>
-                    </div>
-
-                    <div class="chapter-block">
-                      <div class="label">CHAPTERS</div>
-                      <div class="chapter-map">
-                        <div class="fill" style="width: 19%;"></div>
-                        <div class="mark" style="left: 5%;"></div>
-                        <div class="mark" style="left: 17%;"></div>
-                        <div class="mark" style="left: 29%;"></div>
-                        <div class="mark" style="left: 46%;"></div>
-                        <div class="mark" style="left: 64%;"></div>
-                        <div class="mark" style="left: 81%;"></div>
-                        <div class="cursor" style="left: calc(19% - 1px);"></div>
-                      </div>
-                      <div class="chapter-row">
-                        <div>
-                          <strong>Chapter 2 of 21 · Han China</strong>
-                          <span>Readable title if available, fallback label otherwise.</span>
-                        </div>
-                        <strong>00:48 / 1:17:02</strong>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div class="player-controls">
-                    <div class="control">|◀</div>
-                    <div class="control seek">
-                      <div class="seek-inline"><span class="arrow">‹‹</span><span class="secs">30</span></div>
-                    </div>
-                    <div class="control main">▶</div>
-                    <div class="control seek">
-                      <div class="seek-inline"><span class="secs">30</span><span class="arrow">››</span></div>
-                    </div>
-                    <div class="control">▶|</div>
-                  </div>
-
-                  <div class="phone-footer">
-                    <div class="bottom-tabs">
-                      <div class="pill"><div class="pill-icon">☰</div><div>Chapters</div></div>
-                      <div class="pill"><div class="pill-icon">⤓</div><div>Offline</div></div>
-                      <div class="pill"><div class="pill-icon">☾</div><div>Sleep</div></div>
-                      <div class="pill"><div class="pill-icon">↻</div><div>Speed</div></div>
-                    </div>
-                  </div>
+        <main class="content">
+          <section class="card">
+            <div class="card-inner">
+              <h2>The Main Design Thesis</h2>
+              <div class="summary-grid">
+                <div class="summary">
+                  <strong>Make it atmospheric</strong>
+                  <p>The app should feel like a listening environment, not a database browser with nice corners.</p>
                 </div>
-              </div>
-
-              <div class="phone">
-                <div class="player-main">
-                  <div class="topbar">
-                    <div class="icon-btn">⌄</div>
-                    <div class="top-actions">
-                      <div class="icon-btn">1.5×</div>
-                      <div class="icon-btn">⇱</div>
-                      <div class="icon-btn">⋮</div>
-                    </div>
-                  </div>
-
-                  <div class="dynamic-zone">
-                    <div class="cover" style="width: min(100%, 206px);">
-                      <div class="cover-label">THE VERY LONG BOOK<br />TITLE THAT WRAPS</div>
-                      <div class="cover-sub">WITH MULTI-LINE METADATA</div>
-                    </div>
-                    <div class="meta-stack">
-                      <div class="title small">The Very Long Book Title That Wraps Across Multiple Lines</div>
-                      <div class="author">A Very Long Author Name That Also Wraps</div>
-                      <div class="narrator">Narrated by Two Performers With Long Names</div>
-                    </div>
-                  </div>
-
-                  <div class="progress-card">
-                    <div class="progress-head">
-                      <div class="label">CHAPTER PROGRESS</div>
-                      <div class="toggle">Primary</div>
-                    </div>
-                    <div class="track">
-                      <div class="fill" style="width: 61%;"></div>
-                      <div class="knob" style="left: calc(61% - 8px);"></div>
-                    </div>
-                    <div class="time-row">
-                      <span>31:14</span>
-                      <span>-20:09</span>
-                    </div>
-
-                    <div class="chapter-block">
-                      <div class="label">BOOK CHAPTER MAP</div>
-                      <div class="chapter-map">
-                        <div class="fill" style="width: 44%;"></div>
-                        <div class="mark" style="left: 9%;"></div>
-                        <div class="mark" style="left: 16%;"></div>
-                        <div class="mark" style="left: 31%;"></div>
-                        <div class="mark" style="left: 51%;"></div>
-                        <div class="mark" style="left: 73%;"></div>
-                        <div class="cursor" style="left: calc(44% - 1px);"></div>
-                      </div>
-                      <div class="chapter-row">
-                        <div>
-                          <strong>Chapter 9 of 17 · Siege and Retreat</strong>
-                          <span>This bar stays visually lighter than the primary slider.</span>
-                        </div>
-                        <strong>31:14 / 51:23</strong>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div class="player-controls">
-                    <div class="control">|◀</div>
-                    <div class="control seek">
-                      <div class="seek-inline"><span class="arrow">‹‹</span><span class="secs">15</span></div>
-                    </div>
-                    <div class="control main">❚❚</div>
-                    <div class="control seek">
-                      <div class="seek-inline"><span class="secs">15</span><span class="arrow">››</span></div>
-                    </div>
-                    <div class="control">▶|</div>
-                  </div>
-
-                  <div class="phone-footer">
-                    <div class="bottom-tabs">
-                      <div class="pill"><div class="pill-icon">☰</div><div>Chapters</div></div>
-                      <div class="pill"><div class="pill-icon">⤓</div><div>Offline</div></div>
-                      <div class="pill"><div class="pill-icon">☾</div><div>Sleep</div></div>
-                      <div class="pill"><div class="pill-icon">↻</div><div>Speed</div></div>
-                    </div>
-                  </div>
+                <div class="summary">
+                  <strong>Promote narrative over metadata</strong>
+                  <p>Books, series, and progress should read as story objects first and utilities second.</p>
+                </div>
+                <div class="summary">
+                  <strong>Use motion sparingly but meaningfully</strong>
+                  <p>Transitions should imply entering, resuming, and settling in, not generic mobile animation.</p>
                 </div>
               </div>
             </div>
           </section>
 
-          <section class="section card">
-            <div class="section-head">
-              <div>
-                <h2>Suggested Download States</h2>
-                <p>
-                  Keep download as one stable button with zero height changes. The fill
-                  itself communicates progress. The text shows exact percentage plus
-                  downloaded amount over total amount. No second progress strip and no
-                  vertical stacking inside a constrained button.
-                </p>
-              </div>
-            </div>
-
-            <div class="phones">
-              <div class="phone" style="min-height: 470px;">
-                <div class="download">
-                  <div class="label">IN PROGRESS</div>
-                  <div class="download-button">
-                    <div class="download-fill"></div>
-                    <div class="download-content">
-                      <span>842 MB / 1.36 GB</span>
-                      <span>62%</span>
+          <section class="card">
+            <div class="card-inner">
+              <h2>The Strongest UI Ideas</h2>
+              <div class="feature-grid">
+                <article class="feature">
+                  <div class="feature-head">
+                    <h3>1. Listening Room Home</h3>
+                    <div class="score">Best bet</div>
+                  </div>
+                  <p>Replace the current “sections in a feed” feeling with a home screen that behaves like a room: one hero resume object, one mood shelf, one current streak or session cue, and one deep-library path. Fewer equal-weight cards, more dramatic hierarchy.</p>
+                  <div class="mini-grid">
+                    <div class="mini">
+                      <strong>Why it matters</strong>
+                      <span>The current home looks competent but not memorable.</span>
+                    </div>
+                    <div class="mini">
+                      <strong>Why Kitzi</strong>
+                      <span>You already have resume, stats, downloads, and recency signals to drive this.</span>
+                    </div>
+                    <div class="mini">
+                      <strong>Visual direction</strong>
+                      <span>Warm gradient field, one oversized hero card, quieter supporting shelves.</span>
                     </div>
                   </div>
-                  <div class="download-sub">
-                    Suggested behavior: whole control stays 48px high, cancel lives at the
-                    far edge only if needed, and text remains single-line. This avoids the
-                    vertical overflow that happens when the button tries to hold too many
-                    stacked children.
-                  </div>
-                </div>
-              </div>
+                </article>
 
-              <div class="phone" style="min-height: 470px;">
-                <div class="download">
-                  <div class="label">OTHER STATES</div>
-                  <div class="download-static">
-                    <div class="download-ghost">Download</div>
-                    <div class="download-ghost" style="color: var(--red); border-color: rgba(202, 76, 84, 0.16); background: rgba(202, 76, 84, 0.06);">Remove Download</div>
+                <article class="feature">
+                  <div class="feature-head">
+                    <h3>2. Cinematic Player Modes</h3>
+                    <div class="score">Signature</div>
                   </div>
-                  <div class="download-sub">
-                    Visual rule: default, downloading, and downloaded should all occupy the
-                    same footprint. The state change should feel like a semantic change, not
-                    a layout shift.
+                  <p>The player should have two visual states: “focus mode” for active control and “soak mode” for passive listening. Same screen, but one prioritizes controls and chapter context while the other becomes more cover-led, calmer, and more immersive.</p>
+                  <div class="mini-grid">
+                    <div class="mini">
+                      <strong>Why it matters</strong>
+                      <span>The player is already your strongest visual surface.</span>
+                    </div>
+                    <div class="mini">
+                      <strong>Why rare</strong>
+                      <span>Most audiobook players are static layouts with toggles, not emotional modes.</span>
+                    </div>
+                    <div class="mini">
+                      <strong>Visual direction</strong>
+                      <span>Palette-driven background, larger cover breathing room, chapter ribbon and softer chrome.</span>
+                    </div>
                   </div>
-                </div>
+                </article>
+
+                <article class="feature">
+                  <div class="feature-head">
+                    <h3>3. Story Arc Progress</h3>
+                    <div class="score">Ownable</div>
+                  </div>
+                  <p>Stop showing progress as only a generic bar. Turn it into an arc or segmented narrative path with chapter landmarks, bookmarks, and “last left here” markers. It makes long books feel traversable instead of endless.</p>
+                  <div class="mini-grid">
+                    <div class="mini">
+                      <strong>Why it matters</strong>
+                      <span>Users need orientation more than another percent label.</span>
+                    </div>
+                    <div class="mini">
+                      <strong>Why Kitzi</strong>
+                      <span>You already cache chapters and store history/bookmark events.</span>
+                    </div>
+                    <div class="mini">
+                      <strong>Visual direction</strong>
+                      <span>Curved path, chapter notches, subtle memory dots for revisited spots.</span>
+                    </div>
+                  </div>
+                </article>
+
+                <article class="feature">
+                  <div class="feature-head">
+                    <h3>4. Books as Objects, Not Rows</h3>
+                    <div class="score">High leverage</div>
+                  </div>
+                  <p>The list screens need more identity. Give each book card a stronger object presence: larger covers, denser title treatment, richer progress chips, and more obvious differentiation between “resume,” “finished,” “downloaded,” and “parked for later.”</p>
+                  <div class="mini-grid">
+                    <div class="mini">
+                      <strong>Why it matters</strong>
+                      <span>Right now many list items read like variants of the same tile.</span>
+                    </div>
+                    <div class="mini">
+                      <strong>Why Kitzi</strong>
+                      <span>The app already has status richness; the UI just under-expresses it.</span>
+                    </div>
+                    <div class="mini">
+                      <strong>Visual direction</strong>
+                      <span>Status capsules, asymmetric card rhythm, stronger cover anchoring.</span>
+                    </div>
+                  </div>
+                </article>
+
+                <article class="feature">
+                  <div class="feature-head">
+                    <h3>5. Themed Detail Pages</h3>
+                    <div class="score">Beautiful</div>
+                  </div>
+                  <p>Book detail should not feel like metadata boxes under a cover. Let each detail page inherit a subtle palette from the artwork, using that to tint chips, progress blocks, and call-to-action emphasis. The page becomes a stage for the book instead of a template.</p>
+                  <div class="mini-grid">
+                    <div class="mini">
+                      <strong>Why it matters</strong>
+                      <span>The current detail page is clean but closer to settings UI than editorial UI.</span>
+                    </div>
+                    <div class="mini">
+                      <strong>Why Kitzi</strong>
+                      <span>You already derive visual palette information in the player stack.</span>
+                    </div>
+                    <div class="mini">
+                      <strong>Visual direction</strong>
+                      <span>Art-driven top section, softer info blocks, less grid-box literalness.</span>
+                    </div>
+                  </div>
+                </article>
+
+                <article class="feature">
+                  <div class="feature-head">
+                    <h3>6. Shelf Morph Transitions</h3>
+                    <div class="score">Feels premium</div>
+                  </div>
+                  <p>When a user opens a book from library to detail to player, the cover should feel like the same object moving through spaces. This can be done with restrained shared-element behavior and matching container transforms, especially on the cover and key progress chip.</p>
+                  <div class="mini-grid">
+                    <div class="mini">
+                      <strong>Why it matters</strong>
+                      <span>Navigation would feel authored instead of page-to-page.</span>
+                    </div>
+                    <div class="mini">
+                      <strong>Why rare</strong>
+                      <span>Audiobook clients often treat screens as disconnected utilities.</span>
+                    </div>
+                    <div class="mini">
+                      <strong>Visual direction</strong>
+                      <span>Cover continuity, progress pill continuity, soft spring timing.</span>
+                    </div>
+                  </div>
+                </article>
+
+                <article class="feature">
+                  <div class="feature-head">
+                    <h3>7. Expressive Navigation Rail Moments</h3>
+                    <div class="score">Subtle but smart</div>
+                  </div>
+                  <p>Instead of a permanently flat bottom nav feel, let the active section create a small environment shift: books gets warmer and shelf-like, downloads becomes more technical and queue-forward, stats becomes more diagrammatic, player surfaces leak upward when audio is active.</p>
+                  <div class="mini-grid">
+                    <div class="mini">
+                      <strong>Why it matters</strong>
+                      <span>Every main section currently lives inside a fairly similar shell.</span>
+                    </div>
+                    <div class="mini">
+                      <strong>Why Kitzi</strong>
+                      <span>Your architecture already separates sections cleanly enough for distinct visual wrappers.</span>
+                    </div>
+                    <div class="mini">
+                      <strong>Visual direction</strong>
+                      <span>Per-tab atmosphere rather than per-tab ornament.</span>
+                    </div>
+                  </div>
+                </article>
+
+                <article class="feature">
+                  <div class="feature-head">
+                    <h3>8. Calm Data Visualization</h3>
+                    <div class="score">Missed opportunity</div>
+                  </div>
+                  <p>The stats surface should feel less like a dashboard and more like a listening journal. Weekly listening, streaks, favorite narrators, and finish patterns can be shown with softer charts, timeline cards, and session footprints that fit the rest of the app’s warmth.</p>
+                  <div class="mini-grid">
+                    <div class="mini">
+                      <strong>Why it matters</strong>
+                      <span>The data is good already; the emotional framing could be much stronger.</span>
+                    </div>
+                    <div class="mini">
+                      <strong>Why Kitzi</strong>
+                      <span>You already compute meaningful playback history and top lists locally.</span>
+                    </div>
+                    <div class="mini">
+                      <strong>Visual direction</strong>
+                      <span>Journal cards, sparkline trails, softer bars, more chronology.</span>
+                    </div>
+                  </div>
+                </article>
               </div>
             </div>
           </section>
 
-          <section class="section card">
-            <div class="section-head">
-              <div>
-                <h2>Implementation Notes</h2>
-                <p>
-                  These are the concrete code-level changes I would recommend when you want
-                  to move from review to implementation.
+          <section class="bottom">
+            <section class="card">
+              <div class="card-inner">
+                <h2>What I Would Prioritize First</h2>
+                <div class="rank-list">
+                  <div class="rank">
+                    <div class="num">1</div>
+                    <div>
+                      <strong>Listening Room Home</strong>
+                      <p>Highest payoff because it changes first impression, daily habit feel, and product identity all at once.</p>
+                    </div>
+                  </div>
+                  <div class="rank">
+                    <div class="num">2</div>
+                    <div>
+                      <strong>Themed Detail Pages</strong>
+                      <p>Very achievable and would immediately make the catalog feel more premium and less template-based.</p>
+                    </div>
+                  </div>
+                  <div class="rank">
+                    <div class="num">3</div>
+                    <div>
+                      <strong>Story Arc Progress</strong>
+                      <p>A UI idea that also deepens the core product by making long-form listening easier to parse.</p>
+                    </div>
+                  </div>
+                  <div class="rank">
+                    <div class="num">4</div>
+                    <div>
+                      <strong>Shelf Morph Transitions</strong>
+                      <p>Not the first thing to build, but it could become the “this app just feels better” layer that people notice instantly.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="card">
+              <div class="card-inner">
+                <h2>The Core Visual Direction</h2>
+                <div class="stack">
+                  <div class="insight">
+                    <div class="label blue">Direction</div>
+                    <h3>Warm, editorial, modern, and slightly ceremonial.</h3>
+                    <p>Think “beautiful listening object” more than “media utility.” Keep the softness, but add drama and a clearer sense of scene.</p>
+                  </div>
+                  <div class="insight">
+                    <div class="label warm">Avoid</div>
+                    <h3>Do not drift into fake bookshelf nostalgia or generic pastel productivity UI.</h3>
+                    <p>The sweet spot is expressive and contemporary, with enough restraint that long sessions still feel calm.</p>
+                  </div>
+                </div>
+                <p class="footer">
+                  Basis for these suggestions: review of the current Flutter UI implementation and the app screenshots,
+                  especially the home, book detail, and now-playing surfaces.
                 </p>
               </div>
-            </div>
-
-            <div class="notes">
-              <div class="note">
-                <strong>Full player layout:</strong> replace the current “large flexible
-                top section plus fixed lower sections” mentality with a content-priority
-                layout. The cover should be the elastic element. Metadata, progress, and
-                controls should keep tight intrinsic spacing.
-              </div>
-              <div class="note">
-                <strong>Chapter context:</strong> keep the existing primary progress
-                behavior from settings, but always render the book-level chapter map below
-                it in a lighter style. Add chapter name and chapter elapsed/total only once.
-              </div>
-              <div class="note">
-                <strong>Download button:</strong> keep the active state to a single
-                horizontal row. Avoid any inner vertical layout that can overflow within a
-                fixed-height button.
-              </div>
-              <div class="note">
-                <strong>Narrator reliability:</strong> make offline warm load follow the
-                same metadata hydration rules as the online path, and prefer cached book DB
-                values when server metadata is unavailable.
-              </div>
-              <div class="note">
-                <strong>Settings cleanup:</strong> remove waveform animation as a feature,
-                remove its settings toggle, and reclaim that space for cleaner progress and
-                transport hierarchy.
-              </div>
-            </div>
+            </section>
           </section>
         </main>
       </div>
