@@ -532,11 +532,12 @@ class BooksRepository {
     // Build a set of ids and fetch their current updatedAt in one query.
     final ids = items.map((e) => e.id).where((id) => id.isNotEmpty).toList();
     final Map<String, int?> existingUpdatedAt = {};
+    final Map<String, bool> existingHasNarrators = {};
     if (ids.isNotEmpty) {
       final placeholders = List.filled(ids.length, '?').join(',');
       final rows = await db.query(
         'books',
-        columns: ['id', 'updatedAt'],
+        columns: ['id', 'updatedAt', 'narrators'],
         where: 'id IN ($placeholders)',
         whereArgs: ids,
       );
@@ -544,16 +545,22 @@ class BooksRepository {
         final id = (r['id'] as String?) ?? '';
         final ts = r['updatedAt'] as int?;
         existingUpdatedAt[id] = ts;
+        final narrStr = r['narrators'] as String?;
+        existingHasNarrators[id] = narrStr != null && narrStr.isNotEmpty;
       }
     }
 
-    // Filter items to only those newer than existing rows
+    // Filter items to only those newer than existing rows.
+    // Always allow through if the existing row is missing narrators but the new one has them —
+    // this fixes books written before narrator data was stored.
     final itemsToInsert = <Book>[];
     for (final b in items) {
       final existingTs = existingUpdatedAt[b.id];
       final newTs = b.updatedAt?.millisecondsSinceEpoch;
       if (existingTs != null && newTs != null && newTs <= existingTs) {
-        continue; // skip unchanged/older
+        final incomingHasNarrators = b.narrators != null && b.narrators!.isNotEmpty;
+        final alreadyHasNarrators = existingHasNarrators[b.id] ?? false;
+        if (alreadyHasNarrators || !incomingHasNarrators) continue; // skip unchanged/older
       }
       itemsToInsert.add(b);
     }
