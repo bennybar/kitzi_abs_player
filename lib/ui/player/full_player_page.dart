@@ -3260,9 +3260,9 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                               return RepaintBoundary(
                                 child: Padding(
                                   padding: const EdgeInsets.fromLTRB(
-                                    16,
+                                    10,
                                     9,
-                                    16,
+                                    10,
                                     8,
                                   ),
                                   child: _GlassPanel(
@@ -3272,9 +3272,9 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                       cs.surfaceContainerHigh.withOpacity(0.74),
                                     ),
                                     padding: const EdgeInsets.fromLTRB(
-                                      18,
+                                      11,
                                       15,
-                                      18,
+                                      11,
                                       11,
                                     ),
                                     child: Column(
@@ -3327,7 +3327,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
 
                         // POSITION + SLIDER
                         Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+                          padding: const EdgeInsets.fromLTRB(10, 0, 10, 0),
                           child: ValueListenableBuilder<Duration>(
                             valueListenable: playback.currentPosition,
                             builder: (_, pos, __) {
@@ -3469,7 +3469,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                         const SizedBox(height: 6),
 
                         Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+                          padding: const EdgeInsets.fromLTRB(10, 0, 10, 0),
                           child: _buildCurrentChapterCard(
                             context: context,
                             text: text,
@@ -3495,9 +3495,9 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                 child: RepaintBoundary(
                                     child: Padding(
                                       padding: const EdgeInsets.fromLTRB(
-                                        16,
+                                        10,
                                         6,
-                                        16,
+                                        10,
                                         16,
                                       ),
                                     child: Column(
