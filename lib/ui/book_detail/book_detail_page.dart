@@ -211,6 +211,16 @@ class _BookDetailPageState extends State<BookDetailPage> {
         }
       }
     } catch (_) {}
+    DateTime? firstStartedAt;
+    try {
+      final progressResp = await api.request('GET', '/api/me/progress/${book.id}');
+      if (progressResp.statusCode == 200 && progressResp.body.isNotEmpty) {
+        final parsed = jsonDecode(progressResp.body);
+        if (parsed is Map<String, dynamic>) {
+          firstStartedAt = _extractStartedAtFromProgress(parsed);
+        }
+      }
+    } catch (_) {}
 
     final meta =
         item?['media'] is Map &&
@@ -224,7 +234,14 @@ class _BookDetailPageState extends State<BookDetailPage> {
       (book.narrators ?? const []).isNotEmpty ? book.narrators!.join(', ') : null,
       Symbols.mic,
     );
-    add('Year', book.publishYear?.toString(), Symbols.calendar_today);
+    facts.add(
+      BookMetadataFact(
+        label: 'Released year',
+        value:
+            _extractBookMetadataYear(book.publishYear, meta, item) ?? 'Unknown',
+        icon: Symbols.calendar_today,
+      ),
+    );
     add('Publisher', book.publisher, Symbols.business);
     add(
       'Distribution',
@@ -254,10 +271,14 @@ class _BookDetailPageState extends State<BookDetailPage> {
           : null,
       Symbols.schedule,
     );
-    add(
-      'Size',
-      book.sizeBytes != null ? _formatBookMetadataBytes(book.sizeBytes!) : null,
-      Symbols.folder_zip,
+    facts.add(
+      BookMetadataFact(
+        label: 'Size',
+        value:
+            _bookMetadataSizeLabel(book.sizeBytes, item, files) ??
+            'Unavailable',
+        icon: Symbols.folder_zip,
+      ),
     );
     add(
       'File type',
@@ -278,6 +299,11 @@ class _BookDetailPageState extends State<BookDetailPage> {
       'ISBN',
       (meta['isbn'] ?? meta['isbn13'] ?? meta['asin'])?.toString(),
       Symbols.pin,
+    );
+    add(
+      'Started time',
+      _formatBookMetadataDateTime(firstStartedAt, includeTime: true),
+      Symbols.history,
     );
     add(
       'Added',
@@ -333,6 +359,89 @@ class _BookDetailPageState extends State<BookDetailPage> {
     return sorted.map((it) => '${it} kbps').join(' / ');
   }
 
+  String? _bookMetadataSizeLabel(
+    int? cachedSize,
+    Map<String, dynamic>? item,
+    List<dynamic> files,
+  ) {
+    final fileTotal = _bookMetadataTotalBytes(files);
+    if (fileTotal > 0) return _formatBookMetadataBytes(fileTotal);
+    if (cachedSize != null && cachedSize > 0) {
+      return _formatBookMetadataBytes(cachedSize);
+    }
+    final media = item?['media'];
+    if (media is Map) {
+      final parsed = _parseBookMetadataInt(
+        media['size'] ?? media['bytes'] ?? media['fileSize'],
+      );
+      if (parsed != null && parsed > 0) {
+        return _formatBookMetadataBytes(parsed);
+      }
+    }
+    final parsed = _parseBookMetadataInt(
+      item?['size'] ?? item?['bytes'] ?? item?['fileSize'],
+    );
+    if (parsed != null && parsed > 0) {
+      return _formatBookMetadataBytes(parsed);
+    }
+    return null;
+  }
+
+  int _bookMetadataTotalBytes(List<dynamic> files) {
+    int total = 0;
+    for (final file in files) {
+      if (file is! Map) continue;
+      final map = file.cast<String, dynamic>();
+      final raw = map['size'] ?? map['bytes'] ?? map['fileSize'];
+      if (raw is num) total += raw.toInt();
+      if (raw is String) total += int.tryParse(raw) ?? 0;
+    }
+    return total;
+  }
+
+  String? _extractBookMetadataYear(
+    int? cachedYear,
+    Map<String, dynamic> meta,
+    Map<String, dynamic>? item,
+  ) {
+    if (cachedYear != null && cachedYear > 0) return cachedYear.toString();
+    final candidates = [
+      meta['publishYear'],
+      meta['year'],
+      meta['releaseYear'],
+      meta['publishedYear'],
+      item?['year'],
+      item?['publishYear'],
+      item?['releaseYear'],
+      item?['publishedYear'],
+      item?['publishedAt'],
+      item?['releaseDate'],
+    ];
+    for (final candidate in candidates) {
+      final parsed = _parseBookMetadataYear(candidate);
+      if (parsed != null) return parsed.toString();
+    }
+    return null;
+  }
+
+  int? _parseBookMetadataYear(dynamic raw) {
+    final parsed = _parseBookMetadataInt(raw);
+    if (parsed != null && parsed >= 1000 && parsed <= 3000) return parsed;
+    if (raw is String && raw.trim().isNotEmpty) {
+      final match = RegExp(r'(19|20)\d{2}').firstMatch(raw);
+      if (match != null) return int.tryParse(match.group(0)!);
+    }
+    return null;
+  }
+
+  int? _parseBookMetadataInt(dynamic raw) {
+    if (raw is num) return raw.toInt();
+    if (raw is String && raw.trim().isNotEmpty) {
+      return int.tryParse(raw.trim());
+    }
+    return null;
+  }
+
   String? _formatBookMetadataFileType(String? raw) {
     if (raw == null || raw.trim().isEmpty) return null;
     final normalized = raw.trim().toLowerCase();
@@ -340,12 +449,57 @@ class _BookDetailPageState extends State<BookDetailPage> {
     return normalized.replaceFirst('.', '').toUpperCase();
   }
 
-  String _formatBookMetadataDateTime(DateTime? date) {
+  String _formatBookMetadataDateTime(DateTime? date, {bool includeTime = false}) {
     if (date == null) return '';
     final local = date.toLocal();
     final month = local.month.toString().padLeft(2, '0');
     final day = local.day.toString().padLeft(2, '0');
-    return '${local.year}-$month-$day';
+    if (!includeTime) return '${local.year}-$month-$day';
+    final hour = local.hour.toString().padLeft(2, '0');
+    final minute = local.minute.toString().padLeft(2, '0');
+    return '${local.year}-$month-$day $hour:$minute';
+  }
+
+  DateTime? _extractStartedAtFromProgress(Map<String, dynamic> data) {
+    final raw =
+        data['startedAt'] ??
+        data['startTime'] ??
+        data['firstStartedAt'] ??
+        data['createdAt'];
+    final direct = _parseBookMetadataDateTime(raw);
+    if (direct != null) return direct;
+    for (final value in data.values) {
+      if (value is Map<String, dynamic>) {
+        final nested = _parseBookMetadataDateTime(
+          value['startedAt'] ??
+              value['startTime'] ??
+              value['firstStartedAt'] ??
+              value['createdAt'],
+        );
+        if (nested != null) return nested;
+      }
+    }
+    return null;
+  }
+
+  DateTime? _parseBookMetadataDateTime(dynamic raw) {
+    if (raw == null) return null;
+    if (raw is num) {
+      final value = raw.toDouble();
+      if (value > 1000000000000) {
+        return DateTime.fromMillisecondsSinceEpoch(value.round(), isUtc: true);
+      }
+      if (value > 1000000000) {
+        return DateTime.fromMillisecondsSinceEpoch(
+          (value * 1000).round(),
+          isUtc: true,
+        );
+      }
+    }
+    if (raw is String && raw.trim().isNotEmpty) {
+      return DateTime.tryParse(raw.trim());
+    }
+    return null;
   }
 
   String _formatBookMetadataBytes(int bytes) {

@@ -1735,6 +1735,19 @@ class _FullPlayerPageState extends State<FullPlayerPage>
         }
       }
     } catch (_) {}
+    DateTime? firstStartedAt;
+    try {
+      final progressResp = await api.request(
+        'GET',
+        '/api/me/progress/${np.libraryItemId}',
+      );
+      if (progressResp.statusCode == 200 && progressResp.body.isNotEmpty) {
+        final parsed = jsonDecode(progressResp.body);
+        if (parsed is Map<String, dynamic>) {
+          firstStartedAt = _extractStartedAtFromProgress(parsed);
+        }
+      }
+    } catch (_) {}
 
     final meta =
         item?['media'] is Map &&
@@ -1755,11 +1768,18 @@ class _FullPlayerPageState extends State<FullPlayerPage>
               : null),
       Symbols.mic,
     );
-    add(
-      'Year',
-      (cachedBook?.publishYear ?? meta['publishYear'] ?? meta['year'])
-          ?.toString(),
-      Symbols.calendar_today,
+    facts.add(
+      BookMetadataFact(
+        label: 'Released year',
+        value:
+            _extractMetadataYear(
+              cachedBook?.publishYear,
+              meta,
+              item,
+            ) ??
+            'Unknown',
+        icon: Symbols.calendar_today,
+      ),
     );
     add(
       'Publisher',
@@ -1791,12 +1811,14 @@ class _FullPlayerPageState extends State<FullPlayerPage>
               : null),
       Symbols.schedule,
     );
-    add(
-      'Size',
-      cachedBook?.sizeBytes != null
-          ? _formatBytes(cachedBook!.sizeBytes!)
-          : null,
-      Symbols.folder_zip,
+    facts.add(
+      BookMetadataFact(
+        label: 'Size',
+        value:
+            _playerMetadataSizeLabel(cachedBook?.sizeBytes, item, files) ??
+            'Unavailable',
+        icon: Symbols.folder_zip,
+      ),
     );
     add(
       'Source',
@@ -1807,7 +1829,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
     );
     add(
       'Started',
-      _formatMetadataDateTime(playback.listeningStartedAt),
+      _formatMetadataDateTime(firstStartedAt ?? playback.listeningStartedAt),
       Symbols.history,
     );
     add(
@@ -1871,6 +1893,82 @@ class _FullPlayerPageState extends State<FullPlayerPage>
     return sorted.map((it) => '${it} kbps').join(' / ');
   }
 
+  int _playerMetadataTotalBytes(List<dynamic> files) {
+    int total = 0;
+    for (final file in files) {
+      if (file is! Map) continue;
+      final map = file.cast<String, dynamic>();
+      final raw = map['size'] ?? map['bytes'] ?? map['fileSize'];
+      if (raw is num) total += raw.toInt();
+      if (raw is String) total += int.tryParse(raw) ?? 0;
+    }
+    return total;
+  }
+
+  String? _playerMetadataSizeLabel(
+    int? cachedSize,
+    Map<String, dynamic>? item,
+    List<dynamic> files,
+  ) {
+    final fileTotal = _playerMetadataTotalBytes(files);
+    if (fileTotal > 0) return _formatBytes(fileTotal);
+    if (cachedSize != null && cachedSize > 0) return _formatBytes(cachedSize);
+    final media = item?['media'];
+    if (media is Map) {
+      final raw = media['size'] ?? media['bytes'] ?? media['fileSize'];
+      final parsed = _parseMetadataInt(raw);
+      if (parsed != null && parsed > 0) return _formatBytes(parsed);
+    }
+    final parsed = _parseMetadataInt(
+      item?['size'] ?? item?['bytes'] ?? item?['fileSize'],
+    );
+    if (parsed != null && parsed > 0) return _formatBytes(parsed);
+    return null;
+  }
+
+  String? _extractMetadataYear(
+    int? cachedYear,
+    Map<String, dynamic> meta,
+    Map<String, dynamic>? item,
+  ) {
+    if (cachedYear != null && cachedYear > 0) return cachedYear.toString();
+    final candidates = [
+      meta['publishYear'],
+      meta['year'],
+      meta['releaseYear'],
+      meta['publishedYear'],
+      item?['year'],
+      item?['publishYear'],
+      item?['releaseYear'],
+      item?['publishedYear'],
+      item?['publishedAt'],
+      item?['releaseDate'],
+    ];
+    for (final candidate in candidates) {
+      final parsed = _parseMetadataYear(candidate);
+      if (parsed != null) return parsed.toString();
+    }
+    return null;
+  }
+
+  int? _parseMetadataYear(dynamic raw) {
+    final parsed = _parseMetadataInt(raw);
+    if (parsed != null && parsed >= 1000 && parsed <= 3000) return parsed;
+    if (raw is String && raw.trim().isNotEmpty) {
+      final match = RegExp(r'(19|20)\d{2}').firstMatch(raw);
+      if (match != null) return int.tryParse(match.group(0)!);
+    }
+    return null;
+  }
+
+  int? _parseMetadataInt(dynamic raw) {
+    if (raw is num) return raw.toInt();
+    if (raw is String && raw.trim().isNotEmpty) {
+      return int.tryParse(raw.trim());
+    }
+    return null;
+  }
+
   String? _formatMetadataFileType(String? raw) {
     if (raw == null || raw.trim().isEmpty) return null;
     final normalized = raw.trim().toLowerCase();
@@ -1889,6 +1987,54 @@ class _FullPlayerPageState extends State<FullPlayerPage>
     final hour = local.hour.toString().padLeft(2, '0');
     final minute = local.minute.toString().padLeft(2, '0');
     return '${local.year}-$month-$day $hour:$minute';
+  }
+
+  DateTime? _extractStartedAtFromProgress(Map<String, dynamic> data) {
+    final raw =
+        data['startedAt'] ??
+        data['startTime'] ??
+        data['firstStartedAt'] ??
+        data['createdAt'];
+    final direct = _parseMetadataDateTime(raw);
+    if (direct != null) return direct;
+    final nested = _firstMapValue(data);
+    if (nested == null) return null;
+    return _parseMetadataDateTime(
+      nested['startedAt'] ??
+          nested['startTime'] ??
+          nested['firstStartedAt'] ??
+          nested['createdAt'],
+    );
+  }
+
+  DateTime? _parseMetadataDateTime(dynamic raw) {
+    if (raw == null) return null;
+    if (raw is num) {
+      final value = raw.toDouble();
+      if (value > 1000000000000) {
+        return DateTime.fromMillisecondsSinceEpoch(value.round(), isUtc: true);
+      }
+      if (value > 1000000000) {
+        return DateTime.fromMillisecondsSinceEpoch(
+          (value * 1000).round(),
+          isUtc: true,
+        );
+      }
+    }
+    if (raw is String && raw.trim().isNotEmpty) {
+      return DateTime.tryParse(raw.trim());
+    }
+    return null;
+  }
+
+  Map<String, dynamic>? _firstMapValue(Map<String, dynamic> data) {
+    for (final value in data.values) {
+      if (value is Map<String, dynamic>) return value;
+      if (value is Map) {
+        return value.cast<String, dynamic>();
+      }
+    }
+    return null;
   }
 
   String _formatBytes(int bytes) {

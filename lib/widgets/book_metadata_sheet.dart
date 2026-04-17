@@ -89,82 +89,90 @@ class _BookMetadataSheetState extends State<_BookMetadataSheet> {
     final facts = _facts ?? const <BookMetadataFact>[];
 
     return Padding(
-      padding: EdgeInsets.fromLTRB(18, 24, 18, bottomInset + 24),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.72,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Text(
-              'More info',
-              style: text.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-                letterSpacing: -0.2,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              widget.title,
-              textAlign: TextAlign.center,
-              style: text.bodyLarge?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            if (widget.subtitle != null && widget.subtitle!.trim().isNotEmpty) ...[
-              const SizedBox(height: 2),
-              Text(
-                widget.subtitle!,
-                textAlign: TextAlign.center,
-                style: text.bodySmall?.copyWith(
-                  color: cs.onSurfaceVariant,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-            const SizedBox(height: 20),
-            if (_loading && _facts == null)
-              const Expanded(
-                child: Center(child: CircularProgressIndicator()),
-              )
-            else if (facts.isEmpty)
+      padding: EdgeInsets.fromLTRB(6, 12, 6, bottomInset + 8),
+      child: Material(
+        color: cs.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(28),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.76,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
               Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Text(
-                  'No metadata available yet.',
-                  style: text.bodyMedium?.copyWith(
-                    color: cs.onSurfaceVariant,
-                  ),
-                ),
-              )
-            else
-              Flexible(
-                child: SingleChildScrollView(
-                  child: Wrap(
-                    alignment: WrapAlignment.start,
-                    spacing: 8,
-                    runSpacing: 8,
-                    children:
-                        facts
-                            .map((fact) => _MetadataPill(fact: fact))
-                            .toList(growable: false),
-                  ),
+                padding: const EdgeInsets.fromLTRB(18, 16, 18, 12),
+                child: Column(
+                  children: [
+                    Container(
+                      width: 42,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: cs.outlineVariant.withValues(alpha: 0.7),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Text(
+                      'More info',
+                      style: text.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.2,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-          ],
+              Divider(
+                height: 1,
+                thickness: 1,
+                color: cs.outlineVariant.withValues(alpha: 0.4),
+              ),
+              if (_loading && _facts == null)
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(20, 24, 20, 28),
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else if (facts.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+                  child: Text(
+                    'No metadata available yet.',
+                    style: text.bodyMedium?.copyWith(
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
+                )
+              else
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
+                      itemCount: facts.length,
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      separatorBuilder:
+                          (_, __) => Divider(
+                            height: 1,
+                            indent: 54,
+                            color: cs.outlineVariant.withValues(alpha: 0.22),
+                          ),
+                      itemBuilder:
+                          (context, index) => _MetadataRow(fact: facts[index]),
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _MetadataPill extends StatelessWidget {
-  const _MetadataPill({required this.fact});
+class _MetadataRow extends StatelessWidget {
+  const _MetadataRow({required this.fact});
 
   final BookMetadataFact fact;
 
@@ -173,52 +181,58 @@ class _MetadataPill extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
 
-    return Material(
-      color: cs.surfaceContainerHighest,
-      borderRadius: BorderRadius.circular(16),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minWidth: 138, maxWidth: 178),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (fact.icon != null) ...[
-                    Icon(
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            alignment: Alignment.center,
+            child:
+                fact.icon != null
+                    ? Icon(
                       fact.icon,
-                      size: 13,
-                      color: cs.onSurfaceVariant.withValues(alpha: 0.72),
+                      size: 16,
+                      color: cs.onSurfaceVariant,
+                    )
+                    : Icon(
+                      Icons.info_outline_rounded,
+                      size: 16,
+                      color: cs.onSurfaceVariant,
                     ),
-                    const SizedBox(width: 6),
-                  ],
-                  Flexible(
-                    child: Text(
-                      fact.label,
-                      style: text.labelSmall?.copyWith(
-                        color: cs.onSurfaceVariant,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.2,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 5),
-              Text(
-                fact.value,
-                style: text.bodySmall?.copyWith(
-                  color: cs.onSurface,
-                  fontWeight: FontWeight.w700,
-                  height: 1.15,
-                ),
-              ),
-            ],
           ),
-        ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  fact.label,
+                  style: text.labelMedium?.copyWith(
+                    color: cs.onSurfaceVariant,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  fact.value,
+                  style: text.bodyLarge?.copyWith(
+                    color: cs.onSurface,
+                    fontWeight: FontWeight.w700,
+                    height: 1.2,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
