@@ -267,33 +267,57 @@ class _MainScaffoldState extends State<MainScaffold> {
                                       Theme.of(context).brightness ==
                                               Brightness.dark
                                           ? 0.18
-                                          : 0.09,
+                                          : 0.16,
                                   borderRadius: BorderRadius.circular(34),
                                   tint: Color.alphaBlend(
-                                    Colors.black.withValues(
+                                    (Theme.of(context).brightness ==
+                                                Brightness.dark
+                                            ? Colors.black
+                                            : Colors.white)
+                                        .withValues(
                                       alpha:
-                                          Theme.of(context).brightness ==
+                                              Theme.of(context).brightness ==
                                                   Brightness.dark
                                               ? 0.18
-                                              : 0.08,
+                                              : 0.34,
                                     ),
                                     cs.surface,
                                   ),
                                   liveBlur: true,
-                                  lightenAmount: 0.05,
+                                  lightenAmount:
+                                          Theme.of(context).brightness ==
+                                              Brightness.dark
+                                          ? 0.05
+                                          : 0.0,
                                   child: DecoratedBox(
                                     decoration: BoxDecoration(
                                       borderRadius: BorderRadius.circular(34),
                                       border: Border.all(
                                         color: cs.outlineVariant.withOpacity(
-                                          0.16,
+                                              Theme.of(context).brightness ==
+                                                  Brightness.dark
+                                              ? 0.16
+                                              : 0.26,
                                         ),
                                       ),
                                       boxShadow: [
                                         BoxShadow(
-                                          color: cs.shadow.withOpacity(0.14),
-                                          blurRadius: 24,
-                                          offset: const Offset(0, 10),
+                                          color: cs.shadow.withOpacity(
+                                                Theme.of(context).brightness ==
+                                                    Brightness.dark
+                                                ? 0.14
+                                                : 0.05,
+                                          ),
+                                          blurRadius:
+                                              Theme.of(context).brightness ==
+                                                      Brightness.dark
+                                                  ? 24
+                                                  : 16,
+                                          offset:
+                                              Theme.of(context).brightness ==
+                                                      Brightness.dark
+                                                  ? const Offset(0, 10)
+                                                  : const Offset(0, 4),
                                         ),
                                       ],
                                     ),
@@ -370,29 +394,41 @@ class _MainScaffoldState extends State<MainScaffold> {
         child: AppLiquidGlass(
           blur: 20,
           opacity:
-              Theme.of(context).brightness == Brightness.dark ? 0.22 : 0.08,
+              Theme.of(context).brightness == Brightness.dark ? 0.22 : 0.16,
           borderRadius: BorderRadius.circular(34),
           tint: Color.alphaBlend(
-            Colors.black.withValues(
+            (Theme.of(context).brightness == Brightness.dark
+                    ? Colors.black
+                    : Colors.white)
+                .withValues(
               alpha:
-                  Theme.of(context).brightness == Brightness.dark ? 0.22 : 0.12,
+                  Theme.of(context).brightness == Brightness.dark ? 0.22 : 0.34,
             ),
             colorScheme.surface,
           ),
           liveBlur: true,
-          lightenAmount: 0.03,
+          lightenAmount:
+              Theme.of(context).brightness == Brightness.dark ? 0.03 : 0.0,
           padding: const EdgeInsets.all(2),
           child: DecoratedBox(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(34),
               border: Border.all(
-                color: colorScheme.outlineVariant.withOpacity(0.10),
+                color: colorScheme.outlineVariant.withOpacity(
+                  Theme.of(context).brightness == Brightness.dark ? 0.10 : 0.22,
+                ),
               ),
               boxShadow: [
                 BoxShadow(
-                  color: colorScheme.shadow.withOpacity(0.10),
-                  blurRadius: 18,
-                  offset: const Offset(0, 8),
+                  color: colorScheme.shadow.withOpacity(
+                    Theme.of(context).brightness == Brightness.dark ? 0.10 : 0.04,
+                  ),
+                  blurRadius:
+                      Theme.of(context).brightness == Brightness.dark ? 18 : 14,
+                  offset:
+                      Theme.of(context).brightness == Brightness.dark
+                          ? const Offset(0, 8)
+                          : const Offset(0, 3),
                 ),
               ],
             ),
