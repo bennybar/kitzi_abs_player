@@ -3371,9 +3371,9 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                                               : 'Play',
                                                       icon:
                                                           playing
-                                                              ? Symbols.pause
-                                                              : Symbols
-                                                                  .play_arrow,
+                                                              ? Icons.pause_rounded
+                                                              : Icons
+                                                                  .play_arrow_rounded,
                                                       isPrimary: true,
                                                       isCircular:
                                                           !playing, // keep round when showing Play triangle

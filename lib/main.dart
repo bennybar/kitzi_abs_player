@@ -236,18 +236,21 @@ class _AbsAppState extends State<AbsApp> with WidgetsBindingObserver {
                 useMaterial3: true,
                 colorScheme: scheme,
                 fontFamily: 'GoogleSans',
+                scaffoldBackgroundColor: scheme.surface,
+                canvasColor: scheme.surface,
+                dividerColor: scheme.outlineVariant,
                 appBarTheme: AppBarTheme(
                   centerTitle: false,
                   elevation: 0,
                   scrolledUnderElevation: 0,
                   backgroundColor: scheme.surface,
-                  surfaceTintColor: scheme.surfaceTint,
+                  surfaceTintColor: Colors.transparent,
                   foregroundColor: scheme.onSurface,
                 ),
                 navigationBarTheme: NavigationBarThemeData(
                   elevation: 0,
                   backgroundColor: scheme.surface,
-                  surfaceTintColor: scheme.surfaceTint,
+                  surfaceTintColor: Colors.transparent,
                   indicatorColor: scheme.primaryContainer,
                   labelTextStyle: WidgetStateProperty.resolveWith((states) {
                     final isSelected = states.contains(WidgetState.selected);
@@ -258,8 +261,25 @@ class _AbsAppState extends State<AbsApp> with WidgetsBindingObserver {
                 ),
                 cardTheme: CardThemeData(
                   elevation: 0,
+                  color: scheme.surfaceContainerLow,
+                  surfaceTintColor: Colors.transparent,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+                dialogTheme: DialogThemeData(
+                  backgroundColor: scheme.surfaceContainerLow,
+                  surfaceTintColor: Colors.transparent,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                ),
+                bottomSheetTheme: BottomSheetThemeData(
+                  backgroundColor: scheme.surface,
+                  surfaceTintColor: Colors.transparent,
+                  elevation: 0,
+                  shape: const RoundedRectangleBorder(
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
                   ),
                 ),
                 elevatedButtonTheme: ElevatedButtonThemeData(
@@ -283,7 +303,7 @@ class _AbsAppState extends State<AbsApp> with WidgetsBindingObserver {
                 navigationBarTheme: NavigationBarThemeData(
                   elevation: 0,
                   backgroundColor: scheme.surface,
-                  surfaceTintColor: scheme.surfaceTint,
+                  surfaceTintColor: Colors.transparent,
                   indicatorColor: scheme.primaryContainer,
                   indicatorShape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(18),
@@ -320,9 +340,9 @@ class _AbsAppState extends State<AbsApp> with WidgetsBindingObserver {
 
                 return DynamicColorBuilder(
                   builder: (lightDynamic, darkDynamic) {
-                    final seed = Colors.deepPurple;
+                    const seed = Color(0xFF7B8CFF);
                     var lightScheme = (lightDynamic ?? ColorScheme.fromSeed(seedColor: seed)).harmonized();
-                    final darkScheme = (darkDynamic ?? ColorScheme.fromSeed(seedColor: seed, brightness: Brightness.dark)).harmonized();
+                    var darkScheme = (darkDynamic ?? ColorScheme.fromSeed(seedColor: seed, brightness: Brightness.dark)).harmonized();
 
                     // Apply surface tint level to light scheme
                     switch (tintLevel) {
@@ -377,6 +397,50 @@ class _AbsAppState extends State<AbsApp> with WidgetsBindingObserver {
                         );
                         break;
                     }
+
+                    lightScheme = lightScheme.copyWith(
+                      primary: const Color(0xFF6F7DFF),
+                      onPrimary: Colors.white,
+                      primaryContainer: const Color(0xFFE5E9FF),
+                      onPrimaryContainer: const Color(0xFF1A235C),
+                      secondary: const Color(0xFF5F6DBA),
+                      onSurface: const Color(0xFF1B2230),
+                      onSurfaceVariant: const Color(0xFF4E576B),
+                      surface: const Color(0xFFF4F6FB),
+                      surfaceDim: const Color(0xFFE8ECF4),
+                      surfaceBright: Colors.white,
+                      surfaceContainerLowest: Colors.white,
+                      surfaceContainerLow: const Color(0xFFEEF2F8),
+                      surfaceContainer: const Color(0xFFE7ECF5),
+                      surfaceContainerHigh: const Color(0xFFDDE4F0),
+                      surfaceContainerHighest: const Color(0xFFD3DBE8),
+                      outline: const Color(0xFFB5BED0),
+                      outlineVariant: const Color(0xFFCCD5E3),
+                      shadow: Colors.black.withValues(alpha: 0.08),
+                      scrim: Colors.black.withValues(alpha: 0.28),
+                      surfaceTint: Colors.transparent,
+                    );
+
+                    darkScheme = darkScheme.copyWith(
+                      primary: const Color(0xFF8D9BFF),
+                      onPrimary: const Color(0xFF10174A),
+                      primaryContainer: const Color(0xFF1E285F),
+                      onPrimaryContainer: const Color(0xFFE3E7FF),
+                      secondary: const Color(0xFFAEB6FF),
+                      surface: const Color(0xFF0A0F1C),
+                      surfaceDim: const Color(0xFF080C17),
+                      surfaceBright: const Color(0xFF151B2A),
+                      surfaceContainerLowest: const Color(0xFF060A14),
+                      surfaceContainerLow: const Color(0xFF0D1320),
+                      surfaceContainer: const Color(0xFF121826),
+                      surfaceContainerHigh: const Color(0xFF171E2D),
+                      surfaceContainerHighest: const Color(0xFF1E2435),
+                      outline: const Color(0xFF31384B),
+                      outlineVariant: const Color(0xFF252C3F),
+                      shadow: Colors.black.withValues(alpha: 0.32),
+                      scrim: Colors.black.withValues(alpha: 0.46),
+                      surfaceTint: Colors.transparent,
+                    );
 
                     return MaterialApp(
                       title: 'ABS Client',

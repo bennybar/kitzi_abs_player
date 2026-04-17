@@ -6,11 +6,11 @@ class AppLiquidGlass extends StatelessWidget {
     super.key,
     required this.child,
     this.padding,
-    this.blur = 40,
-    this.opacity = 0.2,
+    this.blur = 28,
+    this.opacity = 0.16,
     this.borderRadius = const BorderRadius.all(Radius.circular(28)),
     this.tint,
-    this.elevation = 18,
+    this.elevation = 10,
     this.liveBlur = false,
     this.lightenAmount,
   });
@@ -33,7 +33,7 @@ class AppLiquidGlass extends StatelessWidget {
     final glassTint = Color.lerp(
       baseTint,
       Colors.white,
-      lightenAmount ?? (isDark ? 0.18 : 0.34),
+      lightenAmount ?? (isDark ? 0.08 : 0.06),
     )!;
 
     final decorated = Container(
@@ -41,28 +41,37 @@ class AppLiquidGlass extends StatelessWidget {
         borderRadius: borderRadius,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.18 : 0.06),
+            color: Colors.black.withValues(alpha: isDark ? 0.14 : 0.05),
             blurRadius: elevation,
-            offset: Offset(0, elevation * 0.35),
+            offset: Offset(0, elevation * 0.22),
           ),
-          BoxShadow(
-            color: Colors.white.withValues(alpha: isDark ? 0.015 : 0.045),
-            blurRadius: elevation * 0.4,
-            offset: const Offset(0, 1),
-          ),
+          if (!isDark)
+            BoxShadow(
+              color: Colors.white.withValues(alpha: 0.18),
+              blurRadius: elevation * 0.28,
+              offset: const Offset(0, 1),
+              spreadRadius: -1,
+            ),
+          if (!isDark)
+            BoxShadow(
+              color: const Color(0xFFB8C2D6).withValues(alpha: 0.14),
+              blurRadius: elevation * 0.55,
+              offset: Offset(0, elevation * 0.16),
+              spreadRadius: -2,
+            ),
         ],
         border: Border.all(
           color:
               isDark
-                  ? Colors.white.withValues(alpha: 0.12)
-                  : Colors.white.withValues(alpha: 0.20),
+                  ? Colors.white.withValues(alpha: 0.08)
+                  : const Color(0xFFBFC8D9).withValues(alpha: 0.72),
         ),
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            glassTint.withValues(alpha: isDark ? 0.20 : 0.11),
-            glassTint.withValues(alpha: isDark ? 0.12 : 0.06),
+            glassTint.withValues(alpha: isDark ? 0.15 : 0.18),
+            glassTint.withValues(alpha: isDark ? 0.1 : 0.12),
           ],
         ),
       ),
@@ -73,13 +82,13 @@ class AppLiquidGlass extends StatelessWidget {
           end: Alignment.bottomRight,
           colors: isDark
               ? const [
-                Color.fromARGB(34, 255, 255, 255),
-                Color.fromARGB(8, 255, 255, 255),
+                Color.fromARGB(16, 255, 255, 255),
+                Color.fromARGB(4, 255, 255, 255),
                 Color.fromARGB(0, 255, 255, 255),
               ]
               : const [
-                Color.fromARGB(16, 255, 255, 255),
-                Color.fromARGB(4, 255, 255, 255),
+                Color.fromARGB(24, 255, 255, 255),
+                Color.fromARGB(8, 255, 255, 255),
                 Color.fromARGB(0, 255, 255, 255),
               ],
           stops: const [
@@ -100,7 +109,7 @@ class AppLiquidGlass extends StatelessWidget {
     return RepaintBoundary(
       child: LiquidGlass(
         blur: blur,
-        opacity: isDark ? opacity + 0.03 : opacity,
+        opacity: isDark ? opacity + 0.01 : opacity,
         borderRadius: borderRadius,
         tint: glassTint,
         child: decorated,
