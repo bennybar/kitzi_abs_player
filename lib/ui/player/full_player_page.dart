@@ -2718,195 +2718,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
 
                     return Column(
                       children: [
-                        // Custom App Bar
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              IconButton.filledTonal(
-                                onPressed: () => Navigator.of(context).pop(),
-                                icon: const Icon(Symbols.keyboard_arrow_down),
-                                style: IconButton.styleFrom(
-                                  backgroundColor: cs.surface.withOpacity(0.38),
-                                  foregroundColor: cs.onSurface,
-                                  side: BorderSide(
-                                    color: cs.outlineVariant.withOpacity(0.24),
-                                  ),
-                                ),
-                              ),
-                              const Spacer(),
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  StreamBuilder<bool>(
-                                    stream: _getBookCompletionStream(),
-                                    initialData: false,
-                                    builder: (_, completionSnap) {
-                                      final isCompleted =
-                                          completionSnap.data ?? false;
-                                      final menuBg =
-                                          gradientEnabled
-                                              ? Color.alphaBlend(
-                                                (_palettePrimary ?? cs.primary)
-                                                    .withOpacity(0.1),
-                                                cs.surface,
-                                              )
-                                              : cs.surface;
-                                      return PopupMenuButton<_TopMenuAction>(
-                                        tooltip: 'More options',
-                                        icon: const Icon(Symbols.more_vert),
-                                        color: menuBg,
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            18,
-                                          ),
-                                          side: BorderSide(
-                                            color: cs.outlineVariant
-                                                .withOpacity(0.2),
-                                          ),
-                                        ),
-                                        onSelected: (action) {
-                                          switch (action) {
-                                            case _TopMenuAction
-                                                .toggleCompletion:
-                                              _toggleBookCompletion(
-                                                context,
-                                                isCompleted,
-                                              );
-                                              break;
-                                            case _TopMenuAction.toggleGradient:
-                                              final next = !gradientEnabled;
-                                              UiPrefs.setPlayerGradientBackground(
-                                                next,
-                                              );
-                                              ScaffoldMessenger.of(
-                                                context,
-                                              ).showSnackBar(
-                                                SnackBar(
-                                                  content: Text(
-                                                    next
-                                                        ? 'Gradient background enabled'
-                                                        : 'Gradient background disabled',
-                                                  ),
-                                                  duration: const Duration(
-                                                    seconds: 2,
-                                                  ),
-                                                ),
-                                              );
-                                              break;
-                                            case _TopMenuAction.cast:
-                                              _showCastingComingSoon(context);
-                                              break;
-                                            case _TopMenuAction.playHistory:
-                                              _openHistorySheet(
-                                                context,
-                                                playback,
-                                              );
-                                              break;
-                                            case _TopMenuAction.bookmarks:
-                                              _openBookmarksSheet(
-                                                context,
-                                                playback,
-                                              );
-                                              break;
-                                          }
-                                        },
-                                        itemBuilder:
-                                            (context) => [
-                                              PopupMenuItem(
-                                                value:
-                                                    _TopMenuAction
-                                                        .toggleCompletion,
-                                                child: Row(
-                                                  children: [
-                                                    Icon(
-                                                      isCompleted
-                                                          ? Icons.undo_rounded
-                                                          : Icons.check_rounded,
-                                                      size: 18,
-                                                      color: cs.primary,
-                                                    ),
-                                                    const SizedBox(width: 12),
-                                                    Expanded(
-                                                      child: Text(
-                                                        isCompleted
-                                                            ? 'Mark as unfinished'
-                                                            : 'Mark as finished',
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                              PopupMenuItem(
-                                                value:
-                                                    _TopMenuAction
-                                                        .toggleGradient,
-                                                child: Row(
-                                                  children: [
-                                                    Icon(
-                                                      gradientEnabled
-                                                          ? Icons.gradient
-                                                          : Icons
-                                                              .gradient_outlined,
-                                                      size: 18,
-                                                      color: cs.primary,
-                                                    ),
-                                                    const SizedBox(width: 12),
-                                                    Expanded(
-                                                      child: Text(
-                                                        gradientEnabled
-                                                            ? 'Disable gradient background'
-                                                            : 'Enable gradient background',
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                              PopupMenuItem(
-                                                value:
-                                                    _TopMenuAction.playHistory,
-                                                child: Row(
-                                                  children: [
-                                                    Icon(
-                                                      Icons.history_rounded,
-                                                      size: 18,
-                                                      color: cs.primary,
-                                                    ),
-                                                    const SizedBox(width: 12),
-                                                    const Expanded(
-                                                      child: Text(
-                                                        'Play history',
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                              PopupMenuItem(
-                                                value: _TopMenuAction.bookmarks,
-                                                child: Row(
-                                                  children: [
-                                                    Icon(
-                                                      Icons.bookmark_rounded,
-                                                      size: 18,
-                                                      color: cs.primary,
-                                                    ),
-                                                    const SizedBox(width: 12),
-                                                    const Expanded(
-                                                      child: Text('Bookmarks'),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                            ],
-                                      );
-                                    },
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
+                        const SizedBox(height: 2),
 
                         // ARTWORK + TITLE
                         Expanded(
@@ -3228,6 +3040,210 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                                     np.chapters.length > 1
                                                         ? 'Chapter ${(playback.currentChapterProgress?.index ?? 0) + 1}'
                                                         : 'Ready',
+                                              ),
+                                              const SizedBox(width: 6),
+                                              StreamBuilder<bool>(
+                                                stream: _getBookCompletionStream(),
+                                                initialData: false,
+                                                builder: (_, completionSnap) {
+                                                  final isCompleted =
+                                                      completionSnap.data ??
+                                                      false;
+                                                  final menuBg =
+                                                      gradientEnabled
+                                                          ? Color.alphaBlend(
+                                                            (_palettePrimary ??
+                                                                    cs.primary)
+                                                                .withOpacity(
+                                                                  0.1,
+                                                                ),
+                                                            cs.surface,
+                                                          )
+                                                          : cs.surface;
+                                                  return PopupMenuButton<
+                                                    _TopMenuAction
+                                                  >(
+                                                    tooltip: 'More options',
+                                                    icon: const Icon(
+                                                      Symbols.more_vert,
+                                                    ),
+                                                    color: menuBg,
+                                                    shape: RoundedRectangleBorder(
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            18,
+                                                          ),
+                                                      side: BorderSide(
+                                                        color: cs
+                                                            .outlineVariant
+                                                            .withOpacity(0.2),
+                                                      ),
+                                                    ),
+                                                    onSelected: (action) {
+                                                      switch (action) {
+                                                        case _TopMenuAction
+                                                            .toggleCompletion:
+                                                          _toggleBookCompletion(
+                                                            context,
+                                                            isCompleted,
+                                                          );
+                                                          break;
+                                                        case _TopMenuAction
+                                                            .toggleGradient:
+                                                          final next =
+                                                              !gradientEnabled;
+                                                          UiPrefs.setPlayerGradientBackground(
+                                                            next,
+                                                          );
+                                                          ScaffoldMessenger.of(
+                                                            context,
+                                                          ).showSnackBar(
+                                                            SnackBar(
+                                                              content: Text(
+                                                                next
+                                                                    ? 'Gradient background enabled'
+                                                                    : 'Gradient background disabled',
+                                                              ),
+                                                              duration:
+                                                                  const Duration(
+                                                                    seconds: 2,
+                                                                  ),
+                                                            ),
+                                                          );
+                                                          break;
+                                                        case _TopMenuAction
+                                                            .cast:
+                                                          _showCastingComingSoon(
+                                                            context,
+                                                          );
+                                                          break;
+                                                        case _TopMenuAction
+                                                            .playHistory:
+                                                          _openHistorySheet(
+                                                            context,
+                                                            playback,
+                                                          );
+                                                          break;
+                                                        case _TopMenuAction
+                                                            .bookmarks:
+                                                          _openBookmarksSheet(
+                                                            context,
+                                                            playback,
+                                                          );
+                                                          break;
+                                                      }
+                                                    },
+                                                    itemBuilder:
+                                                        (context) => [
+                                                          PopupMenuItem(
+                                                            value:
+                                                                _TopMenuAction
+                                                                    .toggleCompletion,
+                                                            child: Row(
+                                                              children: [
+                                                                Icon(
+                                                                  isCompleted
+                                                                      ? Icons
+                                                                          .undo_rounded
+                                                                      : Icons
+                                                                          .check_rounded,
+                                                                  size: 18,
+                                                                  color:
+                                                                      cs.primary,
+                                                                ),
+                                                                const SizedBox(
+                                                                  width: 12,
+                                                                ),
+                                                                Expanded(
+                                                                  child: Text(
+                                                                    isCompleted
+                                                                        ? 'Mark as unfinished'
+                                                                        : 'Mark as finished',
+                                                                  ),
+                                                                ),
+                                                              ],
+                                                            ),
+                                                          ),
+                                                          PopupMenuItem(
+                                                            value:
+                                                                _TopMenuAction
+                                                                    .toggleGradient,
+                                                            child: Row(
+                                                              children: [
+                                                                Icon(
+                                                                  gradientEnabled
+                                                                      ? Icons
+                                                                          .gradient
+                                                                      : Icons
+                                                                          .gradient_outlined,
+                                                                  size: 18,
+                                                                  color:
+                                                                      cs.primary,
+                                                                ),
+                                                                const SizedBox(
+                                                                  width: 12,
+                                                                ),
+                                                                Expanded(
+                                                                  child: Text(
+                                                                    gradientEnabled
+                                                                        ? 'Disable gradient background'
+                                                                        : 'Enable gradient background',
+                                                                  ),
+                                                                ),
+                                                              ],
+                                                            ),
+                                                          ),
+                                                          PopupMenuItem(
+                                                            value:
+                                                                _TopMenuAction
+                                                                    .playHistory,
+                                                            child: Row(
+                                                              children: [
+                                                                Icon(
+                                                                  Icons
+                                                                      .history_rounded,
+                                                                  size: 18,
+                                                                  color:
+                                                                      cs.primary,
+                                                                ),
+                                                                const SizedBox(
+                                                                  width: 12,
+                                                                ),
+                                                                const Expanded(
+                                                                  child: Text(
+                                                                    'Play history',
+                                                                  ),
+                                                                ),
+                                                              ],
+                                                            ),
+                                                          ),
+                                                          PopupMenuItem(
+                                                            value:
+                                                                _TopMenuAction
+                                                                    .bookmarks,
+                                                            child: Row(
+                                                              children: [
+                                                                Icon(
+                                                                  Icons
+                                                                      .bookmark_rounded,
+                                                                  size: 18,
+                                                                  color:
+                                                                      cs.primary,
+                                                                ),
+                                                                const SizedBox(
+                                                                  width: 12,
+                                                                ),
+                                                                const Expanded(
+                                                                  child: Text(
+                                                                    'Bookmarks',
+                                                                  ),
+                                                                ),
+                                                              ],
+                                                            ),
+                                                          ),
+                                                        ],
+                                                  );
+                                                },
                                               ),
                                             ],
                                           ),
