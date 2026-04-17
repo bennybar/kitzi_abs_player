@@ -3076,8 +3076,47 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                                     _TopMenuAction
                                                   >(
                                                     tooltip: 'More options',
-                                                    icon: const Icon(
-                                                      Symbols.more_vert,
+                                                    padding: EdgeInsets.zero,
+                                                    child: AppLiquidGlassPill(
+                                                      blur: 26,
+                                                      opacity:
+                                                          Theme.of(context)
+                                                                      .brightness ==
+                                                                  Brightness
+                                                                      .dark
+                                                              ? 0.16
+                                                              : 0.08,
+                                                      tint: Color.alphaBlend(
+                                                        Colors.black.withValues(
+                                                          alpha: Theme.of(
+                                                                        context,
+                                                                      ).brightness ==
+                                                                      Brightness
+                                                                          .dark
+                                                                  ? 0.0
+                                                                  : 0.04,
+                                                        ),
+                                                        cs.surface,
+                                                      ),
+                                                      elevation: 5,
+                                                      lightenAmount:
+                                                          Theme.of(context)
+                                                                      .brightness ==
+                                                                  Brightness
+                                                                      .dark
+                                                              ? null
+                                                              : 0.07,
+                                                      padding:
+                                                          const EdgeInsets.symmetric(
+                                                            horizontal: 10,
+                                                            vertical: 7,
+                                                          ),
+                                                      child: Icon(
+                                                        Symbols.more_vert,
+                                                        size: 16,
+                                                        color:
+                                                            cs.onSurfaceVariant,
+                                                      ),
                                                     ),
                                                     color: menuBg,
                                                     shape: RoundedRectangleBorder(
