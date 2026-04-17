@@ -192,6 +192,10 @@ class _ResumeFromHistoryButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final accent = isDark ? const Color(0xFF7EE08A) : const Color(0xFF3D8A57);
+
     return Tooltip(
       message: 'Resume previous play position',
       child: Material(
@@ -201,10 +205,13 @@ class _ResumeFromHistoryButton extends StatelessWidget {
           onTap: () => _handleResume(context),
           child: AppLiquidGlassPill(
             blur: 26,
-            opacity: 0.18,
-            tint: Color.alphaBlend(Colors.green.shade600.withOpacity(0.22), Theme.of(context).colorScheme.surface),
-            elevation: 8,
-            lightenAmount: 0.05,
+            opacity: isDark ? 0.18 : 0.14,
+            tint: Color.alphaBlend(
+              accent.withValues(alpha: isDark ? 0.14 : 0.12),
+              cs.surfaceContainerLow,
+            ),
+            elevation: 6,
+            lightenAmount: isDark ? 0.03 : 0.0,
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -212,14 +219,14 @@ class _ResumeFromHistoryButton extends StatelessWidget {
                 Icon(
                   Icons.history_rounded,
                   size: 14,
-                  color: Colors.green.shade300,
+                  color: accent,
                 ),
                 const SizedBox(width: 5),
                 Text(
                   'Last position',
                   style: Theme.of(context).textTheme.labelMedium?.copyWith(
                     fontSize: 11.5,
-                    color: Colors.green.shade200,
+                    color: accent,
                     fontWeight: FontWeight.w700,
                     letterSpacing: -0.1,
                   ),
