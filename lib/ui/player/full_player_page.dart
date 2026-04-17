@@ -1075,6 +1075,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
           ),
         ),
         const SizedBox(height: 6),
+        if (false) ...[
         ClipRRect(
           borderRadius: BorderRadius.circular(4),
           child: SizedBox(
@@ -1124,6 +1125,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
           ),
         ),
         const SizedBox(height: 4),
+        ],
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1486,6 +1488,33 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                       ),
                     ),
                     Positioned.fill(child: _SleepTimerArcOverlay()),
+                    Positioned(
+                      top: 10,
+                      right: 10,
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(999),
+                          onTap: () => _addBookmark(context, playback),
+                          child: Container(
+                            width: 34,
+                            height: 34,
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.28),
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: Colors.white.withOpacity(0.18),
+                              ),
+                            ),
+                            child: Icon(
+                              Symbols.bookmark_add,
+                              size: 16,
+                              color: Colors.white.withOpacity(0.92),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -1503,8 +1532,104 @@ class _FullPlayerPageState extends State<FullPlayerPage>
     required PlaybackRepository playback,
     required NowPlaying np,
     required Duration? totalDuration,
+    bool embedded = false,
   }) {
     final chapterMetrics = playback.currentChapterProgress;
+    final content = Column(
+      children: [
+        ValueListenableBuilder<bool>(
+          valueListenable: UiPrefs.playerScrollingSingleLineTitle,
+          builder: (context, singleLineScrollingTitle, _) {
+            final titleStyle = text.headlineSmall?.copyWith(
+              fontSize:
+                  (text.headlineSmall?.fontSize ?? 28) * _metadataTextScale,
+              fontWeight: FontWeight.w800,
+              height: 1.08,
+              letterSpacing: -0.45,
+            );
+            if (!singleLineScrollingTitle) {
+              return Text(
+                np.title,
+                textAlign: TextAlign.center,
+                style: titleStyle,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+              );
+            }
+            return _LoopingMarqueeText(
+              text: np.title,
+              style: titleStyle,
+              gap: 40,
+              pause: const Duration(milliseconds: 900),
+              pixelsPerSecond: 36,
+            );
+          },
+        ),
+        if (np.author != null && np.author!.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(
+            np.author!,
+            textAlign: TextAlign.center,
+            style: text.titleMedium?.copyWith(
+              fontSize:
+                  (text.titleMedium?.fontSize ?? 17) * _metadataTextScale,
+              color: cs.onSurfaceVariant.withOpacity(0.92),
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.05,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+        if (np.narrator != null && np.narrator!.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(
+            'Narrated by ${np.narrator!}',
+            textAlign: TextAlign.center,
+            style: text.bodyMedium?.copyWith(
+              fontSize:
+                  (text.bodyMedium?.fontSize ?? 14) * _metadataTextScale,
+              color: cs.onSurfaceVariant.withOpacity(0.66),
+              fontWeight: FontWeight.w500,
+              letterSpacing: 0.1,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+        const SizedBox(height: 12),
+        Wrap(
+          alignment: WrapAlignment.center,
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            const _ResumeFromHistoryButton(),
+            _InfoPill(
+              icon:
+                  np.tracks.isNotEmpty && np.tracks.every((t) => t.isLocal)
+                      ? Symbols.download_done
+                      : Symbols.wifi_tethering,
+              label:
+                  np.tracks.isNotEmpty && np.tracks.every((t) => t.isLocal)
+                      ? 'Downloaded'
+                      : 'Streaming',
+            ),
+            _InfoPill(
+              icon: Symbols.library_books,
+              label:
+                  np.chapters.length > 1
+                      ? '${np.chapters.length} chapters'
+                      : 'Single part',
+            ),
+            if (totalDuration != null)
+              _InfoPill(
+                icon: Symbols.schedule,
+                label: _formatDuration(totalDuration),
+              ),
+          ],
+        ),
+      ],
+    );
 
     return AnimatedBuilder(
       animation: _titleAnimation,
@@ -1520,109 +1645,18 @@ class _FullPlayerPageState extends State<FullPlayerPage>
           ),
         );
       },
-      child: _GlassPanel(
-        borderRadius: 30,
-        tint: Color.alphaBlend(
-          cs.surface.withOpacity(0.34),
-          cs.surfaceContainerHigh.withOpacity(0.74),
-        ),
-        padding: const EdgeInsets.fromLTRB(18, 20, 18, 14),
-        child: Column(
-          children: [
-            ValueListenableBuilder<bool>(
-              valueListenable: UiPrefs.playerScrollingSingleLineTitle,
-              builder: (context, singleLineScrollingTitle, _) {
-                final titleStyle = text.headlineSmall?.copyWith(
-                  fontSize:
-                      (text.headlineSmall?.fontSize ?? 28) * _metadataTextScale,
-                  fontWeight: FontWeight.w800,
-                  height: 1.08,
-                  letterSpacing: -0.45,
-                );
-                if (!singleLineScrollingTitle) {
-                  return Text(
-                    np.title,
-                    textAlign: TextAlign.center,
-                    style: titleStyle,
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                  );
-                }
-                return _LoopingMarqueeText(
-                  text: np.title,
-                  style: titleStyle,
-                  gap: 40,
-                  pause: const Duration(milliseconds: 900),
-                  pixelsPerSecond: 36,
-                );
-              },
-            ),
-            if (np.author != null && np.author!.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text(
-                np.author!,
-                textAlign: TextAlign.center,
-                style: text.titleMedium?.copyWith(
-                  fontSize:
-                      (text.titleMedium?.fontSize ?? 17) * _metadataTextScale,
-                  color: cs.onSurfaceVariant.withOpacity(0.92),
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.05,
+      child:
+          embedded
+              ? content
+              : _GlassPanel(
+                borderRadius: 30,
+                tint: Color.alphaBlend(
+                  cs.surface.withOpacity(0.34),
+                  cs.surfaceContainerHigh.withOpacity(0.74),
                 ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
+                padding: const EdgeInsets.fromLTRB(18, 20, 18, 14),
+                child: content,
               ),
-            ],
-            if (np.narrator != null && np.narrator!.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(
-                'Narrated by ${np.narrator!}',
-                textAlign: TextAlign.center,
-                style: text.bodyMedium?.copyWith(
-                  fontSize:
-                      (text.bodyMedium?.fontSize ?? 14) * _metadataTextScale,
-                  color: cs.onSurfaceVariant.withOpacity(0.66),
-                  fontWeight: FontWeight.w500,
-                  letterSpacing: 0.1,
-                ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-            const SizedBox(height: 12),
-            Wrap(
-              alignment: WrapAlignment.center,
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                const _ResumeFromHistoryButton(),
-                _InfoPill(
-                  icon:
-                      np.tracks.isNotEmpty && np.tracks.every((t) => t.isLocal)
-                          ? Symbols.download_done
-                          : Symbols.wifi_tethering,
-                  label:
-                      np.tracks.isNotEmpty && np.tracks.every((t) => t.isLocal)
-                          ? 'Downloaded'
-                          : 'Streaming',
-                ),
-                _InfoPill(
-                  icon: Symbols.library_books,
-                  label:
-                      np.chapters.length > 1
-                          ? '${np.chapters.length} chapters'
-                          : 'Single part',
-                ),
-                if (totalDuration != null)
-                  _InfoPill(
-                    icon: Symbols.schedule,
-                    label: _formatDuration(totalDuration),
-                  ),
-              ],
-            ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -2705,40 +2739,6 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                               Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  StreamBuilder<double>(
-                                    stream: playback.player.speedStream,
-                                    initialData: playback.player.speed,
-                                    builder: (_, speedSnap) {
-                                      final speed = speedSnap.data ?? 1.0;
-                                      return _InfoPill(
-                                        icon: Symbols.speed,
-                                        label: _formatPlaybackSpeedLabel(speed),
-                                        highlighted:
-                                            (speed - 1.0).abs() > 0.001,
-                                      );
-                                    },
-                                  ),
-                                  const SizedBox(width: 10),
-                                  IconButton.filledTonal(
-                                    tooltip: 'Add bookmark',
-                                    onPressed:
-                                        np == null
-                                            ? null
-                                            : () =>
-                                                _addBookmark(context, playback),
-                                    icon: const Icon(Symbols.bookmark_add),
-                                    style: IconButton.styleFrom(
-                                      backgroundColor: cs.surface.withOpacity(
-                                        0.34,
-                                      ),
-                                      foregroundColor: cs.onSurface,
-                                      side: BorderSide(
-                                        color: cs.outlineVariant.withOpacity(
-                                          0.22,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
                                   StreamBuilder<bool>(
                                     stream: _getBookCompletionStream(),
                                     initialData: false,
@@ -2922,7 +2922,19 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                     16,
                                     8,
                                   ),
-                                  child: Column(
+                                  child: _GlassPanel(
+                                    borderRadius: 30,
+                                    tint: Color.alphaBlend(
+                                      cs.surface.withOpacity(0.34),
+                                      cs.surfaceContainerHigh.withOpacity(0.74),
+                                    ),
+                                    padding: const EdgeInsets.fromLTRB(
+                                      18,
+                                      18,
+                                      18,
+                                      14,
+                                    ),
+                                    child: Column(
                                     children: [
                                       Expanded(
                                         child: LayoutBuilder(
@@ -2957,9 +2969,11 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                         playback: playback,
                                         np: np,
                                         totalDuration: totalDuration,
+                                        embedded: true,
                                       ),
                                       const SizedBox(height: 6),
                                     ],
+                                    ),
                                   ),
                                 ),
                               );
@@ -3750,7 +3764,7 @@ class _SpeedQuickAction extends StatelessWidget {
             Symbols.speed,
             color: isNormal ? cs.onSurface : accentColor,
           ),
-          label: '',
+          label: _formatPlaybackSpeedLabel(cur),
           tooltip: 'Playback speed',
           onTap: () => _showSpeedSheet(context, cur),
           backgroundColor:
