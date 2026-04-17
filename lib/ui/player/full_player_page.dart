@@ -1686,6 +1686,8 @@ class _FullPlayerPageState extends State<FullPlayerPage>
   ) {
     return showBookMetadataSheet(
       context: context,
+      title: np.title,
+      subtitle: np.author,
       cacheKey: np.libraryItemId,
       loadFacts: () => _loadPlayerMetadataFacts(context, playback, np),
     );
@@ -2960,16 +2962,9 @@ class _FullPlayerPageState extends State<FullPlayerPage>
 
                     return Padding(
                       padding: const EdgeInsets.fromLTRB(10, 8, 10, 12),
-                      child: _GlassPanel(
-                        borderRadius: 32,
-                        tint: Color.alphaBlend(
-                          cs.surface.withOpacity(0.34),
-                          cs.surfaceContainerHigh.withOpacity(0.76),
-                        ),
-                        padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-                        child: Column(
-                          children: [
-                            const SizedBox(height: 2),
+                      child: Column(
+                        children: [
+                          const SizedBox(height: 2),
 
                             // ARTWORK + TITLE
                             Expanded(
@@ -3786,11 +3781,10 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                               ),
                             );
                           },
-                            ),
-                          ],
                         ),
-                      ),
-                    );
+                      ],
+                    ),
+                  );
                   },
                 ),
               ),

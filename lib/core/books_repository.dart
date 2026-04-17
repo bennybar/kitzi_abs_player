@@ -2723,10 +2723,6 @@ class BooksRepository {
     _coverRetryTimer?.cancel();
     _coverRetryQueue.clear();
     _coverRetryAttempts.clear();
-    try {
-      await _db?.close();
-    } catch (_) {}
-    _db = null;
   }
 }
 

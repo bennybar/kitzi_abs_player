@@ -165,6 +165,8 @@ class _BookDetailPageState extends State<BookDetailPage> {
   Future<void> _showBookMetadataMenu(BuildContext context, Book book) {
     return showBookMetadataSheet(
       context: context,
+      title: book.title,
+      subtitle: book.author,
       cacheKey: book.id,
       loadFacts: () => _loadBookMetadataFacts(context, book),
     );
