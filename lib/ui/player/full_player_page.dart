@@ -1497,19 +1497,31 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                           borderRadius: BorderRadius.circular(999),
                           onTap: () => _addBookmark(context, playback),
                           child: Container(
-                            width: 34,
-                            height: 34,
+                            width: 40,
+                            height: 40,
                             decoration: BoxDecoration(
-                              color: Colors.black.withOpacity(0.28),
+                              color: Color.alphaBlend(
+                                Colors.black.withOpacity(0.42),
+                                (_palettePrimary ?? cs.primary).withOpacity(
+                                  0.12,
+                                ),
+                              ),
                               shape: BoxShape.circle,
                               border: Border.all(
-                                color: Colors.white.withOpacity(0.18),
+                                color: Colors.white.withOpacity(0.26),
                               ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.24),
+                                  blurRadius: 12,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
                             ),
                             child: Icon(
                               Symbols.bookmark_add,
-                              size: 16,
-                              color: Colors.white.withOpacity(0.92),
+                              size: 18,
+                              color: Colors.white.withOpacity(0.98),
                             ),
                           ),
                         ),
@@ -1566,7 +1578,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
           },
         ),
         if (np.author != null && np.author!.isNotEmpty) ...[
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Text(
             np.author!,
             textAlign: TextAlign.center,
@@ -1582,7 +1594,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
           ),
         ],
         if (np.narrator != null && np.narrator!.isNotEmpty) ...[
-          const SizedBox(height: 4),
+          const SizedBox(height: 3),
           Text(
             'Narrated by ${np.narrator!}',
             textAlign: TextAlign.center,
@@ -1597,7 +1609,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
             overflow: TextOverflow.ellipsis,
           ),
         ],
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
         Wrap(
           alignment: WrapAlignment.center,
           spacing: 8,
@@ -2742,9 +2754,9 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                     ),
                                     padding: const EdgeInsets.fromLTRB(
                                       18,
+                                      15,
                                       18,
-                                      18,
-                                      14,
+                                      11,
                                     ),
                                     child: Column(
                                     children: [
@@ -2773,7 +2785,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                           },
                                         ),
                                       ),
-                                      const SizedBox(height: 2),
+                                      const SizedBox(height: 1),
                                       _buildHeroMetadata(
                                         context: context,
                                         text: text,
@@ -2783,7 +2795,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                         totalDuration: totalDuration,
                                         embedded: true,
                                       ),
-                                      const SizedBox(height: 6),
+                                      const SizedBox(height: 3),
                                     ],
                                     ),
                                   ),
@@ -3656,7 +3668,7 @@ class _PlayerActionTile extends StatelessWidget {
     final bg =
         backgroundColor ??
         Color.alphaBlend(
-          cs.surfaceContainerHighest.withOpacity(isDark ? 0.58 : 0.34),
+          cs.surfaceContainerHighest.withOpacity(isDark ? 0.46 : 0.28),
           cs.surface,
         );
     final fg = foregroundColor ?? cs.onSurface;
@@ -3668,11 +3680,11 @@ class _PlayerActionTile extends StatelessWidget {
         blur: 28,
         opacity:
             enabled
-                ? (isDark ? 0.17 : 0.09)
-                : (isDark ? 0.11 : 0.06),
+                ? (isDark ? 0.15 : 0.08)
+                : (isDark ? 0.1 : 0.05),
         borderRadius: radius,
         tint: enabled ? bg : bg.withOpacity(0.8),
-        elevation: 8,
+        elevation: 6,
         lightenAmount: isDark ? null : 0.06,
         padding: EdgeInsets.zero,
         child: Material(
@@ -4156,11 +4168,15 @@ class _ControlButton extends StatelessWidget {
     final bg =
         isPrimary
             ? Color.alphaBlend(
-              cs.primary.withOpacity(highlighted ? 0.96 : 0.9),
+              cs.primary.withOpacity(highlighted ? 0.92 : 0.86),
               cs.surface,
             )
-            : cs.surfaceContainerHighest.withOpacity(0.7);
-    final fg = isPrimary ? cs.onPrimary : cs.onSurface;
+            : Color.alphaBlend(
+              cs.surfaceContainerHighest.withOpacity(0.5),
+              cs.surface,
+            );
+    final fg =
+        isPrimary ? cs.onPrimary : cs.onSurfaceVariant.withOpacity(0.92);
     final shape =
         isCircular
             ? const CircleBorder()
@@ -4180,7 +4196,7 @@ class _ControlButton extends StatelessWidget {
           child: Icon(
             icon,
             key: ValueKey(icon),
-            size: size * (isPrimary ? 0.5 : 0.46),
+            size: size * (isPrimary ? 0.48 : 0.42),
             color: fg,
           ),
         ),
@@ -4194,11 +4210,11 @@ class _ControlButton extends StatelessWidget {
       child: Material(
         color: bg,
         shape: shape,
-        elevation: isPrimary ? 10 : 0,
+        elevation: isPrimary ? 7 : 0,
         shadowColor:
             isPrimary
-                ? cs.primary.withOpacity(0.34)
-                : cs.shadow.withOpacity(0.08),
+                ? cs.primary.withOpacity(0.24)
+                : cs.shadow.withOpacity(0.05),
         child: Ink(
           decoration:
               isPrimary
@@ -4207,14 +4223,21 @@ class _ControlButton extends StatelessWidget {
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                       colors: [
-                        Color.alphaBlend(Colors.white.withOpacity(0.12), bg),
+                        Color.alphaBlend(Colors.white.withOpacity(0.08), bg),
                         bg,
                       ],
                     ),
                     shape: isCircular ? BoxShape.circle : BoxShape.rectangle,
                     borderRadius: isCircular ? null : BorderRadius.circular(22),
                   )
-                  : null,
+                  : BoxDecoration(
+                    color: bg,
+                    shape: isCircular ? BoxShape.circle : BoxShape.rectangle,
+                    borderRadius: isCircular ? null : BorderRadius.circular(22),
+                    border: Border.all(
+                      color: cs.outlineVariant.withOpacity(0.14),
+                    ),
+                  ),
           child: InkWell(
             customBorder: shape,
             onTap: onTap,
