@@ -54,7 +54,8 @@ class AppWarmupService {
   /// Initialize books repository
   static Future<void> _initializeBooksRepository() async {
     try {
-      await BooksRepository.create();
+      final repo = await BooksRepository.create();
+      await repo.dispose();
       // APP_WARMUP Books repository initialized');
     } catch (e) {
       // APP_WARMUP Error initializing books repository: $e');
@@ -76,7 +77,8 @@ class AppWarmupService {
     try {
       // Load first page of books in background
       final repo = await BooksRepository.create();
-      unawaited(repo.listBooksFromDbPaged(page: 1, limit: 20));
+      await repo.listBooksFromDbPaged(page: 1, limit: 20);
+      await repo.dispose();
       
       // Load recent books in background
       unawaited(PlayHistoryService.getLastPlayedBooks(4));
@@ -93,6 +95,7 @@ class AppWarmupService {
       // Preload popular cover images if available
       final repo = await BooksRepository.create();
       final popularBooks = await repo.listBooksFromDbPaged(page: 1, limit: 10);
+      await repo.dispose();
       
       if (popularBooks.isNotEmpty) {
         final urls = popularBooks.map((b) => b.coverUrl).toList();

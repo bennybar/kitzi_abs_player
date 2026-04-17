@@ -410,15 +410,19 @@ class PlaybackRepository {
         String? coverUrl;
         try {
           final repo = await BooksRepository.create();
-          final b = await repo.getBookFromDb(last);
-          if (b != null) {
-            title = b.title.isNotEmpty ? b.title : title;
-            author = b.author; // Do not fall back to narrator for artist
-            narrator =
-                (b.narrators != null && b.narrators!.isNotEmpty)
-                    ? b.narrators!.join(', ')
-                    : null;
-            coverUrl = b.coverUrl;
+          try {
+            final b = await repo.getBookFromDb(last);
+            if (b != null) {
+              title = b.title.isNotEmpty ? b.title : title;
+              author = b.author; // Do not fall back to narrator for artist
+              narrator =
+                  (b.narrators != null && b.narrators!.isNotEmpty)
+                      ? b.narrators!.join(', ')
+                      : null;
+              coverUrl = b.coverUrl;
+            }
+          } finally {
+            await repo.dispose();
           }
         } catch (_) {}
 
@@ -459,6 +463,9 @@ class PlaybackRepository {
               );
             }
           }
+          // Fill in any metadata that was missing from the local DB cache
+          if (narrator == null) narrator = _narratorFromMeta(meta);
+          if (author == null) author = _authorFromMeta(meta);
         } catch (e) {
           _log(
             'Warm load: failed to fetch server chapter metadata: $e, trying cached chapters',
@@ -975,13 +982,17 @@ class PlaybackRepository {
     // Guard: do not attempt playback if item appears to be non-audiobook
     try {
       final repo = await BooksRepository.create();
-      final b =
-          await repo.getBookFromDb(libraryItemId) ??
-          await repo.getBook(libraryItemId);
-      cachedBook = b;
-      if (b.isAudioBook == false) {
-        _log('Blocked play for non-audiobook item $libraryItemId');
-        return false;
+      try {
+        final b =
+            await repo.getBookFromDb(libraryItemId) ??
+            await repo.getBook(libraryItemId);
+        cachedBook = b;
+        if (b.isAudioBook == false) {
+          _log('Blocked play for non-audiobook item $libraryItemId');
+          return false;
+        }
+      } finally {
+        await repo.dispose();
       }
     } catch (_) {}
 

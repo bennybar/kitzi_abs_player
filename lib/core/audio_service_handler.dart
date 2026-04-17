@@ -428,24 +428,24 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
   Future<List<MediaItem>> _getBrowsableBooks({String? query}) async {
     try {
       final repo = await BooksRepository.create();
-      
-      // Get books from local database only (no network calls)
-      // Sort by updatedAt desc (date added desc), limit to 50 for Android Auto UI
-      final books = await repo.listBooksFromDbPaged(
-        page: 1,
-        limit: 50,
-        sort: 'updatedAt:desc',
-        query: query,
-      );
-      
-      // Found cached books
-      
+      final List<dynamic> books;
+      try {
+        books = await repo.listBooksFromDbPaged(
+          page: 1,
+          limit: 50,
+          sort: 'updatedAt:desc',
+          query: query,
+        );
+      } finally {
+        await repo.dispose();
+      }
+
       if (books.isEmpty) {
         return <MediaItem>[
           MediaItem(
             id: 'kitzi_placeholder_open_phone',
             album: 'Kitzi',
-            title: query != null 
+            title: query != null
                 ? 'No books found for "$query". Sync library on phone.'
                 : 'Open Kitzi on phone to sync your library',
             artist: ' ',
@@ -454,8 +454,7 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
         ];
       }
 
-      // Convert books to MediaItems
-      final List<MediaItem> items = books.map<MediaItem>((book) {
+      return books.map<MediaItem>((book) {
         return MediaItem(
           id: book.id,
           album: 'Audiobooks',
@@ -465,7 +464,6 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
           playable: true,
           displayTitle: book.title,
           displaySubtitle: book.author,
-          // Add additional metadata for better Android Auto experience
           extras: {
             'duration': book.durationMs,
             'updatedAt': book.updatedAt?.millisecondsSinceEpoch,
@@ -474,8 +472,6 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
           },
         );
       }).toList(growable: false);
-
-      return items;
     } catch (e) {
       return <MediaItem>[
         MediaItem(
