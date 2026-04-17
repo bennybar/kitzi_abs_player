@@ -2728,88 +2728,89 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                             ? Duration(seconds: np.durationSec!.round())
                             : null;
 
-                    return Column(
-                      children: [
-                        const SizedBox(height: 2),
-
-                        // ARTWORK + TITLE
-                        Expanded(
-                          child: LayoutBuilder(
-                            builder: (context, sectionConstraints) {
-                              final metadataLineCount =
-                                  _estimatedMetadataLineCount(np);
-                              return RepaintBoundary(
-                                child: Padding(
-                                  padding: const EdgeInsets.fromLTRB(
-                                    16,
-                                    9,
-                                    16,
-                                    8,
-                                  ),
-                                  child: _GlassPanel(
-                                    borderRadius: 30,
-                                    tint: Color.alphaBlend(
-                                      cs.surface.withOpacity(0.34),
-                                      cs.surfaceContainerHigh.withOpacity(0.74),
-                                    ),
-                                    padding: const EdgeInsets.fromLTRB(
-                                      18,
-                                      15,
-                                      18,
-                                      11,
-                                    ),
-                                    child: Column(
-                                    children: [
-                                      Expanded(
-                                        child: LayoutBuilder(
-                                          builder: (context, coverConstraints) {
-                                            const coverSize =
-                                                PlayerCoverSize.small;
-                                            final dims = _coverDimensionsForSize(
-                                              context,
-                                              coverSize,
-                                              availableHeight:
-                                                  coverConstraints.maxHeight,
-                                              metadataLineCount: 0,
-                                            );
-                                            return Align(
-                                              alignment: Alignment.topCenter,
-                                              child: _buildHeroArtwork(
-                                                context: context,
-                                                playback: playback,
-                                                np: np,
-                                                dims: dims,
-                                                cs: cs,
-                                              ),
-                                            );
-                                          },
-                                        ),
-                                      ),
-                                      const SizedBox(height: 1),
-                                      _buildHeroMetadata(
-                                        context: context,
-                                        text: text,
-                                        cs: cs,
-                                        playback: playback,
-                                        np: np,
-                                        totalDuration: totalDuration,
-                                        embedded: true,
-                                      ),
-                                      const SizedBox(height: 3),
-                                    ],
-                                    ),
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
+                    return Padding(
+                      padding: const EdgeInsets.fromLTRB(10, 8, 10, 12),
+                      child: _GlassPanel(
+                        borderRadius: 32,
+                        tint: Color.alphaBlend(
+                          cs.surface.withOpacity(0.34),
+                          cs.surfaceContainerHigh.withOpacity(0.76),
                         ),
+                        padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+                        child: Column(
+                          children: [
+                            const SizedBox(height: 2),
+
+                            // ARTWORK + TITLE
+                            Expanded(
+                              child: LayoutBuilder(
+                                builder: (context, sectionConstraints) {
+                                  final metadataLineCount =
+                                      _estimatedMetadataLineCount(np);
+                                  return RepaintBoundary(
+                                    child: Padding(
+                                      padding: const EdgeInsets.fromLTRB(
+                                        8,
+                                        8,
+                                        8,
+                                        6,
+                                      ),
+                                      child: Column(
+                                        children: [
+                                          Expanded(
+                                            child: LayoutBuilder(
+                                              builder: (
+                                                context,
+                                                coverConstraints,
+                                              ) {
+                                                const coverSize =
+                                                    PlayerCoverSize.small;
+                                                final dims =
+                                                    _coverDimensionsForSize(
+                                                      context,
+                                                      coverSize,
+                                                      availableHeight:
+                                                          coverConstraints
+                                                              .maxHeight,
+                                                      metadataLineCount: 0,
+                                                    );
+                                                return Align(
+                                                  alignment: Alignment.topCenter,
+                                                  child: _buildHeroArtwork(
+                                                    context: context,
+                                                    playback: playback,
+                                                    np: np,
+                                                    dims: dims,
+                                                    cs: cs,
+                                                  ),
+                                                );
+                                              },
+                                            ),
+                                          ),
+                                          const SizedBox(height: 1),
+                                          _buildHeroMetadata(
+                                            context: context,
+                                            text: text,
+                                            cs: cs,
+                                            playback: playback,
+                                            np: np,
+                                            totalDuration: totalDuration,
+                                            embedded: true,
+                                          ),
+                                          const SizedBox(height: 3),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
 
 
-                        // POSITION + SLIDER
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-                          child: ValueListenableBuilder<Duration>(
+                            // POSITION + SLIDER
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(4, 0, 4, 0),
+                              child: ValueListenableBuilder<Duration>(
                             valueListenable: playback.currentPosition,
                             builder: (_, pos, __) {
                               final globalTotal = playback.totalBookDuration;
@@ -2915,12 +2916,8 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                 );
                               }
 
-                              return _GlassPanel(
+                              return _EmbeddedSectionPanel(
                                 borderRadius: 24,
-                                tint: Color.alphaBlend(
-                                  cs.surface.withOpacity(0.28),
-                                  cs.surfaceContainerHighest.withOpacity(0.62),
-                                ),
                                 padding: const EdgeInsets.fromLTRB(
                                   12,
                                   12,
@@ -2993,12 +2990,12 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                               );
                             },
                           ),
-                        ),
+                            ),
 
-                        const SizedBox(height: 6),
+                            const SizedBox(height: 6),
 
-                        // CONTROLS + CHAPTERS
-                        AnimatedBuilder(
+                            // CONTROLS + CHAPTERS
+                            AnimatedBuilder(
                           animation: _controlsAnimation,
                           builder: (context, child) {
                             return Transform.translate(
@@ -3011,19 +3008,13 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                 child: RepaintBoundary(
                                     child: Padding(
                                       padding: const EdgeInsets.fromLTRB(
-                                        16,
+                                        4,
                                         6,
-                                        16,
-                                        16,
+                                        4,
+                                        6,
                                       ),
-                                    child: _GlassPanel(
+                                    child: _EmbeddedSectionPanel(
                                       borderRadius: 28,
-                                      tint: Color.alphaBlend(
-                                        cs.surface.withOpacity(0.3),
-                                        cs.surfaceContainerHigh.withOpacity(
-                                          0.68,
-                                        ),
-                                      ),
                                       padding: const EdgeInsets.fromLTRB(
                                         12,
                                         12,
@@ -3565,8 +3556,10 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                               ),
                             );
                           },
+                            ),
+                          ],
                         ),
-                      ],
+                      ),
                     );
                   },
                 ),
@@ -3611,6 +3604,41 @@ class _GlassPanel extends StatelessWidget {
       lightenAmount: isDark ? null : 0.08,
       padding: padding,
       child: child,
+    );
+  }
+}
+
+class _EmbeddedSectionPanel extends StatelessWidget {
+  const _EmbeddedSectionPanel({
+    required this.child,
+    this.padding = const EdgeInsets.all(16),
+    this.borderRadius = 24,
+  });
+
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+  final double borderRadius;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Color.alphaBlend(
+          cs.surface.withOpacity(isDark ? 0.18 : 0.08),
+          cs.surfaceContainerHighest.withOpacity(isDark ? 0.44 : 0.22),
+        ),
+        borderRadius: BorderRadius.circular(borderRadius),
+        border: Border.all(
+          color: cs.outlineVariant.withOpacity(isDark ? 0.22 : 0.12),
+        ),
+      ),
+      child: Padding(
+        padding: padding,
+        child: child,
+      ),
     );
   }
 }
