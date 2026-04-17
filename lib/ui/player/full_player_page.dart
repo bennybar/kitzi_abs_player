@@ -1899,6 +1899,83 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                               ),
                             ),
                           ),
+                          Positioned(
+                            left: 10,
+                            right: 10,
+                            bottom: 10,
+                            child: AppLiquidGlass(
+                              blur: 24,
+                              opacity: 0.42,
+                              borderRadius: BorderRadius.circular(18),
+                              tint: Color.alphaBlend(
+                                Colors.black.withValues(alpha: 0.48),
+                                cs.surface,
+                              ),
+                              elevation: 6,
+                              lightenAmount: null,
+                              padding: const EdgeInsets.fromLTRB(
+                                12,
+                                10,
+                                12,
+                                10,
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    np.title,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleLarge
+                                        ?.copyWith(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w800,
+                                          height: 1.05,
+                                        ),
+                                  ),
+                                  if (np.author != null &&
+                                      np.author!.trim().isNotEmpty) ...[
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      np.author!,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodyMedium
+                                          ?.copyWith(
+                                            color: Colors.white.withOpacity(
+                                              0.9,
+                                            ),
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                    ),
+                                  ],
+                                  if (np.narrator != null &&
+                                      np.narrator!.trim().isNotEmpty) ...[
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      'Narrated by ${np.narrator!}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(
+                                            color: Colors.white.withOpacity(
+                                              0.78,
+                                            ),
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -1960,101 +2037,107 @@ class _FullPlayerPageState extends State<FullPlayerPage>
     required NowPlaying np,
     required Duration? totalDuration,
     bool embedded = false,
+    bool showText = true,
+    bool showPills = true,
   }) {
     final chapterMetrics = playback.currentChapterProgress;
     final content = Column(
       children: [
-        ValueListenableBuilder<bool>(
-          valueListenable: UiPrefs.playerScrollingSingleLineTitle,
-          builder: (context, singleLineScrollingTitle, _) {
-            final titleStyle = text.headlineSmall?.copyWith(
-              fontSize:
-                  (text.headlineSmall?.fontSize ?? 28) * _metadataTextScale,
-              fontWeight: FontWeight.w800,
-              height: 1.08,
-              letterSpacing: -0.45,
-            );
-            if (!singleLineScrollingTitle) {
-              return Text(
-                np.title,
-                textAlign: TextAlign.center,
-                style: titleStyle,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
+        if (showText) ...[
+          ValueListenableBuilder<bool>(
+            valueListenable: UiPrefs.playerScrollingSingleLineTitle,
+            builder: (context, singleLineScrollingTitle, _) {
+              final titleStyle = text.headlineSmall?.copyWith(
+                fontSize:
+                    (text.headlineSmall?.fontSize ?? 28) * _metadataTextScale,
+                fontWeight: FontWeight.w800,
+                height: 1.08,
+                letterSpacing: -0.45,
               );
-            }
-            return _LoopingMarqueeText(
-              text: np.title,
-              style: titleStyle,
-              gap: 40,
-              pause: const Duration(milliseconds: 900),
-              pixelsPerSecond: 36,
-            );
-          },
-        ),
-        if (np.author != null && np.author!.isNotEmpty) ...[
-          const SizedBox(height: 6),
-          Text(
-            np.author!,
-            textAlign: TextAlign.center,
-            style: text.titleMedium?.copyWith(
-              fontSize:
-                  (text.titleMedium?.fontSize ?? 17) * _metadataTextScale,
-              color: cs.onSurfaceVariant.withOpacity(0.92),
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.05,
-            ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
+              if (!singleLineScrollingTitle) {
+                return Text(
+                  np.title,
+                  textAlign: TextAlign.center,
+                  style: titleStyle,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                );
+              }
+              return _LoopingMarqueeText(
+                text: np.title,
+                style: titleStyle,
+                gap: 40,
+                pause: const Duration(milliseconds: 900),
+                pixelsPerSecond: 36,
+              );
+            },
           ),
-        ],
-        if (np.narrator != null && np.narrator!.isNotEmpty) ...[
-          const SizedBox(height: 3),
-          Text(
-            'Narrated by ${np.narrator!}',
-            textAlign: TextAlign.center,
-            style: text.bodyMedium?.copyWith(
-              fontSize:
-                  (text.bodyMedium?.fontSize ?? 14) * _metadataTextScale,
-              color: cs.onSurfaceVariant.withOpacity(0.66),
-              fontWeight: FontWeight.w500,
-              letterSpacing: 0.1,
-            ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
-        const SizedBox(height: 10),
-        Wrap(
-          alignment: WrapAlignment.center,
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            const _ResumeFromHistoryButton(),
-            _InfoPill(
-              icon:
-                  np.tracks.isNotEmpty && np.tracks.every((t) => t.isLocal)
-                      ? Symbols.download_done
-                      : Symbols.wifi_tethering,
-              label:
-                  np.tracks.isNotEmpty && np.tracks.every((t) => t.isLocal)
-                      ? 'Downloaded'
-                      : 'Streaming',
-            ),
-            _InfoPill(
-              icon: Symbols.library_books,
-              label:
-                  np.chapters.length > 1
-                      ? '${np.chapters.length} chapters'
-                      : 'Single part',
-            ),
-            if (totalDuration != null)
-              _InfoPill(
-                icon: Symbols.schedule,
-                label: _formatDuration(totalDuration),
+          if (np.author != null && np.author!.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              np.author!,
+              textAlign: TextAlign.center,
+              style: text.titleMedium?.copyWith(
+                fontSize:
+                    (text.titleMedium?.fontSize ?? 17) * _metadataTextScale,
+                color: cs.onSurfaceVariant.withOpacity(0.92),
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.05,
               ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
           ],
-        ),
+          if (np.narrator != null && np.narrator!.isNotEmpty) ...[
+            const SizedBox(height: 3),
+            Text(
+              'Narrated by ${np.narrator!}',
+              textAlign: TextAlign.center,
+              style: text.bodyMedium?.copyWith(
+                fontSize:
+                    (text.bodyMedium?.fontSize ?? 14) * _metadataTextScale,
+                color: cs.onSurfaceVariant.withOpacity(0.66),
+                fontWeight: FontWeight.w500,
+                letterSpacing: 0.1,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ],
+        if (showPills) ...[
+          if (showText) const SizedBox(height: 10),
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              const _ResumeFromHistoryButton(),
+              _InfoPill(
+                icon:
+                    np.tracks.isNotEmpty && np.tracks.every((t) => t.isLocal)
+                        ? Symbols.download_done
+                        : Symbols.wifi_tethering,
+                label:
+                    np.tracks.isNotEmpty && np.tracks.every((t) => t.isLocal)
+                        ? 'Downloaded'
+                        : 'Streaming',
+              ),
+              _InfoPill(
+                icon: Symbols.library_books,
+                label:
+                    np.chapters.length > 1
+                        ? '${np.chapters.length} chapters'
+                        : 'Single part',
+              ),
+              if (totalDuration != null)
+                _InfoPill(
+                  icon: Symbols.schedule,
+                  label: _formatDuration(totalDuration),
+                ),
+            ],
+          ),
+        ],
       ],
     );
 
@@ -3283,7 +3366,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                         child: LayoutBuilder(
                                           builder: (context, coverConstraints) {
                                             const coverSize =
-                                                PlayerCoverSize.medium;
+                                                PlayerCoverSize.large;
                                             final dims = _coverDimensionsForSize(
                                               context,
                                               coverSize,
@@ -3313,6 +3396,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                         np: np,
                                         totalDuration: totalDuration,
                                         embedded: true,
+                                        showText: false,
                                       ),
                                       const SizedBox(height: 3),
                                     ],
