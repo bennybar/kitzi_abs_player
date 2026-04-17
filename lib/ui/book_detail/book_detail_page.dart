@@ -13,6 +13,7 @@ import '../../models/book.dart';
 import '../../models/series.dart';
 import '../../core/playback_repository.dart';
 import '../../widgets/download_button.dart';
+import '../../widgets/book_metadata_sheet.dart';
 import '../../widgets/author_card.dart';
 import '../../ui/home/series_page.dart';
 import '../../main.dart'; // ServicesScope
@@ -159,6 +160,203 @@ class _BookDetailPageState extends State<BookDetailPage> {
       );
     }
     super.dispose();
+  }
+
+  Future<void> _showBookMetadataMenu(BuildContext context, Book book) {
+    return showBookMetadataSheet(
+      context: context,
+      cacheKey: book.id,
+      loadFacts: () => _loadBookMetadataFacts(context, book),
+    );
+  }
+
+  Future<List<BookMetadataFact>> _loadBookMetadataFacts(
+    BuildContext context,
+    Book book,
+  ) async {
+    final facts = <BookMetadataFact>[];
+
+    void add(String label, String? value, IconData icon) {
+      final trimmed = value?.trim();
+      if (trimmed == null || trimmed.isEmpty) return;
+      facts.add(BookMetadataFact(label: label, value: trimmed, icon: icon));
+    }
+
+    final services = ServicesScope.of(context).services;
+    final api = services.auth.api;
+    Map<String, dynamic>? item;
+    List<dynamic> files = const [];
+
+    try {
+      final itemResp = await api.request('GET', '/api/items/${book.id}');
+      if (itemResp.statusCode == 200 && itemResp.body.isNotEmpty) {
+        final parsed = jsonDecode(itemResp.body);
+        item =
+            (parsed is Map && parsed['item'] is Map)
+                ? (parsed['item'] as Map).cast<String, dynamic>()
+                : (parsed as Map).cast<String, dynamic>();
+      }
+    } catch (_) {}
+
+    try {
+      final filesResp = await api.request('GET', '/api/items/${book.id}/files');
+      if (filesResp.statusCode == 200 && filesResp.body.isNotEmpty) {
+        final parsed = jsonDecode(filesResp.body);
+        if (parsed is Map && parsed['files'] is List) {
+          files = parsed['files'] as List;
+        } else if (parsed is List) {
+          files = parsed;
+        }
+      }
+    } catch (_) {}
+
+    final meta =
+        item?['media'] is Map &&
+                (item!['media'] as Map)['metadata'] is Map<String, dynamic>
+            ? ((item['media'] as Map)['metadata'] as Map).cast<String, dynamic>()
+            : const <String, dynamic>{};
+
+    add('Author', book.author, Symbols.person);
+    add(
+      'Narrator',
+      (book.narrators ?? const []).isNotEmpty ? book.narrators!.join(', ') : null,
+      Symbols.mic,
+    );
+    add('Year', book.publishYear?.toString(), Symbols.calendar_today);
+    add('Publisher', book.publisher, Symbols.business);
+    add(
+      'Distribution',
+      (meta['distribution'] ?? meta['distributor'])?.toString(),
+      Symbols.local_shipping,
+    );
+    add(
+      'Genres',
+      (book.genres ?? const []).isNotEmpty ? book.genres!.join(' / ') : null,
+      Symbols.category,
+    );
+    add('Series', book.series, Symbols.collections_bookmark);
+    add(
+      'Collection',
+      book.collection,
+      Symbols.folder_copy,
+    );
+    add(
+      'Media',
+      book.isAudioBook ? 'Audiobook' : (book.mediaKind ?? 'Book'),
+      Symbols.menu_book,
+    );
+    add(
+      'Length',
+      book.durationMs != null
+          ? _formatDuration(Duration(milliseconds: book.durationMs!))
+          : null,
+      Symbols.schedule,
+    );
+    add(
+      'Size',
+      book.sizeBytes != null ? _formatBookMetadataBytes(book.sizeBytes!) : null,
+      Symbols.folder_zip,
+    );
+    add(
+      'File type',
+      _bookMetadataFileTypes(files),
+      Symbols.audio_file,
+    );
+    add(
+      'Bitrate',
+      _bookMetadataBitrate(files),
+      Symbols.graph_2,
+    );
+    add(
+      'Language',
+      meta['language']?.toString(),
+      Symbols.translate,
+    );
+    add(
+      'ISBN',
+      (meta['isbn'] ?? meta['isbn13'] ?? meta['asin'])?.toString(),
+      Symbols.pin,
+    );
+    add(
+      'Added',
+      _formatBookMetadataDateTime(book.addedAt),
+      Symbols.library_add,
+    );
+    add(
+      'Updated',
+      _formatBookMetadataDateTime(book.updatedAt),
+      Symbols.update,
+    );
+
+    return facts;
+  }
+
+  String? _bookMetadataFileTypes(List<dynamic> files) {
+    final values = <String>{};
+    for (final file in files) {
+      if (file is! Map) continue;
+      final map = file.cast<String, dynamic>();
+      final raw =
+          (map['mimeType'] ??
+                  map['contentType'] ??
+                  map['ext'] ??
+                  map['extension'])
+              ?.toString();
+      final formatted = _formatBookMetadataFileType(raw);
+      if (formatted != null) values.add(formatted);
+    }
+    if (values.isEmpty) return null;
+    return values.take(3).join(' / ');
+  }
+
+  String? _bookMetadataBitrate(List<dynamic> files) {
+    final values = <int>{};
+    for (final file in files) {
+      if (file is! Map) continue;
+      final map = file.cast<String, dynamic>();
+      final raw =
+          map['bitRate'] ??
+          map['bitrate'] ??
+          map['bit_rate'] ??
+          map['audioBitrate'];
+      int? parsed;
+      if (raw is num) parsed = raw.round();
+      if (raw is String) parsed = int.tryParse(raw);
+      if (parsed == null || parsed <= 0) continue;
+      if (parsed > 1000) parsed = (parsed / 1000).round();
+      values.add(parsed);
+    }
+    if (values.isEmpty) return null;
+    final sorted = values.toList()..sort();
+    return sorted.map((it) => '${it} kbps').join(' / ');
+  }
+
+  String? _formatBookMetadataFileType(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return null;
+    final normalized = raw.trim().toLowerCase();
+    if (normalized.contains('/')) return normalized.split('/').last.toUpperCase();
+    return normalized.replaceFirst('.', '').toUpperCase();
+  }
+
+  String _formatBookMetadataDateTime(DateTime? date) {
+    if (date == null) return '';
+    final local = date.toLocal();
+    final month = local.month.toString().padLeft(2, '0');
+    final day = local.day.toString().padLeft(2, '0');
+    return '${local.year}-$month-$day';
+  }
+
+  String _formatBookMetadataBytes(int bytes) {
+    if (bytes <= 0) return 'Unknown';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    double value = bytes.toDouble();
+    int unitIndex = 0;
+    while (value >= 1024 && unitIndex < units.length - 1) {
+      value /= 1024;
+      unitIndex++;
+    }
+    final decimals = value >= 100 || unitIndex == 0 ? 0 : 1;
+    return '${value.toStringAsFixed(decimals)} ${units[unitIndex]}';
   }
 
   Stream<bool> _getBookCompletionStream(
@@ -1406,6 +1604,16 @@ class _BookDetailPageState extends State<BookDetailPage> {
                                 _DetailSurface(
                                   padding: const EdgeInsets.all(16),
                                   child: _MetaOrDescription(book: b),
+                                ),
+                                const SizedBox(height: 10),
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: _InfoChip(
+                                    icon: Symbols.info,
+                                    label: 'More metadata',
+                                    tooltip: 'Show full book metadata',
+                                    onTap: () => _showBookMetadataMenu(context, b),
+                                  ),
                                 ),
                               ],
                               // Related books row

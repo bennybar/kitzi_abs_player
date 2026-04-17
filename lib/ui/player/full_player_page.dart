@@ -16,7 +16,9 @@ import '../../core/playback_speed_service.dart';
 import '../../core/sleep_timer_service.dart';
 import '../../core/ui_prefs.dart';
 import '../../core/downloads_repository.dart';
+import '../../core/books_repository.dart';
 import '../../widgets/glass_widget.dart';
+import '../../widgets/book_metadata_sheet.dart';
 import '../../main.dart'; // ServicesScope
 import 'full_player_overlay.dart';
 import 'player_visual_cache.dart';
@@ -1634,11 +1636,9 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                       : 'Streaming',
             ),
             _InfoPill(
-              icon: Symbols.library_books,
-              label:
-                  np.chapters.length > 1
-                      ? '${np.chapters.length} chapters'
-                      : 'Single part',
+              icon: Symbols.info,
+              label: 'More info',
+              onTap: () => _showPlayerMetadataSheet(context, playback, np),
             ),
             if (totalDuration != null)
               _InfoPill(
@@ -1677,6 +1677,229 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                 child: content,
               ),
     );
+  }
+
+  Future<void> _showPlayerMetadataSheet(
+    BuildContext context,
+    PlaybackRepository playback,
+    NowPlaying np,
+  ) {
+    return showBookMetadataSheet(
+      context: context,
+      cacheKey: np.libraryItemId,
+      loadFacts: () => _loadPlayerMetadataFacts(context, playback, np),
+    );
+  }
+
+  Future<List<BookMetadataFact>> _loadPlayerMetadataFacts(
+    BuildContext context,
+    PlaybackRepository playback,
+    NowPlaying np,
+  ) async {
+    final facts = <BookMetadataFact>[];
+
+    void add(String label, String? value, IconData icon) {
+      final trimmed = value?.trim();
+      if (trimmed == null || trimmed.isEmpty) return;
+      facts.add(BookMetadataFact(label: label, value: trimmed, icon: icon));
+    }
+
+    final services = ServicesScope.of(context).services;
+    final api = services.auth.api;
+
+    Map<String, dynamic>? item;
+    List<dynamic> files = const [];
+    try {
+      final itemResp = await api.request('GET', '/api/items/${np.libraryItemId}');
+      if (itemResp.statusCode == 200 && itemResp.body.isNotEmpty) {
+        final parsed = jsonDecode(itemResp.body);
+        item =
+            (parsed is Map && parsed['item'] is Map)
+                ? (parsed['item'] as Map).cast<String, dynamic>()
+                : (parsed as Map).cast<String, dynamic>();
+      }
+    } catch (_) {}
+    try {
+      final filesResp = await api.request(
+        'GET',
+        '/api/items/${np.libraryItemId}/files',
+      );
+      if (filesResp.statusCode == 200 && filesResp.body.isNotEmpty) {
+        final parsed = jsonDecode(filesResp.body);
+        if (parsed is Map && parsed['files'] is List) {
+          files = parsed['files'] as List;
+        } else if (parsed is List) {
+          files = parsed;
+        }
+      }
+    } catch (_) {}
+
+    final meta =
+        item?['media'] is Map &&
+                (item!['media'] as Map)['metadata'] is Map<String, dynamic>
+            ? ((item['media'] as Map)['metadata'] as Map).cast<String, dynamic>()
+            : const <String, dynamic>{};
+
+    final cachedRepo = await BooksRepository.create();
+    final cachedBook = await cachedRepo.getBookFromDb(np.libraryItemId);
+    cachedRepo.dispose();
+
+    add('Author', np.author ?? cachedBook?.author, Symbols.person);
+    add(
+      'Narrator',
+      np.narrator ??
+          ((cachedBook?.narrators?.isNotEmpty ?? false)
+              ? cachedBook!.narrators!.join(', ')
+              : null),
+      Symbols.mic,
+    );
+    add(
+      'Year',
+      (cachedBook?.publishYear ?? meta['publishYear'] ?? meta['year'])
+          ?.toString(),
+      Symbols.calendar_today,
+    );
+    add(
+      'Publisher',
+      cachedBook?.publisher ?? meta['publisher']?.toString(),
+      Symbols.business,
+    );
+    add(
+      'Distribution',
+      (meta['distribution'] ?? meta['distributor'])?.toString(),
+      Symbols.local_shipping,
+    );
+    add(
+      'File type',
+      _playerMetadataFileTypes(files, np.tracks),
+      Symbols.audio_file,
+    );
+    add(
+      'Bitrate',
+      _playerMetadataBitrate(files),
+      Symbols.graph_2,
+    );
+    add('Tracks', np.tracks.length.toString(), Symbols.queue_music);
+    add(
+      'Length',
+      np.durationSec != null && np.durationSec! > 0
+          ? _formatDuration(Duration(seconds: np.durationSec!.round()))
+          : (cachedBook?.durationMs != null
+              ? _formatDuration(Duration(milliseconds: cachedBook!.durationMs!))
+              : null),
+      Symbols.schedule,
+    );
+    add(
+      'Size',
+      cachedBook?.sizeBytes != null
+          ? _formatBytes(cachedBook!.sizeBytes!)
+          : null,
+      Symbols.folder_zip,
+    );
+    add(
+      'Source',
+      np.tracks.isNotEmpty && np.tracks.every((t) => t.isLocal)
+          ? 'Downloaded'
+          : 'Streaming',
+      Symbols.cloud_done,
+    );
+    add(
+      'Started',
+      _formatMetadataDateTime(playback.listeningStartedAt),
+      Symbols.history,
+    );
+    add(
+      'Added to library',
+      _formatMetadataDateTime(cachedBook?.addedAt),
+      Symbols.library_add,
+    );
+    add(
+      'Updated',
+      _formatMetadataDateTime(cachedBook?.updatedAt),
+      Symbols.update,
+    );
+
+    return facts;
+  }
+
+  String? _playerMetadataFileTypes(
+    List<dynamic> files,
+    List<PlaybackTrack> tracks,
+  ) {
+    final values = <String>{};
+    for (final file in files) {
+      if (file is! Map) continue;
+      final map = file.cast<String, dynamic>();
+      final raw =
+          (map['mimeType'] ??
+                  map['contentType'] ??
+                  map['ext'] ??
+                  map['extension'])
+              ?.toString();
+      final formatted = _formatMetadataFileType(raw);
+      if (formatted != null) values.add(formatted);
+    }
+    for (final track in tracks) {
+      final formatted = _formatMetadataFileType(track.mimeType);
+      if (formatted != null) values.add(formatted);
+    }
+    if (values.isEmpty) return null;
+    return values.take(3).join(' / ');
+  }
+
+  String? _playerMetadataBitrate(List<dynamic> files) {
+    final values = <int>{};
+    for (final file in files) {
+      if (file is! Map) continue;
+      final map = file.cast<String, dynamic>();
+      final raw =
+          map['bitRate'] ??
+          map['bitrate'] ??
+          map['bit_rate'] ??
+          map['audioBitrate'];
+      int? parsed;
+      if (raw is num) parsed = raw.round();
+      if (raw is String) parsed = int.tryParse(raw);
+      if (parsed == null || parsed <= 0) continue;
+      if (parsed > 1000) parsed = (parsed / 1000).round();
+      values.add(parsed);
+    }
+    if (values.isEmpty) return null;
+    final sorted = values.toList()..sort();
+    return sorted.map((it) => '${it} kbps').join(' / ');
+  }
+
+  String? _formatMetadataFileType(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return null;
+    final normalized = raw.trim().toLowerCase();
+    if (normalized.contains('/')) {
+      final parts = normalized.split('/');
+      return parts.last.toUpperCase();
+    }
+    return normalized.replaceFirst('.', '').toUpperCase();
+  }
+
+  String _formatMetadataDateTime(DateTime? date) {
+    if (date == null) return '';
+    final local = date.toLocal();
+    final month = local.month.toString().padLeft(2, '0');
+    final day = local.day.toString().padLeft(2, '0');
+    final hour = local.hour.toString().padLeft(2, '0');
+    final minute = local.minute.toString().padLeft(2, '0');
+    return '${local.year}-$month-$day $hour:$minute';
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes <= 0) return 'Unknown';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    double value = bytes.toDouble();
+    int unitIndex = 0;
+    while (value >= 1024 && unitIndex < units.length - 1) {
+      value /= 1024;
+      unitIndex++;
+    }
+    final decimals = value >= 100 || unitIndex == 0 ? 0 : 1;
+    return '${value.toStringAsFixed(decimals)} ${units[unitIndex]}';
   }
 
   void _showCastingComingSoon(BuildContext context) {
@@ -3655,18 +3878,20 @@ class _InfoPill extends StatelessWidget {
     required this.icon,
     required this.label,
     this.highlighted = false,
+    this.onTap,
   });
 
   final IconData icon;
   final String label;
   final bool highlighted;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return AppLiquidGlassPill(
+    final pill = AppLiquidGlassPill(
       blur: 26,
       opacity:
           highlighted
@@ -3704,6 +3929,15 @@ class _InfoPill extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+    if (onTap == null) return pill;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: onTap,
+        child: pill,
       ),
     );
   }

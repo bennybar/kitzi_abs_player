@@ -229,6 +229,7 @@ class PlaybackRepository {
 
   // Detailed listening session tracking (local-only, optional).
   DateTime? _listeningStartedAt;
+  DateTime? get listeningStartedAt => _listeningStartedAt;
   double? _listeningStartPositionSeconds;
   String? _listeningItemId;
   String? _listeningTitle;

@@ -264,15 +264,6 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       });
   }
 
-  void _scrollToTop() {
-    if (!_scrollCtrl.hasClients) return;
-    _scrollCtrl.animateTo(
-      0,
-      duration: const Duration(milliseconds: 350),
-      curve: Curves.easeOutCubic,
-    );
-  }
-
   void _toggleSearch() {
     // Cancel any pending search debounce when hiding
     if (_searchVisible) {
@@ -1182,11 +1173,6 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                                   );
                                 }
                               },
-                            ),
-                            _ToolbarSurfaceButton(
-                              tooltip: 'Scroll to top',
-                              icon: Symbols.vertical_align_top,
-                              onTap: _loading ? null : _scrollToTop,
                             ),
                             PopupMenuButton<SortMode>(
                               tooltip: 'Sort',
