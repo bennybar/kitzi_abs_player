@@ -1156,6 +1156,421 @@ class _FullPlayerPageState extends State<FullPlayerPage>
     );
   }
 
+  int _resolveCurrentChapterIndex(
+    List<Chapter> chapters,
+    Duration position, {
+    ChapterProgressMetrics? metrics,
+  }) {
+    if (chapters.isEmpty) return 0;
+    if (metrics != null) return metrics.index.clamp(0, chapters.length - 1);
+    var currentIdx = 0;
+    for (int i = 0; i < chapters.length; i++) {
+      if (position >= chapters[i].start) {
+        currentIdx = i;
+      } else {
+        break;
+      }
+    }
+    return currentIdx;
+  }
+
+  String _resolveCurrentChapterTitle(
+    List<Chapter> chapters,
+    int chapterIndex, {
+    ChapterProgressMetrics? metrics,
+  }) {
+    final metricsTitle = metrics?.title?.trim() ?? '';
+    if (metricsTitle.isNotEmpty) return metricsTitle;
+    if (chapterIndex >= 0 &&
+        chapterIndex < chapters.length &&
+        chapters[chapterIndex].title.trim().isNotEmpty) {
+      return chapters[chapterIndex].title.trim();
+    }
+    return 'Chapter ${chapterIndex + 1}';
+  }
+
+  Widget _buildCurrentChapterCard({
+    required BuildContext context,
+    required TextTheme text,
+    required ColorScheme cs,
+    required PlaybackRepository playback,
+    required NowPlaying np,
+  }) {
+    final chapters = np.chapters;
+    if (chapters.isEmpty) return const SizedBox.shrink();
+
+    final globalTotal = playback.totalBookDuration;
+    final useGlobal =
+        _dualProgressEnabled &&
+        globalTotal != null &&
+        globalTotal > Duration.zero;
+    final globalPos =
+        useGlobal
+            ? (playback.globalBookPosition ?? Duration.zero)
+            : playback.player.position;
+    final metrics = playback.currentChapterProgress;
+    final chapterIndex = _resolveCurrentChapterIndex(
+      chapters,
+      globalPos,
+      metrics: metrics,
+    );
+    final chapterTitle = _resolveCurrentChapterTitle(
+      chapters,
+      chapterIndex,
+      metrics: metrics,
+    );
+    final rawElapsed = globalPos - chapters[chapterIndex].start;
+    final chapterElapsed =
+        metrics?.elapsed ??
+        (rawElapsed.isNegative ? Duration.zero : rawElapsed);
+    final chapterEnd =
+        chapterIndex + 1 < chapters.length
+            ? chapters[chapterIndex + 1].start
+            : (globalTotal ?? playback.player.duration ?? globalPos);
+    final rawDuration = chapterEnd - chapters[chapterIndex].start;
+    final chapterDuration =
+        metrics?.duration ??
+        (rawDuration.isNegative ? Duration.zero : rawDuration);
+    final progress =
+        chapterDuration > Duration.zero
+            ? (chapterElapsed.inMilliseconds / chapterDuration.inMilliseconds)
+                .clamp(0.0, 1.0)
+            : 0.0;
+
+    return _GlassPanel(
+      borderRadius: 24,
+      tint: Color.alphaBlend(
+        cs.surface.withOpacity(0.28),
+        cs.surfaceContainerHighest.withOpacity(0.62),
+      ),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Text(
+                'CURRENT CHAPTER',
+                style: text.labelSmall?.copyWith(
+                  letterSpacing: 0.8,
+                  color: cs.onSurfaceVariant.withOpacity(0.6),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const Spacer(),
+              TextButton.icon(
+                onPressed:
+                    () => _showChaptersSheet(
+                      context,
+                      playback,
+                      np,
+                    ),
+                iconAlignment: IconAlignment.end,
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  foregroundColor: cs.onSurfaceVariant,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 0,
+                    vertical: 0,
+                  ),
+                ),
+                icon: const Icon(Symbols.chevron_right, size: 16),
+                label: const Text('View all chapters'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: cs.primary.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  Symbols.format_list_bulleted,
+                  size: 18,
+                  color: cs.primary,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Chapter ${chapterIndex + 1} — $chapterTitle',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: text.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: cs.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${_fmt(chapterElapsed)} / ${_fmt(chapterDuration)}',
+                      style: text.bodySmall?.copyWith(
+                        color: cs.onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              minHeight: 4,
+              value: progress,
+              backgroundColor: cs.surfaceContainerHighest,
+              valueColor: AlwaysStoppedAnimation<Color>(cs.primary),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTransportCard({
+    required BuildContext context,
+    required TextTheme text,
+    required ColorScheme cs,
+    required PlaybackRepository playback,
+    required NowPlaying np,
+  }) {
+    return _GlassPanel(
+      borderRadius: 28,
+      tint: Color.alphaBlend(
+        cs.surface.withOpacity(0.3),
+        cs.surfaceContainerHigh.withOpacity(0.68),
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+      child: Column(
+        children: [
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final maxW = constraints.maxWidth;
+              double spacing = 10;
+              double edge = 42;
+              double skip = 50;
+              double center = 62;
+              final needed =
+                  2 * edge + 2 * skip + center + 4 * spacing;
+              if (needed > maxW) {
+                final scale =
+                    (maxW - 4 * spacing) / (2 * edge + 2 * skip + center);
+                final clamped = scale.clamp(0.6, 1.0);
+                edge = edge * clamped;
+                skip = skip * clamped;
+                center = center * clamped;
+              }
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _ControlButton(
+                    tooltip: 'Previous track',
+                    icon: Symbols.skip_previous,
+                    size: edge,
+                    onTap: () async {
+                      if (playback.hasSmartPrev) {
+                        await playback.smartPrev();
+                      }
+                    },
+                  ),
+                  SizedBox(width: spacing),
+                  ValueListenableBuilder<int>(
+                    valueListenable: UiPrefs.seekBackwardSeconds,
+                    builder: (context, seekSeconds, _) {
+                      return _ControlButton(
+                        tooltip: 'Back ${seekSeconds}s',
+                        icon: Symbols.replay_30,
+                        size: skip,
+                        onTap: () => playback.nudgeSeconds(-seekSeconds),
+                      );
+                    },
+                  ),
+                  SizedBox(width: spacing),
+                  StreamBuilder<bool>(
+                    stream: playback.playingStream,
+                    initialData: playback.player.playing,
+                    builder: (_, playSnap) {
+                      final playing = playSnap.data ?? false;
+                      return _ControlButton(
+                        tooltip: playing ? 'Pause' : 'Play',
+                        icon: playing ? Symbols.pause : Symbols.play_arrow,
+                        isPrimary: true,
+                        isCircular: !playing,
+                        size: center,
+                        highlighted: playing,
+                        onTap: () async {
+                          final hasValidNowPlaying = np != null && playing;
+                          if (hasValidNowPlaying) {
+                            await playback.pause();
+                          } else {
+                            final success = await playback.resume(
+                              context: context,
+                            );
+                            if (!success) {
+                              try {
+                                await playback.warmLoadLastItem(
+                                  playAfterLoad: true,
+                                );
+                              } catch (e) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Cannot play: server unavailable and sync progress is required',
+                                      ),
+                                      duration: Duration(seconds: 4),
+                                    ),
+                                  );
+                                }
+                              }
+                            }
+                          }
+                        },
+                      );
+                    },
+                  ),
+                  SizedBox(width: spacing),
+                  ValueListenableBuilder<int>(
+                    valueListenable: UiPrefs.seekForwardSeconds,
+                    builder: (context, seekSeconds, _) {
+                      return _ControlButton(
+                        tooltip: 'Forward ${seekSeconds}s',
+                        icon: Symbols.forward_30,
+                        size: skip,
+                        onTap: () => playback.nudgeSeconds(seekSeconds),
+                      );
+                    },
+                  ),
+                  SizedBox(width: spacing),
+                  _ControlButton(
+                    tooltip: 'Next track',
+                    icon: Symbols.skip_next,
+                    size: edge,
+                    onTap: () async {
+                      if (playback.hasSmartNext) {
+                        await playback.smartNext();
+                      }
+                    },
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBottomToolbar({
+    required BuildContext context,
+    required ColorScheme cs,
+    required PlaybackRepository playback,
+    required NowPlaying np,
+    required bool gradientEnabled,
+  }) {
+    return StreamBuilder<bool>(
+      stream: _getBookCompletionStream(),
+      initialData: false,
+      builder: (_, completionSnap) {
+        final isCompleted = completionSnap.data ?? false;
+        final menuBg =
+            gradientEnabled
+                ? Color.alphaBlend(
+                  (_palettePrimary ?? cs.primary).withOpacity(0.1),
+                  cs.surface,
+                )
+                : cs.surface;
+
+        return _GlassPanel(
+          borderRadius: 24,
+          tint: Color.alphaBlend(
+            cs.surface.withOpacity(0.26),
+            cs.surfaceContainerHigh.withOpacity(0.64),
+          ),
+          padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+          child: Row(
+            children: [
+              Expanded(
+                child: _PlayerActionTile(
+                  icon: const Icon(Symbols.format_list_bulleted),
+                  label: 'Chapters',
+                  onTap:
+                      np.chapters.length > 1
+                          ? () => _showChaptersSheet(context, playback, np)
+                          : null,
+                  tooltip:
+                      np.chapters.length > 1
+                          ? 'Open chapters'
+                          : 'Single chapter - no chapters list',
+                  enabled: np.chapters.length > 1,
+                  heightScale: 0.76,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _SleepQuickAction(
+                  onTap: () => _showSleepTimerSheet(context, np),
+                  heightScale: 0.76,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _SpeedQuickAction(
+                  playback: playback,
+                  heightScale: 0.76,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: PopupMenuButton<_TopMenuAction>(
+                  tooltip: 'More options',
+                  padding: EdgeInsets.zero,
+                  color: menuBg,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18),
+                    side: BorderSide(
+                      color: cs.outlineVariant.withOpacity(0.2),
+                    ),
+                  ),
+                  onSelected:
+                      (action) => _handleTopMenuAction(
+                        context: context,
+                        playback: playback,
+                        isCompleted: isCompleted,
+                        gradientEnabled: gradientEnabled,
+                        action: action,
+                      ),
+                  itemBuilder:
+                      (_) => _buildTopMenuEntries(
+                        cs: cs,
+                        gradientEnabled: gradientEnabled,
+                        isCompleted: isCompleted,
+                      ),
+                  child: _PlayerActionTile(
+                    icon: const Icon(Symbols.more_horiz),
+                    label: 'More',
+                    tooltip: 'More options',
+                    heightScale: 0.76,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildBookSummaryRow({
     required TextTheme text,
     required ColorScheme cs,
@@ -1679,6 +2094,110 @@ class _FullPlayerPageState extends State<FullPlayerPage>
         duration: Duration(seconds: 2),
       ),
     );
+  }
+
+  void _handleTopMenuAction({
+    required BuildContext context,
+    required PlaybackRepository playback,
+    required bool isCompleted,
+    required bool gradientEnabled,
+    required _TopMenuAction action,
+  }) {
+    switch (action) {
+      case _TopMenuAction.toggleCompletion:
+        _toggleBookCompletion(context, isCompleted);
+        break;
+      case _TopMenuAction.toggleGradient:
+        final next = !gradientEnabled;
+        UiPrefs.setPlayerGradientBackground(next);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              next
+                  ? 'Gradient background enabled'
+                  : 'Gradient background disabled',
+            ),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+        break;
+      case _TopMenuAction.cast:
+        _showCastingComingSoon(context);
+        break;
+      case _TopMenuAction.playHistory:
+        _openHistorySheet(context, playback);
+        break;
+      case _TopMenuAction.bookmarks:
+        _openBookmarksSheet(context, playback);
+        break;
+    }
+  }
+
+  List<PopupMenuEntry<_TopMenuAction>> _buildTopMenuEntries({
+    required ColorScheme cs,
+    required bool gradientEnabled,
+    required bool isCompleted,
+  }) {
+    return [
+      PopupMenuItem(
+        value: _TopMenuAction.toggleCompletion,
+        child: Row(
+          children: [
+            Icon(
+              isCompleted ? Icons.undo_rounded : Icons.check_rounded,
+              size: 18,
+              color: cs.primary,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                isCompleted ? 'Mark as unfinished' : 'Mark as finished',
+              ),
+            ),
+          ],
+        ),
+      ),
+      PopupMenuItem(
+        value: _TopMenuAction.toggleGradient,
+        child: Row(
+          children: [
+            Icon(
+              gradientEnabled ? Icons.gradient : Icons.gradient_outlined,
+              size: 18,
+              color: cs.primary,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                gradientEnabled
+                    ? 'Disable gradient background'
+                    : 'Enable gradient background',
+              ),
+            ),
+          ],
+        ),
+      ),
+      PopupMenuItem(
+        value: _TopMenuAction.playHistory,
+        child: Row(
+          children: [
+            Icon(Icons.history_rounded, size: 18, color: cs.primary),
+            const SizedBox(width: 12),
+            const Expanded(child: Text('Play history')),
+          ],
+        ),
+      ),
+      PopupMenuItem(
+        value: _TopMenuAction.bookmarks,
+        child: Row(
+          children: [
+            Icon(Icons.bookmark_rounded, size: 18, color: cs.primary),
+            const SizedBox(width: 12),
+            const Expanded(child: Text('Bookmarks')),
+          ],
+        ),
+      ),
+    ];
   }
 
   Widget _buildChaptersQuickIcon({
@@ -2764,7 +3283,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                         child: LayoutBuilder(
                                           builder: (context, coverConstraints) {
                                             const coverSize =
-                                                PlayerCoverSize.small;
+                                                PlayerCoverSize.medium;
                                             final dims = _coverDimensionsForSize(
                                               context,
                                               coverSize,
@@ -2828,6 +3347,14 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                   hasGlobal &&
                                   chapterMetrics != null &&
                                   _progressPrimary == ProgressPrimary.chapter;
+                              final percentComplete =
+                                  hasGlobal && globalTotal!.inMilliseconds > 0
+                                      ? ((playback.globalBookPosition ?? pos)
+                                                      .inMilliseconds /
+                                                  globalTotal.inMilliseconds)
+                                              .clamp(0.0, 1.0) *
+                                          100
+                                      : null;
 
                               Widget progressContent;
                               if (preferChapter) {
@@ -2844,25 +3371,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                       playback: playback,
                                       metrics: chapterMetrics!,
                                     ),
-                                    if (globalTotal != null &&
-                                        chapters.length > 1) ...[
-                                      const SizedBox(height: 14),
-                                      Divider(
-                                        height: 1,
-                                        color: cs.outlineVariant.withOpacity(
-                                          0.18,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 14),
-                                      _buildBookDetailStyleChapterTimeline(
-                                        text: text,
-                                        cs: cs,
-                                        position: globalPos,
-                                        total: globalTotal,
-                                        chapters: chapters,
-                                        metrics: chapterMetrics,
-                                      ),
-                                    ],
+                                    // Mockup-style layout keeps the total progress card simpler
                                   ],
                                 );
                               } else if (hasGlobal) {
@@ -2882,24 +3391,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                       total: globalTotal!,
                                       isPrimary: true,
                                     ),
-                                    if (chapters.length > 1) ...[
-                                      const SizedBox(height: 14),
-                                      Divider(
-                                        height: 1,
-                                        color: cs.outlineVariant.withOpacity(
-                                          0.18,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 14),
-                                      _buildBookDetailStyleChapterTimeline(
-                                        text: text,
-                                        cs: cs,
-                                        position: globalPos,
-                                        total: globalTotal,
-                                        chapters: chapters,
-                                        metrics: chapterMetrics,
-                                      ),
-                                    ],
+                                    // Mockup-style layout keeps the total progress card simpler
                                   ],
                                 );
                               } else {
@@ -2936,9 +3428,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                           MainAxisAlignment.spaceBetween,
                                       children: [
                                         Text(
-                                          preferChapter
-                                              ? 'CHAPTER PROGRESS'
-                                              : 'BOOK PROGRESS',
+                                          'TOTAL PROGRESS',
                                           style: text.labelSmall?.copyWith(
                                             letterSpacing: 0.8,
                                             color: cs.onSurfaceVariant
@@ -2946,46 +3436,27 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                             fontWeight: FontWeight.w700,
                                           ),
                                         ),
-                                        GestureDetector(
-                                          onTap:
-                                              hasGlobal
-                                                  ? () {
-                                                    final next =
-                                                        _progressPrimary ==
-                                                                ProgressPrimary
-                                                                    .chapter
-                                                            ? ProgressPrimary
-                                                                .book
-                                                            : ProgressPrimary
-                                                                .chapter;
-                                                    UiPrefs.setProgressPrimary(
-                                                      next,
-                                                    );
-                                                  }
-                                                  : null,
-                                          child: Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 10,
-                                              vertical: 5,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: cs.primary.withOpacity(
-                                                0.12,
-                                              ),
-                                              borderRadius:
-                                                  BorderRadius.circular(999),
-                                            ),
-                                            child: Text(
-                                              preferChapter ? 'Chapter' : 'Book',
-                                              style: text.labelSmall?.copyWith(
-                                                color: cs.primary,
-                                                fontWeight: FontWeight.w700,
-                                              ),
+                                        if (percentComplete != null)
+                                          Text(
+                                            '${percentComplete.toStringAsFixed(0)}% complete',
+                                            style: text.labelSmall?.copyWith(
+                                              color: cs.primary,
+                                              fontWeight: FontWeight.w700,
                                             ),
                                           ),
-                                        ),
                                       ],
                                     ),
+                                    if (chapterMetrics != null) ...[
+                                      const SizedBox(height: 8),
+                                      Align(
+                                        alignment: Alignment.center,
+                                        child: _InfoPill(
+                                          icon: Symbols.auto_stories,
+                                          label:
+                                              'Chapter ${chapterMetrics.index + 1}',
+                                        ),
+                                      ),
+                                    ],
                                     const SizedBox(height: 10),
                                     progressContent,
                                   ],
@@ -2997,7 +3468,20 @@ class _FullPlayerPageState extends State<FullPlayerPage>
 
                         const SizedBox(height: 6),
 
-                        // CONTROLS + CHAPTERS
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+                          child: _buildCurrentChapterCard(
+                            context: context,
+                            text: text,
+                            cs: cs,
+                            playback: playback,
+                            np: np,
+                          ),
+                        ),
+
+                        const SizedBox(height: 6),
+
+                        // PLAYBACK + TOOLBAR
                         AnimatedBuilder(
                           animation: _controlsAnimation,
                           builder: (context, child) {
@@ -3016,549 +3500,24 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                         16,
                                         16,
                                       ),
-                                    child: _GlassPanel(
-                                      borderRadius: 28,
-                                      tint: Color.alphaBlend(
-                                        cs.surface.withOpacity(0.3),
-                                        cs.surfaceContainerHigh.withOpacity(
-                                          0.68,
+                                    child: Column(
+                                      children: [
+                                        _buildTransportCard(
+                                          context: context,
+                                          text: text,
+                                          cs: cs,
+                                          playback: playback,
+                                          np: np,
                                         ),
-                                      ),
-                                      padding: const EdgeInsets.fromLTRB(
-                                        12,
-                                        12,
-                                        12,
-                                        12,
-                                      ),
-                                      child: Column(
-                                        children: [
-                                          Row(
-                                            children: [
-                                              Text(
-                                                'PLAYBACK',
-                                                style: text.labelSmall
-                                                    ?.copyWith(
-                                                      letterSpacing: 0.8,
-                                                      color: cs.onSurfaceVariant
-                                                          .withOpacity(0.62),
-                                                      fontWeight:
-                                                          FontWeight.w700,
-                                                    ),
-                                              ),
-                                              const Spacer(),
-                                              _InfoPill(
-                                                icon: Symbols.auto_stories,
-                                                label:
-                                                    np.chapters.length > 1
-                                                        ? 'Chapter ${(playback.currentChapterProgress?.index ?? 0) + 1}'
-                                                        : 'Ready',
-                                              ),
-                                              const SizedBox(width: 6),
-                                              StreamBuilder<bool>(
-                                                stream: _getBookCompletionStream(),
-                                                initialData: false,
-                                                builder: (_, completionSnap) {
-                                                  final isCompleted =
-                                                      completionSnap.data ??
-                                                      false;
-                                                  final menuBg =
-                                                      gradientEnabled
-                                                          ? Color.alphaBlend(
-                                                            (_palettePrimary ??
-                                                                    cs.primary)
-                                                                .withOpacity(
-                                                                  0.1,
-                                                                ),
-                                                            cs.surface,
-                                                          )
-                                                          : cs.surface;
-                                                  return PopupMenuButton<
-                                                    _TopMenuAction
-                                                  >(
-                                                    tooltip: 'More options',
-                                                    padding: EdgeInsets.zero,
-                                                    child: AppLiquidGlassPill(
-                                                      blur: 26,
-                                                      opacity:
-                                                          Theme.of(context)
-                                                                      .brightness ==
-                                                                  Brightness
-                                                                      .dark
-                                                              ? 0.16
-                                                              : 0.08,
-                                                      tint: Color.alphaBlend(
-                                                        Colors.black.withValues(
-                                                          alpha: Theme.of(
-                                                                        context,
-                                                                      ).brightness ==
-                                                                      Brightness
-                                                                          .dark
-                                                                  ? 0.0
-                                                                  : 0.04,
-                                                        ),
-                                                        cs.surface,
-                                                      ),
-                                                      elevation: 5,
-                                                      lightenAmount:
-                                                          Theme.of(context)
-                                                                      .brightness ==
-                                                                  Brightness
-                                                                      .dark
-                                                              ? null
-                                                              : 0.07,
-                                                      padding:
-                                                          const EdgeInsets.symmetric(
-                                                            horizontal: 10,
-                                                            vertical: 7,
-                                                          ),
-                                                      child: Icon(
-                                                        Symbols.more_vert,
-                                                        size: 16,
-                                                        color:
-                                                            cs.onSurfaceVariant,
-                                                      ),
-                                                    ),
-                                                    color: menuBg,
-                                                    shape: RoundedRectangleBorder(
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                            18,
-                                                          ),
-                                                      side: BorderSide(
-                                                        color: cs
-                                                            .outlineVariant
-                                                            .withOpacity(0.2),
-                                                      ),
-                                                    ),
-                                                    onSelected: (action) {
-                                                      switch (action) {
-                                                        case _TopMenuAction
-                                                            .toggleCompletion:
-                                                          _toggleBookCompletion(
-                                                            context,
-                                                            isCompleted,
-                                                          );
-                                                          break;
-                                                        case _TopMenuAction
-                                                            .toggleGradient:
-                                                          final next =
-                                                              !gradientEnabled;
-                                                          UiPrefs.setPlayerGradientBackground(
-                                                            next,
-                                                          );
-                                                          ScaffoldMessenger.of(
-                                                            context,
-                                                          ).showSnackBar(
-                                                            SnackBar(
-                                                              content: Text(
-                                                                next
-                                                                    ? 'Gradient background enabled'
-                                                                    : 'Gradient background disabled',
-                                                              ),
-                                                              duration:
-                                                                  const Duration(
-                                                                    seconds: 2,
-                                                                  ),
-                                                            ),
-                                                          );
-                                                          break;
-                                                        case _TopMenuAction
-                                                            .cast:
-                                                          _showCastingComingSoon(
-                                                            context,
-                                                          );
-                                                          break;
-                                                        case _TopMenuAction
-                                                            .playHistory:
-                                                          _openHistorySheet(
-                                                            context,
-                                                            playback,
-                                                          );
-                                                          break;
-                                                        case _TopMenuAction
-                                                            .bookmarks:
-                                                          _openBookmarksSheet(
-                                                            context,
-                                                            playback,
-                                                          );
-                                                          break;
-                                                      }
-                                                    },
-                                                    itemBuilder:
-                                                        (context) => [
-                                                          PopupMenuItem(
-                                                            value:
-                                                                _TopMenuAction
-                                                                    .toggleCompletion,
-                                                            child: Row(
-                                                              children: [
-                                                                Icon(
-                                                                  isCompleted
-                                                                      ? Icons
-                                                                          .undo_rounded
-                                                                      : Icons
-                                                                          .check_rounded,
-                                                                  size: 18,
-                                                                  color:
-                                                                      cs.primary,
-                                                                ),
-                                                                const SizedBox(
-                                                                  width: 12,
-                                                                ),
-                                                                Expanded(
-                                                                  child: Text(
-                                                                    isCompleted
-                                                                        ? 'Mark as unfinished'
-                                                                        : 'Mark as finished',
-                                                                  ),
-                                                                ),
-                                                              ],
-                                                            ),
-                                                          ),
-                                                          PopupMenuItem(
-                                                            value:
-                                                                _TopMenuAction
-                                                                    .toggleGradient,
-                                                            child: Row(
-                                                              children: [
-                                                                Icon(
-                                                                  gradientEnabled
-                                                                      ? Icons
-                                                                          .gradient
-                                                                      : Icons
-                                                                          .gradient_outlined,
-                                                                  size: 18,
-                                                                  color:
-                                                                      cs.primary,
-                                                                ),
-                                                                const SizedBox(
-                                                                  width: 12,
-                                                                ),
-                                                                Expanded(
-                                                                  child: Text(
-                                                                    gradientEnabled
-                                                                        ? 'Disable gradient background'
-                                                                        : 'Enable gradient background',
-                                                                  ),
-                                                                ),
-                                                              ],
-                                                            ),
-                                                          ),
-                                                          PopupMenuItem(
-                                                            value:
-                                                                _TopMenuAction
-                                                                    .playHistory,
-                                                            child: Row(
-                                                              children: [
-                                                                Icon(
-                                                                  Icons
-                                                                      .history_rounded,
-                                                                  size: 18,
-                                                                  color:
-                                                                      cs.primary,
-                                                                ),
-                                                                const SizedBox(
-                                                                  width: 12,
-                                                                ),
-                                                                const Expanded(
-                                                                  child: Text(
-                                                                    'Play history',
-                                                                  ),
-                                                                ),
-                                                              ],
-                                                            ),
-                                                          ),
-                                                          PopupMenuItem(
-                                                            value:
-                                                                _TopMenuAction
-                                                                    .bookmarks,
-                                                            child: Row(
-                                                              children: [
-                                                                Icon(
-                                                                  Icons
-                                                                      .bookmark_rounded,
-                                                                  size: 18,
-                                                                  color:
-                                                                      cs.primary,
-                                                                ),
-                                                                const SizedBox(
-                                                                  width: 12,
-                                                                ),
-                                                                const Expanded(
-                                                                  child: Text(
-                                                                    'Bookmarks',
-                                                                  ),
-                                                                ),
-                                                              ],
-                                                            ),
-                                                          ),
-                                                        ],
-                                                  );
-                                                },
-                                              ),
-                                            ],
-                                          ),
-                                          const SizedBox(height: 10),
-                                        // Large transport controls (Material 3) - single row, auto-sized
-                                        LayoutBuilder(
-                                          builder: (context, constraints) {
-                                            final maxW = constraints.maxWidth;
-                                            double spacing = 10;
-                                            double edge = 42;
-                                            double skip = 52;
-                                            double center = 56;
-                                            final needed =
-                                                2 * edge +
-                                                2 * skip +
-                                                center +
-                                                4 * spacing;
-                                            if (needed > maxW) {
-                                              final scale =
-                                                  (maxW - 4 * spacing) /
-                                                  (2 * edge +
-                                                      2 * skip +
-                                                      center);
-                                              final clamped = scale.clamp(
-                                                0.6,
-                                                1.0,
-                                              );
-                                              edge = edge * clamped;
-                                              skip = skip * clamped;
-                                              center = center * clamped;
-                                            }
-                                            return Row(
-                                              mainAxisAlignment:
-                                                  MainAxisAlignment.center,
-                                              children: [
-                                                _ControlButton(
-                                                  tooltip: 'Previous track',
-                                                  icon: Symbols.skip_previous,
-                                                  size: edge,
-                                                  onTap: () async {
-                                                    if (playback.hasSmartPrev) {
-                                                      await playback
-                                                          .smartPrev();
-                                                    }
-                                                  },
-                                                ),
-                                                SizedBox(width: spacing),
-                                                ValueListenableBuilder<int>(
-                                                  valueListenable:
-                                                      UiPrefs
-                                                          .seekBackwardSeconds,
-                                                  builder: (
-                                                    context,
-                                                    seekSeconds,
-                                                    _,
-                                                  ) {
-                                                    return _ControlButton(
-                                                      tooltip:
-                                                          'Back ${seekSeconds}s',
-                                                      icon: Symbols.replay_30,
-                                                      size: skip,
-                                                      onTap:
-                                                          () => playback
-                                                              .nudgeSeconds(
-                                                                -seekSeconds,
-                                                              ),
-                                                    );
-                                                  },
-                                                ),
-                                                SizedBox(width: spacing),
-                                                StreamBuilder<bool>(
-                                                  stream:
-                                                      playback.playingStream,
-                                                  initialData:
-                                                      playback.player.playing,
-                                                  builder: (_, playSnap) {
-                                                    final playing =
-                                                        playSnap.data ?? false;
-                                                    return _ControlButton(
-                                                      tooltip:
-                                                          playing
-                                                              ? 'Pause'
-                                                              : 'Play',
-                                                      icon:
-                                                          playing
-                                                              ? Symbols.pause
-                                                              : Symbols
-                                                                  .play_arrow,
-                                                      isPrimary: true,
-                                                      isCircular:
-                                                          !playing, // keep round when showing Play triangle
-                                                      size: center,
-                                                      highlighted: playing,
-                                                      onTap: () async {
-                                                        // Check if we have a valid nowPlaying item and it's actually playing
-                                                        final hasValidNowPlaying =
-                                                            np != null &&
-                                                            playing;
-                                                        if (hasValidNowPlaying) {
-                                                          await playback
-                                                              .pause();
-                                                        } else {
-                                                          // Try to resume first, but if that fails (no current item),
-                                                          // warm load the last item and play it
-                                                          bool success =
-                                                              await playback
-                                                                  .resume(
-                                                                    context:
-                                                                        context,
-                                                                  );
-                                                          if (!success) {
-                                                            try {
-                                                              await playback
-                                                                  .warmLoadLastItem(
-                                                                    playAfterLoad:
-                                                                        true,
-                                                                  );
-                                                            } catch (e) {
-                                                              // If warm load fails, show error message
-                                                              if (context
-                                                                  .mounted) {
-                                                                ScaffoldMessenger.of(
-                                                                  context,
-                                                                ).showSnackBar(
-                                                                  const SnackBar(
-                                                                    content: Text(
-                                                                      'Cannot play: server unavailable and sync progress is required',
-                                                                    ),
-                                                                    duration:
-                                                                        Duration(
-                                                                          seconds:
-                                                                              4,
-                                                                        ),
-                                                                  ),
-                                                                );
-                                                              }
-                                                            }
-                                                          }
-                                                        }
-                                                      },
-                                                    );
-                                                  },
-                                                ),
-                                                SizedBox(width: spacing),
-                                                ValueListenableBuilder<int>(
-                                                  valueListenable:
-                                                      UiPrefs
-                                                          .seekForwardSeconds,
-                                                  builder: (
-                                                    context,
-                                                    seekSeconds,
-                                                    _,
-                                                  ) {
-                                                    return _ControlButton(
-                                                      tooltip:
-                                                          'Forward ${seekSeconds}s',
-                                                      icon: Symbols.forward_30,
-                                                      size: skip,
-                                                      onTap:
-                                                          () => playback
-                                                              .nudgeSeconds(
-                                                                seekSeconds,
-                                                              ),
-                                                    );
-                                                  },
-                                                ),
-                                                SizedBox(width: spacing),
-                                                _ControlButton(
-                                                  tooltip: 'Next track',
-                                                  icon: Symbols.skip_next,
-                                                  size: edge,
-                                                  onTap: () async {
-                                                    if (playback.hasSmartNext) {
-                                                      await playback
-                                                          .smartNext();
-                                                    }
-                                                  },
-                                                ),
-                                              ],
-                                            );
-                                          },
+                                        const SizedBox(height: 8),
+                                        _buildBottomToolbar(
+                                          context: context,
+                                          cs: cs,
+                                          playback: playback,
+                                          np: np,
+                                          gradientEnabled: gradientEnabled,
                                         ),
-
-                                        const SizedBox(height: 16),
-
-                                        Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Row(
-                                              children: [
-                                                Expanded(
-                                                  child: _PlayerActionTile(
-                                                    icon: _buildChaptersQuickIcon(
-                                                      context: context,
-                                                      cs: cs,
-                                                      totalChapters:
-                                                          np.chapters.length,
-                                                      currentChapter:
-                                                          np.chapters.length > 1
-                                                              ? (playback
-                                                                          .currentChapterProgress
-                                                                          ?.index ??
-                                                                      0) +
-                                                                  1
-                                                              : 1,
-                                                    ),
-                                                    label: '',
-                                                    onTap:
-                                                        np.chapters.length > 1
-                                                            ? () =>
-                                                                _showChaptersSheet(
-                                                                  context,
-                                                                  playback,
-                                                                  np,
-                                                                )
-                                                            : null,
-                                                    tooltip:
-                                                        np.chapters.length > 1
-                                                            ? 'Open chapters'
-                                                            : 'Single chapter – no chapters list',
-                                                    enabled:
-                                                        np.chapters.length > 1,
-                                                    heightScale: 0.58,
-                                                  ),
-                                                ),
-                                                const SizedBox(width: 10),
-                                                Expanded(
-                                                  child:
-                                                      _ChaptersDownloadButton(
-                                                        libraryItemId:
-                                                            np.libraryItemId,
-                                                        episodeId: np.episodeId,
-                                                        title: np.title,
-                                                        iconOnly: true,
-                                                        heightScale: 0.58,
-                                                      ),
-                                                ),
-                                                const SizedBox(width: 10),
-                                                Expanded(
-                                                  child: _SleepQuickAction(
-                                                    onTap:
-                                                        () =>
-                                                            _showSleepTimerSheet(
-                                                              context,
-                                                              np,
-                                                            ),
-                                                    heightScale: 0.58,
-                                                  ),
-                                                ),
-                                                const SizedBox(width: 10),
-                                                Expanded(
-                                                  child: _SpeedQuickAction(
-                                                    playback: playback,
-                                                    heightScale: 0.58,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ],
-                                        ),
-                                        // Removed redundant countdown widget (countdown shown on Sleep button only)
-                                        ],
-                                      ),
+                                      ],
                                     ),
                                   ),
                                 ),
@@ -3577,6 +3536,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
       },
     );
   }
+
 }
 
 class _GlassPanel extends StatelessWidget {
@@ -3798,7 +3758,7 @@ class _SleepQuickAction extends StatelessWidget {
         final isChapterMode = timer.isChapterMode;
         return _PlayerActionTile(
           icon: Icon(isChapterMode ? Symbols.auto_stories : Symbols.bedtime),
-          label: '',
+          label: 'Sleep timer',
           onTap: onTap,
           tooltip: active ? 'Adjust sleep timer' : 'Set sleep timer',
           backgroundColor: active ? cs.primary : cs.surfaceContainerHighest,
