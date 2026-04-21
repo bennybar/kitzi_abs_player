@@ -277,6 +277,7 @@ class _MainScaffoldState extends State<MainScaffold> {
           },
           child: Scaffold(
             backgroundColor: cs.surface,
+            extendBody: true,
             body: Stack(
               children: [
                 Positioned.fill(
