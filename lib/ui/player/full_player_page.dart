@@ -985,6 +985,9 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                     children: [
                       Text(
                         _chapterDescriptor(metrics),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        softWrap: false,
                         style: text.labelMedium?.copyWith(
                           color: cs.onSurfaceVariant,
                           fontWeight: FontWeight.w600,
@@ -1024,8 +1027,9 @@ class _FullPlayerPageState extends State<FullPlayerPage>
         Expanded(
           child: Text(
             _chapterDescriptor(metrics),
-            maxLines: 2,
+            maxLines: 1,
             overflow: TextOverflow.ellipsis,
+            softWrap: false,
             style: text.labelLarge?.copyWith(
               color: cs.onSurfaceVariant,
               fontWeight: FontWeight.w600,
@@ -1146,8 +1150,9 @@ class _FullPlayerPageState extends State<FullPlayerPage>
             Expanded(
               child: Text(
                 chapterLabel,
-                maxLines: 2,
+                maxLines: 1,
                 overflow: TextOverflow.ellipsis,
+                softWrap: false,
                 style: text.bodySmall?.copyWith(
                   color: cs.primary,
                   fontWeight: FontWeight.w500,
