@@ -4136,6 +4136,7 @@ class _PlayerActionTile extends StatelessWidget {
     this.backgroundColor,
     this.foregroundColor,
     this.heightScale = 1.0,
+    this.centerLabel,
   });
 
   final Widget icon;
@@ -4146,6 +4147,10 @@ class _PlayerActionTile extends StatelessWidget {
   final Color? backgroundColor;
   final Color? foregroundColor;
   final double heightScale;
+
+  /// When non-null, replaces the icon + label column with a single centered
+  /// text line (no icon) — used for tiles that show a numeric value only.
+  final String? centerLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -4188,37 +4193,52 @@ class _PlayerActionTile extends StatelessWidget {
                 horizontal: 8,
                 vertical: 4 * clampedScale,
               ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  SizedBox(
-                    width: 24 * clampedScale,
-                    height: 24 * clampedScale,
-                    child: IconTheme(
-                      data: IconThemeData(
-                        color: iconColor,
-                        size: 20 * clampedScale,
+              child: centerLabel != null
+                  ? Center(
+                      child: Text(
+                        centerLabel!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: text.titleMedium?.copyWith(
+                          color: iconColor,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.3,
+                          fontSize: 16 * clampedScale,
+                        ),
                       ),
-                      child: Center(child: icon),
+                    )
+                  : Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        SizedBox(
+                          width: 24 * clampedScale,
+                          height: 24 * clampedScale,
+                          child: IconTheme(
+                            data: IconThemeData(
+                              color: iconColor,
+                              size: 20 * clampedScale,
+                            ),
+                            child: Center(child: icon),
+                          ),
+                        ),
+                        if (label.isNotEmpty) ...[
+                          SizedBox(height: 4 * clampedScale),
+                          Text(
+                            label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                            style: text.labelMedium?.copyWith(
+                              color: iconColor,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: -0.1,
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
-                  ),
-                  if (label.isNotEmpty) ...[
-                    SizedBox(height: 4 * clampedScale),
-                    Text(
-                      label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
-                      style: text.labelMedium?.copyWith(
-                        color: iconColor,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.1,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
             ),
           ),
         ),
@@ -4282,7 +4302,9 @@ class _SpeedQuickAction extends StatelessWidget {
             Symbols.speed,
             color: isNormal ? cs.onSurface : accentColor,
           ),
-          label: isNormal ? 'Speed' : _formatPlaybackSpeedLabel(cur),
+          label: '',
+          centerLabel: isNormal ? null : _formatPlaybackSpeedLabel(cur),
+          foregroundColor: isNormal ? null : accentColor,
           tooltip: 'Playback speed',
           onTap: () => _showSpeedSheet(context, cur),
           backgroundColor:
