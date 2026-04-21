@@ -382,32 +382,48 @@ class _MainScaffoldState extends State<MainScaffold> {
     required ValueChanged<int> onDestinationSelected,
     required ColorScheme colorScheme,
   }) {
-    final text = Theme.of(context).textTheme;
-    return Material(
-      color: colorScheme.surfaceContainer,
-      elevation: 0,
-      surfaceTintColor: Colors.transparent,
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
-          child: SizedBox(
-            height: 72,
-            child: Row(
-              children: [
-                for (int i = 0; i < destinations.length; i++)
-                  Expanded(
-                    child: _M3ExpressiveTab(
-                      destination: destinations[i],
-                      selected: i == selectedIndex,
-                      onTap: () => onDestinationSelected(i),
-                      labelStyle: text.labelMedium,
-                    ),
-                  ),
-              ],
+    return NavigationBarTheme(
+      data: NavigationBarThemeData(
+        backgroundColor: colorScheme.surfaceContainer,
+        surfaceTintColor: Colors.transparent,
+        indicatorColor: colorScheme.secondaryContainer,
+        indicatorShape: const StadiumBorder(),
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+        height: 80,
+        elevation: 0,
+        iconTheme: WidgetStateProperty.resolveWith((states) {
+          final selected = states.contains(WidgetState.selected);
+          return IconThemeData(
+            size: 24,
+            color: selected
+                ? colorScheme.onSecondaryContainer
+                : colorScheme.onSurfaceVariant,
+          );
+        }),
+        labelTextStyle: WidgetStateProperty.resolveWith((states) {
+          final selected = states.contains(WidgetState.selected);
+          return TextStyle(
+            fontSize: 12,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+            letterSpacing: 0.2,
+            color: selected
+                ? colorScheme.onSurface
+                : colorScheme.onSurfaceVariant,
+          );
+        }),
+      ),
+      child: NavigationBar(
+        selectedIndex: selectedIndex,
+        onDestinationSelected: onDestinationSelected,
+        destinations: [
+          for (final d in destinations)
+            NavigationDestination(
+              icon: Icon(d.icon, fill: 0, weight: 400),
+              selectedIcon: Icon(d.selectedIcon, fill: 1, weight: 500),
+              label: d.label,
+              tooltip: d.label,
             ),
-          ),
-        ),
+        ],
       ),
     );
   }
@@ -427,72 +443,4 @@ class _NavDestinationData {
   final IconData icon;
   final IconData selectedIcon;
   final String label;
-}
-
-/// Material 3 Expressive tab: tall pill indicator on the active destination,
-/// larger filled icon, and a bold label that changes weight on selection.
-class _M3ExpressiveTab extends StatelessWidget {
-  const _M3ExpressiveTab({
-    required this.destination,
-    required this.selected,
-    required this.onTap,
-    required this.labelStyle,
-  });
-
-  final _NavDestinationData destination;
-  final bool selected;
-  final VoidCallback onTap;
-  final TextStyle? labelStyle;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
-    final iconColor =
-        selected ? cs.onSecondaryContainer : cs.onSurfaceVariant;
-    final labelColor = selected ? cs.onSurface : cs.onSurfaceVariant;
-
-    return InkWell(
-      onTap: onTap,
-      customBorder: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 260),
-            curve: Curves.easeOutCubic,
-            height: 32,
-            width: selected ? 56 : 40,
-            decoration: BoxDecoration(
-              color: selected ? cs.secondaryContainer : Colors.transparent,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            alignment: Alignment.center,
-            child: Icon(
-              selected ? destination.selectedIcon : destination.icon,
-              size: selected ? 24 : 22,
-              fill: selected ? 1 : 0,
-              color: iconColor,
-              semanticLabel: destination.label,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            destination.label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: (labelStyle ?? const TextStyle()).copyWith(
-              fontSize: 11.5,
-              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-              color: labelColor,
-              height: 1.1,
-              letterSpacing: 0.1,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }

@@ -27,7 +27,7 @@ class UiPrefs {
   static final ValueNotifier<int> seekBackwardSeconds = ValueNotifier<int>(30); // Default to 30 seconds
   static final ValueNotifier<int> seekForwardSeconds = ValueNotifier<int>(30); // Default to 30 seconds
   static final ValueNotifier<bool> playerScrollingSingleLineTitle = ValueNotifier<bool>(false); // Default to false
-  static final ValueNotifier<bool> fullPlayerAsTab = ValueNotifier<bool>(false);
+  static final ValueNotifier<bool> fullPlayerAsTab = ValueNotifier<bool>(true);
 
   static const String _kSeries = 'ui_show_series_tab';
   static const String _kAuthorView = 'ui_author_view_enabled';
@@ -92,7 +92,7 @@ class UiPrefs {
       seekForwardSeconds.value = prefs.getInt(_kSeekForwardSeconds) ?? 30;
       playerScrollingSingleLineTitle.value =
           prefs.getBool(_kPlayerScrollingSingleLineTitle) ?? false;
-      fullPlayerAsTab.value = prefs.getBool(_kFullPlayerAsTab) ?? false;
+      fullPlayerAsTab.value = prefs.getBool(_kFullPlayerAsTab) ?? true;
     } catch (_) {}
   }
 
@@ -119,7 +119,7 @@ class UiPrefs {
       seekForwardSeconds.value = prefs.getInt(_kSeekForwardSeconds) ?? 30;
       playerScrollingSingleLineTitle.value =
           prefs.getBool(_kPlayerScrollingSingleLineTitle) ?? false;
-      fullPlayerAsTab.value = prefs.getBool(_kFullPlayerAsTab) ?? false;
+      fullPlayerAsTab.value = prefs.getBool(_kFullPlayerAsTab) ?? true;
     } catch (_) {}
   }
 
