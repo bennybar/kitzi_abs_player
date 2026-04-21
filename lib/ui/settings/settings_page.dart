@@ -42,8 +42,6 @@ class _SettingsPageState extends State<SettingsPage> {
   bool? _authorViewEnabled;
   bool? _fullPlayerAsTab;
   bool? _bluetoothAutoPlay;
-  bool? _waveformAnimationEnabled;
-  bool? _squigglyProgressBar;
   bool? _hideSeriesWhenSameAsAuthor;
   int? _seriesItemsPerRow;
   int? _seekBackwardSeconds;
@@ -76,8 +74,6 @@ class _SettingsPageState extends State<SettingsPage> {
     'ui_author_view_enabled',
     'bluetooth_auto_play',
     'smart_rewind_enabled',
-    'ui_waveform_animation_enabled',
-    'ui_squiggly_progress_bar',
     'ui_letter_scroll_enabled',
     'ui_letter_scroll_books_alpha',
     'ui_resume_from_history_enabled',
@@ -235,12 +231,6 @@ class _SettingsPageState extends State<SettingsPage> {
           case 'ui_author_view_enabled':
             if (val is bool) await UiPrefs.setAuthorViewEnabled(val);
             break;
-          case 'ui_waveform_animation_enabled':
-            if (val is bool) await UiPrefs.setWaveformAnimationEnabled(val);
-            break;
-          case 'ui_squiggly_progress_bar':
-            if (val is bool) await UiPrefs.setSquigglyProgressBar(val);
-            break;
           case 'ui_letter_scroll_enabled':
             if (val is bool) await UiPrefs.setLetterScrollEnabled(val);
             break;
@@ -338,8 +328,6 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _loadPrefs() async {
     try {
-      // Ensure waveform default is set based on device size
-      await UiPrefs.ensureWaveformDefault(context);
       final services = ServicesScope.of(context).services;
       final headerMap = services.auth.api.customHeaders;
 
@@ -365,11 +353,6 @@ class _SettingsPageState extends State<SettingsPage> {
         _bluetoothAutoPlay = prefs.getBool('bluetooth_auto_play') ?? true;
         _smartRewindEnabled = prefs.getBool('smart_rewind_enabled') ?? false;
 
-        // Load waveform animation setting (default already set above)
-        _waveformAnimationEnabled =
-            prefs.getBool('ui_waveform_animation_enabled') ?? true;
-        _squigglyProgressBar =
-            prefs.getBool('ui_squiggly_progress_bar') ?? true;
         _hideSeriesWhenSameAsAuthor =
             prefs.getBool('ui_hide_series_when_same_as_author') ?? true;
         _seriesItemsPerRow = prefs.getInt('ui_series_items_per_row') ?? 2;
@@ -1272,40 +1255,6 @@ class _SettingsPageState extends State<SettingsPage> {
                   }
                 },
               ),
-            ),
-            SwitchListTile(
-              title: const Text('Waveform animation'),
-              subtitle: Text(
-                'Show animated waveform in full screen player (default: ${UiPrefs.getScreenDiagonalInches(context) >= 6.2 ? 'enabled for your device' : 'disabled for your device'})',
-              ),
-              value: _waveformAnimationEnabled ?? true,
-              onChanged: (v) async {
-                await UiPrefs.setWaveformAnimationEnabled(
-                  v,
-                  pinToSettingsOnChange: true,
-                );
-                if (mounted)
-                  setState(() {
-                    _waveformAnimationEnabled = v;
-                  });
-              },
-            ),
-            SwitchListTile(
-              title: const Text('Squiggly progress bar'),
-              subtitle: const Text(
-                'Use Android 13-style wiggly progress bar in full screen player',
-              ),
-              value: _squigglyProgressBar ?? true,
-              onChanged: (v) async {
-                await UiPrefs.setSquigglyProgressBar(
-                  v,
-                  pinToSettingsOnChange: true,
-                );
-                if (mounted)
-                  setState(() {
-                    _squigglyProgressBar = v;
-                  });
-              },
             ),
             SwitchListTile(
               title: const Text('Gradient background in player'),

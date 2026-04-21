@@ -28,6 +28,7 @@ import 'journal_sheets.dart';
 enum _TopMenuAction {
   toggleCompletion,
   toggleGradient,
+  toggleChapterizedProgressBar,
   cast,
   playHistory,
   bookmarks,
@@ -878,17 +879,23 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                   if (chapterTicks.isNotEmpty)
                     Positioned.fill(
                       child: IgnorePointer(
-                        child: CustomPaint(
-                          painter: _ChapterTickPainter(
-                            fractions: chapterTicks,
-                            progress: (value / sliderMax).clamp(0.0, 1.0),
-                            activeColor: cs.onPrimary.withOpacity(0.55),
-                            inactiveColor:
-                                cs.onSurfaceVariant.withOpacity(0.55),
-                            trackHeight: 4,
-                            tickHeight: 6,
-                            tickWidth: 2,
-                          ),
+                        child: ValueListenableBuilder<bool>(
+                          valueListenable: UiPrefs.progressBarChapterized,
+                          builder: (_, chapterized, __) {
+                            if (!chapterized) return const SizedBox.shrink();
+                            return CustomPaint(
+                              painter: _ChapterTickPainter(
+                                fractions: chapterTicks,
+                                progress: (value / sliderMax).clamp(0.0, 1.0),
+                                activeColor: cs.onPrimary.withOpacity(0.55),
+                                inactiveColor:
+                                    cs.onSurfaceVariant.withOpacity(0.55),
+                                trackHeight: 4,
+                                tickHeight: 6,
+                                tickWidth: 2,
+                              ),
+                            );
+                          },
                         ),
                       ),
                     ),
@@ -3496,6 +3503,31 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                                           );
                                                           break;
                                                         case _TopMenuAction
+                                                            .toggleChapterizedProgressBar:
+                                                          final next =
+                                                              !UiPrefs
+                                                                  .progressBarChapterized
+                                                                  .value;
+                                                          UiPrefs.setProgressBarChapterized(
+                                                            next,
+                                                          );
+                                                          ScaffoldMessenger.of(
+                                                            context,
+                                                          ).showSnackBar(
+                                                            SnackBar(
+                                                              content: Text(
+                                                                next
+                                                                    ? 'Chapter indicators enabled'
+                                                                    : 'Chapter indicators disabled',
+                                                              ),
+                                                              duration:
+                                                                  const Duration(
+                                                                    seconds: 2,
+                                                                  ),
+                                                            ),
+                                                          );
+                                                          break;
+                                                        case _TopMenuAction
                                                             .cast:
                                                           _showCastingComingSoon(
                                                             context,
@@ -3575,6 +3607,48 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                                                   ),
                                                                 ),
                                                               ],
+                                                            ),
+                                                          ),
+                                                          PopupMenuItem(
+                                                            value:
+                                                                _TopMenuAction
+                                                                    .toggleChapterizedProgressBar,
+                                                            child: ValueListenableBuilder<
+                                                              bool
+                                                            >(
+                                                              valueListenable:
+                                                                  UiPrefs
+                                                                      .progressBarChapterized,
+                                                              builder: (
+                                                                _,
+                                                                chapterized,
+                                                                __,
+                                                              ) {
+                                                                return Row(
+                                                                  children: [
+                                                                    Icon(
+                                                                      chapterized
+                                                                          ? Icons
+                                                                              .linear_scale_rounded
+                                                                          : Icons
+                                                                              .remove_rounded,
+                                                                      size: 18,
+                                                                      color:
+                                                                          cs.primary,
+                                                                    ),
+                                                                    const SizedBox(
+                                                                      width: 12,
+                                                                    ),
+                                                                    Expanded(
+                                                                      child: Text(
+                                                                        chapterized
+                                                                            ? 'Progress Bar Chapterized: On'
+                                                                            : 'Progress Bar Chapterized: Off',
+                                                                      ),
+                                                                    ),
+                                                                  ],
+                                                                );
+                                                              },
                                                             ),
                                                           ),
                                                           PopupMenuItem(

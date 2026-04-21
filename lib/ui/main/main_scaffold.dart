@@ -45,7 +45,6 @@ class _MainScaffoldState extends State<MainScaffold> {
     _loadTabPrefs();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (mounted) {
-        await UiPrefs.ensureWaveformDefault(context);
         await UiPrefs.loadFromPrefs(context: context);
       }
     });
