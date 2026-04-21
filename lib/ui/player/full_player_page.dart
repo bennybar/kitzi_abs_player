@@ -105,6 +105,55 @@ class _LineSliderThumbShape extends SliderComponentShape {
   }
 }
 
+class _ChapterTickPainter extends CustomPainter {
+  const _ChapterTickPainter({
+    required this.fractions,
+    required this.progress,
+    required this.activeColor,
+    required this.inactiveColor,
+    required this.trackHeight,
+    required this.tickHeight,
+    required this.tickWidth,
+  });
+
+  final List<double> fractions;
+  final double progress;
+  final Color activeColor;
+  final Color inactiveColor;
+  final double trackHeight;
+  final double tickHeight;
+  final double tickWidth;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (fractions.isEmpty) return;
+    final cy = size.height / 2;
+    final activePaint = Paint()..color = activeColor;
+    final inactivePaint = Paint()..color = inactiveColor;
+    final radius = Radius.circular(tickWidth / 2);
+    for (final f in fractions) {
+      final x = size.width * f;
+      final rect = Rect.fromCenter(
+        center: Offset(x, cy),
+        width: tickWidth,
+        height: tickHeight,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(rect, radius),
+        f <= progress ? activePaint : inactivePaint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _ChapterTickPainter old) {
+    return old.progress != progress ||
+        old.activeColor != activeColor ||
+        old.inactiveColor != inactiveColor ||
+        old.fractions.length != fractions.length;
+  }
+}
+
 String _formatPlaybackSpeedLabel(double speed) {
   if ((speed - speed.roundToDouble()).abs() < 0.001) {
     return '${speed.toStringAsFixed(0)}×';
@@ -115,134 +164,84 @@ String _formatPlaybackSpeedLabel(double speed) {
   return '${speed.toStringAsFixed(2)}×';
 }
 
-class _ResumeFromHistoryButton extends StatelessWidget {
-  const _ResumeFromHistoryButton();
+String _formatDurationHMS(Duration d) {
+  final h = d.inHours;
+  final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+  final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+  return h > 0 ? '$h:$m:$s' : '$m:$s';
+}
 
-  String _fmt(Duration d) {
-    final h = d.inHours;
-    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
-    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
-    return h > 0 ? '$h:$m:$s' : '$m:$s';
-  }
-
-  Future<void> _handleResume(BuildContext context) async {
-    final playback = ServicesScope.of(context).services.playback;
-    final prefs = await SharedPreferences.getInstance();
-    final enabled = prefs.getBool('ui_resume_from_history_enabled') ?? true;
-    if (!enabled) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Resume previous position is disabled in Settings'),
-        ),
-      );
-      return;
-    }
-    final needConfirm = prefs.getBool('ui_sync_from_server_confirm') ?? true;
-
-    Duration? lastPosition;
-    final nowPlaying = playback.nowPlaying;
-    if (nowPlaying != null) {
-      try {
-        final history = await PlaybackJournalService.instance.historyFor(
-          nowPlaying.libraryItemId,
-          limit: 1,
-        );
-        if (history.isNotEmpty) {
-          lastPosition = Duration(milliseconds: history.first.positionMs);
-        }
-      } catch (_) {}
-    }
-
-    bool proceed = true;
-    if (needConfirm) {
-      proceed =
-          await showDialog<bool>(
-            context: context,
-            builder:
-                (ctx) => AlertDialog(
-                  title: const Text('Resume previous position?'),
-                  content: Text(
-                    lastPosition != null
-                        ? 'Resume to ${_fmt(lastPosition!)} from your last pause point?'
-                        : 'Replace the current play position with the last saved pause position?',
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx, false),
-                      child: const Text('Cancel'),
-                    ),
-                    FilledButton(
-                      onPressed: () => Navigator.pop(ctx, true),
-                      child: const Text('Resume'),
-                    ),
-                  ],
-                ),
-          ) ??
-          false;
-    }
-
-    if (!proceed) return;
-
-    final ok = await playback.resumeFromHistory();
-    if (!context.mounted) return;
+Future<void> _handleResumeFromHistory(BuildContext context) async {
+  final playback = ServicesScope.of(context).services.playback;
+  final prefs = await SharedPreferences.getInstance();
+  final enabled = prefs.getBool('ui_resume_from_history_enabled') ?? true;
+  if (!context.mounted) return;
+  if (!enabled) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          ok ? 'Resumed previous position' : 'No previous position found',
-        ),
-        duration: const Duration(seconds: 2),
+      const SnackBar(
+        content: Text('Resume previous position is disabled in Settings'),
       ),
     );
+    return;
+  }
+  final needConfirm = prefs.getBool('ui_sync_from_server_confirm') ?? true;
+
+  Duration? lastPosition;
+  final nowPlaying = playback.nowPlaying;
+  if (nowPlaying != null) {
+    try {
+      final history = await PlaybackJournalService.instance.historyFor(
+        nowPlaying.libraryItemId,
+        limit: 1,
+      );
+      if (history.isNotEmpty) {
+        lastPosition = Duration(milliseconds: history.first.positionMs);
+      }
+    } catch (_) {}
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final accent = isDark ? const Color(0xFF7EE08A) : const Color(0xFF3D8A57);
+  if (!context.mounted) return;
 
-    return Tooltip(
-      message: 'Resume previous play position',
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(999),
-          onTap: () => _handleResume(context),
-          child: AppLiquidGlassPill(
-            blur: 26,
-            opacity: isDark ? 0.18 : 0.14,
-            tint: Color.alphaBlend(
-              accent.withValues(alpha: isDark ? 0.14 : 0.12),
-              cs.surfaceContainerLow,
-            ),
-            elevation: 6,
-            lightenAmount: isDark ? 0.03 : 0.0,
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.history_rounded,
-                  size: 14,
-                  color: accent,
+  bool proceed = true;
+  if (needConfirm) {
+    proceed =
+        await showDialog<bool>(
+          context: context,
+          builder:
+              (ctx) => AlertDialog(
+                title: const Text('Resume previous position?'),
+                content: Text(
+                  lastPosition != null
+                      ? 'Resume to ${_formatDurationHMS(lastPosition)} from your last pause point?'
+                      : 'Replace the current play position with the last saved pause position?',
                 ),
-                const SizedBox(width: 5),
-                Text(
-                  'Last position',
-                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    fontSize: 11.5,
-                    color: accent,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -0.1,
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: const Text('Cancel'),
                   ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
+                  FilledButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    child: const Text('Resume'),
+                  ),
+                ],
+              ),
+        ) ??
+        false;
   }
+
+  if (!proceed) return;
+
+  final ok = await playback.resumeFromHistory();
+  if (!context.mounted) return;
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(
+        ok ? 'Resumed previous position' : 'No previous position found',
+      ),
+      duration: const Duration(seconds: 2),
+    ),
+  );
 }
 
 /// Cached network image widget with cache validation
@@ -815,6 +814,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
     required Duration position,
     required Duration total,
     required bool isPrimary,
+    List<Chapter> chapters = const [],
   }) {
     final max = total.inMilliseconds.toDouble();
     final sliderMax = max > 0 ? max : 1.0;
@@ -837,6 +837,16 @@ class _FullPlayerPageState extends State<FullPlayerPage>
       trackShape: const _EdgeToEdgeSliderTrackShape(horizontalInset: 0),
     );
 
+    final chapterTicks = <double>[];
+    if (chapters.length > 1 && max > 0) {
+      for (int i = 1; i < chapters.length; i++) {
+        final ms = chapters[i].start.inMilliseconds.toDouble();
+        if (ms > 0 && ms < max) {
+          chapterTicks.add(ms / max);
+        }
+      }
+    }
+
     return RepaintBoundary(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -846,22 +856,43 @@ class _FullPlayerPageState extends State<FullPlayerPage>
             child: SizedBox(
               height: sliderHeight,
               width: double.infinity,
-              child: Slider(
-                min: 0.0,
-                max: sliderMax,
-                value: value,
-                onChanged: (v) async {
-                  await playback.seekGlobal(
-                    Duration(milliseconds: v.round()),
-                    reportNow: false,
-                  );
-                },
-                onChangeEnd: (v) async {
-                  await playback.seekGlobal(
-                    Duration(milliseconds: v.round()),
-                    reportNow: true,
-                  );
-                },
+              child: Stack(
+                children: [
+                  Slider(
+                    min: 0.0,
+                    max: sliderMax,
+                    value: value,
+                    onChanged: (v) async {
+                      await playback.seekGlobal(
+                        Duration(milliseconds: v.round()),
+                        reportNow: false,
+                      );
+                    },
+                    onChangeEnd: (v) async {
+                      await playback.seekGlobal(
+                        Duration(milliseconds: v.round()),
+                        reportNow: true,
+                      );
+                    },
+                  ),
+                  if (chapterTicks.isNotEmpty)
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: CustomPaint(
+                          painter: _ChapterTickPainter(
+                            fractions: chapterTicks,
+                            progress: (value / sliderMax).clamp(0.0, 1.0),
+                            activeColor: cs.onPrimary.withOpacity(0.55),
+                            inactiveColor:
+                                cs.onSurfaceVariant.withOpacity(0.55),
+                            trackHeight: 4,
+                            tickHeight: 6,
+                            tickWidth: 2,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
           ),
@@ -1063,9 +1094,6 @@ class _FullPlayerPageState extends State<FullPlayerPage>
       return const SizedBox.shrink();
     }
 
-    final totalSec = total.inMilliseconds / 1000.0;
-    final posSec = position.inMilliseconds / 1000.0;
-
     int chapterIndex = metrics?.index ?? 0;
     if (metrics == null) {
       for (int i = chapters.length - 1; i >= 0; i--) {
@@ -1085,95 +1113,31 @@ class _FullPlayerPageState extends State<FullPlayerPage>
             ? '${_fmt(metrics.elapsed)} / ${_fmt(metrics.duration)}'
             : null;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Text(
-          'CHAPTERS',
-          style: text.labelSmall?.copyWith(
-            color: cs.onSurfaceVariant.withOpacity(0.6),
-            letterSpacing: 0.8,
-          ),
-        ),
-        const SizedBox(height: 6),
-        if (false) ...[
-        ClipRRect(
-          borderRadius: BorderRadius.circular(4),
-          child: SizedBox(
-            height: 8,
-            child: LayoutBuilder(
-              builder: (_, constraints) {
-                return Stack(
-                  children: [
-                    Container(color: cs.surfaceContainerHighest),
-                    FractionallySizedBox(
-                      widthFactor: (posSec / totalSec).clamp(0.0, 1.0),
-                      child: Container(color: cs.primary.withOpacity(0.7)),
-                    ),
-                    for (int i = 1; i < chapters.length; i++)
-                      Positioned(
-                        left:
-                            constraints.maxWidth *
-                            (chapters[i].start.inMilliseconds /
-                                    total.inMilliseconds)
-                                .clamp(0.0, 1.0),
-                        top: 0,
-                        bottom: 0,
-                        child: Container(
-                          width: 1.5,
-                          color: cs.surface.withOpacity(0.6),
-                        ),
-                      ),
-                    Positioned(
-                      left:
-                          constraints.maxWidth *
-                              (posSec / totalSec).clamp(0.0, 1.0) -
-                          1.5,
-                      top: 0,
-                      bottom: 0,
-                      child: Container(
-                        width: 3,
-                        decoration: BoxDecoration(
-                          color: cs.onSurface,
-                          borderRadius: BorderRadius.circular(1.5),
-                        ),
-                      ),
-                    ),
-                  ],
-                );
-              },
+        Expanded(
+          child: Text(
+            chapterLabel,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            softWrap: false,
+            style: text.bodySmall?.copyWith(
+              color: cs.primary,
+              fontWeight: FontWeight.w500,
             ),
           ),
         ),
-        const SizedBox(height: 4),
+        if (chapterTimeLabel != null) ...[
+          const SizedBox(width: 12),
+          Text(
+            chapterTimeLabel,
+            style: text.bodySmall?.copyWith(
+              color: cs.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ],
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Text(
-                chapterLabel,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                softWrap: false,
-                style: text.bodySmall?.copyWith(
-                  color: cs.primary,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-            if (chapterTimeLabel != null) ...[
-              const SizedBox(width: 12),
-              Text(
-                chapterTimeLabel,
-                style: text.bodySmall?.copyWith(
-                  color: cs.onSurfaceVariant,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ],
-        ),
       ],
     );
   }
@@ -1520,42 +1484,36 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                     ),
                     Positioned.fill(child: _SleepTimerArcOverlay()),
                     Positioned(
-                      top: 10,
-                      right: 10,
-                      child: Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(999),
-                          onTap: () => _addBookmark(context, playback),
-                          child: Container(
-                            width: 40,
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color: Color.alphaBlend(
-                                Colors.black.withOpacity(0.42),
-                                (_palettePrimary ?? cs.primary).withOpacity(
-                                  0.12,
-                                ),
-                              ),
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: Colors.white.withOpacity(0.26),
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.24),
-                                  blurRadius: 12,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
+                      top: 12,
+                      right: 12,
+                      child: _CoverIconButton(
+                        icon: Symbols.bookmark_add,
+                        tooltip: 'Add bookmark',
+                        onTap: () => _addBookmark(context, playback),
+                      ),
+                    ),
+                    Positioned(
+                      bottom: 12,
+                      left: 12,
+                      child: _CoverIconButton(
+                        icon: Symbols.history,
+                        tooltip: 'Last position',
+                        iconColor: const Color(0xFF7EE08A),
+                        onTap: () => _handleResumeFromHistory(context),
+                      ),
+                    ),
+                    Positioned(
+                      bottom: 12,
+                      right: 12,
+                      child: _CoverIconButton(
+                        icon: Symbols.info,
+                        tooltip: 'Book details',
+                        onTap:
+                            () => _showPlayerMetadataSheet(
+                              context,
+                              playback,
+                              np,
                             ),
-                            child: Icon(
-                              Symbols.bookmark_add,
-                              size: 18,
-                              color: Colors.white.withOpacity(0.98),
-                            ),
-                          ),
-                        ),
                       ),
                     ),
                   ],
@@ -1641,34 +1599,18 @@ class _FullPlayerPageState extends State<FullPlayerPage>
           ),
         ],
         const SizedBox(height: 10),
-        Wrap(
-          alignment: WrapAlignment.center,
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            const _ResumeFromHistoryButton(),
-            _InfoPill(
-              icon:
-                  np.tracks.isNotEmpty && np.tracks.every((t) => t.isLocal)
-                      ? Symbols.download_done
-                      : Symbols.wifi_tethering,
-              label:
-                  np.tracks.isNotEmpty && np.tracks.every((t) => t.isLocal)
-                      ? 'Downloaded'
-                      : 'Streaming',
-            ),
-            _InfoPill(
-              icon: Symbols.info,
-              label: 'More info',
-              onTap: () => _showPlayerMetadataSheet(context, playback, np),
-            ),
-            if (totalDuration != null)
+        if (totalDuration != null)
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 8,
+            runSpacing: 8,
+            children: [
               _InfoPill(
                 icon: Symbols.schedule,
                 label: _formatDuration(totalDuration),
               ),
-          ],
-        ),
+            ],
+          ),
       ],
     );
 
@@ -3262,14 +3204,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                     ),
                                     if (globalTotal != null &&
                                         chapters.length > 1) ...[
-                                      const SizedBox(height: 14),
-                                      Divider(
-                                        height: 1,
-                                        color: cs.outlineVariant.withOpacity(
-                                          0.18,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 14),
+                                      const SizedBox(height: 6),
                                       _buildBookDetailStyleChapterTimeline(
                                         text: text,
                                         cs: cs,
@@ -3297,16 +3232,10 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                       position: globalPos,
                                       total: globalTotal!,
                                       isPrimary: true,
+                                      chapters: chapters,
                                     ),
                                     if (chapters.length > 1) ...[
-                                      const SizedBox(height: 14),
-                                      Divider(
-                                        height: 1,
-                                        color: cs.outlineVariant.withOpacity(
-                                          0.18,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 14),
+                                      const SizedBox(height: 6),
                                       _buildBookDetailStyleChapterTimeline(
                                         text: text,
                                         cs: cs,
@@ -3987,6 +3916,44 @@ class _FullPlayerPageState extends State<FullPlayerPage>
         );
       },
     );
+  }
+}
+
+class _CoverIconButton extends StatelessWidget {
+  const _CoverIconButton({
+    required this.icon,
+    required this.onTap,
+    required this.tooltip,
+    this.iconColor = Colors.white,
+  });
+
+  final IconData icon;
+  final VoidCallback onTap;
+  final String tooltip;
+  final Color iconColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final button = ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: Material(
+          color: Colors.black.withOpacity(0.4),
+          borderRadius: BorderRadius.circular(12),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: onTap,
+            child: SizedBox(
+              width: 38,
+              height: 38,
+              child: Icon(icon, size: 20, color: iconColor),
+            ),
+          ),
+        ),
+      ),
+    );
+    return Tooltip(message: tooltip, child: button);
   }
 }
 
@@ -4943,23 +4910,23 @@ class _SleepTimerArcOverlay extends StatelessWidget {
               ),
             ),
             Positioned(
-              top: 10,
-              right: 10,
+              top: 12,
+              left: 12,
               child: IgnorePointer(
                 child: Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 7,
+                    horizontal: 8,
                     vertical: 3,
                   ),
                   decoration: BoxDecoration(
-                    color: arcColor.withOpacity(0.88),
-                    borderRadius: BorderRadius.circular(10),
+                    color: arcColor.withOpacity(0.9),
+                    borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
                     label,
                     style: const TextStyle(
                       color: Colors.white,
-                      fontSize: 10,
+                      fontSize: 11,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
