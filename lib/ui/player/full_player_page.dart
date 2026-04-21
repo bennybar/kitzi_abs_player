@@ -1497,8 +1497,9 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                       left: 12,
                       child: _CoverIconButton(
                         icon: Symbols.history,
-                        tooltip: 'Last position',
+                        tooltip: 'Resume previous play position',
                         iconColor: const Color(0xFF7EE08A),
+                        label: 'Last position',
                         onTap: () => _handleResumeFromHistory(context),
                       ),
                     ),
@@ -1508,6 +1509,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                       child: _CoverIconButton(
                         icon: Symbols.info,
                         tooltip: 'Book details',
+                        label: 'More info',
                         onTap:
                             () => _showPlayerMetadataSheet(
                               context,
@@ -3260,13 +3262,12 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                 );
                               }
 
-                              return _EmbeddedSectionPanel(
-                                borderRadius: 24,
+                              return Padding(
                                 padding: const EdgeInsets.fromLTRB(
                                   12,
+                                  8,
                                   12,
-                                  12,
-                                  10,
+                                  4,
                                 ),
                                 child: Column(
                                   crossAxisAlignment:
@@ -3336,8 +3337,6 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                           ),
                             ),
 
-                            const SizedBox(height: 6),
-
                             // CONTROLS + CHAPTERS
                             AnimatedBuilder(
                           animation: _controlsAnimation,
@@ -3357,11 +3356,10 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                         4,
                                         6,
                                       ),
-                                    child: _EmbeddedSectionPanel(
-                                      borderRadius: 28,
+                                    child: Padding(
                                       padding: const EdgeInsets.fromLTRB(
                                         12,
-                                        12,
+                                        4,
                                         12,
                                         12,
                                       ),
@@ -3925,15 +3923,48 @@ class _CoverIconButton extends StatelessWidget {
     required this.onTap,
     required this.tooltip,
     this.iconColor = Colors.white,
+    this.label,
   });
 
   final IconData icon;
   final VoidCallback onTap;
   final String tooltip;
   final Color iconColor;
+  final String? label;
 
   @override
   Widget build(BuildContext context) {
+    final hasLabel = label != null && label!.isNotEmpty;
+    final child =
+        hasLabel
+            ? Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 8,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, size: 16, color: iconColor),
+                  const SizedBox(width: 6),
+                  Text(
+                    label!,
+                    style: TextStyle(
+                      color: iconColor,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.1,
+                    ),
+                  ),
+                ],
+              ),
+            )
+            : SizedBox(
+              width: 38,
+              height: 38,
+              child: Icon(icon, size: 20, color: iconColor),
+            );
+
     final button = ClipRRect(
       borderRadius: BorderRadius.circular(12),
       child: BackdropFilter(
@@ -3944,11 +3975,7 @@ class _CoverIconButton extends StatelessWidget {
           child: InkWell(
             borderRadius: BorderRadius.circular(12),
             onTap: onTap,
-            child: SizedBox(
-              width: 38,
-              height: 38,
-              child: Icon(icon, size: 20, color: iconColor),
-            ),
+            child: child,
           ),
         ),
       ),
@@ -4255,7 +4282,7 @@ class _SpeedQuickAction extends StatelessWidget {
             Symbols.speed,
             color: isNormal ? cs.onSurface : accentColor,
           ),
-          label: _formatPlaybackSpeedLabel(cur),
+          label: isNormal ? 'Speed' : _formatPlaybackSpeedLabel(cur),
           tooltip: 'Playback speed',
           onTap: () => _showSpeedSheet(context, cur),
           backgroundColor:
