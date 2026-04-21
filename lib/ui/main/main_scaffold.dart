@@ -172,7 +172,7 @@ class _MainScaffoldState extends State<MainScaffold> {
       setState(() {
         _showSeries = prefs.getBool('ui_show_series_tab') ?? _showSeries;
         _showAuthors = prefs.getBool('ui_author_view_enabled') ?? true;
-        _playerAsTab = prefs.getBool('ui_full_player_as_tab') ?? false;
+        _playerAsTab = prefs.getBool('ui_full_player_as_tab') ?? true;
       });
     } catch (_) {}
   }
@@ -382,48 +382,82 @@ class _MainScaffoldState extends State<MainScaffold> {
     required ValueChanged<int> onDestinationSelected,
     required ColorScheme colorScheme,
   }) {
-    return NavigationBarTheme(
-      data: NavigationBarThemeData(
-        backgroundColor: colorScheme.surfaceContainer,
-        surfaceTintColor: Colors.transparent,
-        indicatorColor: colorScheme.secondaryContainer,
-        indicatorShape: const StadiumBorder(),
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        height: 80,
-        elevation: 0,
-        iconTheme: WidgetStateProperty.resolveWith((states) {
-          final selected = states.contains(WidgetState.selected);
-          return IconThemeData(
-            size: 24,
-            color: selected
-                ? colorScheme.onSecondaryContainer
-                : colorScheme.onSurfaceVariant,
-          );
-        }),
-        labelTextStyle: WidgetStateProperty.resolveWith((states) {
-          final selected = states.contains(WidgetState.selected);
-          return TextStyle(
-            fontSize: 12,
-            fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-            letterSpacing: 0.2,
-            color: selected
-                ? colorScheme.onSurface
-                : colorScheme.onSurfaceVariant,
-          );
-        }),
-      ),
-      child: NavigationBar(
-        selectedIndex: selectedIndex,
-        onDestinationSelected: onDestinationSelected,
-        destinations: [
-          for (final d in destinations)
-            NavigationDestination(
-              icon: Icon(d.icon, fill: 0, weight: 400),
-              selectedIcon: Icon(d.selectedIcon, fill: 1, weight: 500),
-              label: d.label,
-              tooltip: d.label,
+    const topRadius = Radius.circular(28);
+
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        decoration: BoxDecoration(
+          color: colorScheme.surfaceContainerHigh,
+          borderRadius: const BorderRadius.only(
+            topLeft: topRadius,
+            topRight: topRadius,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: colorScheme.shadow.withOpacity(0.08),
+              blurRadius: 16,
+              offset: const Offset(0, -4),
             ),
-        ],
+          ],
+          border: Border(
+            top: BorderSide(
+              color: colorScheme.outlineVariant.withOpacity(0.4),
+              width: 0.5,
+            ),
+          ),
+        ),
+        child: ClipRRect(
+          borderRadius: const BorderRadius.only(
+            topLeft: topRadius,
+            topRight: topRadius,
+          ),
+          child: NavigationBarTheme(
+            data: NavigationBarThemeData(
+              backgroundColor: Colors.transparent,
+              surfaceTintColor: Colors.transparent,
+              shadowColor: Colors.transparent,
+              indicatorColor: colorScheme.secondaryContainer,
+              indicatorShape: const StadiumBorder(),
+              labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+              height: 72,
+              elevation: 0,
+              iconTheme: WidgetStateProperty.resolveWith((states) {
+                final selected = states.contains(WidgetState.selected);
+                return IconThemeData(
+                  size: 24,
+                  color: selected
+                      ? colorScheme.onSecondaryContainer
+                      : colorScheme.onSurfaceVariant,
+                );
+              }),
+              labelTextStyle: WidgetStateProperty.resolveWith((states) {
+                final selected = states.contains(WidgetState.selected);
+                return TextStyle(
+                  fontSize: 11,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                  letterSpacing: 0.3,
+                  color: selected
+                      ? colorScheme.onSurface
+                      : colorScheme.onSurfaceVariant,
+                );
+              }),
+            ),
+            child: NavigationBar(
+              selectedIndex: selectedIndex,
+              onDestinationSelected: onDestinationSelected,
+              destinations: [
+                for (final d in destinations)
+                  NavigationDestination(
+                    icon: Icon(d.icon, fill: 0, weight: 400),
+                    selectedIcon: Icon(d.selectedIcon, fill: 1, weight: 500),
+                    label: d.label,
+                    tooltip: d.label,
+                  ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

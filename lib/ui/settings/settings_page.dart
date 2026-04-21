@@ -361,7 +361,7 @@ class _SettingsPageState extends State<SettingsPage> {
             prefs.getBool('ui_sync_from_server_confirm') ?? true;
         _showSeriesTab = prefs.getBool('ui_show_series_tab') ?? false;
         _authorViewEnabled = prefs.getBool('ui_author_view_enabled') ?? true;
-        _fullPlayerAsTab = prefs.getBool('ui_full_player_as_tab') ?? false;
+        _fullPlayerAsTab = prefs.getBool('ui_full_player_as_tab') ?? true;
         _bluetoothAutoPlay = prefs.getBool('bluetooth_auto_play') ?? true;
         _smartRewindEnabled = prefs.getBool('smart_rewind_enabled') ?? false;
 
@@ -1219,7 +1219,7 @@ class _SettingsPageState extends State<SettingsPage> {
               subtitle: const Text(
                 'Show the full player as a bottom navigation tab instead of a popup card',
               ),
-              value: _fullPlayerAsTab ?? false,
+              value: _fullPlayerAsTab ?? true,
               onChanged: (v) async {
                 await UiPrefs.setFullPlayerAsTab(
                   v,
