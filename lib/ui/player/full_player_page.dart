@@ -411,6 +411,11 @@ class FullPlayerPage extends StatefulWidget {
   static bool _isOpen = false;
 
   static Future<void> openOnce(BuildContext context) async {
+    // Tab mode: bring the Player tab into view instead of opening a modal.
+    if (UiPrefs.fullPlayerAsTab.value) {
+      FullPlayerOverlay.requestOpen();
+      return;
+    }
     if (_isOpen) return;
     _isOpen = true;
     FullPlayerOverlay.isVisible.value = true;
@@ -3038,7 +3043,10 @@ class _FullPlayerPageState extends State<FullPlayerPage>
             canPop: false,
             onPopInvoked: (didPop) {
               if (!didPop) {
-                Navigator.of(context).pop();
+                // Only pop when we're actually presented on a route (modal
+                // mode). In tab mode the outer MainScaffold handles back.
+                final nav = Navigator.of(context);
+                if (nav.canPop()) nav.pop();
               }
             },
             child: Scaffold(
@@ -3058,39 +3066,58 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                               const CircularProgressIndicator(),
                               const SizedBox(height: 16),
                               Text(
-                                'Reconnecting to your last session...',
+                                'Loading your last book…',
                                 style: text.titleMedium?.copyWith(
                                   color: cs.onSurfaceVariant,
                                 ),
                               ),
                             ] else ...[
                               Icon(
-                                Icons.podcasts_rounded,
+                                Icons.headphones_rounded,
                                 size: 48,
                                 color: cs.onSurfaceVariant,
                               ),
                               const SizedBox(height: 12),
                               Text(
-                                'Player needs a quick reload',
+                                'Nothing playing',
                                 style: text.titleMedium?.copyWith(
-                                  color: cs.onSurfaceVariant,
+                                  color: cs.onSurface,
+                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
-                              const SizedBox(height: 8),
+                              const SizedBox(height: 6),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 32,
+                                ),
+                                child: Text(
+                                  'Pick a book from your library, or tap below to resume the last one you were listening to.',
+                                  textAlign: TextAlign.center,
+                                  style: text.bodyMedium?.copyWith(
+                                    color: cs.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 16),
                               FilledButton.icon(
                                 onPressed:
                                     () =>
                                         _restoreNowPlayingIfNeeded(force: true),
-                                icon: const Icon(Icons.refresh_rounded),
-                                label: const Text('Reload last session'),
+                                icon: const Icon(Icons.play_arrow_rounded),
+                                label: const Text('Resume last book'),
                               ),
                               if (_warmLoadError != null) ...[
-                                const SizedBox(height: 8),
-                                Text(
-                                  'Retrying failed: $_warmLoadError',
-                                  textAlign: TextAlign.center,
-                                  style: text.bodySmall?.copyWith(
-                                    color: cs.error,
+                                const SizedBox(height: 12),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 32,
+                                  ),
+                                  child: Text(
+                                    'Couldn\'t load: $_warmLoadError',
+                                    textAlign: TextAlign.center,
+                                    style: text.bodySmall?.copyWith(
+                                      color: cs.error,
+                                    ),
                                   ),
                                 ),
                               ],

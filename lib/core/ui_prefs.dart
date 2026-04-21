@@ -27,6 +27,7 @@ class UiPrefs {
   static final ValueNotifier<int> seekBackwardSeconds = ValueNotifier<int>(30); // Default to 30 seconds
   static final ValueNotifier<int> seekForwardSeconds = ValueNotifier<int>(30); // Default to 30 seconds
   static final ValueNotifier<bool> playerScrollingSingleLineTitle = ValueNotifier<bool>(false); // Default to false
+  static final ValueNotifier<bool> fullPlayerAsTab = ValueNotifier<bool>(false);
 
   static const String _kSeries = 'ui_show_series_tab';
   static const String _kAuthorView = 'ui_author_view_enabled';
@@ -42,6 +43,7 @@ class UiPrefs {
   static const String _kSeekBackwardSeconds = 'ui_seek_backward_seconds';
   static const String _kSeekForwardSeconds = 'ui_seek_forward_seconds';
   static const String _kPlayerScrollingSingleLineTitle = 'ui_player_scrolling_single_line_title';
+  static const String _kFullPlayerAsTab = 'ui_full_player_as_tab';
 
   /// Calculate screen diagonal size in inches
   static double getScreenDiagonalInches(BuildContext context) {
@@ -90,9 +92,10 @@ class UiPrefs {
       seekForwardSeconds.value = prefs.getInt(_kSeekForwardSeconds) ?? 30;
       playerScrollingSingleLineTitle.value =
           prefs.getBool(_kPlayerScrollingSingleLineTitle) ?? false;
+      fullPlayerAsTab.value = prefs.getBool(_kFullPlayerAsTab) ?? false;
     } catch (_) {}
   }
-  
+
   /// Initialize waveform animation with device-based default if not already set
   static Future<void> ensureWaveformDefault(BuildContext context) async {
     try {
@@ -116,7 +119,17 @@ class UiPrefs {
       seekForwardSeconds.value = prefs.getInt(_kSeekForwardSeconds) ?? 30;
       playerScrollingSingleLineTitle.value =
           prefs.getBool(_kPlayerScrollingSingleLineTitle) ?? false;
+      fullPlayerAsTab.value = prefs.getBool(_kFullPlayerAsTab) ?? false;
     } catch (_) {}
+  }
+
+  static Future<void> setFullPlayerAsTab(bool value, {bool pinToSettingsOnChange = false}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_kFullPlayerAsTab, value);
+    } catch (_) {}
+    fullPlayerAsTab.value = value;
+    if (pinToSettingsOnChange) pinSettings.value = true;
   }
 
   static Future<void> setSeriesVisible(bool value, {bool pinToSettingsOnChange = false}) async {

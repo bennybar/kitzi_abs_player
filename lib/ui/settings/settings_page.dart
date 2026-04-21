@@ -40,6 +40,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool? _confirmResumeFromHistory;
   bool? _showSeriesTab;
   bool? _authorViewEnabled;
+  bool? _fullPlayerAsTab;
   bool? _bluetoothAutoPlay;
   bool? _waveformAnimationEnabled;
   bool? _squigglyProgressBar;
@@ -85,6 +86,7 @@ class _SettingsPageState extends State<SettingsPage> {
     'ui_player_gradient_background',
     'ui_player_cover_size',
     'ui_player_scrolling_single_line_title',
+    'ui_full_player_as_tab',
     'books_library_id',
     'play_history_v1',
     'detailed_play_sessions_v1',
@@ -248,6 +250,9 @@ class _SettingsPageState extends State<SettingsPage> {
           case 'ui_player_gradient_background':
             if (val is bool) await UiPrefs.setPlayerGradientBackground(val);
             break;
+          case 'ui_full_player_as_tab':
+            if (val is bool) await UiPrefs.setFullPlayerAsTab(val);
+            break;
           case 'play_history_v1':
             if (val is List) {
               final list = val.whereType<String>().toList();
@@ -356,6 +361,7 @@ class _SettingsPageState extends State<SettingsPage> {
             prefs.getBool('ui_sync_from_server_confirm') ?? true;
         _showSeriesTab = prefs.getBool('ui_show_series_tab') ?? false;
         _authorViewEnabled = prefs.getBool('ui_author_view_enabled') ?? true;
+        _fullPlayerAsTab = prefs.getBool('ui_full_player_as_tab') ?? false;
         _bluetoothAutoPlay = prefs.getBool('bluetooth_auto_play') ?? true;
         _smartRewindEnabled = prefs.getBool('smart_rewind_enabled') ?? false;
 
@@ -1206,6 +1212,20 @@ class _SettingsPageState extends State<SettingsPage> {
                   setState(() {
                     _authorViewEnabled = v;
                   });
+              },
+            ),
+            SwitchListTile(
+              title: const Text('Full player as tab'),
+              subtitle: const Text(
+                'Show the full player as a bottom navigation tab instead of a popup card',
+              ),
+              value: _fullPlayerAsTab ?? false,
+              onChanged: (v) async {
+                await UiPrefs.setFullPlayerAsTab(
+                  v,
+                  pinToSettingsOnChange: true,
+                );
+                if (mounted) setState(() => _fullPlayerAsTab = v);
               },
             ),
             SwitchListTile(

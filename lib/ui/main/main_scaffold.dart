@@ -5,14 +5,13 @@ import 'package:material_symbols_icons/symbols.dart';
 import '../settings/settings_page.dart';
 import '../home/books_page.dart';
 import '../downloads/downloads_page.dart';
-// UPDATED import path: MiniPlayer now lives under widgets/
 import '../../widgets/mini_player.dart';
 import '../player/full_player_overlay.dart';
+import '../player/full_player_page.dart';
 import '../home/series_page.dart';
 import '../home/authors_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/ui_prefs.dart';
-import '../../widgets/glass_widget.dart';
 
 import '../../core/downloads_repository.dart';
 import '../../core/playback_repository.dart';
@@ -32,6 +31,7 @@ class _MainScaffoldState extends State<MainScaffold> {
   int _index = 0;
   bool _showSeries = false;
   bool _showAuthors = false;
+  bool _playerAsTab = false;
   StreamSubscription<dynamic>? _downloadProgressSub;
   double _overallDownloadProgress = 0.0;
   bool _hasActiveDownloads = false;
@@ -39,22 +39,20 @@ class _MainScaffoldState extends State<MainScaffold> {
   @override
   void initState() {
     super.initState();
-    // Start from current UiPrefs immediately to avoid flash
     _showSeries = UiPrefs.seriesTabVisible.value;
     _showAuthors = UiPrefs.authorViewEnabled.value;
-    // Load persisted prefs and listen for changes
+    _playerAsTab = UiPrefs.fullPlayerAsTab.value;
     _loadTabPrefs();
-    // Load UiPrefs after first frame when context is available
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (mounted) {
-        // Ensure waveform animation default is set early
         await UiPrefs.ensureWaveformDefault(context);
-        // Load other prefs
         await UiPrefs.loadFromPrefs(context: context);
       }
     });
     UiPrefs.seriesTabVisible.addListener(_onTabPrefsChanged);
     UiPrefs.authorViewEnabled.addListener(_onTabPrefsChanged);
+    UiPrefs.fullPlayerAsTab.addListener(_onTabPrefsChanged);
+    FullPlayerOverlay.openRequests.addListener(_onOpenPlayerRequested);
     _watchDownloadProgress();
   }
 
@@ -64,7 +62,6 @@ class _MainScaffoldState extends State<MainScaffold> {
   final Map<String, bool> _taskActive = {};
 
   void _watchDownloadProgress() {
-    // Listen for download progress events and aggregate progress across tasks.
     _downloadProgressSub = widget.downloadsRepo.progressStream().listen((
       update,
     ) {
@@ -78,7 +75,6 @@ class _MainScaffoldState extends State<MainScaffold> {
   void _handleDownloadUpdate(dynamic update) {
     if (!mounted) return;
     try {
-      // update can be TaskProgressUpdate or TaskStatusUpdate from background_downloader
       final task = update.task;
       final meta = task.metaData ?? '';
       final itemId = _extractItemId(meta);
@@ -102,9 +98,7 @@ class _MainScaffoldState extends State<MainScaffold> {
       }
 
       _recalculateAggregatedProgress();
-    } catch (_) {
-      // ignore
-    }
+    } catch (_) {}
   }
 
   String? _extractItemId(String meta) {
@@ -144,7 +138,18 @@ class _MainScaffoldState extends State<MainScaffold> {
     setState(() {
       _showSeries = UiPrefs.seriesTabVisible.value;
       _showAuthors = UiPrefs.authorViewEnabled.value;
+      _playerAsTab = UiPrefs.fullPlayerAsTab.value;
     });
+  }
+
+  void _onOpenPlayerRequested() {
+    if (!mounted) return;
+    if (!UiPrefs.fullPlayerAsTab.value) return;
+    final destinations = _buildDestinations();
+    final playerIdx =
+        destinations.indexWhere((d) => d.kind == _NavKind.player);
+    if (playerIdx < 0) return;
+    setState(() => _index = playerIdx);
   }
 
   @override
@@ -156,6 +161,8 @@ class _MainScaffoldState extends State<MainScaffold> {
     _taskActive.clear();
     UiPrefs.seriesTabVisible.removeListener(_onTabPrefsChanged);
     UiPrefs.authorViewEnabled.removeListener(_onTabPrefsChanged);
+    UiPrefs.fullPlayerAsTab.removeListener(_onTabPrefsChanged);
+    FullPlayerOverlay.openRequests.removeListener(_onOpenPlayerRequested);
     super.dispose();
   }
 
@@ -165,8 +172,70 @@ class _MainScaffoldState extends State<MainScaffold> {
       setState(() {
         _showSeries = prefs.getBool('ui_show_series_tab') ?? _showSeries;
         _showAuthors = prefs.getBool('ui_author_view_enabled') ?? true;
+        _playerAsTab = prefs.getBool('ui_full_player_as_tab') ?? false;
       });
     } catch (_) {}
+  }
+
+  List<_NavDestinationData> _buildDestinations() {
+    return [
+      const _NavDestinationData(
+        kind: _NavKind.books,
+        icon: Symbols.library_books,
+        selectedIcon: Symbols.library_books_rounded,
+        label: 'Books',
+      ),
+      if (_showAuthors)
+        const _NavDestinationData(
+          kind: _NavKind.authors,
+          icon: Symbols.person,
+          selectedIcon: Symbols.person_rounded,
+          label: 'Authors',
+        ),
+      if (_showSeries)
+        const _NavDestinationData(
+          kind: _NavKind.series,
+          icon: Symbols.collections_bookmark,
+          selectedIcon: Symbols.collections_bookmark_rounded,
+          label: 'Series',
+        ),
+      if (_playerAsTab)
+        const _NavDestinationData(
+          kind: _NavKind.player,
+          icon: Symbols.play_circle,
+          selectedIcon: Symbols.play_circle_rounded,
+          label: 'Player',
+        ),
+      const _NavDestinationData(
+        kind: _NavKind.downloads,
+        icon: Symbols.download_for_offline,
+        selectedIcon: Symbols.download_for_offline_rounded,
+        label: 'Downloads',
+      ),
+      const _NavDestinationData(
+        kind: _NavKind.settings,
+        icon: Symbols.settings,
+        selectedIcon: Symbols.settings_rounded,
+        label: 'Settings',
+      ),
+    ];
+  }
+
+  Widget _pageForKind(_NavKind kind) {
+    switch (kind) {
+      case _NavKind.books:
+        return const BooksPage();
+      case _NavKind.authors:
+        return const AuthorsPage();
+      case _NavKind.series:
+        return const SeriesPage();
+      case _NavKind.player:
+        return const FullPlayerPage();
+      case _NavKind.downloads:
+        return DownloadsPage(repo: widget.downloadsRepo);
+      case _NavKind.settings:
+        return const SettingsPage();
+    }
   }
 
   @override
@@ -175,55 +244,44 @@ class _MainScaffoldState extends State<MainScaffold> {
     final playback = services.playback;
     final cs = Theme.of(context).colorScheme;
 
-    final pages = <Widget>[
-      const BooksPage(),
-      if (_showAuthors) const AuthorsPage(),
-      if (_showSeries) const SeriesPage(),
-      DownloadsPage(repo: widget.downloadsRepo),
-      const SettingsPage(),
-    ];
+    final destinations = _buildDestinations();
+    final pages = destinations.map((d) => _pageForKind(d.kind)).toList();
 
-    // If pinSettings is true, always keep index on the last tab (Settings)
     final pinToSettings = UiPrefs.pinSettings.value;
     if (pinToSettings) {
-      _index = pages.length - 1;
+      final settingsIdx =
+          destinations.indexWhere((d) => d.kind == _NavKind.settings);
+      if (settingsIdx >= 0) _index = settingsIdx;
     }
 
     final safeIndex = _index.clamp(0, pages.length - 1);
+    final currentKind = destinations[safeIndex].kind;
 
     return StreamBuilder<NowPlaying?>(
       stream: playback.nowPlayingStream,
       initialData: playback.nowPlaying,
       builder: (_, snap) {
-        final hideOnSettingsIndex = pages.length - 1;
-        final hasMini =
-            snap.data != null &&
-            safeIndex != hideOnSettingsIndex; // hide on Settings
-        const double navHeight = 64;
+        // Hide the mini player on Settings and on the Player tab itself.
+        final hideMini = currentKind == _NavKind.settings ||
+            currentKind == _NavKind.player;
+        final hasMini = snap.data != null && !hideMini;
 
         return PopScope(
-          canPop: false, // Never allow pop - prevent app exit
+          canPop: false,
           onPopInvoked: (didPop) {
             if (!didPop) {
               if (safeIndex != 0) {
-                // Navigate to Books tab instead of exiting
-                setState(() {
-                  _index = 0;
-                });
+                setState(() => _index = 0);
               }
-              // If already on Books tab, do nothing (prevent exit)
             }
           },
           child: Scaffold(
             backgroundColor: cs.surface,
-            extendBody: true,
             body: Stack(
               children: [
-                // Content
                 Positioned.fill(
                   child: IndexedStack(index: safeIndex, children: pages),
                 ),
-                // Global download progress indicator below the top app bar
                 if (_hasActiveDownloads)
                   Positioned(
                     top: MediaQuery.of(context).padding.top + kToolbarHeight,
@@ -250,90 +308,35 @@ class _MainScaffoldState extends State<MainScaffold> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     AnimatedSize(
-                      duration: const Duration(milliseconds: 350),
+                      duration: const Duration(milliseconds: 320),
                       curve: const Cubic(0.05, 0.7, 0.1, 1.0),
-                      child:
-                          hasMini
-                              ? Padding(
-                                padding: const EdgeInsets.fromLTRB(
-                                  10,
-                                  0,
-                                  10,
-                                  4,
-                                ),
-                                child: AppLiquidGlass(
-                                  blur: 22,
-                                  opacity:
-                                      Theme.of(context).brightness ==
-                                              Brightness.dark
-                                          ? 0.18
-                                          : 0.16,
-                                  borderRadius: BorderRadius.circular(34),
-                                  tint: Color.alphaBlend(
-                                    (Theme.of(context).brightness ==
-                                                Brightness.dark
-                                            ? Colors.black
-                                            : Colors.white)
-                                        .withValues(
-                                      alpha:
-                                              Theme.of(context).brightness ==
-                                                  Brightness.dark
-                                              ? 0.18
-                                              : 0.34,
-                                    ),
-                                    cs.surface,
-                                  ),
-                                  liveBlur: true,
-                                  lightenAmount:
-                                          Theme.of(context).brightness ==
-                                              Brightness.dark
-                                          ? 0.05
-                                          : 0.0,
-                                  child: DecoratedBox(
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(34),
-                                      border: Border.all(
-                                        color: cs.outlineVariant.withOpacity(
-                                              Theme.of(context).brightness ==
-                                                  Brightness.dark
-                                              ? 0.16
-                                              : 0.26,
-                                        ),
-                                      ),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: cs.shadow.withOpacity(
-                                                Theme.of(context).brightness ==
-                                                    Brightness.dark
-                                                ? 0.14
-                                                : 0.05,
-                                          ),
-                                          blurRadius:
-                                              Theme.of(context).brightness ==
-                                                      Brightness.dark
-                                                  ? 24
-                                                  : 16,
-                                          offset:
-                                              Theme.of(context).brightness ==
-                                                      Brightness.dark
-                                                  ? const Offset(0, 10)
-                                                  : const Offset(0, 4),
-                                        ),
-                                      ],
-                                    ),
-                                  child: const MiniPlayer(height: 62),
-                                  ),
-                                ),
-                              )
-                              : const SizedBox.shrink(),
+                      child: hasMini
+                          ? Padding(
+                              padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+                              child: Material(
+                                color: cs.surfaceContainerHigh,
+                                elevation: 1,
+                                shadowColor: cs.shadow.withOpacity(0.12),
+                                surfaceTintColor: Colors.transparent,
+                                borderRadius: BorderRadius.circular(28),
+                                clipBehavior: Clip.antiAlias,
+                                child: const MiniPlayer(height: 62),
+                              ),
+                            )
+                          : const SizedBox.shrink(),
                     ),
                     _buildNavigationBar(
                       context: context,
+                      destinations: destinations,
                       selectedIndex: safeIndex,
                       onDestinationSelected: (i) {
                         setState(() {
                           if (UiPrefs.pinSettings.value) {
-                            _index = pages.length - 1;
+                            final settingsIdx = destinations
+                                .indexWhere((d) => d.kind == _NavKind.settings);
+                            _index = settingsIdx >= 0
+                                ? settingsIdx
+                                : pages.length - 1;
                             UiPrefs.pinSettings.value = false;
                           } else {
                             _index = i.clamp(0, pages.length - 1);
@@ -341,9 +344,6 @@ class _MainScaffoldState extends State<MainScaffold> {
                         });
                       },
                       colorScheme: cs,
-                      height: navHeight,
-                      showAuthors: _showAuthors,
-                      showSeries: _showSeries,
                     ),
                   ],
                 );
@@ -354,12 +354,9 @@ class _MainScaffoldState extends State<MainScaffold> {
                   ignoring: fullPlayerVisible,
                   child: AnimatedSlide(
                     duration: animDuration,
-                    curve:
-                        fullPlayerVisible
-                            ? Curves
-                                .easeInCubic // Smooth acceleration when hiding (going down)
-                            : Curves
-                                .easeOutCubic, // Smooth deceleration when showing (coming up)
+                    curve: fullPlayerVisible
+                        ? Curves.easeInCubic
+                        : Curves.easeOutCubic,
                     offset:
                         fullPlayerVisible ? const Offset(0, 1.0) : Offset.zero,
                     child: AnimatedOpacity(
@@ -380,242 +377,121 @@ class _MainScaffoldState extends State<MainScaffold> {
 
   Widget _buildNavigationBar({
     required BuildContext context,
+    required List<_NavDestinationData> destinations,
     required int selectedIndex,
     required ValueChanged<int> onDestinationSelected,
     required ColorScheme colorScheme,
-    required double height,
-    required bool showAuthors,
-    required bool showSeries,
   }) {
-    return SafeArea(
-      top: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
-        child: AppLiquidGlass(
-          blur: 20,
-          opacity:
-              Theme.of(context).brightness == Brightness.dark ? 0.22 : 0.16,
-          borderRadius: BorderRadius.circular(34),
-          tint: Color.alphaBlend(
-            (Theme.of(context).brightness == Brightness.dark
-                    ? Colors.black
-                    : Colors.white)
-                .withValues(
-              alpha:
-                  Theme.of(context).brightness == Brightness.dark ? 0.22 : 0.34,
-            ),
-            colorScheme.surface,
-          ),
-          liveBlur: true,
-          lightenAmount:
-              Theme.of(context).brightness == Brightness.dark ? 0.03 : 0.0,
-          padding: const EdgeInsets.all(2),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(34),
-              border: Border.all(
-                color: colorScheme.outlineVariant.withOpacity(
-                  Theme.of(context).brightness == Brightness.dark ? 0.10 : 0.22,
-                ),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: colorScheme.shadow.withOpacity(
-                    Theme.of(context).brightness == Brightness.dark ? 0.10 : 0.04,
+    final text = Theme.of(context).textTheme;
+    return Material(
+      color: colorScheme.surfaceContainer,
+      elevation: 0,
+      surfaceTintColor: Colors.transparent,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
+          child: SizedBox(
+            height: 72,
+            child: Row(
+              children: [
+                for (int i = 0; i < destinations.length; i++)
+                  Expanded(
+                    child: _M3ExpressiveTab(
+                      destination: destinations[i],
+                      selected: i == selectedIndex,
+                      onTap: () => onDestinationSelected(i),
+                      labelStyle: text.labelMedium,
+                    ),
                   ),
-                  blurRadius:
-                      Theme.of(context).brightness == Brightness.dark ? 18 : 14,
-                  offset:
-                      Theme.of(context).brightness == Brightness.dark
-                          ? const Offset(0, 8)
-                          : const Offset(0, 3),
-                ),
               ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(30),
-              child: SizedBox(
-                height: height,
-                child: Row(
-                  children:
-                      _buildDestinations(showAuthors, showSeries)
-                          .asMap()
-                          .entries
-                          .map(
-                            (entry) => Expanded(
-                              child: _NavTab(
-                                destination: entry.value,
-                                selected: entry.key == selectedIndex,
-                                onTap:
-                                    () => onDestinationSelected(entry.key),
-                              ),
-                            ),
-                          )
-                          .toList(growable: false),
-                ),
-              ),
             ),
           ),
         ),
       ),
     );
   }
-
-  List<_NavDestinationData> _buildDestinations(
-    bool showAuthors,
-    bool showSeries,
-  ) {
-    return [
-      const _NavDestinationData(
-        icon: Symbols.library_books,
-        label: 'Books',
-      ),
-      if (showAuthors)
-        const _NavDestinationData(
-          icon: Symbols.person,
-          label: 'Authors',
-        ),
-      if (showSeries)
-        const _NavDestinationData(
-          icon: Symbols.collections_bookmark,
-          label: 'Series',
-        ),
-      const _NavDestinationData(
-        icon: Symbols.download_for_offline,
-        label: 'Downloads',
-      ),
-      const _NavDestinationData(
-        icon: Symbols.settings,
-        label: 'Settings',
-      ),
-    ];
-  }
 }
+
+enum _NavKind { books, authors, series, player, downloads, settings }
 
 class _NavDestinationData {
   const _NavDestinationData({
+    required this.kind,
     required this.icon,
+    required this.selectedIcon,
     required this.label,
   });
 
+  final _NavKind kind;
   final IconData icon;
+  final IconData selectedIcon;
   final String label;
 }
 
-class _NavTab extends StatelessWidget {
-  const _NavTab({
+/// Material 3 Expressive tab: tall pill indicator on the active destination,
+/// larger filled icon, and a bold label that changes weight on selection.
+class _M3ExpressiveTab extends StatelessWidget {
+  const _M3ExpressiveTab({
     required this.destination,
     required this.selected,
     required this.onTap,
+    required this.labelStyle,
   });
 
   final _NavDestinationData destination;
   final bool selected;
   final VoidCallback onTap;
+  final TextStyle? labelStyle;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final text = Theme.of(context).textTheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    final iconWidget = Icon(
-      destination.icon,
-      size: selected ? 24 : 21,
-      fill: selected ? 1 : 0,
-      color:
-          selected
-              ? cs.primary
-              : isDark
-              ? Colors.white.withValues(alpha: 0.82)
-              : cs.onSurface.withValues(alpha: 0.72),
-      semanticLabel: destination.label,
-    );
+    final iconColor =
+        selected ? cs.onSecondaryContainer : cs.onSurfaceVariant;
+    final labelColor = selected ? cs.onSurface : cs.onSurfaceVariant;
 
-    final labelStyle = text.labelSmall?.copyWith(
-      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-      color:
-          selected
-              ? cs.primary
-              : isDark
-              ? Colors.white.withValues(alpha: 0.78)
-              : cs.onSurface.withValues(alpha: 0.70),
-      letterSpacing: -0.1,
-      fontSize: selected ? 10.0 : 10.5,
-      height: 1,
-    );
-
-    final selectedContent = SizedBox(
-      width: 72,
-      height: 45,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(10, 3, 10, 4),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            iconWidget,
-            const SizedBox(height: 1),
-            Text(
-              destination.label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: labelStyle,
-            ),
-          ],
-        ),
+    return InkWell(
+      onTap: onTap,
+      customBorder: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
       ),
-    );
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        splashColor: Colors.transparent,
-        highlightColor: Colors.transparent,
-        hoverColor: Colors.transparent,
-        focusColor: Colors.transparent,
-        overlayColor: WidgetStateProperty.all(Colors.transparent),
-        child: Padding(
-          padding: EdgeInsets.zero,
-          child: Center(
-            child:
-                selected
-                    ? AppLiquidGlassPill(
-                      padding: EdgeInsets.zero,
-                      blur: 10,
-                      opacity: isDark ? 0.18 : 0.08,
-                      tint: Color.alphaBlend(
-                        cs.primary.withOpacity(0.06),
-                        Color.alphaBlend(
-                          Colors.black.withValues(
-                            alpha: isDark ? 0.16 : 0.07,
-                          ),
-                          cs.surface,
-                        ),
-                      ),
-                      elevation: 4,
-                      liveBlur: true,
-                      lightenAmount: 0.04,
-                      child: selectedContent,
-                    )
-                    : Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        SizedBox(
-                          height: 26,
-                          child: Center(child: iconWidget),
-                        ),
-                        const SizedBox(height: 1),
-                        Text(
-                          destination.label,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: labelStyle,
-                        ),
-                      ],
-                    ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 260),
+            curve: Curves.easeOutCubic,
+            height: 32,
+            width: selected ? 56 : 40,
+            decoration: BoxDecoration(
+              color: selected ? cs.secondaryContainer : Colors.transparent,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            alignment: Alignment.center,
+            child: Icon(
+              selected ? destination.selectedIcon : destination.icon,
+              size: selected ? 24 : 22,
+              fill: selected ? 1 : 0,
+              color: iconColor,
+              semanticLabel: destination.label,
+            ),
           ),
-        ),
+          const SizedBox(height: 4),
+          Text(
+            destination.label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: (labelStyle ?? const TextStyle()).copyWith(
+              fontSize: 11.5,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              color: labelColor,
+              height: 1.1,
+              letterSpacing: 0.1,
+            ),
+          ),
+        ],
       ),
     );
   }
