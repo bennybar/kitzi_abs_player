@@ -3357,18 +3357,18 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                 opacity: _controlsAnimation.value,
                                 child: RepaintBoundary(
                                     child: Padding(
-                                      padding: const EdgeInsets.fromLTRB(
+                                      padding: EdgeInsets.fromLTRB(
                                         4,
                                         6,
                                         4,
-                                        6,
+                                        UiPrefs.fullPlayerAsTab.value ? 2.4 : 6,
                                       ),
                                     child: Padding(
-                                      padding: const EdgeInsets.fromLTRB(
+                                      padding: EdgeInsets.fromLTRB(
                                         12,
                                         4,
                                         12,
-                                        12,
+                                        UiPrefs.fullPlayerAsTab.value ? 2 : 12,
                                       ),
                                       child: Column(
                                         children: [
