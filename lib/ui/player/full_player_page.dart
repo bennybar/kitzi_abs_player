@@ -3692,10 +3692,16 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                         LayoutBuilder(
                                           builder: (context, constraints) {
                                             final maxW = constraints.maxWidth;
+                                            final tabMode =
+                                                UiPrefs
+                                                    .fullPlayerAsTab
+                                                    .value;
+                                            final sizeScale =
+                                                tabMode ? 0.85 : 1.0;
                                             double spacing = 10;
-                                            double edge = 42;
-                                            double skip = 52;
-                                            double center = 56;
+                                            double edge = 42 * sizeScale;
+                                            double skip = 52 * sizeScale;
+                                            double center = 56 * sizeScale;
                                             final needed =
                                                 2 * edge +
                                                 2 * skip +
