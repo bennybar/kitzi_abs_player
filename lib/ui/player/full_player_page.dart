@@ -60,15 +60,19 @@ class _EdgeToEdgeSliderTrackShape extends RoundedRectSliderTrackShape {
 class _LineSliderThumbShape extends SliderComponentShape {
   const _LineSliderThumbShape({
     this.width = 4,
-    this.height = 28,
+    this.height = 24,
+    this.activeWidth = 6,
+    this.activeHeight = 32,
   });
 
   final double width;
   final double height;
+  final double activeWidth;
+  final double activeHeight;
 
   @override
   Size getPreferredSize(bool isEnabled, bool isDiscrete) {
-    return Size(width, height);
+    return Size(activeWidth, activeHeight);
   }
 
   @override
@@ -92,12 +96,11 @@ class _LineSliderThumbShape extends SliderComponentShape {
       end: sliderTheme.thumbColor,
     );
     final color = colorTween.evaluate(enableAnimation) ?? sliderTheme.thumbColor;
-    final rect = Rect.fromCenter(
-      center: center,
-      width: width,
-      height: height,
-    );
-    final rRect = RRect.fromRectAndRadius(rect, Radius.circular(width / 2));
+    final t = activationAnimation.value;
+    final w = width + (activeWidth - width) * t;
+    final h = height + (activeHeight - height) * t;
+    final rect = Rect.fromCenter(center: center, width: w, height: h);
+    final rRect = RRect.fromRectAndRadius(rect, Radius.circular(w / 2));
     canvas.drawRRect(rRect, Paint()..color = color ?? Colors.white);
   }
 }
@@ -1340,21 +1343,30 @@ class _FullPlayerPageState extends State<FullPlayerPage>
     ColorScheme cs,
     bool isPlaying,
   ) {
-    if (!isPlaying) return dims.shadows(cs);
-
     final glowColor = _palettePrimary ?? cs.primary;
+    if (!isPlaying) {
+      return [
+        ...dims.shadows(cs),
+        BoxShadow(
+          color: glowColor.withOpacity(0.10),
+          blurRadius: 44,
+          spreadRadius: -6,
+          offset: const Offset(0, 10),
+        ),
+      ];
+    }
     return [
       BoxShadow(
         color: cs.shadow.withOpacity(0.22),
-        blurRadius: 26,
+        blurRadius: 28,
         spreadRadius: 0,
-        offset: const Offset(0, 12),
+        offset: const Offset(0, 14),
       ),
       BoxShadow(
-        color: glowColor.withOpacity(0.16),
-        blurRadius: 36,
-        spreadRadius: -2,
-        offset: const Offset(0, 14),
+        color: glowColor.withOpacity(0.26),
+        blurRadius: 56,
+        spreadRadius: 2,
+        offset: const Offset(0, 18),
       ),
     ];
   }
@@ -3703,10 +3715,10 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                                     .value;
                                             final sizeScale =
                                                 tabMode ? 0.85 : 1.0;
-                                            double spacing = 10;
-                                            double edge = 42 * sizeScale;
+                                            double spacing = 8;
+                                            double edge = 52 * sizeScale;
                                             double skip = 52 * sizeScale;
-                                            double center = 56 * sizeScale;
+                                            double center = 72 * sizeScale;
                                             final needed =
                                                 2 * edge +
                                                 2 * skip +
@@ -3784,8 +3796,6 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                                               : Icons
                                                                   .play_arrow_rounded,
                                                       isPrimary: true,
-                                                      isCircular:
-                                                          !playing, // keep round when showing Play triangle
                                                       size: center,
                                                       highlighted: playing,
                                                       onTap: () async {
@@ -4650,23 +4660,19 @@ class _ControlButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    final bg =
-        isPrimary
-            ? Color.alphaBlend(
-              cs.primary.withOpacity(highlighted ? 0.92 : 0.86),
-              cs.surface,
-            )
-            : Color.alphaBlend(
-              cs.surfaceContainerHighest.withOpacity(0.5),
-              cs.surface,
-            );
-    final fg =
-        isPrimary ? cs.onPrimary : cs.onSurfaceVariant.withOpacity(0.92);
+    final primaryRadius = BorderRadius.circular(22);
+    final sideRadius = BorderRadius.circular(16);
     final shape =
-        isCircular
-            ? const CircleBorder()
-            : RoundedRectangleBorder(borderRadius: BorderRadius.circular(22));
+        isPrimary
+            ? (isCircular
+                ? const CircleBorder()
+                : RoundedRectangleBorder(borderRadius: primaryRadius))
+            : RoundedRectangleBorder(borderRadius: sideRadius);
+
+    final iconSize = isPrimary ? size * 0.52 : size * 0.58;
+    final fg = isPrimary ? cs.onPrimary : cs.onSurface;
 
     final child = SizedBox(
       width: size,
@@ -4676,63 +4682,54 @@ class _ControlButton extends StatelessWidget {
           duration: const Duration(milliseconds: 220),
           switchInCurve: Curves.easeOutCubic,
           switchOutCurve: Curves.easeInCubic,
-          transitionBuilder: (child, animation) {
-            return ScaleTransition(scale: animation, child: child);
-          },
-          child: Icon(
-            icon,
-            key: ValueKey(icon),
-            size: size * (isPrimary ? 0.48 : 0.42),
-            color: fg,
-          ),
+          transitionBuilder: (child, animation) =>
+              ScaleTransition(scale: animation, child: child),
+          child: Icon(icon, key: ValueKey(icon), size: iconSize, color: fg),
         ),
       ),
     );
 
-    final button = AnimatedScale(
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOutCubic,
-      scale: highlighted ? 1.04 : 1.0,
-      child: Material(
-        color: bg,
-        shape: shape,
-        elevation: isPrimary ? 7 : 0,
-        shadowColor:
-            isPrimary
-                ? cs.primary.withOpacity(0.24)
-                : cs.shadow.withOpacity(0.05),
-        child: Ink(
-          decoration:
-              isPrimary
-                  ? BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        Color.alphaBlend(Colors.white.withOpacity(0.08), bg),
-                        bg,
-                      ],
-                    ),
-                    shape: isCircular ? BoxShape.circle : BoxShape.rectangle,
-                    borderRadius: isCircular ? null : BorderRadius.circular(22),
-                  )
-                  : BoxDecoration(
-                    color: bg,
-                    shape: isCircular ? BoxShape.circle : BoxShape.rectangle,
-                    borderRadius: isCircular ? null : BorderRadius.circular(22),
-                    border: Border.all(
-                      color: cs.outlineVariant.withOpacity(0.14),
-                    ),
-                  ),
-          child: InkWell(
-            customBorder: shape,
-            onTap: onTap,
-            borderRadius: isCircular ? null : BorderRadius.circular(22),
-            child: child,
+    final Widget button;
+    if (isPrimary) {
+      button = AnimatedScale(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        scale: highlighted ? 1.04 : 1.0,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            shape: isCircular ? BoxShape.circle : BoxShape.rectangle,
+            borderRadius: isCircular ? null : primaryRadius,
+            color: cs.primary,
+            boxShadow: [
+              BoxShadow(
+                color: cs.primary.withOpacity(isDark ? 0.45 : 0.32),
+                blurRadius: 24,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Material(
+            color: Colors.transparent,
+            shape: shape,
+            child: InkWell(
+              customBorder: shape,
+              onTap: onTap,
+              child: child,
+            ),
           ),
         ),
-      ),
-    );
+      );
+    } else {
+      button = Material(
+        color: Colors.transparent,
+        shape: shape,
+        child: InkWell(
+          customBorder: shape,
+          onTap: onTap,
+          child: child,
+        ),
+      );
+    }
 
     return tooltip == null ? button : Tooltip(message: tooltip!, child: button);
   }
