@@ -1620,7 +1620,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
             ),
             const SizedBox(height: 16),
             SizedBox(
-              height: 214,
+              height: 190,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 physics: const BouncingScrollPhysics(),
@@ -1630,7 +1630,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                   final book = shelf[index];
                   return SizedBox(
                     width: 132,
-                    height: 214,
+                    height: 190,
                     child: _ShelfBookCard(
                       key: ValueKey('recent-${book.id}'),
                       book: book,
@@ -2190,7 +2190,8 @@ class _ShelfBookCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
+              AspectRatio(
+                aspectRatio: 1.0,
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(14),
                   child: SizedBox(
