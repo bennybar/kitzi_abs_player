@@ -56,6 +56,17 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
   bool _hasMore = true;
   bool _loadingMore = false;
   int _loadGen = 0;
+  // Memoization for _visibleBooks(). _booksRev bumps on every mutation of
+  // _books so the memo fires only when something actually changed.
+  int _booksRev = 0;
+  List<Book>? _memoVisible;
+  int? _memoVisibleBooksRev;
+  String? _memoVisibleQuery;
+  LibraryFilter? _memoVisibleFilter;
+  SortMode? _memoVisibleSort;
+  bool? _memoVisibleForceAlpha;
+  Map<String, _ProgressEntry>? _memoVisibleProgress;
+  bool? _memoVisibleIsEbook;
   List<Book> _recentBooks = [];
   bool _loading = true;
   String? _error;
@@ -75,6 +86,9 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
   int _bookLetterDenominator = 1;
   VoidCallback? _letterScrollListener;
   VoidCallback? _letterScrollAlphaListener;
+  VoidCallback? _hideSeriesListener;
+  bool _hideSeriesWhenSameAsAuthor =
+      UiPrefs.hideSeriesWhenSameAsAuthor.value;
 
   bool get _letterScrollEnabled => UiPrefs.letterScrollEnabled.value;
   bool get _booksLetterAlphaEnabled => UiPrefs.letterScrollBooksAlpha.value;
@@ -140,6 +154,14 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
     };
     UiPrefs.letterScrollEnabled.addListener(_letterScrollListener!);
     UiPrefs.letterScrollBooksAlpha.addListener(_letterScrollAlphaListener!);
+    _hideSeriesListener = () {
+      if (!mounted) return;
+      final v = UiPrefs.hideSeriesWhenSameAsAuthor.value;
+      if (v != _hideSeriesWhenSameAsAuthor) {
+        setState(() => _hideSeriesWhenSameAsAuthor = v);
+      }
+    };
+    UiPrefs.hideSeriesWhenSameAsAuthor.addListener(_hideSeriesListener!);
   }
 
   @override
@@ -198,6 +220,9 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       UiPrefs.letterScrollBooksAlpha.removeListener(
         _letterScrollAlphaListener!,
       );
+    }
+    if (_hideSeriesListener != null) {
+      UiPrefs.hideSeriesWhenSameAsAuthor.removeListener(_hideSeriesListener!);
     }
     for (final subscription in _subscriptions) {
       subscription.cancel();
@@ -591,6 +616,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       if (_bookListsMatch(_books, fresh)) return;
       setState(() {
         _books = fresh;
+        _booksRev++;
         // Assume more exists as long as we received a full reload.
         _hasMore = fresh.length >= reloadCount;
       });
@@ -628,6 +654,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       }
       setState(() {
         _books = items;
+        _booksRev++;
         _loading = false;
         _hasMore = items.length >= 20;
         _error = null;
@@ -784,8 +811,8 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
 
     // Only build the small window of URLs needed for preload (±a few items),
     // avoiding an O(N) allocation per scroll tick.
-    const behind = 2;
-    const ahead = 5;
+    const behind = 1;
+    const ahead = 3;
     final start = (currentIndex - behind).clamp(0, _books.length - 1);
     final end = (currentIndex + ahead).clamp(0, _books.length - 1);
     final windowUrls = <String>[
@@ -937,8 +964,35 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
   }
 
   List<Book> _visibleBooks() {
+    final q = _query.trim();
+    // Memo: return the prior result when nothing relevant changed.
+    if (_memoVisible != null &&
+        _memoVisibleBooksRev == _booksRev &&
+        _memoVisibleQuery == q &&
+        _memoVisibleFilter == _filter &&
+        _memoVisibleSort == _sort &&
+        _memoVisibleForceAlpha == _forceAlphaSort &&
+        identical(_memoVisibleProgress, _progressByBookId) &&
+        _memoVisibleIsEbook == _isEbookLibrary) {
+      return _memoVisible!;
+    }
+
+    final result = _computeVisibleBooks(q);
+
+    _memoVisible = result;
+    _memoVisibleBooksRev = _booksRev;
+    _memoVisibleQuery = q;
+    _memoVisibleFilter = _filter;
+    _memoVisibleSort = _sort;
+    _memoVisibleForceAlpha = _forceAlphaSort;
+    _memoVisibleProgress = _progressByBookId;
+    _memoVisibleIsEbook = _isEbookLibrary;
+    return result;
+  }
+
+  List<Book> _computeVisibleBooks(String rawQuery) {
     if (_isEbookLibrary) return const <Book>[];
-    final q = _query.trim().toLowerCase();
+    final q = rawQuery.toLowerCase();
     List<Book> list =
         q.isEmpty
             ? List<Book>.from(_books)
@@ -1834,6 +1888,8 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       sliver: SliverList.separated(
         itemCount: list.length,
         separatorBuilder: (_, __) => const SizedBox(height: 12),
+        addAutomaticKeepAlives: false,
+        addRepaintBoundaries: true,
         itemBuilder: (context, i) {
           final b = list[i];
           return Dismissible(
@@ -1945,6 +2001,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
               book: b,
               onTap: b.isAudioBook ? () => _openDetails(b) : null,
               checkIfCompleted: _checkIfCompleted,
+              hideSeriesWhenSameAsAuthor: _hideSeriesWhenSameAsAuthor,
               onAuthorTap:
                   b.author != null && b.author!.isNotEmpty
                       ? () => _showAuthorBooks(context, b.author!)
@@ -2004,6 +2061,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       }
       setState(() {
         _books.addAll(page);
+        _booksRev++;
         _hasMore = page.length >= 50;
       });
     } catch (_) {
@@ -3034,12 +3092,14 @@ class _BookListTile extends StatefulWidget {
     required this.book,
     required this.onTap,
     required this.checkIfCompleted,
+    required this.hideSeriesWhenSameAsAuthor,
     this.onAuthorTap,
     this.onSeriesTap,
   });
   final Book book;
   final VoidCallback? onTap;
   final Future<bool> Function(String) checkIfCompleted;
+  final bool hideSeriesWhenSameAsAuthor;
   final VoidCallback? onAuthorTap;
   final VoidCallback? onSeriesTap;
 
@@ -3113,30 +3173,12 @@ class _BookListTileState extends State<_BookListTile> {
               // Enhanced cover with only progress indicator (no badges)
               Stack(
                 children: [
-                  Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(14),
-                      boxShadow: [
-                        BoxShadow(
-                          color: cs.shadow.withOpacity(0.08),
-                          blurRadius: 12,
-                          offset: const Offset(0, 6),
-                        ),
-                      ],
-                    ),
-                    child: Hero(
-                      tag: 'home-cover-${widget.book.id}',
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(14),
-                        child: Transform.scale(
-                          scale: 1.024,
-                          child: EnhancedCoverImage(
-                            url: widget.book.coverUrl,
-                            width: 76,
-                            height: 76,
-                          ),
-                        ),
-                      ),
+                  Hero(
+                    tag: 'home-cover-${widget.book.id}',
+                    child: EnhancedCoverImage(
+                      url: widget.book.coverUrl,
+                      width: 76,
+                      height: 76,
                     ),
                   ),
                   // Material 3 progress indicator overlay
@@ -3203,40 +3245,32 @@ class _BookListTileState extends State<_BookListTile> {
                         color: disabled ? cs.onSurface.withOpacity(0.4) : null,
                       ),
                     ),
-                    // Series (if available) - between title and author
-                    // Hide series if it's the same as author name (when preference is enabled)
-                    ValueListenableBuilder<bool>(
-                      valueListenable: UiPrefs.hideSeriesWhenSameAsAuthor,
-                      builder: (context, hideWhenSame, _) {
-                        final shouldShowSeries =
-                            widget.book.series != null &&
-                            widget.book.series!.isNotEmpty &&
-                            (!hideWhenSame ||
-                                widget.book.series != widget.book.author);
-                        if (!shouldShowSeries) return const SizedBox.shrink();
-
-                        return Padding(
-                          padding: const EdgeInsets.only(top: 6),
-                          child: GestureDetector(
-                            onTap: widget.onSeriesTap,
-                            child: Text(
-                              widget.book.series!,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(
-                                context,
-                              ).textTheme.bodyMedium?.copyWith(
-                                color:
-                                    disabled
-                                        ? cs.onSurfaceVariant.withOpacity(0.4)
-                                        : cs.primary.withOpacity(0.8),
-                                fontWeight: FontWeight.w500,
-                              ),
+                    // Series (if available) - between title and author.
+                    // Hide series when it matches the author name, if the
+                    // user preference is enabled (plumbed in from page level).
+                    if (widget.book.series != null &&
+                        widget.book.series!.isNotEmpty &&
+                        (!widget.hideSeriesWhenSameAsAuthor ||
+                            widget.book.series != widget.book.author))
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: GestureDetector(
+                          onTap: widget.onSeriesTap,
+                          child: Text(
+                            widget.book.series!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(
+                              context,
+                            ).textTheme.bodyMedium?.copyWith(
+                              color: disabled
+                                  ? cs.onSurfaceVariant.withOpacity(0.4)
+                                  : cs.primary.withOpacity(0.8),
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
-                        );
-                      },
-                    ),
+                        ),
+                      ),
                     if (widget.book.author != null &&
                         widget.book.author!.isNotEmpty) ...[
                       const SizedBox(height: 6),

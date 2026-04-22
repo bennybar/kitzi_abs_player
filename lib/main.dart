@@ -64,13 +64,27 @@ class ServicesScope extends InheritedWidget {
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Keep only ~20 decoded cover images hot in memory at a time. Bounds RAM
+  // on long lists and lets older covers evict as the user scrolls.
+  PaintingBinding.instance.imageCache
+    ..maximumSize = 20
+    ..maximumSizeBytes = 16 * 1024 * 1024; // 16 MB ceiling
+
   // Request the highest supported refresh rate (Android only; iOS ProMotion is
   // handled by CADisableMinimumFrameDurationOnPhone in Info.plist).
   if (Platform.isAndroid) {
     try {
       await FlutterDisplayMode.setHighRefreshRate();
-    } catch (_) {
-      // Device doesn't support mode switching; keep default.
+      if (!kReleaseMode) {
+        final supported = await FlutterDisplayMode.supported;
+        final active = await FlutterDisplayMode.active;
+        debugPrint(
+          '[DisplayMode] active=${active.refreshRate}Hz (${active.width}x${active.height}) '
+          'supported=${supported.map((m) => '${m.refreshRate}Hz ${m.width}x${m.height}').join(', ')}',
+        );
+      }
+    } catch (e) {
+      if (!kReleaseMode) debugPrint('[DisplayMode] setHighRefreshRate failed: $e');
     }
   }
 

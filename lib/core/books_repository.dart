@@ -758,7 +758,9 @@ class BooksRepository {
     if (cached != null && timestamp != null &&
         DateTime.now().difference(timestamp) < _cacheTTL) {
       _log('[BOOKS_CACHE] Cache hit for $cacheKey: ${cached.length} items');
-      return cached;
+      // Return a copy so callers that mutate their list (e.g. addAll for
+      // pagination) don't corrupt the cached entry.
+      return List<Book>.from(cached);
     }
 
     await _ensureDbForCurrentLib();
@@ -852,10 +854,10 @@ class BooksRepository {
       );
     }).toList();
     
-    // Cache the results
-    _queryCache[cacheKey] = books;
+    // Cache a defensive copy so later mutation by callers doesn't corrupt it.
+    _queryCache[cacheKey] = List<Book>.from(books);
     _cacheTimestamps[cacheKey] = DateTime.now();
-    
+
     _log('[BOOKS_DB] listBooksFromDbPaged: page=$page limit=$limit offset=$effectiveOffset sort=$sort query=$query -> ${books.length} items (cached)');
     return books;
   }

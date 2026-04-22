@@ -12,9 +12,10 @@ class ImageCacheManager {
   static CacheManager? _cacheManager;
   static final Set<String> _preloadingUrls = <String>{};
   
-  // Smart preloading based on scroll position
-  static const int preloadAheadCount = 5;
-  static const int preloadBehindCount = 2;
+  // Smart preloading based on scroll position. Kept small to match a bounded
+  // imageCache (we don't want to queue covers only to evict them immediately).
+  static const int preloadAheadCount = 3;
+  static const int preloadBehindCount = 1;
   
   static CacheManager get _instance {
     _cacheManager ??= CacheManager(
@@ -226,45 +227,49 @@ class EnhancedCoverImage extends StatelessWidget {
 
     // Handle offline file URLs
     final uri = Uri.tryParse(url);
-    Widget child;
     if (uri != null && uri.scheme == 'file') {
       final filePath = uri.toFilePath();
       final file = File(filePath);
-      child = file.existsSync()
-          ? ClipRRect(
-              borderRadius: radius,
-              child: Image.file(
-                file,
-                width: width,
-                height: height,
-                fit: fit,
-              ),
-            )
-          : defaultErrorWidget;
-    } else {
-      // Handle network URLs with custom cache manager
-      child = ClipRRect(
+      if (!file.existsSync()) return defaultErrorWidget;
+      return ClipRRect(
         borderRadius: radius,
-        child: CachedNetworkImage(
-          imageUrl: url,
+        child: Image.file(
+          file,
           width: width,
           height: height,
           fit: fit,
-          cacheManager: ImageCacheManager._instance,
-          memCacheWidth: width != null ? (width! * MediaQuery.of(context).devicePixelRatio).round() : null,
-          memCacheHeight: height != null ? (height! * MediaQuery.of(context).devicePixelRatio).round() : null,
-          placeholder: (_, __) => placeholder ?? defaultPlaceholder,
-          errorWidget: (_, __, ___) => errorWidget ?? defaultErrorWidget,
-          fadeInDuration: const Duration(milliseconds: 200),
-          fadeOutDuration: const Duration(milliseconds: 100),
+          // Downsample to displayed size to cut decode/memory cost.
+          cacheWidth: width != null
+              ? (width! * MediaQuery.of(context).devicePixelRatio).round()
+              : null,
+          cacheHeight: height != null
+              ? (height! * MediaQuery.of(context).devicePixelRatio).round()
+              : null,
         ),
       );
     }
 
-    return SizedBox(
-      width: width,
-      height: height,
-      child: child,
+    // Network URLs: cached on disk, no fade animations (keeps scroll cheap —
+    // fade-in adds a per-tile AnimationController that runs on first paint).
+    return ClipRRect(
+      borderRadius: radius,
+      child: CachedNetworkImage(
+        imageUrl: url,
+        width: width,
+        height: height,
+        fit: fit,
+        cacheManager: ImageCacheManager._instance,
+        memCacheWidth: width != null
+            ? (width! * MediaQuery.of(context).devicePixelRatio).round()
+            : null,
+        memCacheHeight: height != null
+            ? (height! * MediaQuery.of(context).devicePixelRatio).round()
+            : null,
+        placeholder: (_, __) => placeholder ?? defaultPlaceholder,
+        errorWidget: (_, __, ___) => errorWidget ?? defaultErrorWidget,
+        fadeInDuration: Duration.zero,
+        fadeOutDuration: Duration.zero,
+      ),
     );
   }
 }
