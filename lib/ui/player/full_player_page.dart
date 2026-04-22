@@ -657,102 +657,6 @@ class _FullPlayerPageState extends State<FullPlayerPage>
     } catch (_) {}
   }
 
-  PopupMenuItem<double> _speedItem(
-    BuildContext context,
-    double current,
-    double value,
-  ) {
-    final sel = (current - value).abs() < 0.001;
-    return PopupMenuItem<double>(
-      value: value,
-      child: Row(
-        children: [
-          if (sel) ...[
-            Icon(
-              Icons.check_rounded,
-              size: 18,
-              color: Theme.of(context).colorScheme.primary,
-            ),
-            const SizedBox(width: 6),
-          ] else ...[
-            const SizedBox(width: 24),
-          ],
-          Text('${value.toStringAsFixed(2)}×'),
-        ],
-      ),
-    );
-  }
-
-  Widget _speedIndicator(double current, ColorScheme cs, TextTheme text) {
-    if ((current - 1.0).abs() < 0.001) {
-      return Icon(Icons.speed_rounded, color: cs.onSurfaceVariant, size: 24);
-    }
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: cs.primaryContainer,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: cs.primary.withOpacity(0.3), width: 1.5),
-      ),
-      child: Text(
-        '${current.toStringAsFixed(2)}×',
-        style: text.labelLarge?.copyWith(
-          color: cs.onPrimaryContainer,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.3,
-        ),
-      ),
-    );
-  }
-
-  void _showCoverSizeSheet(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    showModalBottomSheet(
-      context: context,
-      useSafeArea: true,
-      builder: (ctx) {
-        return SafeArea(
-          child: ValueListenableBuilder<PlayerCoverSize>(
-            valueListenable: UiPrefs.playerCoverSize,
-            builder: (_, current, __) {
-              return ListView(
-                shrinkWrap: true,
-                children: [
-                  ListTile(
-                    title: const Text('Cover size'),
-                    subtitle: const Text(
-                      'Adjust the book cover size in the full player',
-                    ),
-                  ),
-                  ...PlayerCoverSize.values.map((size) {
-                    final label = switch (size) {
-                      PlayerCoverSize.small => 'Small',
-                      PlayerCoverSize.medium => 'Medium',
-                      PlayerCoverSize.large => 'Large',
-                      PlayerCoverSize.extraLarge => 'Extra large',
-                    };
-                    return RadioListTile<PlayerCoverSize>(
-                      value: size,
-                      groupValue: current,
-                      activeColor: cs.primary,
-                      title: Text(label),
-                      onChanged: (sel) {
-                        if (sel != null) {
-                          UiPrefs.setPlayerCoverSize(sel);
-                          Navigator.of(ctx).pop();
-                        }
-                      },
-                    );
-                  }),
-                ],
-              );
-            },
-          ),
-        );
-      },
-    );
-  }
-
   _CoverDims _coverDimensionsForSize(
     BuildContext context,
     PlayerCoverSize size, {
@@ -1053,42 +957,6 @@ class _FullPlayerPageState extends State<FullPlayerPage>
     );
   }
 
-  Widget _buildChapterSummaryRow({
-    required TextTheme text,
-    required ColorScheme cs,
-    required ChapterProgressMetrics metrics,
-  }) {
-    final duration = metrics.duration;
-    final elapsed = metrics.elapsed;
-
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: Text(
-            _chapterDescriptor(metrics),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            softWrap: false,
-            style: text.labelLarge?.copyWith(
-              color: cs.onSurfaceVariant,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Text(
-          '${_fmt(elapsed)} / ${_fmt(duration)}',
-          style: text.labelLarge?.copyWith(
-            color: cs.onSurfaceVariant,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _buildBookDetailStyleChapterTimeline({
     required TextTheme text,
     required ColorScheme cs,
@@ -1145,40 +1013,6 @@ class _FullPlayerPageState extends State<FullPlayerPage>
             ),
           ),
         ],
-      ],
-    );
-  }
-
-  Widget _buildBookSummaryRow({
-    required TextTheme text,
-    required ColorScheme cs,
-    required Duration position,
-    required Duration total,
-  }) {
-    final max = total.inMilliseconds.toDouble();
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: Text(
-            'Full book progress',
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: text.labelLarge?.copyWith(
-              color: cs.onSurfaceVariant,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Text(
-          '${_fmt(position)} / ${_fmt(total)}',
-          style: text.labelLarge?.copyWith(
-            color: cs.onSurfaceVariant,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
       ],
     );
   }
@@ -2148,7 +1982,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
             await playback.seekGlobal(unfinishChoice, reportNow: true);
 
             // Resume playback if it was playing before
-            if (wasPlaying) {
+            if (wasPlaying && mounted) {
               // Temporarily disable sync to avoid overriding our preserved position
               await playback.resume(skipSync: true, context: context);
               // Resumed playback at saved position
@@ -2252,6 +2086,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
           ),
     );
     if (entry == null) return;
+    if (!mounted) return;
     final confirmed = await _confirmPositionJump(
       context,
       entry.chapterTitle ?? np.title,
@@ -2377,6 +2212,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
             : playback.player.position;
     final positionText = _formatDuration(currentPosition);
 
+    if (!mounted) return null;
     final confirmed = await showDialog<bool>(
       context: context,
       builder:
@@ -2446,6 +2282,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
     );
     if (confirmed != true) return null;
 
+    if (!mounted) return null;
     // Second choice: resume or restart
     final choice = await showDialog<String>(
       context: context,
@@ -4094,41 +3931,6 @@ class _GlassPanel extends StatelessWidget {
   }
 }
 
-class _EmbeddedSectionPanel extends StatelessWidget {
-  const _EmbeddedSectionPanel({
-    required this.child,
-    this.padding = const EdgeInsets.all(16),
-    this.borderRadius = 24,
-  });
-
-  final Widget child;
-  final EdgeInsetsGeometry padding;
-  final double borderRadius;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Color.alphaBlend(
-          cs.surface.withOpacity(isDark ? 0.18 : 0.08),
-          cs.surfaceContainerHighest.withOpacity(isDark ? 0.44 : 0.22),
-        ),
-        borderRadius: BorderRadius.circular(borderRadius),
-        border: Border.all(
-          color: cs.outlineVariant.withOpacity(isDark ? 0.22 : 0.12),
-        ),
-      ),
-      child: Padding(
-        padding: padding,
-        child: child,
-      ),
-    );
-  }
-}
-
 class _InfoPill extends StatelessWidget {
   const _InfoPill({
     required this.icon,
@@ -4429,49 +4231,6 @@ class _SpeedQuickAction extends StatelessWidget {
   }
 }
 
-class _SpeedIcon extends StatelessWidget {
-  const _SpeedIcon({
-    required this.value,
-    required this.color,
-    required this.accentColor,
-    required this.highlight,
-  });
-
-  final double value;
-  final Color color;
-  final Color accentColor;
-  final bool highlight;
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        Icon(Icons.speed_rounded, size: 28, color: color),
-        if (highlight)
-          Positioned(
-            right: -8,
-            bottom: -6,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: accentColor,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                '${value.toStringAsFixed(2)}×',
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: Theme.of(context).colorScheme.onPrimary,
-                ),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-}
-
 class _ChaptersDownloadButton extends StatefulWidget {
   const _ChaptersDownloadButton({
     required this.libraryItemId,
@@ -4551,6 +4310,7 @@ class _ChaptersDownloadButtonState extends State<_ChaptersDownloadButton> {
       bool proceed = true;
       bool cancelOthers = false;
       if (requireCancelOthers) {
+        if (!mounted) return;
         final ans = await showDialog<bool>(
           context: context,
           builder:

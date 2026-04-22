@@ -1,9 +1,7 @@
 // lib/core/download_storage.dart
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:background_downloader/background_downloader.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -70,7 +68,7 @@ class DownloadStorage {
             if (entity is File) {
               final target = File('${newBase.path}/${entity.uri.pathSegments.last}');
               await target.create(recursive: true);
-              await target.writeAsBytes(await entity.readAsBytes());
+              await entity.openRead().pipe(target.openWrite());
             } else if (entity is Directory) {
               final targetDir = Directory('${newBase.path}/${entity.uri.pathSegments.last}');
               await _copyDirectory(entity, targetDir);
@@ -108,7 +106,7 @@ class DownloadStorage {
       } else if (entity is File) {
         final newFile = File('${dst.path}/${entity.uri.pathSegments.last}');
         await newFile.create(recursive: true);
-        await newFile.writeAsBytes(await entity.readAsBytes());
+        await entity.openRead().pipe(newFile.openWrite());
       }
     }
   }
@@ -152,15 +150,13 @@ class DownloadStorage {
     return '$base/lib_$libId';
   }
 
-  /// Request runtime storage permissions when needed (Android pre-33 mostly).
+  /// Downloads land in the app's private documents directory, which requires
+  /// no runtime permission on Android. On Android 12 and below, legacy storage
+  /// requests were sometimes needed for external paths — but scoped storage on
+  /// 13+ deprecated Permission.storage (denied on 14+ for most paths anyway).
+  /// Kept as a no-op so existing callers still compile and do no harm.
   static Future<void> requestStoragePermissions() async {
-    if (!Platform.isAndroid) return;
-    try {
-      final status = await Permission.storage.status;
-      if (!status.isGranted) {
-        await Permission.storage.request();
-      }
-    } catch (_) {}
+    // No-op: app-private documents directory needs no runtime permission.
   }
 
   /// Lists item IDs that have at least one local file.

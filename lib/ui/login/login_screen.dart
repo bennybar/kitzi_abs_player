@@ -128,6 +128,7 @@ class _LoginScreenState extends State<LoginScreen> {
         await Future.delayed(const Duration(milliseconds: 300));
       } catch (_) {}
 
+      if (!mounted) return;
       final services = ServicesScope.of(context).services;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(

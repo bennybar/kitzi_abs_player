@@ -127,26 +127,29 @@ class DownloadsRepository {
     // Load persistent blocked items (ensures hard-stop even across restarts)
     await _loadBlockedItemsFromPrefs();
 
-    // Do not auto-resume pending downloads on startup; user can resume explicitly from UI
-    // Additionally, cancel any persisted tasks from previous sessions to avoid battery/storage drain
+    // Reconcile persisted task records from previous sessions.
+    // Previously we cancelled+deleted every record on cold start, which also
+    // wiped partially-complete downloads the user had queued. background_downloader
+    // is designed to persist state across restarts, so only prune terminal records
+    // here (failed/canceled). Leave enqueued/running alone so the plugin can
+    // resume or the UI can surface them; complete records are also kept.
     try {
       final all = await _getAllRecordsCached(forceRefresh: true);
-      final ids = all.map((r) => r.taskId).toList();
-      if (ids.isNotEmpty) {
-        await FileDownloader().cancelTasksWithIds(ids);
-      }
-      // Batch deletions with delays
-      for (final r in all) {
-        try { 
+      final terminal = all
+          .where((r) => r.status == TaskStatus.failed || r.status == TaskStatus.canceled)
+          .toList();
+      for (final r in terminal) {
+        try {
           await FileDownloader().database.deleteRecordWithId(r.taskId);
-          if (all.length > 1) {
+          if (terminal.length > 1) {
             await Future.delayed(const Duration(milliseconds: 10));
           }
         } catch (_) {}
       }
-      // Invalidate cache after bulk deletion
-      _cachedAllRecords = null;
-      _cacheTimestamp = null;
+      if (terminal.isNotEmpty) {
+        _cachedAllRecords = null;
+        _cacheTimestamp = null;
+      }
     } catch (_) {}
 
     // Ensure global listener is active so chaining continues even when UI is closed
@@ -496,21 +499,38 @@ class DownloadsRepository {
   String _downloadUrlFor(String libraryItemId, String fileId, {String? episodeId}) {
     final base = _auth.api.baseUrl ?? '';
     // Use singular 'file' segment as commonly used by ABS; adjust if server expects 'files'
-    return '$base/api/items/$libraryItemId/file/$fileId/download';
+    final encodedItem = Uri.encodeComponent(libraryItemId);
+    final encodedFile = Uri.encodeComponent(fileId);
+    return '$base/api/items/$encodedItem/file/$encodedFile/download';
   }
 
   /// Start (or get) an aggregated progress stream for a specific book.
-  /// Uses a quick, local-only progress snapshot on listen to avoid hitting
-  /// the server (which can trigger book upserts).
-  Stream<ItemProgress> watchItemProgress(String libraryItemId) {
+  /// Every new listener receives a synthesised initial snapshot, then follows
+  /// the shared broadcast controller for live updates. When the last listener
+  /// cancels, the controller is closed and removed to prevent leaks.
+  Stream<ItemProgress> watchItemProgress(String libraryItemId) async* {
     final ctrl = _itemCtrls.putIfAbsent(
       libraryItemId,
-      () => StreamController<ItemProgress>.broadcast(onListen: () async {
-        final snap = await _computeItemProgressQuick(libraryItemId);
-        (_itemCtrls[libraryItemId]!).add(snap);
-      }),
+      () => StreamController<ItemProgress>.broadcast(
+        onCancel: () {
+          // Last listener left; clean up so long-running sessions don't leak.
+          final c = _itemCtrls.remove(libraryItemId);
+          c?.close();
+        },
+      ),
     );
+    _ensureDemuxListener();
+    // Per-listener initial snapshot (broadcast onListen only fires for the
+    // first listener, so we yield it here to avoid `.first` hanging).
+    try {
+      yield await _computeItemProgressQuick(libraryItemId);
+    } catch (_) {
+      // fall through — listener will still receive live updates
+    }
+    yield* ctrl.stream;
+  }
 
+  void _ensureDemuxListener() {
     // Demux plugin updates -> per-item controllers
     _demuxSub ??= progressStream().listen((u) async {
       final meta = u.task.metaData ?? '';
@@ -555,8 +575,6 @@ class DownloadsRepository {
         if (c != null && !c.isClosed) c.add(snap);
       }
     });
-
-    return ctrl.stream;
   }
 
   /// Quick, local-only snapshot of progress for a library item (no network).
@@ -691,6 +709,9 @@ class DownloadsRepository {
     _lastRunningProgress.remove(libraryItemId);
     _lastItemUpdate.remove(libraryItemId);
     _lastUpdateAt.remove(libraryItemId);
+    // Prune per-item caches so they don't accumulate across a session
+    _itemTaskIds.remove(libraryItemId);
+    _nextAllowedSchedule.remove(libraryItemId);
     // Brief global halt
     _globalHaltUntil = DateTime.now().add(const Duration(milliseconds: 1500));
     // Remove any queued entries for this item
@@ -758,13 +779,10 @@ class DownloadsRepository {
         }
       } catch (_) {}
 
-      // Remove entire item directory (all downloaded tracks) on cancel per requirement
-      try {
-        final dir = await _itemDir(libraryItemId);
-        if (await dir.exists()) {
-          await dir.delete(recursive: true);
-        }
-      } catch (_) {}
+      // NOTE: do NOT delete the entire item directory on cancel — already-
+      // completed tracks are still valid and let the user resume later. The
+      // in-flight partial file + any .part/.tmp leftovers are removed above.
+      // To fully remove the book's downloads, use deleteLocal() instead.
     } catch (_) {}
     
     // Small debounce to allow plugin to settle
@@ -847,6 +865,10 @@ class DownloadsRepository {
     _lastRunningProgress.remove(libraryItemId);
     _lastItemUpdate.remove(libraryItemId);
     _lastUpdateAt.remove(libraryItemId);
+    _itemTaskIds.remove(libraryItemId);
+    _nextAllowedSchedule.remove(libraryItemId);
+    // Plan cache is keyed by item — drop it so a future re-download reloads fresh.
+    _downloadPlanByItem.remove(libraryItemId);
     _notifyItem(libraryItemId);
     
     // CRITICAL: If this was the playing item, switch back to streaming and restore position
@@ -1030,52 +1052,55 @@ class DownloadsRepository {
       final client = HttpClient();
       client.autoUncompress = false;
 
-      Future<int> probe(String url) async {
-        // Prefer HEAD; fall back to ranged GET
-        try {
-          final req = await client.openUrl('HEAD', Uri.parse(url));
-          if (access != null && access.isNotEmpty) req.headers.add('Authorization', 'Bearer $access');
-          final resp = await req.close();
-          final cl = resp.headers.value(HttpHeaders.contentLengthHeader);
-          if (cl != null) {
-            final n = int.tryParse(cl);
-            if (n != null && n > 0) return n;
-          }
-        } catch (_) {}
-        try {
-          final req = await client.openUrl('GET', Uri.parse(url));
-          if (access != null && access.isNotEmpty) req.headers.add('Authorization', 'Bearer $access');
-          req.headers.add('Range', 'bytes=0-0');
-          final resp = await req.close();
-          final cr = resp.headers.value('content-range'); // bytes 0-0/12345
-          if (cr != null && cr.contains('/')) {
-            final totalStr = cr.split('/').last.trim();
-            final n = int.tryParse(totalStr);
-            if (n != null && n > 0) return n;
-          }
-          final cl = resp.headers.value(HttpHeaders.contentLengthHeader);
-          if (cl != null) {
-            final n = int.tryParse(cl);
-            if (n != null && n > 0) return n;
-          }
-        } catch (_) {}
-        return 0;
-      }
-
-      // Limit concurrency
-      const int maxParallel = 8;
-      int idx = 0;
-      while (idx < plan.length) {
-        final batch = plan.skip(idx).take(maxParallel).toList();
-        final futures = batch.map((t) => probe(_downloadUrlFor(libraryItemId, t.fileId, episodeId: episodeId)));
-        final results = await Future.wait(futures);
-        for (final n in results) {
-          sum += n;
+      try {
+        Future<int> probe(String url) async {
+          // Prefer HEAD; fall back to ranged GET
+          try {
+            final req = await client.openUrl('HEAD', Uri.parse(url));
+            if (access != null && access.isNotEmpty) req.headers.add('Authorization', 'Bearer $access');
+            final resp = await req.close();
+            final cl = resp.headers.value(HttpHeaders.contentLengthHeader);
+            if (cl != null) {
+              final n = int.tryParse(cl);
+              if (n != null && n > 0) return n;
+            }
+          } catch (_) {}
+          try {
+            final req = await client.openUrl('GET', Uri.parse(url));
+            if (access != null && access.isNotEmpty) req.headers.add('Authorization', 'Bearer $access');
+            req.headers.add('Range', 'bytes=0-0');
+            final resp = await req.close();
+            final cr = resp.headers.value('content-range'); // bytes 0-0/12345
+            if (cr != null && cr.contains('/')) {
+              final totalStr = cr.split('/').last.trim();
+              final n = int.tryParse(totalStr);
+              if (n != null && n > 0) return n;
+            }
+            final cl = resp.headers.value(HttpHeaders.contentLengthHeader);
+            if (cl != null) {
+              final n = int.tryParse(cl);
+              if (n != null && n > 0) return n;
+            }
+          } catch (_) {}
+          return 0;
         }
-        idx += batch.length;
+
+        // Limit concurrency
+        const int maxParallel = 8;
+        int idx = 0;
+        while (idx < plan.length) {
+          final batch = plan.skip(idx).take(maxParallel).toList();
+          final futures = batch.map((t) => probe(_downloadUrlFor(libraryItemId, t.fileId, episodeId: episodeId)));
+          final results = await Future.wait(futures);
+          for (final n in results) {
+            sum += n;
+          }
+          idx += batch.length;
+        }
+        return sum > 0 ? sum : null;
+      } finally {
+        try { client.close(force: true); } catch (_) {}
       }
-      try { client.close(force: true); } catch (_) {}
-      return sum > 0 ? sum : null;
     } catch (_) {
       return null;
     }
@@ -1196,12 +1221,14 @@ class DownloadsRepository {
     final dir = await _itemDir(libraryItemId);
     if (!await dir.exists()) return false;
     try {
-      final files = await dir
-          .list()
-          .where((e) => e is File)
-          .cast<File>()
-          .toList();
-      return files.isNotEmpty;
+      await for (final e in dir.list(followLinks: false)) {
+        if (e is File) {
+          try {
+            if (await e.length() > 0) return true;
+          } catch (_) {}
+        }
+      }
+      return false;
     } catch (_) {
       return false;
     }
@@ -1218,7 +1245,8 @@ class DownloadsRepository {
   List<TaskRecord>? _cachedAllRecords;
   DateTime? _cacheTimestamp;
   static const _cacheDuration = Duration(seconds: 3);
-  bool _isQuerying = false;
+  // Coalesce concurrent callers onto a single in-flight query.
+  Future<List<TaskRecord>>? _pendingAllRecordsQuery;
 
   Future<List<TaskRecord>> _recordsForItem(String libraryItemId) async {
     final all = await _getAllRecordsCached();
@@ -1246,35 +1274,32 @@ class DownloadsRepository {
     return [];
   }
 
-  /// Get all records with caching to reduce database locking
-  Future<List<TaskRecord>> _getAllRecordsCached({bool forceRefresh = false}) async {
+  /// Get all records with caching to reduce database locking.
+  /// Concurrent callers share the same in-flight Future so the DB is only hit once.
+  Future<List<TaskRecord>> _getAllRecordsCached({bool forceRefresh = false}) {
     final now = DateTime.now();
-    if (!forceRefresh && 
-        _cachedAllRecords != null && 
-        _cacheTimestamp != null && 
-        now.difference(_cacheTimestamp!) < _cacheDuration &&
-        !_isQuerying) {
-      return _cachedAllRecords!;
+    if (!forceRefresh &&
+        _cachedAllRecords != null &&
+        _cacheTimestamp != null &&
+        now.difference(_cacheTimestamp!) < _cacheDuration) {
+      return Future.value(_cachedAllRecords!);
     }
 
-    // Prevent concurrent queries
-    if (_isQuerying) {
-      // Wait a bit and retry with cache
-      await Future.delayed(const Duration(milliseconds: 100));
-      if (_cachedAllRecords != null) {
-        return _cachedAllRecords!;
+    final pending = _pendingAllRecordsQuery;
+    if (pending != null) return pending;
+
+    final future = () async {
+      try {
+        final all = await _queryAllRecordsWithRetry();
+        _cachedAllRecords = all;
+        _cacheTimestamp = DateTime.now();
+        return all;
+      } finally {
+        _pendingAllRecordsQuery = null;
       }
-    }
-
-    _isQuerying = true;
-    try {
-      final all = await _queryAllRecordsWithRetry();
-      _cachedAllRecords = all;
-      _cacheTimestamp = now;
-      return all;
-    } finally {
-      _isQuerying = false;
-    }
+    }();
+    _pendingAllRecordsQuery = future;
+    return future;
   }
 
   Future<void> _persistBlockedItems() async {
@@ -1312,7 +1337,10 @@ class DownloadsRepository {
     if (m.contains('opus')) return 'opus';
     if (m.contains('ogg')) return 'ogg';
     if (m.contains('webm')) return 'webm';
-    return 'bin';
+    if (m.contains('wav')) return 'wav';
+    // Unknown/absent mime: assume mp3, the most common audiobook container.
+    // Writing .bin breaks players that pick decoder by extension.
+    return 'mp3';
   }
 
   Future<Directory> _itemDir(String libraryItemId) async =>
@@ -1458,6 +1486,9 @@ class DownloadsRepository {
         _globalDownloadQueue.removeWhere((entry) => entry.key == libraryItemId);
         _itemsInGlobalQueue.remove(libraryItemId);
         _d('Book $libraryItemId is complete, removed from global queue');
+        // Stop the periodic progress-notification timer so it doesn't tick forever
+        _stopProgressNotifications(libraryItemId);
+        try { await NotificationService.instance.hideDownloadNotification(); } catch (_) {}
         _notifyItem(libraryItemId);
         return;
       }
