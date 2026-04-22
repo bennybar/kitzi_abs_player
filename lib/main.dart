@@ -6,6 +6,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
+import 'package:flutter_displaymode/flutter_displaymode.dart';
 
 import 'core/auth_repository.dart';
 import 'package:flutter/foundation.dart';
@@ -62,6 +63,16 @@ class ServicesScope extends InheritedWidget {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Request the highest supported refresh rate (Android only; iOS ProMotion is
+  // handled by CADisableMinimumFrameDurationOnPhone in Info.plist).
+  if (Platform.isAndroid) {
+    try {
+      await FlutterDisplayMode.setHighRefreshRate();
+    } catch (_) {
+      // Device doesn't support mode switching; keep default.
+    }
+  }
 
   // Initialize Firebase
   try {

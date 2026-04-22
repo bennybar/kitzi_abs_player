@@ -747,36 +747,52 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
     });
   }
 
-  /// Smart image preloading based on scroll position
+  /// Smart image preloading based on scroll position.
+  /// Throttled to avoid running on every scroll frame; also skips work when
+  /// the center index hasn't changed.
+  int _lastPreloadIndex = -1;
+  int _lastPreloadStampMs = 0;
   void _onScrollChanged() {
     if (!_scrollCtrl.hasClients || _books.isEmpty) return;
 
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    if (nowMs - _lastPreloadStampMs < 120) return; // ~8 Hz
+
     final position = _scrollCtrl.position;
-    final itemHeight = 104.0; // Approximate item height
+    const itemHeight = 104.0; // Approximate item height
     final visibleStart = (position.pixels / itemHeight).floor();
     final visibleEnd =
         ((position.pixels + position.viewportDimension) / itemHeight).ceil();
 
     final currentIndex = (visibleStart + visibleEnd) ~/ 2;
-    if (currentIndex >= 0 && currentIndex < _books.length) {
-      final urls = _books.map((b) => b.coverUrl).toList();
+    if (currentIndex < 0 || currentIndex >= _books.length) return;
+    if (currentIndex == _lastPreloadIndex) return;
+    _lastPreloadIndex = currentIndex;
+    _lastPreloadStampMs = nowMs;
 
-      // Determine scroll direction
-      String? direction;
-      if (position.pixels > (position.maxScrollExtent * 0.8)) {
-        direction = 'forward';
-      } else if (position.pixels < (position.maxScrollExtent * 0.2)) {
-        direction = 'reverse';
-      }
+    // Only build the small window of URLs needed for preload (±a few items),
+    // avoiding an O(N) allocation per scroll tick.
+    const behind = 2;
+    const ahead = 5;
+    final start = (currentIndex - behind).clamp(0, _books.length - 1);
+    final end = (currentIndex + ahead).clamp(0, _books.length - 1);
+    final windowUrls = <String>[
+      for (int i = start; i <= end; i++) _books[i].coverUrl,
+    ];
 
-      // Preload images around current position
-      ImageCacheManager.preloadAroundIndex(
-        urls,
-        currentIndex,
-        context,
-        scrollDirection: direction,
-      );
+    String? direction;
+    if (position.pixels > (position.maxScrollExtent * 0.8)) {
+      direction = 'forward';
+    } else if (position.pixels < (position.maxScrollExtent * 0.2)) {
+      direction = 'reverse';
     }
+
+    ImageCacheManager.preloadAroundIndex(
+      windowUrls,
+      currentIndex - start,
+      context,
+      scrollDirection: direction,
+    );
   }
 
   void _openDetails(Book b) {
@@ -3026,12 +3042,24 @@ class _BookListTile extends StatefulWidget {
 
 class _BookListTileState extends State<_BookListTile> {
   Future<double>? _progressFuture;
+  Future<bool>? _completedFuture;
 
   @override
   void initState() {
     super.initState();
-    // Fetch progress once when tile is created
+    // Fetch progress/completion once when tile is created; reuse across rebuilds
+    // so scrolling doesn't re-issue network calls.
     _progressFuture = _fetchProgress();
+    _completedFuture = widget.checkIfCompleted(widget.book.id);
+  }
+
+  @override
+  void didUpdateWidget(covariant _BookListTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.book.id != widget.book.id) {
+      _progressFuture = _fetchProgress();
+      _completedFuture = widget.checkIfCompleted(widget.book.id);
+    }
   }
 
   Future<double> _fetchProgress() async {
@@ -3111,7 +3139,7 @@ class _BookListTileState extends State<_BookListTile> {
                       right: 6,
                       bottom: 6,
                       child: FutureBuilder<bool>(
-                        future: widget.checkIfCompleted(widget.book.id),
+                        future: _completedFuture,
                         builder: (context, completionSnapshot) {
                           // Don't show progress for completed books
                           if (completionSnapshot.data == true) {
