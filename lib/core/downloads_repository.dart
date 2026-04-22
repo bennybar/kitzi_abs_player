@@ -52,6 +52,27 @@ class DownloadsRepository {
   static const int _maxLogEntries = 50; // Keep last 50 cleanup log entries
 
   static const _wifiOnlyKey = 'downloads_wifi_only';
+  static const _autoDeleteOnFinishKey = 'downloads_auto_delete_on_finish';
+
+  /// Whether to delete the local download when a book is marked as finished.
+  static Future<bool> isAutoDeleteOnFinishEnabled() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getBool(_autoDeleteOnFinishKey) ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<void> setAutoDeleteOnFinishEnabled(bool enabled) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_autoDeleteOnFinishKey, enabled);
+    } catch (_) {}
+  }
+
+  StreamSubscription<Map<String, bool>>? _autoDeleteSub;
+  final Set<String> _handledAutoDelete = <String>{};
 
   void _d(String m) {
     // Logging removed for cleaner console output
@@ -154,7 +175,27 @@ class DownloadsRepository {
 
     // Ensure global listener is active so chaining continues even when UI is closed
     _ensureChainListener();
-    
+
+    // Listen for completion-status changes. When a book flips to finished and
+    // the auto-delete pref is on, remove its local download.
+    _autoDeleteSub ??= _playback.completionStatusStream.listen((statusMap) async {
+      try {
+        if (!await isAutoDeleteOnFinishEnabled()) return;
+        for (final entry in statusMap.entries) {
+          if (!entry.value) continue;
+          final id = entry.key;
+          if (_handledAutoDelete.contains(id)) continue;
+          if (!await hasLocalDownloads(id)) continue;
+          _handledAutoDelete.add(id);
+          try {
+            await deleteLocal(id);
+          } catch (_) {
+            _handledAutoDelete.remove(id);
+          }
+        }
+      } catch (_) {}
+    });
+
     // Check for orphaned downloads (daily or on first run after 24h)
     unawaited(_checkAndCleanupOrphanedDownloads());
   }

@@ -35,6 +35,14 @@ enum LibraryView { grid, list }
 
 enum SortMode { nameAsc, addedDesc }
 
+enum LibraryFilter { all, notStarted, inProgress, finished }
+
+class _ProgressEntry {
+  const _ProgressEntry({required this.isFinished, required this.progress});
+  final bool isFinished;
+  final double progress; // 0..1
+}
+
 class BooksPage extends StatefulWidget {
   const BooksPage({super.key});
 
@@ -78,11 +86,15 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
 
   LibraryView _view = LibraryView.list;
   SortMode _sort = SortMode.addedDesc;
+  LibraryFilter _filter = LibraryFilter.all;
   String _query = '';
   bool _isEbookLibrary = false;
 
+  Map<String, _ProgressEntry> _progressByBookId = const {};
+
   static const _viewKey = 'library_view_pref';
   static const _sortKey = 'library_sort_pref';
+  static const _filterKey = 'library_filter_pref';
   static const _searchKey = 'library_search_pref';
 
   final _searchCtrl = TextEditingController();
@@ -113,6 +125,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       // Load recent first so the section appears immediately
       _loadRecentBooks();
       _loadHomeStats();
+      _loadProgressMap();
       // Then refresh library: DB first, server in background
       _refresh(initial: true);
       _setupAutoRefresh();
@@ -222,6 +235,13 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
 
     if (v == 'list') _view = LibraryView.list;
     if (s == 'nameAsc') _sort = SortMode.nameAsc;
+    final fRaw = prefs.getString(_filterKey);
+    switch (fRaw) {
+      case 'notStarted': _filter = LibraryFilter.notStarted; break;
+      case 'inProgress': _filter = LibraryFilter.inProgress; break;
+      case 'finished':   _filter = LibraryFilter.finished;   break;
+      default:           _filter = LibraryFilter.all;
+    }
     // Search query is not restored - always starts empty
     bool isEbook = (mt != null && mt.contains('ebook'));
     if (!isEbook && (mt == null || mt.isEmpty)) {
@@ -390,6 +410,56 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
     );
   }
 
+  Future<void> _saveFilterPref(LibraryFilter f) async {
+    final prefs = await SharedPreferences.getInstance();
+    String s;
+    switch (f) {
+      case LibraryFilter.notStarted: s = 'notStarted'; break;
+      case LibraryFilter.inProgress: s = 'inProgress'; break;
+      case LibraryFilter.finished:   s = 'finished';   break;
+      case LibraryFilter.all:        s = 'all';        break;
+    }
+    await prefs.setString(_filterKey, s);
+  }
+
+  Future<void> _loadProgressMap() async {
+    try {
+      final auth = await AuthRepository.ensure();
+      final api = auth.api;
+      final resp = await api.request('GET', '/api/me', auth: true);
+      if (resp.statusCode != 200) return;
+      final data = jsonDecode(resp.body);
+      if (data is! Map) return;
+      final list = data['mediaProgress'];
+      if (list is! List) return;
+      final map = <String, _ProgressEntry>{};
+      for (final e in list) {
+        if (e is! Map) continue;
+        final m = e.cast<String, dynamic>();
+        final id = (m['libraryItemId'] ?? m['id'] ?? '').toString();
+        if (id.isEmpty) continue;
+        final isFinished = m['isFinished'] == true;
+        double ratio = 0.0;
+        final pr = m['progress'];
+        if (pr is num) ratio = pr.toDouble();
+        if (ratio <= 0) {
+          final ct = m['currentTime'];
+          final du = m['duration'];
+          if (ct is num && du is num && du > 0) {
+            ratio = (ct.toDouble() / du.toDouble());
+          }
+        }
+        if (ratio.isNaN || ratio.isInfinite) ratio = 0.0;
+        ratio = ratio.clamp(0.0, 1.0).toDouble();
+        map[id] = _ProgressEntry(isFinished: isFinished, progress: ratio);
+      }
+      if (!mounted) return;
+      setState(() => _progressByBookId = map);
+    } catch (_) {
+      // offline: keep existing map
+    }
+  }
+
   Future<void> _saveSearchPref(String q) async {
     final prefs = await SharedPreferences.getInstance();
     if (q.isEmpty) {
@@ -422,6 +492,8 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
         return;
       }
       debugPrint('[REFRESH] Online, proceeding with server sync');
+
+      _unawaited(_loadProgressMap());
 
       final repo = await _repoFut;
       final q = _query.trim();
@@ -841,6 +913,25 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
             )
             .toList();
 
+    // Progress filter
+    if (_filter != LibraryFilter.all) {
+      list = list.where((b) {
+        final e = _progressByBookId[b.id];
+        final isFinished = e?.isFinished ?? false;
+        final progress = e?.progress ?? 0.0;
+        switch (_filter) {
+          case LibraryFilter.finished:
+            return isFinished;
+          case LibraryFilter.notStarted:
+            return !isFinished && progress <= 0.0;
+          case LibraryFilter.inProgress:
+            return !isFinished && progress > 0.0;
+          case LibraryFilter.all:
+            return true;
+        }
+      }).toList();
+    }
+
     final sortMode = _forceAlphaSort ? SortMode.nameAsc : _sort;
     switch (sortMode) {
       case SortMode.nameAsc:
@@ -1173,6 +1264,54 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                                   );
                                 }
                               },
+                            ),
+                            PopupMenuButton<LibraryFilter>(
+                              tooltip: 'Filter',
+                              initialValue: _filter,
+                              onSelected: (f) {
+                                setState(() => _filter = f);
+                                _saveFilterPref(f);
+                              },
+                              itemBuilder: (context) => [
+                                PopupMenuItem(
+                                  value: LibraryFilter.all,
+                                  child: ListTile(
+                                    leading: Icon(Icons.all_inbox_rounded, color: cs.primary),
+                                    title: const Text('All'),
+                                    contentPadding: EdgeInsets.zero,
+                                  ),
+                                ),
+                                PopupMenuItem(
+                                  value: LibraryFilter.inProgress,
+                                  child: ListTile(
+                                    leading: Icon(Icons.play_circle_outline_rounded, color: cs.primary),
+                                    title: const Text('In progress'),
+                                    contentPadding: EdgeInsets.zero,
+                                  ),
+                                ),
+                                PopupMenuItem(
+                                  value: LibraryFilter.notStarted,
+                                  child: ListTile(
+                                    leading: Icon(Icons.radio_button_unchecked_rounded, color: cs.primary),
+                                    title: const Text('Not started'),
+                                    contentPadding: EdgeInsets.zero,
+                                  ),
+                                ),
+                                PopupMenuItem(
+                                  value: LibraryFilter.finished,
+                                  child: ListTile(
+                                    leading: Icon(Icons.check_circle_rounded, color: cs.primary),
+                                    title: const Text('Finished'),
+                                    contentPadding: EdgeInsets.zero,
+                                  ),
+                                ),
+                              ],
+                              child: _ToolbarSurfaceButton(
+                                tooltip: 'Filter',
+                                icon: Symbols.filter_list,
+                                onTap: null,
+                                emphasized: _filter != LibraryFilter.all,
+                              ),
                             ),
                             PopupMenuButton<SortMode>(
                               tooltip: 'Sort',

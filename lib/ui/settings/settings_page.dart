@@ -32,6 +32,7 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   bool? _wifiOnly;
+  bool? _autoDeleteOnFinish;
   bool? _syncProgressBeforePlay;
   bool? _pauseCancelsSleepTimer;
   bool? _dualProgressEnabled;
@@ -335,6 +336,8 @@ class _SettingsPageState extends State<SettingsPage> {
       if (!mounted) return;
       setState(() {
         _wifiOnly = prefs.getBool('downloads_wifi_only') ?? false;
+        _autoDeleteOnFinish =
+            prefs.getBool('downloads_auto_delete_on_finish') ?? false;
         _syncProgressBeforePlay =
             prefs.getBool('sync_progress_before_play') ?? true;
         _pauseCancelsSleepTimer =
@@ -1440,6 +1443,20 @@ class _SettingsPageState extends State<SettingsPage> {
                 if (!mounted) return;
                 setState(() {
                   _wifiOnly = v;
+                });
+              },
+            ),
+            SwitchListTile(
+              title: const Text('Auto-delete on finish'),
+              subtitle: const Text(
+                'Remove the local download when a book is marked as finished',
+              ),
+              value: _autoDeleteOnFinish ?? false,
+              onChanged: (v) async {
+                await DownloadsRepository.setAutoDeleteOnFinishEnabled(v);
+                if (!mounted) return;
+                setState(() {
+                  _autoDeleteOnFinish = v;
                 });
               },
             ),

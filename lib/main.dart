@@ -28,11 +28,13 @@ class AppServices {
   final AuthRepository auth;
   final PlaybackRepository playback;
   final DownloadsRepository downloads;
+  final BooksRepository books;
   final ThemeService theme;
   AppServices({
     required this.auth,
     required this.playback,
     required this.downloads,
+    required this.books,
     required this.theme,
   });
 }
@@ -130,6 +132,7 @@ Future<void> main() async {
     auth: auth,
     playback: playback,
     downloads: downloads,
+    books: booksRepo,
     theme: theme,
   );
 

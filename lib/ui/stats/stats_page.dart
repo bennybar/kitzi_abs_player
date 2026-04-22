@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:convert';
 import '../../main.dart'; // ServicesScope
 import '../../core/detailed_play_history_service.dart';
+import 'year_wrapped_page.dart';
 
 class StatsPage extends StatefulWidget {
   const StatsPage({super.key});
@@ -108,6 +109,15 @@ class _StatsPageState extends State<StatsPage> {
       appBar: AppBar(
         title: const Text('Your Stats'),
         actions: [
+          IconButton(
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const YearWrappedPage()),
+              );
+            },
+            icon: const Icon(Icons.celebration_outlined),
+            tooltip: 'Year in Review',
+          ),
           IconButton(
             onPressed: _loadStats,
             icon: const Icon(Icons.refresh),
