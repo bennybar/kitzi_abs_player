@@ -746,26 +746,29 @@ class BooksRepository {
     int limit = 50,
     String sort = 'updatedAt:desc',
     String? query,
+    int? offset,
   }) async {
     // Check cache first
     _cleanExpiredCache();
-    final cacheKey = 'books_paged_${page}_${limit}_${sort}_${query ?? 'all'}';
+    final resolvedOffset = offset ?? ((page <= 1) ? 0 : (page - 1) * limit);
+    final cacheKey = 'books_paged_${resolvedOffset}_${limit}_${sort}_${query ?? 'all'}';
     final cached = _queryCache[cacheKey];
     final timestamp = _cacheTimestamps[cacheKey];
-    
-    if (cached != null && timestamp != null && 
+
+    if (cached != null && timestamp != null &&
         DateTime.now().difference(timestamp) < _cacheTTL) {
       _log('[BOOKS_CACHE] Cache hit for $cacheKey: ${cached.length} items');
       return cached;
     }
-    
+
     await _ensureDbForCurrentLib();
     final db = _db;
     if (db == null) return <Book>[];
     final baseUrl = _auth.api.baseUrl ?? '';
     final token = await _auth.api.accessToken();
 
-    final offset = (page <= 1) ? 0 : (page - 1) * limit;
+    // Use resolvedOffset below; keep local reference for readability.
+    final effectiveOffset = resolvedOffset;
     final whereParts = <String>[];
     final whereArgs = <Object?>[];
     if (query != null && query.trim().isNotEmpty) {
@@ -799,7 +802,7 @@ class BooksRepository {
       whereArgs: whereArgs,
       orderBy: orderBy,
       limit: limit,
-      offset: offset,
+      offset: effectiveOffset,
     );
     if (rows.isEmpty) {
       final emptyResult = <Book>[];
@@ -853,7 +856,7 @@ class BooksRepository {
     _queryCache[cacheKey] = books;
     _cacheTimestamps[cacheKey] = DateTime.now();
     
-    _log('[BOOKS_DB] listBooksFromDbPaged: page=$page limit=$limit sort=$sort query=$query -> ${books.length} items (cached)');
+    _log('[BOOKS_DB] listBooksFromDbPaged: page=$page limit=$limit offset=$effectiveOffset sort=$sort query=$query -> ${books.length} items (cached)');
     return books;
   }
 

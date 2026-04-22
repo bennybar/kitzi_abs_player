@@ -53,7 +53,6 @@ class BooksPage extends StatefulWidget {
 class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
   late final Future<BooksRepository> _repoFut;
   List<Book> _books = [];
-  int _currentPage = 1;
   bool _hasMore = true;
   bool _loadingMore = false;
   List<Book> _recentBooks = [];
@@ -62,6 +61,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
   bool _homeStatsLoading = false;
   int _todayListeningSeconds = 0;
   int _currentStreakDays = 0;
+  int? _libraryTotalItems;
   Timer? _timer;
   StreamSubscription<List<ConnectivityResult>>? _connSub;
   bool _isOnline = true;
@@ -126,6 +126,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       _loadRecentBooks();
       _loadHomeStats();
       _loadProgressMap();
+      _loadLibraryTotal();
       // Then refresh library: DB first, server in background
       _refresh(initial: true);
       _setupAutoRefresh();
@@ -545,6 +546,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       debugPrint('[REFRESH] After reload, have ${_books.length} books in list');
       if (!initial) _loadRecentBooks();
       _loadHomeStats();
+      _loadLibraryTotal();
       debugPrint('[REFRESH] Refresh complete');
     } catch (e, stackTrace) {
       debugPrint('[REFRESH] Error during refresh: $e');
@@ -603,7 +605,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       final q = _query.trim();
       final items = await repo.listBooksFromDbPaged(
         page: 1,
-        limit: 50,
+        limit: 20,
         query: q.isEmpty ? null : q,
       );
       debugPrint('[LOAD_FROM_CACHE] Loaded ${items.length} books from DB');
@@ -622,8 +624,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       setState(() {
         _books = items;
         _loading = false;
-        _hasMore = items.length >= 50;
-        _currentPage = 1;
+        _hasMore = items.length >= 20;
         _error = null;
       });
       debugPrint(
@@ -691,6 +692,20 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       });
     } catch (_) {
       // ignore; fallback already shown
+    }
+  }
+
+  Future<void> _loadLibraryTotal() async {
+    try {
+      final repo = await _repoFut;
+      final stats = await repo.getLibraryStats();
+      final total = stats['totalItems'];
+      if (!mounted) return;
+      if (total is num) {
+        setState(() => _libraryTotalItems = total.toInt());
+      }
+    } catch (_) {
+      // Keep previous value; count falls back to loaded list size.
     }
   }
 
@@ -1667,7 +1682,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                 Expanded(
                   child: _HomeStatCard(
                     title: 'Library',
-                    value: '${visible.length} titles',
+                    value: '${_libraryTotalItems ?? visible.length} titles',
                     subtitle: 'Freshest shelf on top',
                     icon: Icons.library_books_rounded,
                   ),
@@ -1947,16 +1962,18 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
     setState(() => _loadingMore = true);
     try {
       final repo = await _repoFut;
-      final nextPage = _currentPage + 1;
       final q = _query.trim();
+      // Ensure the server page covering the next offset is in DB.
+      final serverPage = (_books.length ~/ 50) + 1;
       await repo.ensureServerPageIntoDb(
-        page: nextPage,
+        page: serverPage,
         limit: 50,
         query: q.isEmpty ? null : q,
       );
       final page = await repo.listBooksFromDbPaged(
-        page: nextPage,
+        page: 1,
         limit: 50,
+        offset: _books.length,
         query: q.isEmpty ? null : q,
       );
       // Loaded page from database
@@ -1964,7 +1981,6 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       setState(() {
         // Use DB-mapped rows to keep sorting consistent
         _books.addAll(page);
-        _currentPage = nextPage;
         _hasMore = page.length >= 50;
       });
     } catch (_) {
