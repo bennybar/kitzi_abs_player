@@ -55,6 +55,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
   List<Book> _books = [];
   bool _hasMore = true;
   bool _loadingMore = false;
+  int _loadGen = 0;
   List<Book> _recentBooks = [];
   bool _loading = true;
   String? _error;
@@ -578,16 +579,20 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
     try {
       final repo = await _repoFut;
       final q = _query.trim();
+      // Preserve current scroll depth: reload at least as many items as the
+      // user has already loaded (floor of 20 for the initial state).
+      final reloadCount = _books.length < 20 ? 20 : _books.length;
       final fresh = await repo.listBooksFromDbPaged(
         page: 1,
-        limit: 50,
+        limit: reloadCount,
         query: q.isEmpty ? null : q,
       );
       if (!mounted) return;
       if (_bookListsMatch(_books, fresh)) return;
       setState(() {
         _books = fresh;
-        _hasMore = fresh.length >= 50;
+        // Assume more exists as long as we received a full reload.
+        _hasMore = fresh.length >= reloadCount;
       });
     } catch (_) {}
   }
@@ -749,16 +754,23 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
 
   /// Smart image preloading based on scroll position.
   /// Throttled to avoid running on every scroll frame; also skips work when
-  /// the center index hasn't changed.
+  /// the center index hasn't changed. Also fires lazy-load near the bottom.
   int _lastPreloadIndex = -1;
   int _lastPreloadStampMs = 0;
   void _onScrollChanged() {
     if (!_scrollCtrl.hasClients || _books.isEmpty) return;
 
+    final position = _scrollCtrl.position;
+
+    // Lazy-load trigger — absorb-style: fire when within ~800px of the bottom.
+    if (!_loadingMore &&
+        _hasMore &&
+        position.pixels >= position.maxScrollExtent - 800) {
+      _loadMore();
+    }
+
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     if (nowMs - _lastPreloadStampMs < 120) return; // ~8 Hz
-
-    final position = _scrollCtrl.position;
     const itemHeight = 104.0; // Approximate item height
     final visibleStart = (position.pixels / itemHeight).floor();
     final visibleEnd =
@@ -1824,16 +1836,6 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
         separatorBuilder: (_, __) => const SizedBox(height: 12),
         itemBuilder: (context, i) {
           final b = list[i];
-
-          // Trigger load more when approaching end
-          if (!_loadingMore && _hasMore && i >= list.length - 8) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted && !_loadingMore && _hasMore) {
-                _loadMore();
-              }
-            });
-          }
-
           return Dismissible(
             key: ValueKey(b.id),
             direction:
@@ -1975,34 +1977,39 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
 
   Future<void> _loadMore() async {
     if (_loadingMore || !_hasMore) return;
+    final gen = ++_loadGen;
+    final offsetAtStart = _books.length;
+    final queryAtStart = _query.trim();
     setState(() => _loadingMore = true);
     try {
       final repo = await _repoFut;
-      final q = _query.trim();
       // Ensure the server page covering the next offset is in DB.
-      final serverPage = (_books.length ~/ 50) + 1;
+      final serverPage = (offsetAtStart ~/ 50) + 1;
       await repo.ensureServerPageIntoDb(
         page: serverPage,
         limit: 50,
-        query: q.isEmpty ? null : q,
+        query: queryAtStart.isEmpty ? null : queryAtStart,
       );
+      if (!mounted || gen != _loadGen) return;
       final page = await repo.listBooksFromDbPaged(
         page: 1,
         limit: 50,
-        offset: _books.length,
-        query: q.isEmpty ? null : q,
+        offset: offsetAtStart,
+        query: queryAtStart.isEmpty ? null : queryAtStart,
       );
-      // Loaded page from database
-      if (!mounted) return;
+      if (!mounted || gen != _loadGen) return;
+      // Guard against the list having been replaced while we were fetching.
+      if (_books.length != offsetAtStart || _query.trim() != queryAtStart) {
+        return;
+      }
       setState(() {
-        // Use DB-mapped rows to keep sorting consistent
         _books.addAll(page);
         _hasMore = page.length >= 50;
       });
     } catch (_) {
       // ignore
     } finally {
-      if (mounted) setState(() => _loadingMore = false);
+      if (mounted && gen == _loadGen) setState(() => _loadingMore = false);
     }
   }
 
