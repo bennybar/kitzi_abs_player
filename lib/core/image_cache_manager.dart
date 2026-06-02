@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -213,7 +214,7 @@ class EnhancedCoverImage extends StatelessWidget {
       ),
       child: Center(
         child: Icon(
-          Icons.menu_book_outlined,
+          LucideIcons.bookOpen,
           color: cs.onSurfaceVariant,
           size: (width != null ? width! * 0.4 : 32).clamp(16, 64).toDouble(),
         ),
@@ -233,7 +234,7 @@ class EnhancedCoverImage extends StatelessWidget {
       ),
       child: Center(
         child: Icon(
-          Icons.broken_image_outlined,
+          LucideIcons.imageOff,
           color: cs.error,
           size: (width != null ? width! * 0.3 : 24).clamp(16, 48).toDouble(),
         ),

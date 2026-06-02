@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../core/playback_journal_service.dart';
 import '../../core/playback_repository.dart';
 
@@ -80,7 +81,7 @@ class PlayHistorySheet extends StatelessWidget {
                             ? entry.chapterTitle!
                             : 'Chapter ${entry.chapterIndex != null ? entry.chapterIndex! + 1 : index + 1}';
                         return ListTile(
-                          leading: const Icon(Icons.history_rounded),
+                          leading: const Icon(LucideIcons.history),
                           title: Text(title),
                           subtitle: Text(subtitle),
                           onTap: () => Navigator.of(context).pop(entry),
@@ -254,19 +255,19 @@ class _BookmarksSheetState extends State<BookmarksSheet> {
                             ? entry.chapterTitle!
                             : 'Chapter ${entry.chapterIndex != null ? entry.chapterIndex! + 1 : index + 1}';
                         return ListTile(
-                          leading: const Icon(Icons.bookmark_rounded),
+                          leading: const Icon(LucideIcons.bookmark),
                           title: Text(title),
                           subtitle: Text(subtitle),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               IconButton(
-                                icon: const Icon(Icons.play_arrow_rounded),
+                                icon: const Icon(LucideIcons.play),
                                 tooltip: 'Play from here',
                                 onPressed: () => _playFromBookmark(context, entry),
                               ),
                               IconButton(
-                                icon: const Icon(Icons.delete_outline_rounded),
+                                icon: const Icon(LucideIcons.trash2),
                                 tooltip: 'Remove bookmark',
                                 onPressed: () => _removeBookmark(context, entry),
                               ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key, this.onRetryCheck});
 
@@ -42,7 +43,7 @@ class _LoginPageState extends State<LoginPage> {
                           // Adjust the route name if different in your app.
                           Navigator.of(context).pushNamed('/settings');
                         },
-                        icon: const Icon(Icons.settings),
+                        icon: const Icon(LucideIcons.settings),
                         label: const Text('Open Settings'),
                       ),
                     ),
@@ -50,7 +51,7 @@ class _LoginPageState extends State<LoginPage> {
                     Expanded(
                       child: FilledButton.icon(
                         onPressed: widget.onRetryCheck,
-                        icon: const Icon(Icons.refresh),
+                        icon: const Icon(LucideIcons.refreshCw),
                         label: const Text('Retry'),
                       ),
                     ),

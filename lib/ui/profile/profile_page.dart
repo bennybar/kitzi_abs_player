@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'dart:convert';
 import '../../main.dart'; // ServicesScope
 import '../../core/books_repository.dart';
@@ -186,7 +187,7 @@ class _ProfilePageState extends State<ProfilePage> {
           child: Column(
             children: [
               Icon(
-                Icons.error_outline,
+                LucideIcons.alertCircle,
                 size: 48,
                 color: Theme.of(context).colorScheme.error,
               ),
@@ -212,7 +213,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   _listeningStats = null;
                   _loadProfileData();
                 },
-                icon: const Icon(Icons.refresh),
+                icon: const Icon(LucideIcons.refreshCw),
                 label: const Text('Retry'),
               ),
             ],
@@ -247,7 +248,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   radius: 32,
                   backgroundColor: Theme.of(context).colorScheme.primary,
                   child: Icon(
-                    Icons.person,
+                    LucideIcons.user,
                     size: 32,
                     color: Theme.of(context).colorScheme.onPrimary,
                   ),
@@ -354,7 +355,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   _listeningStats = null;
                   _loadProfileData();
                 },
-                icon: const Icon(Icons.refresh),
+                icon: const Icon(LucideIcons.refreshCw),
                 label: const Text('Refresh Profile'),
               ),
             ),
@@ -752,7 +753,7 @@ class _ProfilePageState extends State<ProfilePage> {
               _listeningStats = null;
               _loadProfileData();
             },
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(LucideIcons.refreshCw),
             tooltip: 'Refresh Profile',
           ),
         ],
@@ -774,7 +775,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                     );
                   },
-                  icon: const Icon(Icons.bar_chart),
+                  icon: const Icon(LucideIcons.barChart),
                   label: const Text('View Listening Stats'),
                 ),
               ),

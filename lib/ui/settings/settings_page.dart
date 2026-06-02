@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
@@ -1068,7 +1069,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 title: Row(
                   children: [
                     Icon(
-                      Icons.settings_rounded,
+                      LucideIcons.settings,
                       color: Theme.of(context).colorScheme.primary,
                       size: 22,
                     ),
@@ -1095,7 +1096,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           ),
                         );
                       },
-                      icon: const Icon(Icons.person_rounded),
+                      icon: const Icon(LucideIcons.user),
                       tooltip: 'View Profile',
                     ),
                   ),
@@ -1134,34 +1135,34 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
             const SizedBox(height: 16),
             ListTile(
-              leading: const Icon(Icons.cleaning_services_rounded),
+              leading: const Icon(LucideIcons.brush),
               title: const Text('Clear deleted and broken items'),
               subtitle: const Text(
                 'Check each cached book against server and remove deleted ones',
               ),
-              trailing: const Icon(Icons.arrow_forward_ios_rounded),
+              trailing: const Icon(LucideIcons.chevronRight),
               onTap: () => _showCleanupDialog(),
             ),
             ListTile(
-              leading: const Icon(Icons.sync_rounded),
+              leading: const Icon(LucideIcons.refreshCw),
               title: const Text('Resync book metadata'),
               subtitle: const Text(
                 'Refresh all book metadata from server (including added date)',
               ),
-              trailing: const Icon(Icons.arrow_forward_ios_rounded),
+              trailing: const Icon(LucideIcons.chevronRight),
               onTap: () => _showResyncMetadataDialog(),
             ),
             ListTile(
-              leading: const Icon(Icons.history_rounded),
+              leading: const Icon(LucideIcons.history),
               title: const Text('Cleanup log'),
               subtitle: const Text('View recent download cleanup activity'),
-              trailing: const Icon(Icons.arrow_forward_ios_rounded),
+              trailing: const Icon(LucideIcons.chevronRight),
               onTap: () => _showCleanupLog(),
             ),
             const Divider(height: 32),
             const ListTile(title: Text('Server access')),
             ListTile(
-              leading: const Icon(Icons.vpn_key_rounded),
+              leading: const Icon(LucideIcons.keyRound),
               title: const Text('Custom HTTP headers'),
               subtitle: Text(_customHeadersSubtitle()),
               trailing: Text(
@@ -1465,12 +1466,12 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
             if (Platform.isAndroid)
               ListTile(
-                leading: const Icon(Icons.battery_saver_outlined),
+                leading: const Icon(LucideIcons.battery),
                 title: const Text('Disable battery optimization'),
                 subtitle: const Text(
                   'Disconnection issues? Disable battery optimization',
                 ),
-                trailing: const Icon(Icons.arrow_forward_ios_rounded),
+                trailing: const Icon(LucideIcons.chevronRight),
                 onTap: () async {
                   try {
                     final status =
@@ -1530,12 +1531,12 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             if (Platform.isAndroid)
               ListTile(
-                leading: const Icon(Icons.open_in_new_rounded),
+                leading: const Icon(LucideIcons.externalLink),
                 title: const Text('Open battery optimization settings'),
                 subtitle: const Text(
                   'Jump to system screen to set “Don’t optimize” manually',
                 ),
-                trailing: const Icon(Icons.arrow_forward_ios_rounded),
+                trailing: const Icon(LucideIcons.chevronRight),
                 onTap: () async {
                   try {
                     final ok = await openAppSettings();
@@ -1568,7 +1569,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
               ),
             ListTile(
-              leading: const Icon(Icons.cached_rounded),
+              leading: const Icon(LucideIcons.refreshCw),
               title: const Text('Streaming cache'),
               subtitle: _buildStreamingCacheSubtitle(context),
               trailing:
@@ -1592,12 +1593,12 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
             ),
             ListTile(
-              leading: const Icon(Icons.storage_rounded),
+              leading: const Icon(LucideIcons.hardDrive),
               title: const Text('Storage'),
               subtitle: const Text(
                 'See download + streaming cache usage, and clean per book',
               ),
-              trailing: const Icon(Icons.arrow_forward_ios_rounded),
+              trailing: const Icon(LucideIcons.chevronRight),
               onTap: () {
                 Navigator.of(
                   context,
@@ -1611,7 +1612,7 @@ class _SettingsPageState extends State<SettingsPage> {
             //     return ListTile(
             //       title: const Text('Download folder name'),
             //       subtitle: Text(current),
-            //       trailing: const Icon(Icons.edit_outlined),
+            //       trailing: const Icon(LucideIcons.pencil),
             //       onTap: () async {
             //         final controller = TextEditingController(text: current);
             //         final newName = await showDialog<String>(
@@ -1954,7 +1955,7 @@ class _SettingsPageState extends State<SettingsPage> {
             const Divider(height: 32),
             const ListTile(title: Text('Backup & restore')),
             ListTile(
-              leading: const Icon(Icons.file_download_rounded),
+              leading: const Icon(LucideIcons.download),
               title: const Text('Export settings (JSON)'),
               subtitle: const Text(
                 'Save app settings to a location of your choice',
@@ -1962,7 +1963,7 @@ class _SettingsPageState extends State<SettingsPage> {
               onTap: _exportSettings,
             ),
             ListTile(
-              leading: const Icon(Icons.file_upload_rounded),
+              leading: const Icon(LucideIcons.upload),
               title: const Text('Import settings (JSON)'),
               subtitle: const Text('Load settings from a JSON file'),
               onTap: _importSettings,
@@ -1994,7 +1995,7 @@ class _SettingsPageState extends State<SettingsPage> {
             if (_loggingSessionActive ||
                 SessionLoggerService.instance.logFile != null)
               ListTile(
-                leading: const Icon(Icons.file_download_rounded),
+                leading: const Icon(LucideIcons.download),
                 title: const Text('Export log file'),
                 subtitle: const Text(
                   'Save current session log to a location of your choice',
@@ -2012,7 +2013,7 @@ class _SettingsPageState extends State<SettingsPage> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: FilledButton.tonalIcon(
-                icon: const Icon(Icons.logout_rounded),
+                icon: const Icon(LucideIcons.logOut),
                 label: const Text('Log out'),
                 onPressed: () async {
                   final confirmed = await showDialog<bool>(
@@ -2133,7 +2134,7 @@ class _SettingsPageState extends State<SettingsPage> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: FilledButton.tonalIcon(
-                icon: const Icon(Icons.exit_to_app_rounded),
+                icon: const Icon(LucideIcons.logOut),
                 label: const Text('Exit App'),
                 onPressed: () async {
                   final confirmed = await showDialog<bool>(
@@ -2405,7 +2406,7 @@ class _CustomHeadersSheetState extends State<_CustomHeadersSheet> {
                 ),
                 IconButton(
                   tooltip: 'Close',
-                  icon: const Icon(Icons.close_rounded),
+                  icon: const Icon(LucideIcons.x),
                   onPressed: () => Navigator.of(context).pop(),
                 ),
               ],
@@ -2437,7 +2438,7 @@ class _CustomHeadersSheetState extends State<_CustomHeadersSheet> {
               children: [
                 TextButton.icon(
                   onPressed: _addRow,
-                  icon: const Icon(Icons.add),
+                  icon: const Icon(LucideIcons.plus),
                   label: const Text('Add header'),
                 ),
                 const SizedBox(width: 12),
@@ -2532,7 +2533,7 @@ class _HeaderRowWidget extends StatelessWidget {
         ),
         IconButton(
           tooltip: 'Remove header',
-          icon: const Icon(Icons.delete_outline_rounded),
+          icon: const Icon(LucideIcons.trash2),
           color: theme.colorScheme.error,
           onPressed: onRemove,
         ),

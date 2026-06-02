@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:material_symbols_icons/symbols.dart';
-
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../core/image_cache_manager.dart';
 import '../../core/queue_service.dart';
 import '../../main.dart';
@@ -26,7 +25,7 @@ class QueuePage extends StatelessWidget {
                 ? const SizedBox.shrink()
                 : TextButton.icon(
                     onPressed: () => _confirmClear(context, queue),
-                    icon: const Icon(Symbols.clear_all, size: 20),
+                    icon: const Icon(LucideIcons.listX, size: 20),
                     label: const Text('Clear'),
                   ),
           ),
@@ -106,7 +105,7 @@ class _QueueTile extends StatelessWidget {
           color: cs.errorContainer,
           borderRadius: BorderRadius.circular(16),
         ),
-        child: Icon(Symbols.delete, color: cs.onErrorContainer),
+        child: Icon(LucideIcons.trash2, color: cs.onErrorContainer),
       ),
       onDismissed: (_) => onRemove(),
       child: Card(
@@ -131,7 +130,7 @@ class _QueueTile extends StatelessWidget {
                             url: item.coverUrl!, width: 52, height: 52)
                         : Container(
                             color: cs.surfaceContainerHighest,
-                            child: Icon(Symbols.book, color: cs.onSurfaceVariant),
+                            child: Icon(LucideIcons.book, color: cs.onSurfaceVariant),
                           ),
                   ),
                 ),
@@ -163,14 +162,14 @@ class _QueueTile extends StatelessWidget {
                 ),
                 IconButton(
                   tooltip: 'Play now',
-                  icon: const Icon(Symbols.play_arrow, fill: 1),
+                  icon: const Icon(LucideIcons.play, fill: 1),
                   onPressed: onPlay,
                 ),
                 ReorderableDragStartListener(
                   index: index,
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: Icon(Symbols.drag_handle, color: cs.onSurfaceVariant),
+                    child: Icon(LucideIcons.gripHorizontal, color: cs.onSurfaceVariant),
                   ),
                 ),
               ],
@@ -192,7 +191,7 @@ class _EmptyQueue extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Symbols.queue_music, size: 64, color: cs.onSurfaceVariant),
+          Icon(LucideIcons.listMusic, size: 64, color: cs.onSurfaceVariant),
           const SizedBox(height: 16),
           Text('Your queue is empty',
               style: TextStyle(

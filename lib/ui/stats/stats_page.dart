@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'dart:convert';
 import '../../main.dart'; // ServicesScope
 import '../../core/detailed_play_history_service.dart';
@@ -118,12 +119,12 @@ class _StatsPageState extends State<StatsPage> {
                 MaterialPageRoute(builder: (_) => const YearWrappedPage()),
               );
             },
-            icon: const Icon(Icons.celebration_outlined),
+            icon: const Icon(LucideIcons.partyPopper),
             tooltip: 'Year in Review',
           ),
           IconButton(
             onPressed: _loadStats,
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(LucideIcons.refreshCw),
             tooltip: 'Refresh Stats',
           ),
         ],
@@ -136,7 +137,7 @@ class _StatsPageState extends State<StatsPage> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(
-                        Icons.error_outline,
+                        LucideIcons.alertCircle,
                         size: 48,
                         color: cs.error,
                       ),
@@ -156,7 +157,7 @@ class _StatsPageState extends State<StatsPage> {
                       const SizedBox(height: 16),
                       FilledButton.icon(
                         onPressed: _loadStats,
-                        icon: const Icon(Icons.refresh),
+                        icon: const Icon(LucideIcons.refreshCw),
                         label: const Text('Retry'),
                       ),
                     ],
@@ -174,7 +175,7 @@ class _StatsPageState extends State<StatsPage> {
                             child: _buildStatCard(
                               value: _finishedItems.length.toString(),
                               label: 'Items Finished',
-                              icon: Icons.check_circle_outline,
+                              icon: LucideIcons.checkCircle,
                             ),
                           ),
                           const SizedBox(width: 12),
@@ -182,7 +183,7 @@ class _StatsPageState extends State<StatsPage> {
                             child: _buildStatCard(
                               value: _totalDaysListened.toString(),
                               label: 'Days Listened',
-                              icon: Icons.calendar_today,
+                              icon: LucideIcons.calendar,
                             ),
                           ),
                           const SizedBox(width: 12),
@@ -190,7 +191,7 @@ class _StatsPageState extends State<StatsPage> {
                             child: _buildStatCard(
                               value: _formatMinutes(_totalMinutesListening),
                               label: 'Minutes Listening',
-                              icon: Icons.headphones,
+                              icon: LucideIcons.headphones,
                             ),
                           ),
                         ],
@@ -206,7 +207,7 @@ class _StatsPageState extends State<StatsPage> {
                                       ? '🔥 $_currentStreakDays'
                                       : '0',
                               label: 'Day Streak',
-                              icon: Icons.local_fire_department_outlined,
+                              icon: LucideIcons.flame,
                             ),
                           ),
                         ],
@@ -573,7 +574,7 @@ class _StatsPageState extends State<StatsPage> {
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
-              Icon(Icons.insights_rounded, color: cs.primary),
+              Icon(LucideIcons.lineChart, color: cs.primary),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
@@ -611,12 +612,12 @@ class _StatsPageState extends State<StatsPage> {
                             height: 36,
                             color: cs.surfaceContainerHighest,
                             child: (e.coverUrl == null || e.coverUrl!.isEmpty)
-                                ? Icon(Icons.menu_book_outlined, color: cs.onSurfaceVariant, size: 18)
+                                ? Icon(LucideIcons.bookOpen, color: cs.onSurfaceVariant, size: 18)
                                 : Image.network(
                                     e.coverUrl!,
                                     fit: BoxFit.cover,
                                     errorBuilder: (_, __, ___) =>
-                                        Icon(Icons.menu_book_outlined, color: cs.onSurfaceVariant, size: 18),
+                                        Icon(LucideIcons.bookOpen, color: cs.onSurfaceVariant, size: 18),
                                   ),
                           ),
                         ),

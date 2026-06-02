@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:material_symbols_icons/symbols.dart';
-
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../settings/settings_page.dart';
 import '../home/books_page.dart';
 import '../downloads/downloads_page.dart';
@@ -184,47 +183,47 @@ class _MainScaffoldState extends State<MainScaffold> {
     return [
       const _NavDestinationData(
         kind: _NavKind.books,
-        icon: Symbols.library_books,
-        selectedIcon: Symbols.library_books_rounded,
+        icon: LucideIcons.library,
+        selectedIcon: LucideIcons.library,
         label: 'Books',
       ),
       if (_showAuthors)
         const _NavDestinationData(
           kind: _NavKind.authors,
-          icon: Symbols.person,
-          selectedIcon: Symbols.person_rounded,
+          icon: LucideIcons.user,
+          selectedIcon: LucideIcons.user,
           label: 'Authors',
         ),
       if (_showSeries)
         const _NavDestinationData(
           kind: _NavKind.series,
-          icon: Symbols.collections_bookmark,
-          selectedIcon: Symbols.collections_bookmark_rounded,
+          icon: LucideIcons.library,
+          selectedIcon: LucideIcons.library,
           label: 'Series',
         ),
       if (_playerAsTab)
         const _NavDestinationData(
           kind: _NavKind.player,
-          icon: Symbols.play_circle,
-          selectedIcon: Symbols.play_circle_rounded,
+          icon: LucideIcons.play,
+          selectedIcon: LucideIcons.play,
           label: 'Player',
         ),
       const _NavDestinationData(
         kind: _NavKind.queue,
-        icon: Symbols.queue_music,
-        selectedIcon: Symbols.queue_music_rounded,
+        icon: LucideIcons.listMusic,
+        selectedIcon: LucideIcons.listMusic,
         label: 'Queue',
       ),
       const _NavDestinationData(
         kind: _NavKind.downloads,
-        icon: Symbols.download_for_offline,
-        selectedIcon: Symbols.download_for_offline_rounded,
+        icon: LucideIcons.download,
+        selectedIcon: LucideIcons.download,
         label: 'Downloads',
       ),
       const _NavDestinationData(
         kind: _NavKind.settings,
-        icon: Symbols.settings,
-        selectedIcon: Symbols.settings_rounded,
+        icon: LucideIcons.settings,
+        selectedIcon: LucideIcons.settings,
         label: 'Settings',
       ),
     ];
@@ -494,7 +493,7 @@ class _DownloadProgressChip extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         child: Row(
           children: [
-            Icon(Symbols.download, size: 20, color: cs.primary),
+            Icon(LucideIcons.download, size: 20, color: cs.primary),
             const SizedBox(width: 12),
             Expanded(
               child: Column(

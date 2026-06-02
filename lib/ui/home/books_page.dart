@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:material_symbols_icons/symbols.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -1229,7 +1229,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(
-                              Icons.graphic_eq_rounded,
+                              LucideIcons.activity,
                               color: cs.primary,
                               size: 16,
                             ),
@@ -1276,7 +1276,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                               child: Row(
                                 children: [
                                   Icon(
-                                    Icons.wifi_off_rounded,
+                                    LucideIcons.wifiOff,
                                     size: 16,
                                     color: cs.onErrorContainer,
                                   ),
@@ -1323,14 +1323,14 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                               tooltip: 'Search',
                               icon:
                                   _searchVisible
-                                      ? Symbols.search_off
-                                      : Symbols.search,
+                                      ? LucideIcons.searchX
+                                      : LucideIcons.search,
                               onTap: _toggleSearch,
                               emphasized: _searchVisible,
                             ),
                             _ToolbarSurfaceButton(
                               tooltip: 'Profile',
-                              icon: Symbols.person,
+                              icon: LucideIcons.user,
                               onTap: () {
                                 Navigator.of(context).push(
                                   MaterialPageRoute(
@@ -1341,7 +1341,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                             ),
                             _ToolbarSurfaceButton(
                               tooltip: 'Support',
-                              icon: Symbols.help,
+                              icon: LucideIcons.helpCircle,
                               onTap: () async {
                                 final url = Uri.parse(
                                   'https://github.com/bennybar/kitzi_abs_player/issues',
@@ -1365,7 +1365,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                                 PopupMenuItem(
                                   value: LibraryFilter.all,
                                   child: ListTile(
-                                    leading: Icon(Icons.all_inbox_rounded, color: cs.primary),
+                                    leading: Icon(LucideIcons.inbox, color: cs.primary),
                                     title: const Text('All'),
                                     contentPadding: EdgeInsets.zero,
                                   ),
@@ -1373,7 +1373,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                                 PopupMenuItem(
                                   value: LibraryFilter.inProgress,
                                   child: ListTile(
-                                    leading: Icon(Icons.play_circle_outline_rounded, color: cs.primary),
+                                    leading: Icon(LucideIcons.play, color: cs.primary),
                                     title: const Text('In progress'),
                                     contentPadding: EdgeInsets.zero,
                                   ),
@@ -1381,7 +1381,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                                 PopupMenuItem(
                                   value: LibraryFilter.notStarted,
                                   child: ListTile(
-                                    leading: Icon(Icons.radio_button_unchecked_rounded, color: cs.primary),
+                                    leading: Icon(LucideIcons.circle, color: cs.primary),
                                     title: const Text('Not started'),
                                     contentPadding: EdgeInsets.zero,
                                   ),
@@ -1389,7 +1389,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                                 PopupMenuItem(
                                   value: LibraryFilter.finished,
                                   child: ListTile(
-                                    leading: Icon(Icons.check_circle_rounded, color: cs.primary),
+                                    leading: Icon(LucideIcons.checkCircle, color: cs.primary),
                                     title: const Text('Finished'),
                                     contentPadding: EdgeInsets.zero,
                                   ),
@@ -1397,7 +1397,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                               ],
                               child: _ToolbarSurfaceButton(
                                 tooltip: 'Filter',
-                                icon: Symbols.filter_list,
+                                icon: LucideIcons.listFilter,
                                 onTap: null,
                                 emphasized: _filter != LibraryFilter.all,
                               ),
@@ -1420,7 +1420,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                                       value: SortMode.addedDesc,
                                       child: ListTile(
                                         leading: Icon(
-                                          Icons.schedule_rounded,
+                                          LucideIcons.clock,
                                           color: cs.primary,
                                         ),
                                         title: const Text(
@@ -1433,7 +1433,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                                       value: SortMode.nameAsc,
                                       child: ListTile(
                                         leading: Icon(
-                                          Icons.sort_by_alpha_rounded,
+                                          LucideIcons.arrowDownAZ,
                                           color: cs.primary,
                                         ),
                                         title: const Text('Name (A–Z)'),
@@ -1443,7 +1443,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                                   ],
                               child: _ToolbarSurfaceButton(
                                 tooltip: 'Sort',
-                                icon: Symbols.sort,
+                                icon: LucideIcons.arrowUpDown,
                                 onTap: null,
                                 enabled: !_forceAlphaSort,
                               ),
@@ -1471,7 +1471,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                                     controller: _searchCtrl,
                                     focusNode: _searchFocusNode,
                                     leading: Icon(
-                                      Icons.search_rounded,
+                                      LucideIcons.search,
                                       color: cs.onSurfaceVariant,
                                     ),
                                     hintText: 'Search books or authors...',
@@ -1513,7 +1513,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                                             _restartSearchPagination();
                                           },
                                           icon: Icon(
-                                            Icons.clear_rounded,
+                                            LucideIcons.x,
                                             color: cs.onSurfaceVariant,
                                           ),
                                         ),
@@ -1545,7 +1545,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Icon(
-                              Icons.error_outline_rounded,
+                              LucideIcons.alertCircle,
                               size: 64,
                               color: cs.error,
                             ),
@@ -1566,7 +1566,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                             const SizedBox(height: 16),
                             FilledButton.icon(
                               onPressed: () => _refresh(),
-                              icon: const Icon(Icons.refresh_rounded),
+                              icon: const Icon(LucideIcons.refreshCw),
                               label: const Text('Try Again'),
                             ),
                             const SizedBox(height: 8),
@@ -1583,7 +1583,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                                   _error = null;
                                 });
                               },
-                              icon: const Icon(Icons.offline_pin_rounded),
+                              icon: const Icon(LucideIcons.checkCircle),
                               label: const Text('Show Offline Library'),
                             ),
                           ],
@@ -1601,8 +1601,8 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                           children: [
                             Icon(
                               _query.isNotEmpty
-                                  ? Icons.search_off_rounded
-                                  : Icons.library_books_outlined,
+                                  ? LucideIcons.searchX
+                                  : LucideIcons.library,
                               size: 64,
                               color: cs.onSurfaceVariant,
                             ),
@@ -1636,7 +1636,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                   if (_query.trim().isEmpty)
                     SliverToBoxAdapter(
                       child: _SectionHeader(
-                        icon: Icons.library_books_rounded,
+                        icon: LucideIcons.library,
                         title: 'All Audiobooks',
                         padding: const EdgeInsets.fromLTRB(20, 6, 20, 14),
                       ),
@@ -1714,7 +1714,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                     title: 'Listening Time',
                     value: _formatListeningTime(_todayListeningSeconds),
                     subtitle: _estimatePages(_todayListeningSeconds),
-                    icon: Icons.schedule_rounded,
+                    icon: LucideIcons.clock,
                     chipLabel:
                         _homeStatsLoading && _todayListeningSeconds == 0
                             ? 'Syncing'
@@ -1733,7 +1733,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                         _currentStreakDays > 0
                             ? 'Keep momentum'
                             : 'No active streak',
-                    icon: Icons.local_fire_department_rounded,
+                    icon: LucideIcons.flame,
                   ),
                 ),
               ],
@@ -1750,7 +1750,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                         continueCount > 0
                             ? 'Jump back in quickly'
                             : 'Recent books will appear here',
-                    icon: Icons.play_circle_fill_rounded,
+                    icon: LucideIcons.play,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -1759,7 +1759,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                     title: 'Library',
                     value: '${_libraryTotalItems ?? visible.length} titles',
                     subtitle: 'Freshest shelf on top',
-                    icon: Icons.library_books_rounded,
+                    icon: LucideIcons.library,
                   ),
                 ),
               ],
@@ -1780,7 +1780,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const _SectionHeader(
-              icon: Icons.play_circle_outline_rounded,
+              icon: LucideIcons.play,
               title: 'Continue Listening',
               padding: EdgeInsets.zero,
             ),
@@ -1843,7 +1843,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const _SectionHeader(
-              icon: Icons.fiber_new_rounded,
+              icon: LucideIcons.sparkles,
               title: 'Recently Added',
               padding: EdgeInsets.zero,
             ),
@@ -1984,7 +1984,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                 borderRadius: BorderRadius.circular(16),
               ),
               child: const Icon(
-                Icons.download_rounded,
+                LucideIcons.download,
                 color: Colors.white,
                 size: 28,
               ),
@@ -2606,7 +2606,7 @@ class _BookCard extends StatelessWidget {
                                       shape: BoxShape.circle,
                                     ),
                                     child: const Icon(
-                                      Icons.check,
+                                      LucideIcons.check,
                                       color: Colors.white,
                                       size: 11,
                                     ),
@@ -2651,7 +2651,7 @@ class _BookCard extends StatelessWidget {
                                       shape: BoxShape.circle,
                                     ),
                                     child: const Icon(
-                                      Icons.play_arrow_rounded,
+                                      LucideIcons.play,
                                       color: Colors.white,
                                       size: 11,
                                     ),
@@ -2744,7 +2744,7 @@ class _BookCard extends StatelessWidget {
                 Row(
                   children: [
                     Icon(
-                      Icons.block,
+                      LucideIcons.ban,
                       size: 14,
                       color: cs.onSurfaceVariant.withOpacity(0.6),
                     ),
@@ -2886,8 +2886,8 @@ class _ResumeBookCardState extends State<_ResumeBookCard> {
                                           ),
                                           child: Icon(
                                             showPause
-                                                ? Icons.pause_rounded
-                                                : Icons.play_arrow_rounded,
+                                                ? LucideIcons.pause
+                                                : LucideIcons.play,
                                             color: Colors.white,
                                             size: 20,
                                           ),
@@ -3309,7 +3309,7 @@ class _BookListTileState extends State<_BookListTile> {
                       Row(
                         children: [
                           Icon(
-                            Icons.schedule_rounded,
+                            LucideIcons.clock,
                             size: 14,
                             color: cs.onSurfaceVariant.withOpacity(0.7),
                           ),
@@ -3333,7 +3333,7 @@ class _BookListTileState extends State<_BookListTile> {
                       Row(
                         children: [
                           Icon(
-                            Icons.block,
+                            LucideIcons.ban,
                             size: 16,
                             color: cs.onSurfaceVariant.withOpacity(0.6),
                           ),
@@ -3374,7 +3374,7 @@ class _BookListTileState extends State<_BookListTile> {
                           return Padding(
                             padding: const EdgeInsets.only(right: 6),
                             child: Icon(
-                              Icons.offline_pin,
+                              LucideIcons.checkCircle,
                               color: cs.primary,
                               size: 18,
                             ),
@@ -3392,7 +3392,7 @@ class _BookListTileState extends State<_BookListTile> {
                           return Padding(
                             padding: const EdgeInsets.only(right: 6),
                             child: Icon(
-                              Icons.check_circle,
+                              LucideIcons.checkCircle,
                               color: Colors.green,
                               size: 18,
                             ),
@@ -3403,7 +3403,7 @@ class _BookListTileState extends State<_BookListTile> {
                     ),
                   // Arrow indicator
                   Icon(
-                    Icons.chevron_right_rounded,
+                    LucideIcons.chevronRight,
                     color:
                         disabled
                             ? cs.onSurfaceVariant.withOpacity(0.3)

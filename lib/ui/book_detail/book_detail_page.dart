@@ -2,12 +2,11 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:convert';
 import 'dart:async' show unawaited, StreamSubscription;
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:rxdart/rxdart.dart';
 import 'dart:io';
 import 'package:flutter_html/flutter_html.dart';
-import 'package:material_symbols_icons/symbols.dart';
-
 import '../../core/books_repository.dart';
 import '../../models/book.dart';
 import '../../models/series.dart';
@@ -230,48 +229,48 @@ class _BookDetailPageState extends State<BookDetailPage> {
             ? ((item['media'] as Map)['metadata'] as Map).cast<String, dynamic>()
             : const <String, dynamic>{};
 
-    add('Author', book.author, Symbols.person);
+    add('Author', book.author, LucideIcons.user);
     add(
       'Narrator',
       (book.narrators ?? const []).isNotEmpty ? book.narrators!.join(', ') : null,
-      Symbols.mic,
+      LucideIcons.mic,
     );
     facts.add(
       BookMetadataFact(
         label: 'Released year',
         value:
             _extractBookMetadataYear(book.publishYear, meta, item) ?? 'Unknown',
-        icon: Symbols.calendar_today,
+        icon: LucideIcons.calendar,
       ),
     );
-    add('Publisher', book.publisher, Symbols.business);
+    add('Publisher', book.publisher, LucideIcons.building2);
     add(
       'Distribution',
       (meta['distribution'] ?? meta['distributor'])?.toString(),
-      Symbols.local_shipping,
+      LucideIcons.truck,
     );
     add(
       'Genres',
       (book.genres ?? const []).isNotEmpty ? book.genres!.join(' / ') : null,
-      Symbols.category,
+      LucideIcons.tags,
     );
-    add('Series', book.series, Symbols.collections_bookmark);
+    add('Series', book.series, LucideIcons.library);
     add(
       'Collection',
       book.collection,
-      Symbols.folder_copy,
+      LucideIcons.folder,
     );
     add(
       'Media',
       book.isAudioBook ? 'Audiobook' : (book.mediaKind ?? 'Book'),
-      Symbols.menu_book,
+      LucideIcons.book,
     );
     add(
       'Length',
       book.durationMs != null
           ? _formatDuration(Duration(milliseconds: book.durationMs!))
           : null,
-      Symbols.schedule,
+      LucideIcons.clock,
     );
     facts.add(
       BookMetadataFact(
@@ -279,43 +278,43 @@ class _BookDetailPageState extends State<BookDetailPage> {
         value:
             _bookMetadataSizeLabel(book.sizeBytes, item, files) ??
             'Unavailable',
-        icon: Symbols.folder_zip,
+        icon: LucideIcons.fileArchive,
       ),
     );
     add(
       'File type',
       _bookMetadataFileTypes(files),
-      Symbols.audio_file,
+      LucideIcons.fileAudio,
     );
     add(
       'Bitrate',
       _bookMetadataBitrate(files),
-      Symbols.graph_2,
+      LucideIcons.activity,
     );
     add(
       'Language',
       meta['language']?.toString(),
-      Symbols.translate,
+      LucideIcons.languages,
     );
     add(
       'ISBN',
       (meta['isbn'] ?? meta['isbn13'] ?? meta['asin'])?.toString(),
-      Symbols.pin,
+      LucideIcons.pin,
     );
     add(
       'Started time',
       _formatBookMetadataDateTime(firstStartedAt, includeTime: true),
-      Symbols.history,
+      LucideIcons.history,
     );
     add(
       'Added',
       _formatBookMetadataDateTime(book.addedAt),
-      Symbols.library_add,
+      LucideIcons.plus,
     );
     add(
       'Updated',
       _formatBookMetadataDateTime(book.updatedAt),
-      Symbols.update,
+      LucideIcons.refreshCw,
     );
 
     return facts;
@@ -800,7 +799,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
                   child: Row(
                     children: [
                       Icon(
-                        Icons.access_time_rounded,
+                        LucideIcons.clock,
                         size: 16,
                         color: cs.onPrimaryContainer,
                       ),
@@ -1014,7 +1013,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
                 if (_cachedBook != null && _cachedBook!.isAudioBook)
                   IconButton(
                     tooltip: 'Add to queue',
-                    icon: const Icon(Symbols.playlist_add),
+                    icon: const Icon(LucideIcons.listPlus),
                     onPressed: () => showQueueSheet(context, _cachedBook!),
                   ),
                 // Mark as finished button - only show for audio books
@@ -1301,7 +1300,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
                                         runSpacing: 8,
                                         children: [
                                           _InfoChip(
-                                            icon: Symbols.schedule,
+                                            icon: LucideIcons.clock,
                                             label: fmtDuration(),
                                             tooltip: 'Total length',
                                             onTap: () async {
@@ -1504,7 +1503,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
                                             },
                                           ),
                                           _InfoChip(
-                                            icon: Symbols.download,
+                                            icon: LucideIcons.download,
                                             label: fmtSize(),
                                             tooltip: 'Estimated download size',
                                             onTap: () async {
@@ -1700,7 +1699,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
                                           bottom: 10,
                                         ),
                                         child: _MetaChip(
-                                          icon: Symbols.collections_bookmark,
+                                          icon: LucideIcons.library,
                                           label: 'Series',
                                           value:
                                               b.seriesSequence != null &&
@@ -1725,7 +1724,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
                                             SizedBox(
                                               width: 150,
                                               child: _MetaChip(
-                                                icon: Symbols.calendar_today,
+                                                icon: LucideIcons.calendar,
                                                 label: 'Year',
                                                 value: b.publishYear.toString(),
                                               ),
@@ -1734,7 +1733,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
                                             SizedBox(
                                               width: 180,
                                               child: _MetaChip(
-                                                icon: Symbols.business,
+                                                icon: LucideIcons.building2,
                                                 label: 'Publisher',
                                                 value: b.publisher!,
                                               ),
@@ -1751,7 +1750,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
                                                 maxWidth: 320,
                                               ),
                                               child: _MetaChip(
-                                                icon: Symbols.category,
+                                                icon: LucideIcons.tags,
                                                 label: 'Genres',
                                                 value: b.genres!.join(' / '),
                                               ),
@@ -1828,7 +1827,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
                                 Align(
                                   alignment: Alignment.centerLeft,
                                   child: _InfoChip(
-                                    icon: Symbols.info,
+                                    icon: LucideIcons.info,
                                     label: 'More metadata',
                                     tooltip: 'Show full book metadata',
                                     onTap: () => _showBookMetadataMenu(context, b),
@@ -2128,7 +2127,7 @@ class _RelatedBooksSectionState extends State<_RelatedBooksSection> {
                                 (_, __, ___) => Container(
                                   color: cs.surfaceContainerHighest,
                                   child: Icon(
-                                    Icons.menu_book_outlined,
+                                    LucideIcons.bookOpen,
                                     color: cs.onSurfaceVariant,
                                     size: 24,
                                   ),
@@ -2572,7 +2571,7 @@ class _ProgressSummaryState extends State<_ProgressSummary> {
                 borderRadius: BorderRadius.circular(14),
               ),
               alignment: Alignment.center,
-              child: Icon(Symbols.check_circle, size: 20, color: cs.primary),
+              child: Icon(LucideIcons.checkCircle, size: 20, color: cs.primary),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -2609,7 +2608,7 @@ class _ProgressSummaryState extends State<_ProgressSummary> {
               ),
               alignment: Alignment.center,
               child: Icon(
-                Symbols.play_circle,
+                LucideIcons.play,
                 size: 20,
                 color: cs.onSurfaceVariant,
               ),
@@ -2648,7 +2647,7 @@ class _ProgressSummaryState extends State<_ProgressSummary> {
                 borderRadius: BorderRadius.circular(14),
               ),
               alignment: Alignment.center,
-              child: Icon(Symbols.play_circle, size: 20, color: cs.secondary),
+              child: Icon(LucideIcons.play, size: 20, color: cs.secondary),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -3132,7 +3131,7 @@ class _PlayPrimaryButtonState extends State<_PlayPrimaryButton> {
     if (!book.isAudioBook) {
       return FilledButton.icon(
         onPressed: null,
-        icon: const Icon(Symbols.block),
+        icon: const Icon(LucideIcons.ban),
         label: const Text('Not an audiobook'),
         style: _actionStyle(context, primary: false),
       );
@@ -3191,7 +3190,7 @@ class _PlayPrimaryButtonState extends State<_PlayPrimaryButton> {
                       onPressed: () async {
                         await playback.pause();
                       },
-                      icon: const Icon(Symbols.stop),
+                      icon: const Icon(LucideIcons.square),
                       label: const Text('Stop'),
                     );
                   }
@@ -3232,7 +3231,7 @@ class _PlayPrimaryButtonState extends State<_PlayPrimaryButton> {
                         }
                       }
                     },
-                    icon: const Icon(Symbols.play_arrow),
+                    icon: const Icon(LucideIcons.play),
                     label: const Text('Resume'),
                     style: _actionStyle(context, primary: true),
                   );
@@ -3287,13 +3286,13 @@ class _PlayPrimaryButtonState extends State<_PlayPrimaryButton> {
     IconData icon;
     if (isCompleted) {
       label = 'Start';
-      icon = Symbols.play_arrow;
+      icon = LucideIcons.play;
     } else if (hasProgress) {
       label = 'Resume';
-      icon = Symbols.play_arrow;
+      icon = LucideIcons.play;
     } else {
       label = 'Play';
-      icon = Symbols.play_arrow;
+      icon = LucideIcons.play;
     }
 
     return FilledButton.icon(
@@ -3434,7 +3433,7 @@ class _BookmarksPreviewState extends State<_BookmarksPreview> {
                         ),
                         alignment: Alignment.center,
                         child: Icon(
-                          Symbols.bookmark_add,
+                          LucideIcons.bookmarkPlus,
                           size: 18,
                           color: cs.primary,
                         ),
@@ -3483,7 +3482,7 @@ class _BookmarksPreviewState extends State<_BookmarksPreview> {
                               ),
                               alignment: Alignment.center,
                               child: Icon(
-                                Symbols.bookmark,
+                                LucideIcons.bookmark,
                                 color: cs.primary,
                                 size: 18,
                               ),
@@ -3516,7 +3515,7 @@ class _BookmarksPreviewState extends State<_BookmarksPreview> {
                             ),
                             const SizedBox(width: 8),
                             Icon(
-                              Symbols.chevron_right,
+                              LucideIcons.chevronRight,
                               color: cs.onSurfaceVariant,
                             ),
                           ],

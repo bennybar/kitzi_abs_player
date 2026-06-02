@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:material_symbols_icons/symbols.dart';
-
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../core/queue_service.dart';
 import '../../models/book.dart';
 import '../../main.dart';
@@ -43,7 +42,7 @@ Future<void> showQueueSheet(BuildContext context, Book book) async {
         mainAxisSize: MainAxisSize.min,
         children: [
           ListTile(
-            leading: const Icon(Symbols.playlist_play),
+            leading: const Icon(LucideIcons.listMusic),
             title: const Text('Play next'),
             subtitle: const Text('Put at the top of the queue'),
             onTap: () {
@@ -52,7 +51,7 @@ Future<void> showQueueSheet(BuildContext context, Book book) async {
             },
           ),
           ListTile(
-            leading: const Icon(Symbols.playlist_add),
+            leading: const Icon(LucideIcons.listPlus),
             title: Text(queued ? 'Already in queue' : 'Add to queue'),
             subtitle: const Text('Add to the end'),
             enabled: !queued,

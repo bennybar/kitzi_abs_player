@@ -2,6 +2,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -384,7 +385,7 @@ class _DownloadButtonState extends State<DownloadButton> {
     if (snap?.status == 'complete') {
       child = FilledButton.tonalIcon(
         onPressed: _busy ? null : _removeLocal,
-        icon: const Icon(Icons.delete_outline),
+        icon: const Icon(LucideIcons.trash2),
         label: const Text('Remove'),
       );
     }
@@ -457,7 +458,7 @@ class _DownloadButtonState extends State<DownloadButton> {
                     const SizedBox(width: 12),
                     IconButton(
                       onPressed: _busy ? null : _cancelCurrent,
-                      icon: const Icon(Icons.close, size: 20),
+                      icon: const Icon(LucideIcons.x, size: 20),
                       visualDensity: VisualDensity.compact,
                       style: IconButton.styleFrom(
                         foregroundColor: cs.onSurfaceVariant,
@@ -559,7 +560,7 @@ class _DownloadButtonState extends State<DownloadButton> {
                       ),
                       onTap: _busy ? null : _cancelCurrent,
                       child: Icon(
-                        Icons.close,
+                        LucideIcons.x,
                         size: 20,
                         color: cs.onError,
                       ),
@@ -583,7 +584,7 @@ class _DownloadButtonState extends State<DownloadButton> {
                   height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-                : const Icon(Icons.download),
+                : const Icon(LucideIcons.download),
         label: Text(_busy ? 'Adding…' : 'Download'),
       );
     }

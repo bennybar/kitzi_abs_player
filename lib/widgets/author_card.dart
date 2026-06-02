@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../models/book.dart';
 import '../core/books_repository.dart';
@@ -84,19 +85,19 @@ class _AuthorCardState extends State<AuthorCard> {
                                 cacheManager: ImageCacheManager.instance,
                                 fit: BoxFit.cover,
                                 placeholder: (context, url) => Icon(
-                                  Icons.person_rounded,
+                                  LucideIcons.user,
                                   color: cs.primary,
                                   size: 32,
                                 ),
                                 errorWidget: (context, url, error) => Icon(
-                                  Icons.person_rounded,
+                                  LucideIcons.user,
                                   color: cs.primary,
                                   size: 32,
                                 ),
                               ),
                             )
                           : Icon(
-                              Icons.person_rounded,
+                              LucideIcons.user,
                               color: cs.primary,
                               size: 32,
                             ),
@@ -123,7 +124,7 @@ class _AuthorCardState extends State<AuthorCard> {
                     ),
                     IconButton(
                       onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close_rounded),
+                      icon: const Icon(LucideIcons.x),
                     ),
                   ],
                 ),
@@ -150,7 +151,7 @@ class _AuthorCardState extends State<AuthorCard> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Icon(
-                          Icons.book_outlined,
+                          LucideIcons.book,
                           size: 64,
                           color: cs.onSurfaceVariant.withOpacity(0.5),
                         ),
@@ -296,7 +297,7 @@ class _AuthorBookTile extends StatelessWidget {
                       Row(
                         children: [
                           Icon(
-                            Icons.block,
+                            LucideIcons.ban,
                             size: 14,
                             color: cs.onSurfaceVariant.withOpacity(0.6),
                           ),
@@ -318,13 +319,13 @@ class _AuthorBookTile extends StatelessWidget {
                 IconButton(
                   onPressed: onTap,
                   icon: Icon(
-                    Icons.play_circle_outline_rounded,
+                    LucideIcons.play,
                     color: cs.primary,
                   ),
                 )
               else
                 Icon(
-                  Icons.block_rounded,
+                  LucideIcons.ban,
                   color: cs.onSurfaceVariant.withOpacity(0.4),
                 ),
             ],

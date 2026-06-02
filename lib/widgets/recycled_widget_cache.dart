@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 /// Widget recycling cache for better performance
 class RecycledWidgetCache {
   static final Map<String, Widget> _cache = {};
@@ -113,7 +114,7 @@ class RecycledBookListTile extends StatelessWidget {
                         errorBuilder: (context, error, stackTrace) => Container(
                           color: cs.surfaceContainerHighest,
                           child: Icon(
-                            Icons.menu_book_outlined,
+                            LucideIcons.bookOpen,
                             color: cs.onSurfaceVariant,
                             size: 32,
                           ),
@@ -177,7 +178,7 @@ class RecycledBookListTile extends StatelessWidget {
                 
                 // Arrow
                 Icon(
-                  Icons.chevron_right_rounded,
+                  LucideIcons.chevronRight,
                   color: disabled ? cs.onSurfaceVariant : cs.primary,
                   size: 24,
                 ),
@@ -250,7 +251,7 @@ class RecycledBookCard extends StatelessWidget {
                         errorBuilder: (context, error, stackTrace) => Container(
                           color: cs.surfaceContainerHighest,
                           child: Icon(
-                            Icons.menu_book_outlined,
+                            LucideIcons.bookOpen,
                             color: cs.onSurfaceVariant,
                             size: 48,
                           ),

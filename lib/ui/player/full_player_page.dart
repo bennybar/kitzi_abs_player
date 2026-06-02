@@ -7,8 +7,8 @@ import 'dart:ui';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
-import 'package:material_symbols_icons/symbols.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/playback_repository.dart';
@@ -398,7 +398,7 @@ class _ValidatedCachedNetworkImageState
             Container(
               color: Theme.of(context).colorScheme.surfaceContainerHighest,
               child: Icon(
-                Icons.menu_book_outlined,
+                LucideIcons.bookOpen,
                 size: 88,
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
@@ -1282,7 +1282,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                               ),
                                             ),
                                             child: Icon(
-                                              Icons.menu_book_outlined,
+                                              LucideIcons.bookOpen,
                                               size: 88,
                                               color: cs.onSurfaceVariant
                                                   .withOpacity(0.75),
@@ -1292,7 +1292,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                           (_, __, ___) => Container(
                                             color: cs.surfaceContainerHighest,
                                             child: Icon(
-                                              Icons.menu_book_outlined,
+                                              LucideIcons.bookOpen,
                                               size: 88,
                                               color: cs.onSurfaceVariant,
                                             ),
@@ -1301,7 +1301,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                     : Container(
                                       color: cs.surfaceContainerHighest,
                                       child: Icon(
-                                        Icons.menu_book_outlined,
+                                        LucideIcons.bookOpen,
                                         size: 88,
                                         color: cs.onSurfaceVariant,
                                       ),
@@ -1329,7 +1329,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                       top: 12,
                       right: 12,
                       child: _CoverIconButton(
-                        icon: Symbols.bookmark_add,
+                        icon: LucideIcons.bookmarkPlus,
                         tooltip: 'Add bookmark',
                         onTap: () => _addBookmark(context, playback),
                       ),
@@ -1338,7 +1338,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                       bottom: 12,
                       left: 12,
                       child: _CoverIconButton(
-                        icon: Symbols.history,
+                        icon: LucideIcons.history,
                         tooltip: 'Resume previous play position',
                         iconColor: const Color(0xFF7EE08A),
                         label: 'Last position',
@@ -1349,7 +1349,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                       bottom: 12,
                       right: 12,
                       child: _CoverIconButton(
-                        icon: Symbols.info,
+                        icon: LucideIcons.info,
                         tooltip: 'Book details',
                         label: 'More info',
                         onTap:
@@ -1464,7 +1464,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
             runSpacing: 8,
             children: [
               _InfoPill(
-                icon: Symbols.schedule,
+                icon: LucideIcons.clock,
                 label: _formatDuration(totalDuration),
               ),
             ],
@@ -1581,14 +1581,14 @@ class _FullPlayerPageState extends State<FullPlayerPage>
     final cachedBook = await cachedRepo.getBookFromDb(np.libraryItemId);
     cachedRepo.dispose();
 
-    add('Author', np.author ?? cachedBook?.author, Symbols.person);
+    add('Author', np.author ?? cachedBook?.author, LucideIcons.user);
     add(
       'Narrator',
       np.narrator ??
           ((cachedBook?.narrators?.isNotEmpty ?? false)
               ? cachedBook!.narrators!.join(', ')
               : null),
-      Symbols.mic,
+      LucideIcons.mic,
     );
     facts.add(
       BookMetadataFact(
@@ -1600,30 +1600,30 @@ class _FullPlayerPageState extends State<FullPlayerPage>
               item,
             ) ??
             'Unknown',
-        icon: Symbols.calendar_today,
+        icon: LucideIcons.calendar,
       ),
     );
     add(
       'Publisher',
       cachedBook?.publisher ?? meta['publisher']?.toString(),
-      Symbols.business,
+      LucideIcons.building2,
     );
     add(
       'Distribution',
       (meta['distribution'] ?? meta['distributor'])?.toString(),
-      Symbols.local_shipping,
+      LucideIcons.truck,
     );
     add(
       'File type',
       _playerMetadataFileTypes(files, np.tracks),
-      Symbols.audio_file,
+      LucideIcons.fileAudio,
     );
     add(
       'Bitrate',
       _playerMetadataBitrate(files),
-      Symbols.graph_2,
+      LucideIcons.activity,
     );
-    add('Tracks', np.tracks.length.toString(), Symbols.queue_music);
+    add('Tracks', np.tracks.length.toString(), LucideIcons.listMusic);
     add(
       'Length',
       np.durationSec != null && np.durationSec! > 0
@@ -1631,7 +1631,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
           : (cachedBook?.durationMs != null
               ? _formatDuration(Duration(milliseconds: cachedBook!.durationMs!))
               : null),
-      Symbols.schedule,
+      LucideIcons.clock,
     );
     facts.add(
       BookMetadataFact(
@@ -1639,7 +1639,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
         value:
             _playerMetadataSizeLabel(cachedBook?.sizeBytes, item, files) ??
             'Unavailable',
-        icon: Symbols.folder_zip,
+        icon: LucideIcons.fileArchive,
       ),
     );
     add(
@@ -1647,22 +1647,22 @@ class _FullPlayerPageState extends State<FullPlayerPage>
       np.tracks.isNotEmpty && np.tracks.every((t) => t.isLocal)
           ? 'Downloaded'
           : 'Streaming',
-      Symbols.cloud_done,
+      LucideIcons.cloud,
     );
     add(
       'Started',
       _formatMetadataDateTime(firstStartedAt ?? playback.listeningStartedAt),
-      Symbols.history,
+      LucideIcons.history,
     );
     add(
       'Added to library',
       _formatMetadataDateTime(cachedBook?.addedAt),
-      Symbols.library_add,
+      LucideIcons.plus,
     );
     add(
       'Updated',
       _formatMetadataDateTime(cachedBook?.updatedAt),
-      Symbols.update,
+      LucideIcons.refreshCw,
     );
 
     return facts;
@@ -1889,7 +1889,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
   }) {
     final disabled = totalChapters <= 1;
     return Icon(
-      Symbols.format_list_bulleted,
+      LucideIcons.list,
       color: disabled ? cs.onSurfaceVariant : cs.onSurface,
     );
   }
@@ -2264,7 +2264,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                   child: Row(
                     children: [
                       Icon(
-                        Icons.access_time_rounded,
+                        LucideIcons.clock,
                         size: 16,
                         color: cs.onPrimaryContainer,
                       ),
@@ -2495,7 +2495,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                 child: Row(
                   children: [
                     Icon(
-                      Icons.list_alt_rounded,
+                      LucideIcons.list,
                       color: Theme.of(ctx).colorScheme.primary,
                     ),
                     const SizedBox(width: 12),
@@ -2606,7 +2606,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                           trailing:
                               isCurrent
                                   ? Icon(
-                                    Icons.play_arrow_rounded,
+                                    LucideIcons.play,
                                     color: Theme.of(ctx).colorScheme.primary,
                                   )
                                   : null,
@@ -2692,7 +2692,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.nights_stay_rounded, color: cs.primary),
+                      Icon(LucideIcons.moon, color: cs.primary),
                       const SizedBox(width: 12),
                       Text(
                         'Sleep timer',
@@ -2775,7 +2775,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                         child: Row(
                           children: [
                             Icon(
-                              Icons.timer_rounded,
+                              LucideIcons.timer,
                               size: 18,
                               color: cs.onSurfaceVariant,
                             ),
@@ -2899,7 +2899,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                               ),
                             ] else ...[
                               Icon(
-                                Icons.headphones_rounded,
+                                LucideIcons.headphones,
                                 size: 48,
                                 color: cs.onSurfaceVariant,
                               ),
@@ -2929,7 +2929,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                 onPressed:
                                     () =>
                                         _restoreNowPlayingIfNeeded(force: true),
-                                icon: const Icon(Icons.play_arrow_rounded),
+                                icon: const Icon(LucideIcons.play),
                                 label: const Text('Resume last book'),
                               ),
                               if (_warmLoadError != null) ...[
@@ -3245,7 +3245,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                               ),
                                               const Spacer(),
                                               _InfoPill(
-                                                icon: Symbols.auto_stories,
+                                                icon: LucideIcons.bookOpen,
                                                 label:
                                                     np.chapters.length > 1
                                                         ? 'Chapter ${(playback.currentChapterProgress?.index ?? 0) + 1}'
@@ -3310,7 +3310,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                                             vertical: 7,
                                                           ),
                                                       child: Icon(
-                                                        Symbols.more_vert,
+                                                        LucideIcons.moreVertical,
                                                         size: 16,
                                                         color:
                                                             cs.onSurfaceVariant,
@@ -3603,7 +3603,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                               children: [
                                                 _ControlButton(
                                                   tooltip: 'Previous track',
-                                                  icon: Symbols.skip_previous,
+                                                  icon: LucideIcons.skipBack,
                                                   size: edge,
                                                   onTap: () async {
                                                     if (playback.hasSmartPrev) {
@@ -3625,7 +3625,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                                     return _ControlButton(
                                                       tooltip:
                                                           'Back ${seekSeconds}s',
-                                                      icon: Symbols.replay_30,
+                                                      icon: LucideIcons.rotateCcw,
                                                       size: skip,
                                                       onTap:
                                                           () => playback
@@ -3651,7 +3651,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                                               : 'Play',
                                                       icon:
                                                           playing
-                                                              ? Icons.pause_rounded
+                                                              ? LucideIcons.pause
                                                               : Icons
                                                                   .play_arrow_rounded,
                                                       isPrimary: true,
@@ -3720,7 +3720,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                                     return _ControlButton(
                                                       tooltip:
                                                           'Forward ${seekSeconds}s',
-                                                      icon: Symbols.forward_30,
+                                                      icon: LucideIcons.rotateCw,
                                                       size: skip,
                                                       onTap:
                                                           () => playback
@@ -3733,7 +3733,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                                 SizedBox(width: spacing),
                                                 _ControlButton(
                                                   tooltip: 'Next track',
-                                                  icon: Symbols.skip_next,
+                                                  icon: LucideIcons.skipForward,
                                                   size: edge,
                                                   onTap: () async {
                                                     if (playback.hasSmartNext) {
@@ -4165,7 +4165,7 @@ class _SleepQuickAction extends StatelessWidget {
         final active = timer.isActive;
         final isChapterMode = timer.isChapterMode;
         return _PlayerActionTile(
-          icon: Icon(isChapterMode ? Symbols.auto_stories : Symbols.bedtime),
+          icon: Icon(isChapterMode ? LucideIcons.bookOpen : LucideIcons.moon),
           label: '',
           onTap: onTap,
           tooltip: active ? 'Adjust sleep timer' : 'Set sleep timer',
@@ -4196,7 +4196,7 @@ class _SpeedQuickAction extends StatelessWidget {
         final accentColor = cs.primary;
         return _PlayerActionTile(
           icon: Icon(
-            Symbols.speed,
+            LucideIcons.gauge,
             color: isNormal ? cs.onSurface : accentColor,
           ),
           label: '',
@@ -4239,7 +4239,7 @@ class _SpeedQuickAction extends StatelessWidget {
               tileColor:
                   selected ? Theme.of(ctx).colorScheme.primaryContainer : null,
               title: Text('${speed.toStringAsFixed(2)}×'),
-              trailing: selected ? const Icon(Icons.check_rounded) : null,
+              trailing: selected ? const Icon(LucideIcons.check) : null,
               onTap: () async {
                 Navigator.of(ctx).pop();
                 await PlaybackSpeedService.instance.setSpeed(speed);
@@ -4431,7 +4431,7 @@ class _ChaptersDownloadButtonState extends State<_ChaptersDownloadButton> {
     VoidCallback? action;
 
     if (snap?.status == 'complete') {
-      iconWidget = const Icon(Symbols.delete);
+      iconWidget = const Icon(LucideIcons.trash2);
       label = 'Offline';
       tooltip = 'Remove download';
       backgroundColor = cs.secondaryContainer;
@@ -4488,7 +4488,7 @@ class _ChaptersDownloadButtonState extends State<_ChaptersDownloadButton> {
       foregroundColor = cs.onPrimary;
       action = _cancelCurrent;
     } else {
-      iconWidget = const Icon(Symbols.download_for_offline);
+      iconWidget = const Icon(LucideIcons.download);
       label = 'Offline';
       tooltip = 'Download for offline';
       backgroundColor = cs.surfaceContainerHighest;

@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../core/books_repository.dart';
 import '../../core/download_storage.dart';
 import '../../core/streaming_cache_service.dart';
@@ -157,7 +158,7 @@ class _StoragePageState extends State<StoragePage> {
           IconButton(
             tooltip: 'Refresh',
             onPressed: _loading ? null : _load,
-            icon: const Icon(Icons.refresh_rounded),
+            icon: const Icon(LucideIcons.refreshCw),
           ),
         ],
       ),
@@ -170,7 +171,7 @@ class _StoragePageState extends State<StoragePage> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.error_outline_rounded, size: 48, color: cs.error),
+                        Icon(LucideIcons.alertCircle, size: 48, color: cs.error),
                         const SizedBox(height: 12),
                         Text('Failed to load storage info', style: Theme.of(context).textTheme.titleMedium),
                         const SizedBox(height: 8),
@@ -200,7 +201,7 @@ class _StoragePageState extends State<StoragePage> {
                           Expanded(
                             child: FilledButton.icon(
                               onPressed: _items.isEmpty ? null : _deleteAllDownloads,
-                              icon: const Icon(Icons.delete_outline_rounded),
+                              icon: const Icon(LucideIcons.trash2),
                               label: const Text('Delete all downloads'),
                             ),
                           ),
@@ -208,7 +209,7 @@ class _StoragePageState extends State<StoragePage> {
                           Expanded(
                             child: OutlinedButton.icon(
                               onPressed: _streamCacheBytesTotal == 0 ? null : _clearAllStreamingCache,
-                              icon: const Icon(Icons.cached_rounded),
+                              icon: const Icon(LucideIcons.refreshCw),
                               label: const Text('Clear streaming cache'),
                             ),
                           ),
@@ -293,11 +294,11 @@ class _OverviewCard extends StatelessWidget {
           children: [
             Text('Overview', style: text.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
             const SizedBox(height: 12),
-            _kvRow(context, Icons.download_rounded, 'Downloads', _formatBytes(downloadBytes), cs.primary),
+            _kvRow(context, LucideIcons.download, 'Downloads', _formatBytes(downloadBytes), cs.primary),
             const SizedBox(height: 10),
             _kvRow(
               context,
-              Icons.cached_rounded,
+              LucideIcons.refreshCw,
               'Streaming cache',
               '${_formatBytes(streamBytes)} / ${_formatBytes(streamLimitBytes)}',
               cs.secondary,
@@ -396,7 +397,7 @@ class _StorageTile extends StatelessWidget {
                 value: _StorageAction.clearDownloads,
                 child: ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.delete_outline_rounded),
+                  leading: Icon(LucideIcons.trash2),
                   title: Text('Delete downloads'),
                 ),
               ),
@@ -405,7 +406,7 @@ class _StorageTile extends StatelessWidget {
                 value: _StorageAction.clearStreamingCache,
                 child: ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.cached_rounded),
+                  leading: Icon(LucideIcons.refreshCw),
                   title: Text('Clear streaming cache'),
                 ),
               ),
@@ -413,7 +414,7 @@ class _StorageTile extends StatelessWidget {
               value: _StorageAction.clearBoth,
               child: ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading: Icon(Icons.cleaning_services_rounded),
+                leading: Icon(LucideIcons.brush),
                 title: Text('Clear both'),
               ),
             ),
@@ -451,17 +452,17 @@ class _Cover extends StatelessWidget {
         height: 52,
         color: cs.surfaceContainerHighest,
         child: (resolved == null || resolved.isEmpty)
-            ? Icon(Icons.menu_book_outlined, color: cs.onSurfaceVariant)
+            ? Icon(LucideIcons.bookOpen, color: cs.onSurfaceVariant)
             : (uri != null && uri.scheme == 'file')
                 ? Image.file(
                     File(uri.toFilePath()),
                     fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Icon(Icons.menu_book_outlined, color: cs.onSurfaceVariant),
+                    errorBuilder: (_, __, ___) => Icon(LucideIcons.bookOpen, color: cs.onSurfaceVariant),
                   )
                 : Image.network(
                     resolved,
                     fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Icon(Icons.menu_book_outlined, color: cs.onSurfaceVariant),
+                    errorBuilder: (_, __, ___) => Icon(LucideIcons.bookOpen, color: cs.onSurfaceVariant),
                   ),
       ),
     );

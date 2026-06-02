@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../core/books_repository.dart';
 import '../../core/ui_prefs.dart';
@@ -158,7 +159,7 @@ class _AuthorsPageState extends State<AuthorsPage> {
                     titleSpacing: 20,
                     title: Row(
                       children: [
-                        Icon(Icons.person_rounded, color: cs.primary, size: 22),
+                        Icon(LucideIcons.user, color: cs.primary, size: 22),
                         const SizedBox(width: 10),
                         Text(
                           'Authors',
@@ -174,7 +175,7 @@ class _AuthorsPageState extends State<AuthorsPage> {
                         padding: const EdgeInsets.only(right: 8),
                         child: IconButton(
                           onPressed: _refresh,
-                          icon: const Icon(Icons.refresh_rounded),
+                          icon: const Icon(LucideIcons.refreshCw),
                         ),
                       ),
                     ],
@@ -186,14 +187,14 @@ class _AuthorsPageState extends State<AuthorsPage> {
                           controller: _searchController,
                           decoration: InputDecoration(
                             hintText: 'Search authors...',
-                            prefixIcon: const Icon(Icons.search_rounded),
+                            prefixIcon: const Icon(LucideIcons.search),
                             suffixIcon:
                                 _searchQuery.isNotEmpty
                                     ? IconButton(
                                       onPressed: () {
                                         _searchController.clear();
                                       },
-                                      icon: const Icon(Icons.clear_rounded),
+                                      icon: const Icon(LucideIcons.x),
                                     )
                                     : null,
                             filled: true,
@@ -236,7 +237,7 @@ class _AuthorsPageState extends State<AuthorsPage> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.error_outline_rounded, size: 64, color: cs.error),
+              Icon(LucideIcons.alertCircle, size: 64, color: cs.error),
               const SizedBox(height: 16),
               Text(
                 'Failed to load authors',
@@ -255,7 +256,7 @@ class _AuthorsPageState extends State<AuthorsPage> {
               const SizedBox(height: 16),
               FilledButton.icon(
                 onPressed: _refresh,
-                icon: const Icon(Icons.refresh_rounded),
+                icon: const Icon(LucideIcons.refreshCw),
                 label: const Text('Try Again'),
               ),
             ],
@@ -271,7 +272,7 @@ class _AuthorsPageState extends State<AuthorsPage> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
-                Icons.person_outline_rounded,
+                LucideIcons.user,
                 size: 64,
                 color: cs.onSurfaceVariant.withOpacity(0.5),
               ),
@@ -388,20 +389,20 @@ class _AuthorTile extends StatelessWidget {
                             fit: BoxFit.cover,
                             placeholder:
                                 (context, url) => Icon(
-                                  Icons.person_rounded,
+                                  LucideIcons.user,
                                   color: cs.primary,
                                   size: 24,
                                 ),
                             errorWidget:
                                 (context, url, error) => Icon(
-                                  Icons.person_rounded,
+                                  LucideIcons.user,
                                   color: cs.primary,
                                   size: 24,
                                 ),
                           ),
                         )
                         : Icon(
-                          Icons.person_rounded,
+                          LucideIcons.user,
                           color: cs.primary,
                           size: 24,
                         ),
@@ -431,7 +432,7 @@ class _AuthorTile extends StatelessWidget {
                 ),
               ),
               // Arrow indicator
-              Icon(Icons.chevron_right_rounded, color: cs.onSurfaceVariant),
+              Icon(LucideIcons.chevronRight, color: cs.onSurfaceVariant),
             ],
           ),
         ),

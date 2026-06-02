@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:background_downloader/background_downloader.dart';
 import 'dart:io';
 import '../../core/download_storage.dart';
@@ -153,7 +154,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
                             title: Row(
                               children: [
                                 Icon(
-                                  Icons.download_rounded,
+                                  LucideIcons.download,
                                   color: cs.primary,
                                   size: 22,
                                 ),
@@ -282,7 +283,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
           padding: const EdgeInsets.symmetric(horizontal: 20),
           color: Theme.of(context).colorScheme.error,
           child: Icon(
-            Icons.delete_forever_rounded,
+            LucideIcons.trash2,
             color: Theme.of(context).colorScheme.onError,
           ),
         ),
@@ -626,7 +627,7 @@ class _BookDownloadTileState extends State<_BookDownloadTile> {
                         await _load();
                       } catch (_) {}
                     },
-                    icon: const Icon(Icons.close_rounded, size: 16),
+                    icon: const Icon(LucideIcons.x, size: 16),
                     label: const Text('Cancel'),
                   ),
               ],
@@ -690,7 +691,7 @@ class _BookDownloadTileState extends State<_BookDownloadTile> {
         color: cs.surfaceContainerHighest,
         borderRadius: radius,
       ),
-      child: const Icon(Icons.menu_book_outlined),
+      child: const Icon(LucideIcons.bookOpen),
     );
     if (url == null || url.isEmpty) return ph;
     final uri = Uri.tryParse(url);

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 class BookMetadataFact {
   const BookMetadataFact({
     required this.label,
@@ -206,7 +207,7 @@ class _MetadataRow extends StatelessWidget {
                       color: cs.onSurfaceVariant,
                     )
                     : Icon(
-                      Icons.info_outline_rounded,
+                      LucideIcons.info,
                       size: 16,
                       color: cs.onSurfaceVariant,
                     ),

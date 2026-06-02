@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../core/api_client.dart';
 import '../core/audible_rating_service.dart';
 import '../main.dart';
@@ -173,20 +174,22 @@ class _AudibleStarsState extends State<AudibleStars> {
   }
 
   List<Widget> _buildStars(double rating, double size, Color color) {
+    // Lucide stars are line-style, so full vs empty is conveyed by colour:
+    // rated stars use the accent colour, the remainder a faint version.
     final full = rating.floor();
     final frac = rating - full;
+    final empty = color.withOpacity(0.26);
     return List.generate(5, (i) {
-      IconData icon;
       if (i < full) {
-        icon = Icons.star_rounded;
-      } else if (i == full && frac >= 0.25 && frac < 0.85) {
-        icon = Icons.star_half_rounded;
-      } else if (i == full && frac >= 0.85) {
-        icon = Icons.star_rounded;
-      } else {
-        icon = Icons.star_outline_rounded;
+        return Icon(LucideIcons.star, size: size, color: color);
       }
-      return Icon(icon, size: size, color: color);
+      if (i == full && frac >= 0.25 && frac < 0.85) {
+        return Icon(LucideIcons.starHalf, size: size, color: color);
+      }
+      if (i == full && frac >= 0.85) {
+        return Icon(LucideIcons.star, size: size, color: color);
+      }
+      return Icon(LucideIcons.star, size: size, color: empty);
     });
   }
 

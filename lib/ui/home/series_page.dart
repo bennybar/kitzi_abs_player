@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
@@ -559,7 +560,7 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.error_outline_rounded, size: 48, color: cs.error),
+              Icon(LucideIcons.alertCircle, size: 48, color: cs.error),
               const SizedBox(height: 12),
               Text(
                 'Failed to load ${_viewType.name}',
@@ -578,7 +579,7 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
               const SizedBox(height: 12),
               FilledButton.icon(
                 onPressed: () => _refresh(),
-                icon: const Icon(Icons.refresh_rounded),
+                icon: const Icon(LucideIcons.refreshCw),
                 label: const Text('Retry'),
               ),
             ],
@@ -644,8 +645,8 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
                   children: [
                     Icon(
                       _viewType == SeriesViewType.series
-                          ? Icons.collections_bookmark_rounded
-                          : Icons.folder_rounded,
+                          ? LucideIcons.library
+                          : LucideIcons.folder,
                       color: cs.primary,
                       size: 22,
                     ),
@@ -678,7 +679,7 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
                             child: Row(
                               children: [
                                 Icon(
-                                  Icons.wifi_off_rounded,
+                                  LucideIcons.wifiOff,
                                   size: 16,
                                   color: cs.onErrorContainer,
                                 ),
@@ -711,8 +712,8 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
                       onPressed: _toggleSearch,
                       icon: Icon(
                         _searchVisible
-                            ? Icons.search_off_rounded
-                            : Icons.search_rounded,
+                            ? LucideIcons.searchX
+                            : LucideIcons.search,
                       ),
                       style: IconButton.styleFrom(
                         backgroundColor: Colors.transparent,
@@ -740,13 +741,13 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
                             context,
                             'Series',
                             SeriesViewType.series,
-                            Icons.collections_bookmark_rounded,
+                            LucideIcons.library,
                           ),
                           _buildToggleButton(
                             context,
                             'Collections',
                             SeriesViewType.collections,
-                            Icons.folder_rounded,
+                            LucideIcons.folder,
                           ),
                         ],
                       ),
@@ -779,7 +780,7 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
                                     controller: _searchCtrl,
                                     focusNode: _searchFocusNode,
                                     leading: Icon(
-                                      Icons.search_rounded,
+                                      LucideIcons.search,
                                       color: cs.onSurfaceVariant,
                                     ),
                                     hintText:
@@ -828,7 +829,7 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
                                             _saveSearchPref('');
                                           },
                                           icon: Icon(
-                                            Icons.clear_rounded,
+                                            LucideIcons.x,
                                             color: cs.onSurfaceVariant,
                                           ),
                                         ),
@@ -851,8 +852,8 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
                         children: [
                           Icon(
                             _viewType == SeriesViewType.series
-                                ? Icons.collections_bookmark_outlined
-                                : Icons.folder_outlined,
+                                ? LucideIcons.library
+                                : LucideIcons.folder,
                             size: 64,
                             color: cs.onSurfaceVariant,
                           ),
@@ -1157,7 +1158,7 @@ class _NewSeriesCardState extends State<_NewSeriesCard> {
                 Row(
                   children: [
                     Icon(
-                      Icons.collections_bookmark_rounded,
+                      LucideIcons.library,
                       size: 20,
                       color: cs.primary,
                     ),
@@ -1204,7 +1205,7 @@ class _NewSeriesCardState extends State<_NewSeriesCard> {
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Icon(
-                              Icons.book_outlined,
+                              LucideIcons.book,
                               color: cs.onSurfaceVariant,
                             ),
                             const SizedBox(height: 4),
@@ -1246,7 +1247,7 @@ class _NewSeriesCardState extends State<_NewSeriesCard> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Icon(
-                    Icons.collections_bookmark_rounded,
+                    LucideIcons.library,
                     size: 18,
                     color: cs.primary,
                   ),
@@ -1293,7 +1294,7 @@ class _NewSeriesCardState extends State<_NewSeriesCard> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(
-                                Icons.book_outlined,
+                                LucideIcons.book,
                                 size: 32,
                                 color: cs.onSurfaceVariant.withOpacity(0.6),
                               ),
@@ -1422,7 +1423,7 @@ class _SeriesCard extends StatelessWidget {
             Row(
               children: [
                 Icon(
-                  Icons.collections_bookmark_rounded,
+                  LucideIcons.library,
                   size: 20,
                   color: cs.primary,
                 ),
@@ -1536,7 +1537,7 @@ class _CollectionCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(Icons.folder_rounded, size: 20, color: cs.primary),
+                Icon(LucideIcons.folder, size: 20, color: cs.primary),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -1639,7 +1640,7 @@ class _CoverThumb extends StatelessWidget {
           final cs = Theme.of(context).colorScheme;
           return Container(
             color: cs.surfaceVariant,
-            child: Icon(Icons.book_outlined, color: cs.onSurfaceVariant),
+            child: Icon(LucideIcons.book, color: cs.onSurfaceVariant),
           );
         },
       ),
@@ -1846,7 +1847,7 @@ class _SeriesBooksPageState extends State<SeriesBooksPage> {
               ],
             ),
             leading: IconButton(
-              icon: const Icon(Icons.arrow_back_rounded),
+              icon: const Icon(LucideIcons.arrowLeft),
               onPressed: () => Navigator.of(context).pop(),
             ),
           ),
@@ -1863,7 +1864,7 @@ class _SeriesBooksPageState extends State<SeriesBooksPage> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(
-                        Icons.error_outline_rounded,
+                        LucideIcons.alertCircle,
                         size: 48,
                         color: cs.error,
                       ),
@@ -1883,7 +1884,7 @@ class _SeriesBooksPageState extends State<SeriesBooksPage> {
                       const SizedBox(height: 12),
                       FilledButton.icon(
                         onPressed: _loadBooks,
-                        icon: const Icon(Icons.refresh_rounded),
+                        icon: const Icon(LucideIcons.refreshCw),
                         label: const Text('Retry'),
                       ),
                     ],
@@ -1900,7 +1901,7 @@ class _SeriesBooksPageState extends State<SeriesBooksPage> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(
-                        Icons.book_outlined,
+                        LucideIcons.book,
                         size: 64,
                         color: cs.onSurfaceVariant,
                       ),
@@ -2015,7 +2016,7 @@ class _SeriesBookCard extends StatelessWidget {
                   ],
                 ),
               ),
-              Icon(Icons.chevron_right_rounded, color: cs.onSurfaceVariant),
+              Icon(LucideIcons.chevronRight, color: cs.onSurfaceVariant),
             ],
           ),
         ),
@@ -2065,19 +2066,19 @@ class _BookStatusBadge extends StatelessWidget {
       case _SeriesBookStatus.completed:
         bg = cs.primaryContainer.withOpacity(0.95);
         fg = cs.onPrimaryContainer;
-        icon = Icons.check_rounded;
+        icon = LucideIcons.check;
         label = 'Completed';
         break;
       case _SeriesBookStatus.inProgress:
         bg = cs.tertiaryContainer.withOpacity(0.95);
         fg = cs.onTertiaryContainer;
-        icon = Icons.play_arrow_rounded;
+        icon = LucideIcons.play;
         label = 'In progress';
         break;
       case _SeriesBookStatus.notStarted:
         bg = cs.surfaceContainerHighest.withOpacity(0.9);
         fg = cs.onSurface;
-        icon = Icons.circle_outlined;
+        icon = LucideIcons.circle;
         label = 'Not started';
         break;
     }

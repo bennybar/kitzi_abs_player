@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../core/playback_repository.dart';
 import '../main.dart'; // ServicesScope
 import '../ui/player/full_player_page.dart';
@@ -164,10 +165,10 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                         final pending = status.pending;
                                         final icon =
                                             pending
-                                                ? Icons.cloud_upload_rounded
+                                                ? LucideIcons.uploadCloud
                                                 : (status.hasEverSynced
-                                                    ? Icons.cloud_done_rounded
-                                                    : Icons.cloud_off_rounded);
+                                                    ? LucideIcons.cloud
+                                                    : LucideIcons.cloudOff);
                                         final color =
                                             pending
                                                 ? cs.tertiary
@@ -267,7 +268,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                           height: 36,
                           alignment: Alignment.center,
                           child: Icon(
-                            Icons.replay_10,
+                            LucideIcons.rotateCcw,
                             size: 20,
                             color: cs.onSurface,
                           ),
@@ -359,8 +360,8 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                 alignment: Alignment.center,
                                 child: Icon(
                                   hasValidNowPlaying
-                                      ? Icons.pause_rounded
-                                      : Icons.play_arrow_rounded,
+                                      ? LucideIcons.pause
+                                      : LucideIcons.play,
                                   size: 26,
                                   color:
                                       hasValidNowPlaying
@@ -448,7 +449,7 @@ class _MiniCover extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
       ),
       child: Icon(
-        Icons.menu_book_outlined,
+        LucideIcons.bookOpen,
         color: cs.onSurfaceVariant,
         size: size * 0.45,
       ),

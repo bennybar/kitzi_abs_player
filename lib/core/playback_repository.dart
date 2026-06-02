@@ -7,6 +7,7 @@ import 'package:audio_session/audio_session.dart';
 import 'package:audio_service/audio_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:http/http.dart' as http;
 import 'package:just_audio/just_audio.dart';
@@ -857,7 +858,7 @@ class PlaybackRepository {
                   child: Row(
                     children: [
                       Icon(
-                        Icons.info_outline_rounded,
+                        LucideIcons.info,
                         size: 20,
                         color: cs.onPrimaryContainer,
                       ),
@@ -1518,7 +1519,7 @@ class PlaybackRepository {
                     child: Row(
                       children: [
                         Icon(
-                          Icons.play_circle_outline,
+                          LucideIcons.play,
                           color: Theme.of(context).colorScheme.primary,
                           size: 20,
                         ),

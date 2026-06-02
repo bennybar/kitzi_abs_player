@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'books_repository.dart';
 import 'auth_repository.dart';
 import 'play_history_service.dart';
@@ -171,7 +172,7 @@ class _SplashContent extends StatelessWidget {
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Icon(
-                Icons.menu_book_rounded,
+                LucideIcons.book,
                 color: cs.onPrimary,
                 size: 40,
               ),

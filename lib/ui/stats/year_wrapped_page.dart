@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../main.dart';
 import '../../models/book.dart';
 
@@ -218,7 +219,7 @@ class _YearWrappedPageState extends State<YearWrappedPage> {
         title: Text('$_year in Review'),
         actions: [
           PopupMenuButton<int>(
-            icon: const Icon(Icons.calendar_today),
+            icon: const Icon(LucideIcons.calendar),
             tooltip: 'Year',
             onSelected: (y) {
               if (y == _year) return;
@@ -232,7 +233,7 @@ class _YearWrappedPageState extends State<YearWrappedPage> {
                   child: Row(
                     children: [
                       if (y == _year)
-                        const Icon(Icons.check, size: 18)
+                        const Icon(LucideIcons.check, size: 18)
                       else
                         const SizedBox(width: 18),
                       const SizedBox(width: 8),
@@ -244,7 +245,7 @@ class _YearWrappedPageState extends State<YearWrappedPage> {
           ),
           IconButton(
             onPressed: _loading ? null : _load,
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(LucideIcons.refreshCw),
             tooltip: 'Refresh',
           ),
         ],
@@ -258,7 +259,7 @@ class _YearWrappedPageState extends State<YearWrappedPage> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.error_outline, size: 48, color: cs.error),
+                        Icon(LucideIcons.alertCircle, size: 48, color: cs.error),
                         const SizedBox(height: 12),
                         Text('Failed to load year in review',
                             style: text.titleMedium, textAlign: TextAlign.center),
@@ -269,7 +270,7 @@ class _YearWrappedPageState extends State<YearWrappedPage> {
                         const SizedBox(height: 16),
                         FilledButton.icon(
                           onPressed: _load,
-                          icon: const Icon(Icons.refresh),
+                          icon: const Icon(LucideIcons.refreshCw),
                           label: const Text('Retry'),
                         ),
                       ],
@@ -306,7 +307,7 @@ class _YearWrappedPageState extends State<YearWrappedPage> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.celebration_outlined, size: 64, color: cs.primary),
+            Icon(LucideIcons.partyPopper, size: 64, color: cs.primary),
             const SizedBox(height: 16),
             Text('No activity in $_year yet',
                 style: text.titleMedium, textAlign: TextAlign.center),
@@ -336,7 +337,7 @@ class _YearWrappedPageState extends State<YearWrappedPage> {
           children: [
             Row(
               children: [
-                Icon(Icons.celebration, color: cs.onPrimaryContainer),
+                Icon(LucideIcons.partyPopper, color: cs.onPrimaryContainer),
                 const SizedBox(width: 8),
                 Text('Your $_year',
                     style: text.titleMedium?.copyWith(
@@ -373,7 +374,7 @@ class _YearWrappedPageState extends State<YearWrappedPage> {
           children: [
             Expanded(
               child: _statCard(
-                icon: Icons.check_circle_outline,
+                icon: LucideIcons.checkCircle,
                 value: _finished.length.toString(),
                 label: 'Books finished',
               ),
@@ -381,7 +382,7 @@ class _YearWrappedPageState extends State<YearWrappedPage> {
             const SizedBox(width: 12),
             Expanded(
               child: _statCard(
-                icon: Icons.local_fire_department_outlined,
+                icon: LucideIcons.flame,
                 value: _longestStreak > 0 ? '🔥 $_longestStreak' : '0',
                 label: 'Longest streak',
               ),
@@ -393,7 +394,7 @@ class _YearWrappedPageState extends State<YearWrappedPage> {
           children: [
             Expanded(
               child: _statCard(
-                icon: Icons.calendar_today,
+                icon: LucideIcons.calendar,
                 value: _daysListened.toString(),
                 label: 'Days listened',
               ),
@@ -401,7 +402,7 @@ class _YearWrappedPageState extends State<YearWrappedPage> {
             const SizedBox(width: 12),
             Expanded(
               child: _statCard(
-                icon: Icons.star_outline,
+                icon: LucideIcons.star,
                 value: _bestDaySeconds > 0 ? _formatHoursMinutes(_bestDaySeconds) : '—',
                 label: _bestDayDate != null ? 'Best day · ${_formatDate(_bestDayDate!)}' : 'Best day',
               ),
@@ -452,7 +453,7 @@ class _YearWrappedPageState extends State<YearWrappedPage> {
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
-              Icon(Icons.menu_book_outlined, color: cs.onSurfaceVariant),
+              Icon(LucideIcons.bookOpen, color: cs.onSurfaceVariant),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
@@ -486,13 +487,13 @@ class _YearWrappedPageState extends State<YearWrappedPage> {
                           height: 44,
                           color: cs.surfaceContainerHighest,
                           child: (b.coverUrl == null || b.coverUrl!.isEmpty)
-                              ? Icon(Icons.menu_book_outlined,
+                              ? Icon(LucideIcons.bookOpen,
                                   color: cs.onSurfaceVariant, size: 20)
                               : Image.network(
                                   b.coverUrl!,
                                   fit: BoxFit.cover,
                                   errorBuilder: (_, __, ___) => Icon(
-                                      Icons.menu_book_outlined,
+                                      LucideIcons.bookOpen,
                                       color: cs.onSurfaceVariant,
                                       size: 20),
                                 ),
