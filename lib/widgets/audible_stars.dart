@@ -1,6 +1,10 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
+import '../core/api_client.dart';
 import '../core/audible_rating_service.dart';
+import '../main.dart';
 
 /// Shows a cached Audible star rating for a book. Displays the cached value
 /// immediately and refreshes in place when it's older than 24h
@@ -39,12 +43,24 @@ class AudibleStars extends StatefulWidget {
 
 class _AudibleStarsState extends State<AudibleStars> {
   AudibleRating? _rating;
+  ApiClient? _api;
+  String? _loadedFor; // itemId we've already kicked a load for
 
   @override
   void initState() {
     super.initState();
     _rating = AudibleRatingService.instance.peek(widget.itemId);
-    _load();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Safe place to read inherited services; needed to ask ABS for the ASIN.
+    _api = ServicesScope.of(context).services.auth.api;
+    if (_loadedFor != widget.itemId) {
+      _loadedFor = widget.itemId;
+      _load();
+    }
   }
 
   @override
@@ -52,6 +68,7 @@ class _AudibleStarsState extends State<AudibleStars> {
     super.didUpdateWidget(old);
     if (old.itemId != widget.itemId) {
       _rating = AudibleRatingService.instance.peek(widget.itemId);
+      _loadedFor = widget.itemId;
       _load();
     }
   }
@@ -62,10 +79,24 @@ class _AudibleStarsState extends State<AudibleStars> {
     final cached = await svc.loadCached(widget.itemId);
     if (!mounted) return;
     if (cached != null) setState(() => _rating = cached);
-    // 2) refresh if stale/missing, then update in place.
+    if (cached != null && !cached.isStale) return; // fresh enough; done.
+
+    // 2) Make sure we have an ASIN. Prefer the one passed in; else the one we
+    // resolved before; else ask the ABS server directly (works for downloaded
+    // items too, whose cached Book carries no ASIN). The ungated ASIN lookup is
+    // far more reliable than the heuristic search.
+    var asin = widget.asin;
+    if (asin == null || asin.isEmpty) asin = cached?.asin;
+    if (asin == null || asin.isEmpty) {
+      asin = await _fetchAbsAsin();
+      debugPrint('[AUDIBLE] widget item=${widget.itemId} title="${widget.title}" '
+          'ABS-asin=${asin ?? '(none found)'}');
+    }
+
+    // 3) refresh if stale/missing, then update in place.
     final fresh = await svc.resolve(
       itemId: widget.itemId,
-      asin: widget.asin,
+      asin: asin,
       title: widget.title,
       author: widget.author,
       narrator: widget.narrator,
@@ -74,6 +105,33 @@ class _AudibleStarsState extends State<AudibleStars> {
     );
     if (!mounted || fresh == null) return;
     setState(() => _rating = fresh);
+  }
+
+  /// Read the Audible ASIN straight from the ABS item metadata (online only).
+  Future<String?> _fetchAbsAsin() async {
+    final api = _api;
+    if (api == null) return null;
+    try {
+      final resp = await api.request('GET', '/api/items/${widget.itemId}');
+      if (resp.statusCode != 200 || resp.body.isEmpty) {
+        debugPrint('[AUDIBLE] ABS /api/items/${widget.itemId} '
+            'status=${resp.statusCode} bodyLen=${resp.body.length} -> no asin');
+        return null;
+      }
+      final parsed = jsonDecode(resp.body);
+      final item = (parsed is Map && parsed['item'] is Map)
+          ? (parsed['item'] as Map)
+          : (parsed is Map ? parsed : null);
+      final media = item?['media'];
+      final meta = media is Map ? media['metadata'] : null;
+      final asin = meta is Map ? meta['asin']?.toString() : null;
+      debugPrint('[AUDIBLE] ABS /api/items/${widget.itemId} '
+          'status=${resp.statusCode} metaAsin=${asin ?? '(null)'}');
+      if (asin != null && asin.trim().isNotEmpty) return asin.trim();
+    } catch (e) {
+      debugPrint('[AUDIBLE] ABS asin fetch error for ${widget.itemId}: $e');
+    }
+    return null;
   }
 
   @override

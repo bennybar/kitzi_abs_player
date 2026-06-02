@@ -2096,7 +2096,7 @@ class _RelatedBooksSectionState extends State<_RelatedBooksSection> {
         _SectionHeader(title: label),
         const SizedBox(height: 10),
         SizedBox(
-          height: 148,
+          height: 188,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: _related.length,
@@ -2137,23 +2137,32 @@ class _RelatedBooksSectionState extends State<_RelatedBooksSection> {
                         ),
                       ),
                       const SizedBox(height: 4),
-                      Text(
-                        b.title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: text.bodySmall?.copyWith(
-                          fontWeight: FontWeight.w500,
-                          height: 1.2,
+                      // Flexible so a long title/series line can never overflow
+                      // the fixed-height card (clips via ellipsis instead).
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              b.title,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: text.bodySmall?.copyWith(
+                                fontWeight: FontWeight.w500,
+                                height: 1.2,
+                              ),
+                            ),
+                            if (hasSeries && b.seriesSequence != null)
+                              Text(
+                                '#${b.seriesSequence!.toStringAsFixed(b.seriesSequence! % 1 == 0 ? 0 : 1)}',
+                                style: text.bodySmall?.copyWith(
+                                  color: cs.primary,
+                                  fontSize: 10,
+                                ),
+                              ),
+                          ],
                         ),
                       ),
-                      if (hasSeries && b.seriesSequence != null)
-                        Text(
-                          '#${b.seriesSequence!.toStringAsFixed(b.seriesSequence! % 1 == 0 ? 0 : 1)}',
-                          style: text.bodySmall?.copyWith(
-                            color: cs.primary,
-                            fontSize: 10,
-                          ),
-                        ),
                     ],
                   ),
                 ),

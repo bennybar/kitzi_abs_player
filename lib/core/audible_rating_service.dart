@@ -1,8 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+
+void _alog(String msg) => debugPrint('[AUDIBLE] $msg');
 
 /// A cached Audible community rating for a book.
 class AudibleRating {
@@ -20,8 +23,13 @@ class AudibleRating {
     this.asin,
   });
 
-  bool get isStale =>
-      DateTime.now().millisecondsSinceEpoch - tsMs > 24 * 60 * 60 * 1000;
+  bool get isStale {
+    final ageMs = DateTime.now().millisecondsSinceEpoch - tsMs;
+    // Real ratings refresh daily; "not found" results retry sooner so a
+    // newly-matched book (or improved matching) surfaces without a long wait.
+    final ttlMs = found ? 24 * 60 * 60 * 1000 : 2 * 60 * 60 * 1000;
+    return ageMs > ttlMs;
+  }
 
   Map<String, dynamic> toJson() => {
         'rating': rating,
@@ -50,7 +58,7 @@ class AudibleRatingService {
   AudibleRatingService._();
   static final AudibleRatingService instance = AudibleRatingService._();
 
-  static const String _prefix = 'audible_rating_v1_';
+  static const String _prefix = 'audible_rating_v3_';
 
   final Map<String, AudibleRating> _mem = {};
   final Map<String, Future<AudibleRating?>> _inflight = {};
@@ -87,9 +95,23 @@ class AudibleRatingService {
     int? durationMs,
     String region = 'us',
   }) async {
+    _alog('resolve item=$itemId title="$title" author="${author ?? ''}" '
+        'durMs=$durationMs asinIn=${asin ?? '(none)'} region=$region');
     final cached = await loadCached(itemId);
-    if (cached != null && !cached.isStale) return cached;
-    if (_inflight.containsKey(itemId)) return _inflight[itemId];
+    if (cached != null && !cached.isStale) {
+      _alog('  -> using FRESH cache: found=${cached.found} '
+          'rating=${cached.rating} count=${cached.count} asin=${cached.asin}');
+      return cached;
+    }
+    if (cached != null) {
+      _alog('  cache is STALE (found=${cached.found} rating=${cached.rating}); refreshing');
+    } else {
+      _alog('  no cache; fetching');
+    }
+    if (_inflight.containsKey(itemId)) {
+      _alog('  request already in-flight; joining');
+      return _inflight[itemId];
+    }
 
     final fut = _fetchAndCache(
       itemId: itemId,
@@ -122,18 +144,24 @@ class AudibleRatingService {
     try {
       Map<String, dynamic>? product;
       if (asin != null && asin.isNotEmpty) {
+        _alog('  path=ASIN-lookup asin=$asin');
         product = await _lookupByAsin(asin, region);
+        _alog('  ASIN-lookup ${product != null ? 'HIT' : 'MISS'}');
       }
-      product ??= await _searchBestMatch(
-        title: title,
-        author: author,
-        narrator: narrator,
-        durationMs: durationMs,
-        region: region,
-      );
+      if (product == null) {
+        _alog('  path=SEARCH (no asin or asin miss)');
+        product = await _searchBestMatch(
+          title: title,
+          author: author,
+          narrator: narrator,
+          durationMs: durationMs,
+          region: region,
+        );
+      }
 
       final now = DateTime.now().millisecondsSinceEpoch;
       if (product == null) {
+        _alog('  RESULT: no match -> caching negative (24h)');
         final neg = AudibleRating(rating: 0, tsMs: now, found: false, asin: asin);
         await _store(itemId, neg);
         return neg;
@@ -154,10 +182,13 @@ class AudibleRatingService {
         tsMs: now,
         found: rating > 0,
       );
+      _alog('  RESULT: found=${r.found} rating=${r.rating} count=${r.count} '
+          'asin=${r.asin} (matched title="${product['title']}")');
       await _store(itemId, r);
       return r;
-    } catch (_) {
+    } catch (e) {
       // Network/parse failure: keep showing the existing cached value.
+      _alog('  ERROR during fetch: $e (keeping fallback=${fallback?.rating})');
       return fallback;
     }
   }
@@ -203,14 +234,17 @@ class AudibleRatingService {
   Future<Map<String, dynamic>?> _lookupByAsin(String asin, String region) async {
     final uri = Uri.https(_host(region), '/1.0/catalog/products/$asin',
         {'response_groups': _groups});
+    _alog('    GET $uri');
     final resp = await http.get(uri, headers: _headers).timeout(
           const Duration(seconds: 12),
         );
+    _alog('    status=${resp.statusCode} bodyLen=${resp.body.length}');
     if (resp.statusCode != 200) return null;
     final data = jsonDecode(resp.body);
     if (data is Map && data['product'] is Map) {
       return (data['product'] as Map).cast<String, dynamic>();
     }
+    _alog('    no "product" in response');
     return null;
   }
 
@@ -222,6 +256,30 @@ class AudibleRatingService {
     required String region,
   }) async {
     if (title.trim().isEmpty) return null;
+
+    // ABS titles often carry series decorations ("Daemon - Book 1",
+    // "Travis Chase Book 1 - The Breach") that Audible titles never have.
+    // Build query variants and match against all of them.
+    final queries = _queryVariants(title);
+    final matchTitles = queries.map(_norm).where((s) => s.isNotEmpty).toSet();
+    _alog('    title variants: $queries');
+
+    for (final q in queries) {
+      // Try with author first; if nothing comes back, retry without it.
+      var products = await _searchProducts(q, author, region);
+      if (products.isEmpty && author != null && author.isNotEmpty) {
+        products = await _searchProducts(q, null, region);
+      }
+      if (products.isEmpty) continue;
+      final best = _pickBest(products, matchTitles, author, durationMs);
+      if (best != null) return best;
+    }
+    _alog('    best match: NONE across ${queries.length} variants');
+    return null;
+  }
+
+  Future<List<Map>> _searchProducts(
+      String title, String? author, String region) async {
     final params = <String, String>{
       'title': title,
       'num_results': '10',
@@ -229,62 +287,153 @@ class AudibleRatingService {
       'response_groups': _groups,
     };
     if (author != null && author.isNotEmpty) params['author'] = author;
-    final uri =
-        Uri.https(_host(region), '/1.0/catalog/products', params);
-    final resp = await http.get(uri, headers: _headers).timeout(
-          const Duration(seconds: 12),
-        );
-    if (resp.statusCode != 200) return null;
-    final data = jsonDecode(resp.body);
-    if (data is! Map || data['products'] is! List) return null;
-    final products = (data['products'] as List).whereType<Map>().toList();
+    final uri = Uri.https(_host(region), '/1.0/catalog/products', params);
+    _alog('    SEARCH GET $uri');
+    try {
+      final resp =
+          await http.get(uri, headers: _headers).timeout(const Duration(seconds: 12));
+      _alog('    status=${resp.statusCode} bodyLen=${resp.body.length}');
+      if (resp.statusCode != 200) return const [];
+      final data = jsonDecode(resp.body);
+      if (data is! Map || data['products'] is! List) {
+        _alog('    no "products" list in response');
+        return const [];
+      }
+      final products = (data['products'] as List).whereType<Map>().toList();
+      _alog('    ${products.length} candidates returned');
+      return products;
+    } catch (e) {
+      _alog('    search error: $e');
+      return const [];
+    }
+  }
 
-    final wantTitle = _norm(title);
+  Map<String, dynamic>? _pickBest(
+    List<Map> products,
+    Set<String> matchTitles,
+    String? author,
+    int? durationMs,
+  ) {
     final wantMinutes = durationMs != null ? durationMs / 60000.0 : null;
+    final wantAuthor =
+        (author != null && author.isNotEmpty) ? _norm(author) : null;
 
     Map<String, dynamic>? best;
     double bestScore = 0;
     for (final raw in products) {
       final p = raw.cast<String, dynamic>();
-      final pTitle = _norm((p['title'] ?? '').toString());
+      final pTitleRaw = (p['title'] ?? '').toString();
+      final pTitle = _norm(pTitleRaw);
+      final mins = (p['runtime_length_min'] as num?)?.toDouble();
       if (pTitle.isEmpty) continue;
-      final titleSim = _similarity(wantTitle, pTitle);
-      if (titleSim < 0.8) continue; // strict title gate
-
-      // Strict duration gate when we know the local duration.
-      if (wantMinutes != null) {
-        final mins = (p['runtime_length_min'] as num?)?.toDouble();
-        if (mins == null || mins <= 0) continue;
-        final diff = (mins - wantMinutes).abs() / wantMinutes;
-        if (diff > 0.05) continue;
+      // Best similarity across all local title variants.
+      var titleSim = 0.0;
+      for (final w in matchTitles) {
+        final s = _similarity(w, pTitle);
+        if (s > titleSim) titleSim = s;
+      }
+      if (titleSim < 0.8) {
+        _alog('      reject "$pTitleRaw" titleSim=${titleSim.toStringAsFixed(2)} (<0.80)');
+        continue; // title must match strongly
       }
 
-      // Author gate when we know the author.
-      if (author != null && author.isNotEmpty) {
+      // Duration corroboration (strong signal). If the local duration is known
+      // AND the candidate reports a clearly different one, reject the wrong
+      // edition; within tolerance is a positive signal.
+      bool durOk = false;
+      double? durDiff;
+      if (wantMinutes != null) {
+        if (mins != null && mins > 0) {
+          durDiff = (mins - wantMinutes).abs() / wantMinutes;
+          if (durDiff > 0.08) {
+            _alog('      reject "$pTitleRaw" titleSim=${titleSim.toStringAsFixed(2)} '
+                'durDiff=${(durDiff * 100).toStringAsFixed(0)}% (>8%, want=${wantMinutes.round()}m got=${mins.round()}m)');
+            continue;
+          }
+          durOk = true;
+        }
+      }
+
+      // Author corroboration.
+      bool authorOk = false;
+      if (wantAuthor != null) {
         final authors = (p['authors'] as List?)
                 ?.map((a) => _norm((a is Map ? a['name'] : a).toString()))
                 .toList() ??
             const [];
-        final wantAuthor = _norm(author);
-        final authorOk = authors.any((a) =>
-            a.isNotEmpty && (_similarity(a, wantAuthor) >= 0.6));
-        if (!authorOk) continue;
+        authorOk = authors
+            .any((a) => a.isNotEmpty && _similarity(a, wantAuthor) >= 0.5);
+        // Author known but unmatched, with no duration backup -> too risky.
+        if (!authorOk && !durOk) {
+          _alog('      reject "$pTitleRaw" titleSim=${titleSim.toStringAsFixed(2)} '
+              'author mismatch (want="$wantAuthor" got=$authors) & no duration backup');
+          continue;
+        }
       }
 
-      // Score: prefer best title match, then having a rating.
-      final dist =
-          (p['rating'] as Map?)?['overall_distribution'] as Map?;
+      // No corroborating signal at all -> require a near-exact title.
+      if (!durOk && !authorOk && titleSim < 0.92) {
+        _alog('      reject "$pTitleRaw" titleSim=${titleSim.toStringAsFixed(2)} '
+            'no corroboration (need >=0.92)');
+        continue;
+      }
+
+      final dist = (p['rating'] as Map?)?['overall_distribution'] as Map?;
       final hasRating = (dist?['num_ratings'] as num?) != null;
-      final score = titleSim + (hasRating ? 0.1 : 0);
+      final score = titleSim +
+          (durOk ? 0.25 : 0) +
+          (authorOk ? 0.25 : 0) +
+          (hasRating ? 0.1 : 0);
+      _alog('      candidate "$pTitleRaw" titleSim=${titleSim.toStringAsFixed(2)} '
+          'durOk=$durOk authorOk=$authorOk hasRating=$hasRating score=${score.toStringAsFixed(2)}');
       if (score > bestScore) {
         bestScore = score;
         best = p;
       }
     }
+    _alog('    best match: ${best != null ? '"${best['title']}"' : 'NONE'} '
+        '(score=${bestScore.toStringAsFixed(2)})');
     return best;
   }
 
   // === matching helpers ===
+
+  /// Ordered search-title candidates derived from a decorated ABS title.
+  List<String> _queryVariants(String title) {
+    final out = <String>[];
+    void add(String s) {
+      final t = s.trim();
+      if (t.isNotEmpty && !out.contains(t)) out.add(t);
+    }
+
+    final cleaned = _cleanQueryTitle(title);
+    add(cleaned);
+    // "Series Book N - Title" / "Title - Subtitle": try segments around a dash.
+    final dashParts = cleaned.split(RegExp(r'\s[-–—]\s'));
+    if (dashParts.length > 1) {
+      add(_cleanQueryTitle(dashParts.last));
+      add(_cleanQueryTitle(dashParts.first));
+    }
+    add(title.trim()); // raw, last resort
+    return out;
+  }
+
+  /// Strip series decorations ("Book 1", "Vol. 2", "(Unabridged)", trailing #N).
+  String _cleanQueryTitle(String t) {
+    var s = t;
+    s = s.replaceAll(RegExp(r'[\(\[\{].*?[\)\]\}]'), ' '); // bracketed notes
+    s = s.replaceAll(
+        RegExp(r'[-–—:,]?\s*\b(book|bk|vol|volume|part|episode|ep)\b\.?\s*\d+',
+            caseSensitive: false),
+        ' ');
+    s = s.replaceAll(RegExp(r'[-–—#]\s*\d+\s*$'), ' '); // trailing "- 3" / "#3"
+    s = s.replaceAll(RegExp(r'\s+'), ' ').trim();
+    s = s
+        .replaceAll(RegExp(r'^[\s\-–—:,]+'), '')
+        .replaceAll(RegExp(r'[\s\-–—:,]+$'), '')
+        .trim();
+    return s.isEmpty ? t.trim() : s;
+  }
 
   String _norm(String s) {
     var t = s.toLowerCase();
