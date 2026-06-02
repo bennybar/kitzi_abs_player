@@ -1734,6 +1734,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                             ? 'Keep momentum'
                             : 'No active streak',
                     icon: LucideIcons.flame,
+                    accent: const Color(0xFFF59E0B), // warm amber for the streak
                   ),
                 ),
               ],
@@ -2206,6 +2207,7 @@ class _HomeStatCard extends StatelessWidget {
     required this.subtitle,
     required this.icon,
     this.chipLabel,
+    this.accent,
   });
 
   final String title;
@@ -2213,6 +2215,7 @@ class _HomeStatCard extends StatelessWidget {
   final String subtitle;
   final IconData icon;
   final String? chipLabel;
+  final Color? accent;
 
   @override
   Widget build(BuildContext context) {
@@ -2291,15 +2294,18 @@ class _HomeStatCard extends StatelessWidget {
           const SizedBox(height: 12),
           Row(
             children: [
-              Container(
-                width: 28,
-                height: 28,
-                decoration: BoxDecoration(
-                  color: cs.primary.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(icon, size: 16, color: cs.primary),
-              ),
+              Builder(builder: (_) {
+                final accent = this.accent ?? cs.primary;
+                return Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: accent.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(icon, size: 16, color: accent),
+                );
+              }),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(

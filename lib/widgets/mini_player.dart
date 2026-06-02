@@ -297,9 +297,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                       cs.primary.withOpacity(0.92),
                                       cs.surface,
                                     )
-                                    : cs.surfaceContainerHighest.withOpacity(
-                                      0.5,
-                                    ),
+                                    : cs.primary.withOpacity(0.14),
                             borderRadius: BorderRadius.circular(22),
                             elevation: hasValidNowPlaying ? 3 : 0,
                             shadowColor:
@@ -366,7 +364,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                   color:
                                       hasValidNowPlaying
                                           ? cs.onPrimary
-                                          : cs.onSurface,
+                                          : cs.primary,
                                 ),
                               ),
                             ),
