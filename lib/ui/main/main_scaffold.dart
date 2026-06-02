@@ -289,36 +289,27 @@ class _MainScaffoldState extends State<MainScaffold> {
           child: Scaffold(
             backgroundColor: cs.surface,
             extendBody: true,
-            body: Stack(
-              children: [
-                Positioned.fill(
-                  child: IndexedStack(index: safeIndex, children: pages),
-                ),
-                if (_hasActiveDownloads)
-                  Positioned(
-                    top: MediaQuery.of(context).padding.top + kToolbarHeight,
-                    left: 0,
-                    right: 0,
-                    child: IgnorePointer(
-                      child: LinearProgressIndicator(
-                        value:
-                            _overallDownloadProgress > 0
-                                ? _overallDownloadProgress
-                                : null,
-                        minHeight: 3,
-                        backgroundColor: cs.surfaceContainerHighest,
-                        valueColor: AlwaysStoppedAnimation<Color>(cs.primary),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
+            body: IndexedStack(index: safeIndex, children: pages),
             bottomNavigationBar: ValueListenableBuilder<bool>(
               valueListenable: FullPlayerOverlay.isVisible,
               builder: (_, fullPlayerVisible, __) {
                 final chrome = Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    AnimatedSize(
+                      duration: const Duration(milliseconds: 320),
+                      curve: const Cubic(0.05, 0.7, 0.1, 1.0),
+                      child: _hasActiveDownloads
+                          ? Padding(
+                              padding:
+                                  const EdgeInsets.fromLTRB(12, 0, 12, 6),
+                              child: _DownloadProgressChip(
+                                progress: _overallDownloadProgress,
+                                colorScheme: cs,
+                              ),
+                            )
+                          : const SizedBox.shrink(),
+                    ),
                     AnimatedSize(
                       duration: const Duration(milliseconds: 320),
                       curve: const Cubic(0.05, 0.7, 0.1, 1.0),
@@ -469,6 +460,84 @@ class _MainScaffoldState extends State<MainScaffold> {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Compact rounded download indicator shown in the bottom chrome (above the
+/// mini-player) while downloads are active — replaces the old full-width line
+/// that floated in the middle of the screen.
+class _DownloadProgressChip extends StatelessWidget {
+  const _DownloadProgressChip({
+    required this.progress,
+    required this.colorScheme,
+  });
+
+  final double progress; // 0..1, 0 means indeterminate
+  final ColorScheme colorScheme;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = colorScheme;
+    final hasValue = progress > 0;
+    final pct = (progress.clamp(0.0, 1.0) * 100).round();
+    return Material(
+      color: cs.surfaceContainerHigh,
+      elevation: 1,
+      shadowColor: cs.shadow.withOpacity(0.12),
+      surfaceTintColor: Colors.transparent,
+      borderRadius: BorderRadius.circular(28),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Row(
+          children: [
+            Icon(Symbols.download, size: 20, color: cs.primary),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Downloading',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: cs.onSurface,
+                          ),
+                        ),
+                      ),
+                      if (hasValue)
+                        Text(
+                          '$pct%',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: hasValue ? progress.clamp(0.0, 1.0) : null,
+                      minHeight: 5,
+                      backgroundColor: cs.surfaceContainerHighest,
+                      valueColor: AlwaysStoppedAnimation<Color>(cs.primary),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

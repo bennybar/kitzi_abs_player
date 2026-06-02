@@ -15,6 +15,7 @@ import '../../core/playback_repository.dart';
 import '../../widgets/download_button.dart';
 import '../../widgets/book_metadata_sheet.dart';
 import '../../widgets/author_card.dart';
+import '../../widgets/audible_stars.dart';
 import '../queue/queue_actions.dart';
 import '../../ui/home/series_page.dart';
 import '../../main.dart'; // ServicesScope
@@ -1257,6 +1258,15 @@ class _BookDetailPageState extends State<BookDetailPage> {
                                                     overflow:
                                                         TextOverflow.ellipsis,
                                                   ),
+                                                ),
+                                                const SizedBox(height: 10),
+                                                AudibleStars(
+                                                  itemId: b.id,
+                                                  title: b.title,
+                                                  asin: b.asin,
+                                                  author: b.author,
+                                                  durationMs: b.durationMs,
+                                                  starSize: 18,
                                                 ),
                                                 if ((b.narrators ?? const [])
                                                     .isNotEmpty) ...[

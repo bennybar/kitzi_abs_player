@@ -24,6 +24,7 @@ class Book {
   final String? mediaKind; // e.g., 'book', 'podcast', 'ebook'
   final bool isAudioBook;  // true when playable audiobook
   final String? libraryId; // source library id when available
+  final String? asin; // Audible ASIN when matched (used for rating lookup)
 
   Book({
     required this.id,
@@ -47,6 +48,7 @@ class Book {
     this.mediaKind,
     this.isAudioBook = true,
     this.libraryId,
+    this.asin,
   });
 
   /// Build from ABS library item JSON (id + media.metadata.*).
@@ -102,6 +104,9 @@ class Book {
       }
       if (narratorsList.isEmpty) narratorsList = null;
     }
+
+    final asinRaw = (meta['asin'] ?? j['asin'])?.toString();
+    final asin = (asinRaw != null && asinRaw.trim().isNotEmpty) ? asinRaw.trim() : null;
 
     final publisher = (meta['publisher'] ?? j['publisher'])?.toString();
     int? publishYear;
@@ -242,6 +247,7 @@ class Book {
       mediaKind: kind,
       isAudioBook: isBook,
       libraryId: (j['libraryId'] ?? '').toString().isNotEmpty ? (j['libraryId'] ?? '').toString() : null,
+      asin: asin,
     );
   }
 }

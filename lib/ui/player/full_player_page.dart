@@ -19,6 +19,7 @@ import '../../core/downloads_repository.dart';
 import '../../core/books_repository.dart';
 import '../../widgets/glass_widget.dart';
 import '../../widgets/book_metadata_sheet.dart';
+import '../../widgets/audible_stars.dart';
 import '../../main.dart'; // ServicesScope
 import 'full_player_overlay.dart';
 import 'player_visual_cache.dart';
@@ -1441,6 +1442,20 @@ class _FullPlayerPageState extends State<FullPlayerPage>
             overflow: TextOverflow.ellipsis,
           ),
         ],
+        const SizedBox(height: 8),
+        Center(
+          child: AudibleStars(
+            itemId: np.libraryItemId,
+            title: np.title,
+            author: np.author,
+            narrator: np.narrator,
+            durationMs: np.durationSec != null
+                ? (np.durationSec! * 1000).round()
+                : null,
+            starSize: 16,
+            alignment: MainAxisAlignment.center,
+          ),
+        ),
         const SizedBox(height: 10),
         if (totalDuration != null)
           Wrap(
