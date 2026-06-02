@@ -8,7 +8,9 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
-import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart'
+    hide ImageCacheManager;
+import '../../core/image_cache_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/playback_repository.dart';
@@ -238,6 +240,19 @@ Future<void> _handleResumeFromHistory(BuildContext context) async {
   );
 }
 
+/// Request the original full-resolution ABS cover (raw=1) for the large
+/// full-screen artwork, preserving any existing token query param.
+String _highResCoverUrl(String url) {
+  final uri = Uri.tryParse(url);
+  if (uri == null) return url;
+  final qp = Map<String, String>.from(uri.queryParameters)..['raw'] = '1';
+  return uri.replace(queryParameters: qp).toString();
+}
+
+/// Token-stable, distinct cache key for the hi-res cover (kept separate from
+/// the small thumbnail key so the two never collide in the cover cache).
+String _highResCoverKey(String url) => '${ImageCacheManager.cacheKeyFor(url)}#raw';
+
 /// Cached network image widget with cache validation
 /// Checks if cached image is valid, and clears cache if not
 class _ValidatedCachedNetworkImage extends StatefulWidget {
@@ -247,6 +262,8 @@ class _ValidatedCachedNetworkImage extends StatefulWidget {
   final Duration fadeOutDuration;
   final Widget Function(BuildContext, String)? placeholder;
   final Widget Function(BuildContext, String, dynamic)? errorWidget;
+  final BaseCacheManager? cacheManager;
+  final String? cacheKey;
 
   const _ValidatedCachedNetworkImage({
     required this.imageUrl,
@@ -255,6 +272,8 @@ class _ValidatedCachedNetworkImage extends StatefulWidget {
     this.fadeOutDuration = const Duration(milliseconds: 120),
     this.placeholder,
     this.errorWidget,
+    this.cacheManager,
+    this.cacheKey,
   });
 
   @override
@@ -293,8 +312,9 @@ class _ValidatedCachedNetworkImageState
     _hasValidated = true;
 
     try {
-      final cacheManager = DefaultCacheManager();
-      final fileInfo = await cacheManager.getFileFromCache(_currentUrl!);
+      final cacheManager = widget.cacheManager ?? DefaultCacheManager();
+      final cacheKey = widget.cacheKey ?? _currentUrl!;
+      final fileInfo = await cacheManager.getFileFromCache(cacheKey);
 
       if (fileInfo != null) {
         final file = fileInfo.file;
@@ -331,7 +351,7 @@ class _ValidatedCachedNetworkImageState
         }
 
         if (shouldClear) {
-          await cacheManager.removeFile(_currentUrl!);
+          await cacheManager.removeFile(cacheKey);
           if (mounted) {
             setState(() {
               _retryKey++; // Force rebuild with new key
@@ -355,8 +375,8 @@ class _ValidatedCachedNetworkImageState
 
     // Clear cache on error and retry
     try {
-      final cacheManager = DefaultCacheManager();
-      await cacheManager.removeFile(url);
+      final cacheManager = widget.cacheManager ?? DefaultCacheManager();
+      await cacheManager.removeFile(widget.cacheKey ?? url);
       if (mounted) {
         setState(() {
           _retryKey++; // Force rebuild to retry
@@ -374,6 +394,8 @@ class _ValidatedCachedNetworkImageState
         '${_currentUrl}_$_retryKey',
       ), // Force rebuild when retry key changes
       imageUrl: _currentUrl!,
+      cacheManager: widget.cacheManager,
+      cacheKey: widget.cacheKey,
       fit: widget.fit,
       fadeInDuration: widget.fadeInDuration,
       fadeOutDuration: widget.fadeOutDuration,
@@ -1252,7 +1274,9 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                             child:
                                 np.coverUrl != null && np.coverUrl!.isNotEmpty
                                     ? _ValidatedCachedNetworkImage(
-                                      imageUrl: np.coverUrl!,
+                                      imageUrl: _highResCoverUrl(np.coverUrl!),
+                                      cacheManager: ImageCacheManager.instance,
+                                      cacheKey: _highResCoverKey(np.coverUrl!),
                                       fit: BoxFit.cover,
                                       fadeInDuration: const Duration(
                                         milliseconds: 220,
