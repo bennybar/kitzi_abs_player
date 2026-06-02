@@ -26,14 +26,6 @@ import 'player_visual_cache.dart';
 import '../../core/playback_journal_service.dart';
 import 'journal_sheets.dart';
 
-enum _TopMenuAction {
-  toggleCompletion,
-  toggleGradient,
-  toggleChapterizedProgressBar,
-  cast,
-  playHistory,
-  bookmarks,
-}
 
 /// Custom slider track shape that allows tighter horizontal padding than the
 /// default Material slider track.
@@ -1872,15 +1864,6 @@ class _FullPlayerPageState extends State<FullPlayerPage>
     return '${value.toStringAsFixed(decimals)} ${units[unitIndex]}';
   }
 
-  void _showCastingComingSoon(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Casting support is coming soon.'),
-        duration: Duration(seconds: 2),
-      ),
-    );
-  }
-
   Widget _buildChaptersQuickIcon({
     required BuildContext context,
     required ColorScheme cs,
@@ -2140,6 +2123,95 @@ class _FullPlayerPageState extends State<FullPlayerPage>
             bookTitle: np.title,
             playback: playback,
           ),
+    );
+  }
+
+  /// Overflow options (formerly the top-row 3-dot menu), now shown as a bottom
+  /// sheet opened from the "More" tile in the action row.
+  Future<void> _showPlayerOptionsSheet(
+    BuildContext context,
+    PlaybackRepository playback,
+    NowPlaying np,
+    bool gradientEnabled,
+  ) async {
+    final cs = Theme.of(context).colorScheme;
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            StreamBuilder<bool>(
+              stream: _getBookCompletionStream(),
+              initialData: playback.completionCache[np.libraryItemId] ?? false,
+              builder: (_, snap) {
+                final done = snap.data ?? false;
+                return ListTile(
+                  leading: Icon(
+                    done ? Icons.undo_rounded : Icons.check_rounded,
+                    color: cs.primary,
+                  ),
+                  title: Text(done ? 'Mark as unfinished' : 'Mark as finished'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _toggleBookCompletion(context, done);
+                  },
+                );
+              },
+            ),
+            ListTile(
+              leading: Icon(LucideIcons.history, color: cs.primary),
+              title: const Text('Play history'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _openHistorySheet(context, playback);
+              },
+            ),
+            ListTile(
+              leading: Icon(LucideIcons.bookmark, color: cs.primary),
+              title: const Text('Bookmarks'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _openBookmarksSheet(context, playback);
+              },
+            ),
+            ListTile(
+              leading: Icon(
+                gradientEnabled ? Icons.gradient : Icons.gradient_outlined,
+                color: cs.primary,
+              ),
+              title: Text(
+                gradientEnabled
+                    ? 'Disable gradient background'
+                    : 'Enable gradient background',
+              ),
+              onTap: () {
+                Navigator.pop(ctx);
+                UiPrefs.setPlayerGradientBackground(!gradientEnabled);
+              },
+            ),
+            ValueListenableBuilder<bool>(
+              valueListenable: UiPrefs.progressBarChapterized,
+              builder: (_, chapterized, __) => ListTile(
+                leading: Icon(
+                  chapterized
+                      ? Icons.linear_scale_rounded
+                      : Icons.remove_rounded,
+                  color: cs.primary,
+                ),
+                title: Text(
+                  chapterized
+                      ? 'Chapter indicators: On'
+                      : 'Chapter indicators: Off',
+                ),
+                onTap: () =>
+                    UiPrefs.setProgressBarChapterized(!chapterized),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -3230,340 +3302,6 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                       ),
                                       child: Column(
                                         children: [
-                                          Row(
-                                            children: [
-                                              Text(
-                                                'PLAYBACK',
-                                                style: text.labelSmall
-                                                    ?.copyWith(
-                                                      letterSpacing: 0.8,
-                                                      color: cs.onSurfaceVariant
-                                                          .withOpacity(0.62),
-                                                      fontWeight:
-                                                          FontWeight.w700,
-                                                    ),
-                                              ),
-                                              const Spacer(),
-                                              _InfoPill(
-                                                icon: LucideIcons.bookOpen,
-                                                label:
-                                                    np.chapters.length > 1
-                                                        ? 'Chapter ${(playback.currentChapterProgress?.index ?? 0) + 1}'
-                                                        : 'Ready',
-                                              ),
-                                              const SizedBox(width: 6),
-                                              StreamBuilder<bool>(
-                                                stream: _getBookCompletionStream(),
-                                                initialData: false,
-                                                builder: (_, completionSnap) {
-                                                  final isCompleted =
-                                                      completionSnap.data ??
-                                                      false;
-                                                  final menuBg =
-                                                      gradientEnabled
-                                                          ? Color.alphaBlend(
-                                                            (_palettePrimary ??
-                                                                    cs.primary)
-                                                                .withOpacity(
-                                                                  0.1,
-                                                                ),
-                                                            cs.surface,
-                                                          )
-                                                          : cs.surface;
-                                                  return PopupMenuButton<
-                                                    _TopMenuAction
-                                                  >(
-                                                    tooltip: 'More options',
-                                                    padding: EdgeInsets.zero,
-                                                    child: AppLiquidGlassPill(
-                                                      blur: 26,
-                                                      opacity:
-                                                          Theme.of(context)
-                                                                      .brightness ==
-                                                                  Brightness
-                                                                      .dark
-                                                              ? 0.16
-                                                              : 0.08,
-                                                      tint: Color.alphaBlend(
-                                                        Colors.black.withValues(
-                                                          alpha: Theme.of(
-                                                                        context,
-                                                                      ).brightness ==
-                                                                      Brightness
-                                                                          .dark
-                                                                  ? 0.0
-                                                                  : 0.04,
-                                                        ),
-                                                        cs.surface,
-                                                      ),
-                                                      elevation: 5,
-                                                      lightenAmount:
-                                                          Theme.of(context)
-                                                                      .brightness ==
-                                                                  Brightness
-                                                                      .dark
-                                                              ? null
-                                                              : 0.07,
-                                                      padding:
-                                                          const EdgeInsets.symmetric(
-                                                            horizontal: 10,
-                                                            vertical: 7,
-                                                          ),
-                                                      child: Icon(
-                                                        LucideIcons.moreVertical,
-                                                        size: 16,
-                                                        color:
-                                                            cs.onSurfaceVariant,
-                                                      ),
-                                                    ),
-                                                    color: menuBg,
-                                                    shape: RoundedRectangleBorder(
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                            18,
-                                                          ),
-                                                      side: BorderSide(
-                                                        color: cs
-                                                            .outlineVariant
-                                                            .withOpacity(0.2),
-                                                      ),
-                                                    ),
-                                                    onSelected: (action) {
-                                                      switch (action) {
-                                                        case _TopMenuAction
-                                                            .toggleCompletion:
-                                                          _toggleBookCompletion(
-                                                            context,
-                                                            isCompleted,
-                                                          );
-                                                          break;
-                                                        case _TopMenuAction
-                                                            .toggleGradient:
-                                                          final next =
-                                                              !gradientEnabled;
-                                                          UiPrefs.setPlayerGradientBackground(
-                                                            next,
-                                                          );
-                                                          ScaffoldMessenger.of(
-                                                            context,
-                                                          ).showSnackBar(
-                                                            SnackBar(
-                                                              content: Text(
-                                                                next
-                                                                    ? 'Gradient background enabled'
-                                                                    : 'Gradient background disabled',
-                                                              ),
-                                                              duration:
-                                                                  const Duration(
-                                                                    seconds: 2,
-                                                                  ),
-                                                            ),
-                                                          );
-                                                          break;
-                                                        case _TopMenuAction
-                                                            .toggleChapterizedProgressBar:
-                                                          final next =
-                                                              !UiPrefs
-                                                                  .progressBarChapterized
-                                                                  .value;
-                                                          UiPrefs.setProgressBarChapterized(
-                                                            next,
-                                                          );
-                                                          ScaffoldMessenger.of(
-                                                            context,
-                                                          ).showSnackBar(
-                                                            SnackBar(
-                                                              content: Text(
-                                                                next
-                                                                    ? 'Chapter indicators enabled'
-                                                                    : 'Chapter indicators disabled',
-                                                              ),
-                                                              duration:
-                                                                  const Duration(
-                                                                    seconds: 2,
-                                                                  ),
-                                                            ),
-                                                          );
-                                                          break;
-                                                        case _TopMenuAction
-                                                            .cast:
-                                                          _showCastingComingSoon(
-                                                            context,
-                                                          );
-                                                          break;
-                                                        case _TopMenuAction
-                                                            .playHistory:
-                                                          _openHistorySheet(
-                                                            context,
-                                                            playback,
-                                                          );
-                                                          break;
-                                                        case _TopMenuAction
-                                                            .bookmarks:
-                                                          _openBookmarksSheet(
-                                                            context,
-                                                            playback,
-                                                          );
-                                                          break;
-                                                      }
-                                                    },
-                                                    itemBuilder:
-                                                        (context) => [
-                                                          PopupMenuItem(
-                                                            value:
-                                                                _TopMenuAction
-                                                                    .toggleCompletion,
-                                                            child: Row(
-                                                              children: [
-                                                                Icon(
-                                                                  isCompleted
-                                                                      ? Icons
-                                                                          .undo_rounded
-                                                                      : Icons
-                                                                          .check_rounded,
-                                                                  size: 18,
-                                                                  color:
-                                                                      cs.primary,
-                                                                ),
-                                                                const SizedBox(
-                                                                  width: 12,
-                                                                ),
-                                                                Expanded(
-                                                                  child: Text(
-                                                                    isCompleted
-                                                                        ? 'Mark as unfinished'
-                                                                        : 'Mark as finished',
-                                                                  ),
-                                                                ),
-                                                              ],
-                                                            ),
-                                                          ),
-                                                          PopupMenuItem(
-                                                            value:
-                                                                _TopMenuAction
-                                                                    .toggleGradient,
-                                                            child: Row(
-                                                              children: [
-                                                                Icon(
-                                                                  gradientEnabled
-                                                                      ? Icons
-                                                                          .gradient
-                                                                      : Icons
-                                                                          .gradient_outlined,
-                                                                  size: 18,
-                                                                  color:
-                                                                      cs.primary,
-                                                                ),
-                                                                const SizedBox(
-                                                                  width: 12,
-                                                                ),
-                                                                Expanded(
-                                                                  child: Text(
-                                                                    gradientEnabled
-                                                                        ? 'Disable gradient background'
-                                                                        : 'Enable gradient background',
-                                                                  ),
-                                                                ),
-                                                              ],
-                                                            ),
-                                                          ),
-                                                          PopupMenuItem(
-                                                            value:
-                                                                _TopMenuAction
-                                                                    .toggleChapterizedProgressBar,
-                                                            child: ValueListenableBuilder<
-                                                              bool
-                                                            >(
-                                                              valueListenable:
-                                                                  UiPrefs
-                                                                      .progressBarChapterized,
-                                                              builder: (
-                                                                _,
-                                                                chapterized,
-                                                                __,
-                                                              ) {
-                                                                return Row(
-                                                                  children: [
-                                                                    Icon(
-                                                                      chapterized
-                                                                          ? Icons
-                                                                              .linear_scale_rounded
-                                                                          : Icons
-                                                                              .remove_rounded,
-                                                                      size: 18,
-                                                                      color:
-                                                                          cs.primary,
-                                                                    ),
-                                                                    const SizedBox(
-                                                                      width: 12,
-                                                                    ),
-                                                                    Expanded(
-                                                                      child: Text(
-                                                                        chapterized
-                                                                            ? 'Progress Bar Chapterized: On'
-                                                                            : 'Progress Bar Chapterized: Off',
-                                                                      ),
-                                                                    ),
-                                                                  ],
-                                                                );
-                                                              },
-                                                            ),
-                                                          ),
-                                                          PopupMenuItem(
-                                                            value:
-                                                                _TopMenuAction
-                                                                    .playHistory,
-                                                            child: Row(
-                                                              children: [
-                                                                Icon(
-                                                                  Icons
-                                                                      .history_rounded,
-                                                                  size: 18,
-                                                                  color:
-                                                                      cs.primary,
-                                                                ),
-                                                                const SizedBox(
-                                                                  width: 12,
-                                                                ),
-                                                                const Expanded(
-                                                                  child: Text(
-                                                                    'Play history',
-                                                                  ),
-                                                                ),
-                                                              ],
-                                                            ),
-                                                          ),
-                                                          PopupMenuItem(
-                                                            value:
-                                                                _TopMenuAction
-                                                                    .bookmarks,
-                                                            child: Row(
-                                                              children: [
-                                                                Icon(
-                                                                  Icons
-                                                                      .bookmark_rounded,
-                                                                  size: 18,
-                                                                  color:
-                                                                      cs.primary,
-                                                                ),
-                                                                const SizedBox(
-                                                                  width: 12,
-                                                                ),
-                                                                const Expanded(
-                                                                  child: Text(
-                                                                    'Bookmarks',
-                                                                  ),
-                                                                ),
-                                                              ],
-                                                            ),
-                                                          ),
-                                                        ],
-                                                  );
-                                                },
-                                              ),
-                                            ],
-                                          ),
-                                          const SizedBox(height: 10),
                                         // Large transport controls (Material 3) - single row, auto-sized
                                         LayoutBuilder(
                                           builder: (context, constraints) {
@@ -3819,6 +3557,24 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                                   child: _SpeedQuickAction(
                                                     playback: playback,
                                                     heightScale: 0.58,
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 10),
+                                                Expanded(
+                                                  child: _PlayerActionTile(
+                                                    icon: const Icon(
+                                                      LucideIcons.moreVertical,
+                                                    ),
+                                                    label: 'More',
+                                                    tooltip: 'More options',
+                                                    heightScale: 0.58,
+                                                    onTap: () =>
+                                                        _showPlayerOptionsSheet(
+                                                      context,
+                                                      playback,
+                                                      np,
+                                                      gradientEnabled,
+                                                    ),
                                                   ),
                                                 ),
                                               ],
