@@ -7,10 +7,14 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../core/playback_repository.dart';
 import '../main.dart'; // ServicesScope
 import '../ui/player/full_player_page.dart';
-import 'audio_waveform.dart';
+import '../ui/player/player_visual_cache.dart';
 
+/// Compact mini-player: small cover, title + author, a thin progress hairline
+/// at the bottom edge, a subtle rewind and a filled play/pause control. The
+/// background is tinted from the cover art's palette so each book feels
+/// distinct (never flat grey); it falls back to the brand accent.
 class MiniPlayer extends StatefulWidget {
-  const MiniPlayer({super.key, this.height = 60});
+  const MiniPlayer({super.key, this.height = 64});
 
   final double height;
 
@@ -19,414 +23,254 @@ class MiniPlayer extends StatefulWidget {
 }
 
 class _MiniPlayerState extends State<MiniPlayer> {
+  String? _loadingUrl;
+
   @override
   Widget build(BuildContext context) {
     final playback = ServicesScope.of(context).services.playback;
     final cs = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final text = Theme.of(context).textTheme;
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 4, 4, 2),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(30),
-        child: DecoratedBox(
+    return StreamBuilder<NowPlaying?>(
+      stream: playback.nowPlayingStream,
+      initialData: playback.nowPlaying,
+      builder: (context, snap) {
+        final np = snap.data;
+        // Parent AnimatedSize collapses this when there's nothing playing.
+        if (np == null) return const SizedBox.shrink();
+
+        // Cover-derived tint (cached; warmed by the full player). Kick a
+        // one-shot compute if we don't have it yet for this cover.
+        final url = np.coverUrl;
+        final pd = PlayerVisualCache.paletteFor(url);
+        if (pd == null && url != null && url.isNotEmpty && _loadingUrl != url) {
+          _loadingUrl = url;
+          PlayerVisualCache.paletteForCover(url).then((_) {
+            if (mounted) setState(() {});
+          });
+        }
+        final seed = pd?.primary ?? pd?.secondary ?? cs.primary;
+        final tintA = Color.alphaBlend(
+            seed.withOpacity(dark ? 0.34 : 0.20), cs.surfaceContainerHigh);
+        final tintB = Color.alphaBlend(
+            seed.withOpacity(dark ? 0.16 : 0.06), cs.surfaceContainerHigh);
+
+        return DecoratedBox(
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
+            gradient: LinearGradient(
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+              colors: [tintA, tintB],
+            ),
+          ),
+          child: Material(
             color: Colors.transparent,
-          ),
-          child: _buildContent(
-            context,
-            playback,
-            cs,
-            showTopBorder: false,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildContent(
-    BuildContext context,
-    PlaybackRepository playback,
-    ColorScheme cs, {
-    bool showTopBorder = true,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () async {
-          await FullPlayerPage.openOnce(context);
-        },
-        child: Container(
-          height: widget.height,
-          decoration:
-              showTopBorder
-                  ? BoxDecoration(
-                    border: Border(
-                      top: BorderSide(
-                        color: cs.outlineVariant.withOpacity(0.3),
-                        width: 0.5,
-                      ),
-                    ),
-                  )
-                  : null,
-          child: StreamBuilder<NowPlaying?>(
-            stream: playback.nowPlayingStream,
-            initialData: playback.nowPlaying,
-            builder: (context, snap) {
-              final np = snap.data;
-              // Return empty when no content - parent AnimatedSize will collapse this
-              if (np == null) {
-                return const SizedBox.shrink();
-              }
-
-              return Stack(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 5,
-                    ),
-                    child: Row(
+            child: InkWell(
+              onTap: () => FullPlayerPage.openOnce(context),
+              child: SizedBox(
+                height: widget.height,
+                child: Stack(
                   children: [
-                    // Album art with PixelPlay-inspired rounded corners and shadow
-                    Container(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: cs.shadow.withOpacity(0.12),
-                            blurRadius: 10,
-                            spreadRadius: 0,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
-                        child: Transform.scale(
-                            scale: 1.024,
-                          child: _MiniCover(
-                            url: np.coverUrl,
-                            size: widget.height - 12,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-
-                    // Title/author with progress (YouTube Music style)
-                    Expanded(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(10, 0, 10, 0),
+                      child: Row(
                         children: [
-                          Text(
-                            np.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(
-                              context,
-                            ).textTheme.bodyMedium?.copyWith(
-                              fontSize: 13.5,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(height: 3),
-                          Row(
-                            children: [
-                              if (np.author != null && np.author!.isNotEmpty)
-                                Expanded(
-                                  child: Text(
-                                    np.author!,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.bodySmall?.copyWith(
-                                      fontSize: 11.5,
-                                      color: cs.onSurfaceVariant,
-                                    ),
-                                  ),
-                                ),
-                              ValueListenableBuilder<Duration>(
-                                valueListenable: playback.currentPosition,
-                                builder: (_, currentPos, __) {
-                                  final duration = playback.totalBookDuration;
-                                  final resolvedPosition =
-                                      playback.globalBookPosition ?? currentPos;
-
-                                  Widget buildSyncStatus() {
-                                    return ValueListenableBuilder<
-                                      ProgressSyncStatus
-                                    >(
-                                      valueListenable: playback.progressSyncStatus,
-                                      builder: (_, status, __) {
-                                        final pending = status.pending;
-                                        final icon =
-                                            pending
-                                                ? LucideIcons.uploadCloud
-                                                : (status.hasEverSynced
-                                                    ? LucideIcons.cloud
-                                                    : LucideIcons.cloudOff);
-                                        final color =
-                                            pending
-                                                ? cs.tertiary
-                                                : cs.onSurfaceVariant;
-                                        final tooltip =
-                                            pending
-                                                ? 'Progress pending sync'
-                                                : (status.hasEverSynced
-                                                    ? 'Progress synced'
-                                                    : 'Progress not synced yet');
-                                        return Tooltip(
-                                          message: tooltip,
-                                          child: Icon(
-                                            icon,
-                                            size: 12,
-                                            color: color,
-                                          ),
-                                        );
-                                      },
-                                    );
-                                  }
-
-                                  if (duration == null ||
-                                      duration == Duration.zero) {
-                                    final trackDuration = playback.player.duration;
-                                    if (trackDuration == null ||
-                                        trackDuration == Duration.zero) {
-                                      return const SizedBox.shrink();
-                                    }
-                                    final posStr = _formatTime(currentPos);
-                                    final durStr = _formatTime(trackDuration);
-                                    return Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        if (np.author != null &&
-                                            np.author!.isNotEmpty)
-                                          const SizedBox(width: 8),
-                                        Text(
-                                          '$posStr / $durStr',
-                                          style: Theme.of(
-                                            context,
-                                          ).textTheme.bodySmall?.copyWith(
-                                            fontSize: 11.5,
-                                            color: cs.onSurfaceVariant,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 4),
-                                        buildSyncStatus(),
-                                      ],
-                                    );
-                                  }
-
-                                  final posStr = _formatTime(resolvedPosition);
-                                  final durStr = _formatTime(duration);
-
-                                  return Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      if (np.author != null &&
-                                          np.author!.isNotEmpty)
-                                        const SizedBox(width: 8),
-                                      Text(
-                                        '$posStr / $durStr',
-                                        style: Theme.of(
-                                          context,
-                                        ).textTheme.bodySmall?.copyWith(
-                                          fontSize: 11.5,
-                                          color: cs.onSurfaceVariant,
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 4),
-                                      buildSyncStatus(),
-                                    ],
-                                  );
-                                },
-                              ),
-                            ],
-                          ),
+                          _cover(np, cs),
+                          const SizedBox(width: 12),
+                          Expanded(child: _meta(np, playback, cs, text)),
+                          const SizedBox(width: 8),
+                          _rewind(playback, cs),
+                          const SizedBox(width: 8),
+                          _playButton(context, playback, np, cs),
                         ],
                       ),
                     ),
-                    const SizedBox(width: 10),
-
-                    // 10 seconds rewind button - PixelPlay-inspired Material 3 style
-                    Material(
-                      color: cs.surfaceContainerHighest.withOpacity(0.42),
-                      borderRadius: BorderRadius.circular(18),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(18),
-                        onTap: () async {
-                          await playback.nudgeSeconds(-10);
-                        },
-                        child: Container(
-                          width: 36,
-                          height: 36,
-                          alignment: Alignment.center,
-                          child: Icon(
-                            LucideIcons.rotateCcw,
-                            size: 20,
-                            color: cs.onSurface,
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(width: 10),
-
-                    // Play/Pause button - PixelPlay-inspired with primary color
-                    StreamBuilder<bool>(
-                      stream: playback.playingStream,
-                      initialData: playback.player.playing,
-                      builder: (_, playSnap) {
-                        final playing = playSnap.data ?? false;
-                        // Ensure we have a valid nowPlaying item and it's actually playing
-                        final hasValidNowPlaying = np != null && playing;
-                        return AnimatedScale(
-                          duration: const Duration(milliseconds: 220),
-                          curve: Curves.easeOutCubic,
-                          scale: hasValidNowPlaying ? 1.02 : 1.0,
-                          child: Material(
-                            color:
-                                hasValidNowPlaying
-                                    ? Color.alphaBlend(
-                                      cs.primary.withOpacity(0.92),
-                                      cs.surface,
-                                    )
-                                    : cs.primary.withOpacity(0.14),
-                            borderRadius: BorderRadius.circular(22),
-                            elevation: hasValidNowPlaying ? 3 : 0,
-                            shadowColor:
-                                hasValidNowPlaying
-                                    ? cs.primary.withOpacity(0.22)
-                                    : Colors.transparent,
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(22),
-                              onTap: () async {
-                                // Button pressed
-                                if (hasValidNowPlaying) {
-                                  // Pausing playback
-                                  await playback.pause();
-                                  // Don't open full player on pause
-                                } else {
-                                  // Attempting to resume/play
-                                  // Try to resume first, but if that fails (no current item),
-                                  // warm load the last item and play it
-                                  bool success = await playback.resume(
-                                    context: context,
-                                  );
-                                  // Resume result
-                                  if (!success) {
-                                    try {
-                                      // Resume failed, trying warmLoadLastItem
-                                      await playback.warmLoadLastItem(
-                                        playAfterLoad: true,
-                                      );
-                                      success =
-                                          true; // Consider warm load a success
-                                      // WarmLoadLastItem succeeded
-                                    } catch (e) {
-                                      // WarmLoadLastItem failed
-                                      success = false;
-                                    }
-                                  }
-
-                                  if (!success && context.mounted) {
-                                    // Both resume and warmLoad failed, showing error
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text(
-                                          'Cannot play: server unavailable and sync progress is required',
-                                        ),
-                                        duration: Duration(seconds: 4),
-                                      ),
-                                    );
-                                  } else if (success && context.mounted) {
-                                    // Success, opening full player
-                                    // Open the full player page when resuming, like the book detail page does
-                                    await FullPlayerPage.openOnce(context);
-                                  }
-                                }
-                              },
-                              child: Container(
-                                width: 44,
-                                height: 44,
-                                alignment: Alignment.center,
-                                child: Icon(
-                                  hasValidNowPlaying
-                                      ? LucideIcons.pause
-                                      : LucideIcons.play,
-                                  size: 26,
-                                  color:
-                                      hasValidNowPlaying
-                                          ? cs.onPrimary
-                                          : cs.primary,
-                                ),
-                              ),
-                            ),
-                          ),
-                        );
-                      },
+                    Positioned(
+                      left: 14,
+                      right: 14,
+                      bottom: 5,
+                      child: _hairline(playback, cs),
                     ),
                   ],
                 ),
-                  ),
-                  // Thin book-progress bar at the very bottom of the mini player
-                  ValueListenableBuilder<Duration>(
-                    valueListenable: playback.currentPosition,
-                    builder: (_, currentPos, __) {
-                      final pos =
-                          playback.globalBookPosition ?? currentPos;
-                      final dur = playback.totalBookDuration;
-                      if (dur == null || dur == Duration.zero) {
-                        return const SizedBox.shrink();
-                      }
-                      final fraction = (pos.inMilliseconds /
-                              dur.inMilliseconds)
-                          .clamp(0.0, 1.0);
-                      return Positioned(
-                        left: 14,
-                        right: 14,
-                        bottom: 4,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(2),
-                          child: LinearProgressIndicator(
-                            value: fraction,
-                            minHeight: 3,
-                            backgroundColor:
-                                cs.outlineVariant.withOpacity(0.25),
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              cs.primary.withOpacity(0.75),
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ],
-              );
-            },
+              ),
+            ),
           ),
+        );
+      },
+    );
+  }
+
+  Widget _cover(NowPlaying np, ColorScheme cs) {
+    final size = widget.height - 18;
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(11),
+        boxShadow: [
+          BoxShadow(
+            color: cs.shadow.withOpacity(0.18),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(11),
+        child: _MiniCover(url: np.coverUrl, size: size),
+      ),
+    );
+  }
+
+  Widget _meta(NowPlaying np, PlaybackRepository playback, ColorScheme cs,
+      TextTheme text) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          np.title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: text.bodyMedium?.copyWith(
+            fontSize: 14.5,
+            fontWeight: FontWeight.w700,
+            color: cs.onSurface,
+            letterSpacing: -0.2,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Row(
+          children: [
+            if (np.author != null && np.author!.isNotEmpty)
+              Flexible(
+                child: Text(
+                  np.author!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: text.bodySmall?.copyWith(
+                    fontSize: 12,
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            // Only surface the sync state when something is actually pending —
+            // keeps the bar clean the rest of the time.
+            ValueListenableBuilder<ProgressSyncStatus>(
+              valueListenable: playback.progressSyncStatus,
+              builder: (_, status, __) {
+                if (!status.pending) return const SizedBox.shrink();
+                return Padding(
+                  padding: const EdgeInsets.only(left: 6),
+                  child: Tooltip(
+                    message: 'Progress pending sync',
+                    child: Icon(LucideIcons.uploadCloud,
+                        size: 12, color: cs.tertiary),
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _rewind(PlaybackRepository playback, ColorScheme cs) {
+    return Material(
+      color: Colors.transparent,
+      shape: const CircleBorder(),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: () => playback.nudgeSeconds(-10),
+        child: SizedBox(
+          width: 34,
+          height: 34,
+          child: Icon(LucideIcons.rotateCcw, size: 19, color: cs.onSurfaceVariant),
         ),
       ),
     );
   }
 
-}
+  Widget _hairline(PlaybackRepository playback, ColorScheme cs) {
+    return ValueListenableBuilder<Duration>(
+      valueListenable: playback.currentPosition,
+      builder: (_, currentPos, __) {
+        final pos = playback.globalBookPosition ?? currentPos;
+        final dur = playback.totalBookDuration;
+        if (dur == null || dur == Duration.zero) {
+          return const SizedBox.shrink();
+        }
+        final fraction =
+            (pos.inMilliseconds / dur.inMilliseconds).clamp(0.0, 1.0);
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(2),
+          child: LinearProgressIndicator(
+            value: fraction,
+            minHeight: 2.5,
+            backgroundColor: cs.onSurface.withOpacity(0.12),
+            valueColor: AlwaysStoppedAnimation<Color>(cs.primary),
+          ),
+        );
+      },
+    );
+  }
 
-String _formatTime(Duration duration) {
-  final hours = duration.inHours;
-  final minutes = duration.inMinutes.remainder(60);
-  final seconds = duration.inSeconds.remainder(60);
-
-  if (hours > 0) {
-    return '${hours}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
-  } else {
-    return '${minutes}:${seconds.toString().padLeft(2, '0')}';
+  Widget _playButton(BuildContext context, PlaybackRepository playback,
+      NowPlaying np, ColorScheme cs) {
+    return StreamBuilder<bool>(
+      stream: playback.playingStream,
+      initialData: playback.player.playing,
+      builder: (_, playSnap) {
+        final playing = playSnap.data ?? false;
+        final isPlaying = playing;
+        return Material(
+          color: isPlaying ? cs.primary : cs.primary.withOpacity(0.16),
+          shape: const CircleBorder(),
+          elevation: isPlaying ? 2 : 0,
+          shadowColor: cs.primary.withOpacity(0.3),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: () async {
+              if (isPlaying) {
+                await playback.pause();
+                return;
+              }
+              bool success = await playback.resume(context: context);
+              if (!success) {
+                try {
+                  await playback.warmLoadLastItem(playAfterLoad: true);
+                  success = true;
+                } catch (_) {
+                  success = false;
+                }
+              }
+              if (!success && context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                        'Cannot play: server unavailable and sync progress is required'),
+                    duration: Duration(seconds: 4),
+                  ),
+                );
+              } else if (success && context.mounted) {
+                await FullPlayerPage.openOnce(context);
+              }
+            },
+            child: SizedBox(
+              width: 44,
+              height: 44,
+              child: Icon(
+                isPlaying ? LucideIcons.pause : LucideIcons.play,
+                size: 24,
+                color: isPlaying ? cs.onPrimary : cs.primary,
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 }
 
@@ -438,13 +282,12 @@ class _MiniCover extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    // PixelPlay-inspired: more rounded corners (12px) for modern look
     final placeholder = Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(11),
       ),
       child: Icon(
         LucideIcons.bookOpen,
@@ -461,7 +304,6 @@ class _MiniCover extends StatelessWidget {
       }
       return placeholder;
     }
-
     if (src.isEmpty) return placeholder;
 
     return CachedNetworkImage(
