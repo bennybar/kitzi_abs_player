@@ -201,6 +201,12 @@ class _MainScaffoldState extends State<MainScaffold> {
           selectedIcon: LucideIcons.library,
           label: 'Series',
         ),
+      const _NavDestinationData(
+        kind: _NavKind.queue,
+        icon: LucideIcons.listMusic,
+        selectedIcon: LucideIcons.listMusic,
+        label: 'Queue',
+      ),
       if (_playerAsTab)
         const _NavDestinationData(
           kind: _NavKind.player,
@@ -208,12 +214,6 @@ class _MainScaffoldState extends State<MainScaffold> {
           selectedIcon: LucideIcons.play,
           label: 'Player',
         ),
-      const _NavDestinationData(
-        kind: _NavKind.queue,
-        icon: LucideIcons.listMusic,
-        selectedIcon: LucideIcons.listMusic,
-        label: 'Queue',
-      ),
       const _NavDestinationData(
         kind: _NavKind.downloads,
         icon: LucideIcons.download,
