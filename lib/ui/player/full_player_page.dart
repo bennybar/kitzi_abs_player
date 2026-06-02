@@ -3565,7 +3565,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                                     icon: const Icon(
                                                       LucideIcons.moreVertical,
                                                     ),
-                                                    label: 'More',
+                                                    label: '',
                                                     tooltip: 'More options',
                                                     heightScale: 0.58,
                                                     onTap: () =>
