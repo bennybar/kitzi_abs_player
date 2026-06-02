@@ -70,26 +70,26 @@ class _MiniPlayerState extends State<MiniPlayer> {
               onTap: () => FullPlayerPage.openOnce(context),
               child: SizedBox(
                 height: widget.height,
-                child: Stack(
+                child: Column(
                   children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(10, 0, 10, 0),
-                      child: Row(
-                        children: [
-                          _cover(np, cs),
-                          const SizedBox(width: 12),
-                          Expanded(child: _meta(np, playback, cs, text)),
-                          const SizedBox(width: 8),
-                          _rewind(playback, cs),
-                          const SizedBox(width: 8),
-                          _playButton(context, playback, np, cs),
-                        ],
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(18, 10, 16, 6),
+                        child: Row(
+                          children: [
+                            _cover(np, cs),
+                            const SizedBox(width: 12),
+                            Expanded(child: _meta(np, playback, cs, text)),
+                            const SizedBox(width: 8),
+                            _rewind(playback, cs),
+                            const SizedBox(width: 6),
+                            _playButton(context, playback, np, cs),
+                          ],
+                        ),
                       ),
                     ),
-                    Positioned(
-                      left: 14,
-                      right: 14,
-                      bottom: 5,
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(18, 0, 18, 10),
                       child: _hairline(playback, cs),
                     ),
                   ],
@@ -103,7 +103,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
   }
 
   Widget _cover(NowPlaying np, ColorScheme cs) {
-    final size = widget.height - 18;
+    const size = 44.0;
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(11),
