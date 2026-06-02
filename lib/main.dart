@@ -378,15 +378,16 @@ class _AbsAppState extends State<AbsApp> with WidgetsBindingObserver {
 
                 return DynamicColorBuilder(
                   builder: (lightDynamic, darkDynamic) {
-                    // Calmer palette: a softer indigo seed rendered with the
-                    // low-chroma `neutral` variant so surfaces are easy on the
-                    // eyes and accents keep a quiet identity. Wallpaper dynamic
-                    // colors are intentionally not used here for consistency.
-                    const seed = Color(0xFF6C77C4);
+                    // Balanced palette: a clear indigo seed rendered with the
+                    // standard `tonalSpot` variant — softly tinted surfaces with
+                    // a real (but not neon) accent. Easy on the eyes without
+                    // going flat grey. Wallpaper dynamic colors are intentionally
+                    // not used here for a consistent identity.
+                    const seed = Color(0xFF5965C8);
                     ColorScheme gen(Brightness b) => ColorScheme.fromSeed(
                           seedColor: seed,
                           brightness: b,
-                          dynamicSchemeVariant: DynamicSchemeVariant.neutral,
+                          dynamicSchemeVariant: DynamicSchemeVariant.tonalSpot,
                         ).copyWith(surfaceTint: Colors.transparent);
 
                     var lightScheme = gen(Brightness.light);
