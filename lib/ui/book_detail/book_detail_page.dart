@@ -15,6 +15,7 @@ import '../../core/playback_repository.dart';
 import '../../widgets/download_button.dart';
 import '../../widgets/book_metadata_sheet.dart';
 import '../../widgets/author_card.dart';
+import '../queue/queue_actions.dart';
 import '../../ui/home/series_page.dart';
 import '../../main.dart'; // ServicesScope
 import '../../ui/player/full_player_page.dart'; // Added import for FullPlayerPage
@@ -1008,6 +1009,13 @@ class _BookDetailPageState extends State<BookDetailPage> {
                     ),
                   ),
                 ),
+                // Add to queue button - only show for audio books
+                if (_cachedBook != null && _cachedBook!.isAudioBook)
+                  IconButton(
+                    tooltip: 'Add to queue',
+                    icon: const Icon(Symbols.playlist_add),
+                    onPressed: () => showQueueSheet(context, _cachedBook!),
+                  ),
                 // Mark as finished button - only show for audio books
                 if (_cachedBook != null && _cachedBook!.isAudioBook)
                   StreamBuilder<bool>(
@@ -1343,19 +1351,75 @@ class _BookDetailPageState extends State<BookDetailPage> {
                                                     );
                                                   }
 
-                                                  final open = await playbackRepo
-                                                      .openSessionAndGetTracks(
-                                                        b.id,
+                                                  // Read total length from item metadata
+                                                  // instead of opening a playback session
+                                                  // (which can spin up a transcoder).
+                                                  final api =
+                                                      ServicesScope.of(
+                                                        context,
+                                                      ).services.auth.api;
+                                                  final itemResp = await api
+                                                      .request(
+                                                        'GET',
+                                                        '/api/items/${b.id}',
                                                       );
-                                                  final totalSec = open.tracks
-                                                      .fold<double>(
-                                                        0.0,
-                                                        (a, t) =>
-                                                            a +
-                                                            (t.duration > 0
-                                                                ? t.duration
-                                                                : 0.0),
-                                                      );
+                                                  double totalSec = 0.0;
+                                                  if (itemResp.statusCode ==
+                                                          200 &&
+                                                      itemResp.body.isNotEmpty) {
+                                                    final parsed = jsonDecode(
+                                                      itemResp.body,
+                                                    );
+                                                    final item =
+                                                        (parsed is Map &&
+                                                                parsed['item']
+                                                                    is Map)
+                                                            ? (parsed['item']
+                                                                    as Map)
+                                                                .cast<
+                                                                  String,
+                                                                  dynamic
+                                                                >()
+                                                            : (parsed is Map
+                                                                ? parsed.cast<
+                                                                  String,
+                                                                  dynamic
+                                                                >()
+                                                                : const <
+                                                                  String,
+                                                                  dynamic
+                                                                >{});
+                                                    final media = item['media'];
+                                                    final mediaMap =
+                                                        media is Map
+                                                            ? media.cast<
+                                                              String,
+                                                              dynamic
+                                                            >()
+                                                            : const <
+                                                              String,
+                                                              dynamic
+                                                            >{};
+                                                    final metaRaw =
+                                                        mediaMap['metadata'];
+                                                    final metaMap =
+                                                        metaRaw is Map
+                                                            ? metaRaw.cast<
+                                                              String,
+                                                              dynamic
+                                                            >()
+                                                            : const <
+                                                              String,
+                                                              dynamic
+                                                            >{};
+                                                    final rawDur =
+                                                        mediaMap['duration'] ??
+                                                        metaMap['duration'];
+                                                    if (rawDur is num) {
+                                                      totalSec =
+                                                          rawDur.toDouble();
+                                                    }
+                                                  }
                                                   if (mounted && totalSec > 0) {
                                                     final ms =
                                                         (totalSec * 1000)
@@ -1392,17 +1456,6 @@ class _BookDetailPageState extends State<BookDetailPage> {
                                                         ),
                                                       );
                                                     } catch (_) {}
-                                                  }
-
-                                                  // Always close the session to prevent transcoding from continuing
-                                                  if (open.sessionId != null &&
-                                                      open
-                                                          .sessionId!
-                                                          .isNotEmpty) {
-                                                    await playbackRepo
-                                                        .closeSessionById(
-                                                          open.sessionId!,
-                                                        );
                                                   }
                                                 } catch (e) {
                                                   if (mounted) {
@@ -1774,7 +1827,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
                               ],
                               // Related books row
                               const SizedBox(height: 18),
-                              _RelatedBooksSection(book: b),
+                              _RelatedBooksSection(book: b, repoFut: _repoFut),
                             ],
                           ),
                         );
@@ -1968,9 +2021,10 @@ class _ChapterTimelineState extends State<_ChapterTimeline> {
 // ── Related Books ─────────────────────────────────────────────────────────────
 
 class _RelatedBooksSection extends StatefulWidget {
-  const _RelatedBooksSection({required this.book});
+  const _RelatedBooksSection({required this.book, required this.repoFut});
 
   final Book book;
+  final Future<BooksRepository> repoFut;
 
   @override
   State<_RelatedBooksSection> createState() => _RelatedBooksSectionState();
@@ -1988,7 +2042,7 @@ class _RelatedBooksSectionState extends State<_RelatedBooksSection> {
 
   Future<void> _loadRelated() async {
     try {
-      final repo = await BooksRepository.create();
+      final repo = await widget.repoFut;
       List<Book> books;
       final seriesName = widget.book.series;
       if (seriesName != null && seriesName.isNotEmpty) {

@@ -162,6 +162,7 @@ class _BookmarksSheetState extends State<BookmarksSheet> {
       ),
     );
     if (confirmed == true) {
+      if (!mounted) return;
       final playback = widget.playback;
       if (playback == null) return;
       Navigator.of(context).pop();

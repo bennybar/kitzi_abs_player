@@ -72,9 +72,11 @@ class ChapterNavigationService {
     
     if (chapters.isEmpty) return null;
 
-    // Find the previous chapter
+    // Find the chapter strictly before the current one
+    final currentChapter = getCurrentChapter();
+    final boundary = currentChapter?.start ?? position;
     for (int i = chapters.length - 1; i >= 0; i--) {
-      if (chapters[i].start < position) {
+      if (chapters[i].start < boundary) {
         return chapters[i];
       }
     }
@@ -167,17 +169,25 @@ class ChapterNavigationService {
     
     if (chapters.isEmpty) return [];
 
-    return chapters.map((chapter) {
-      final isCurrent = position >= chapter.start;
-      final isCompleted = position > chapter.start;
-      
+    return List.generate(chapters.length, (i) {
+      final chapter = chapters[i];
+      final nextStart = i + 1 < chapters.length ? chapters[i + 1].start : null;
+
+      final isCurrent =
+          position >= chapter.start && (nextStart == null || position < nextStart);
+      final isCompleted = nextStart != null && position >= nextStart;
+
+      final double progress = isCurrent
+          ? getChapterProgress()
+          : (isCompleted ? 1.0 : 0.0);
+
       return ChapterWithProgress(
         chapter: chapter,
         isCurrent: isCurrent,
         isCompleted: isCompleted,
-        progress: isCurrent ? getChapterProgress() : 0.0,
+        progress: progress,
       );
-    }).toList();
+    });
   }
 }
 

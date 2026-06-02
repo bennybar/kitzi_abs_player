@@ -130,25 +130,33 @@ class OfflineFirstBooksRepository implements OfflineFirstRepository<dynamic> {
     Duration cacheTimeout = const Duration(hours: 1),
   }) async {
     try {
-      // If not forcing refresh, try cache first
+      // If not forcing refresh, try cache first (only when still fresh)
       if (!forceRefresh) {
-        final cachedItem = await getFromCacheById(id);
-        if (cachedItem != null) {
-          // '[OFFLINE_FIRST] Returning cached item: $id');
-          return cachedItem;
+        final cacheValid = await isCacheValid(cacheTimeout);
+        if (cacheValid) {
+          final cachedItem = await getFromCacheById(id);
+          if (cachedItem != null) {
+            // '[OFFLINE_FIRST] Returning cached item: $id');
+            return cachedItem;
+          }
         }
       }
-      
+
       // Try network with timeout and retry
       // '[OFFLINE_FIRST] Attempting network fetch for item: $id');
       final networkItem = await NetworkService.withRetry(
         () => _networkItemFetcher(id),
         timeout: const Duration(seconds: 10),
       );
-      
+
+      // Write the freshly fetched item back to cache so subsequent reads refresh
+      if (networkItem != null) {
+        await saveToCache([networkItem]);
+      }
+
       // '[OFFLINE_FIRST] Network fetch successful for item: $id');
       return networkItem;
-      
+
     } catch (error) {
       // '[OFFLINE_FIRST] Network fetch failed for item $id, falling back to cache: $error');
       
@@ -273,10 +281,20 @@ class CacheMetadata {
     'extra': extra,
   };
   
-  factory CacheMetadata.fromJson(Map<String, dynamic> json) => CacheMetadata(
-    lastUpdated: DateTime.fromMillisecondsSinceEpoch(json['lastUpdated']),
-    itemCount: json['itemCount'],
-    version: json['version'],
-    extra: json['extra'],
-  );
+  factory CacheMetadata.fromJson(Map<String, dynamic> json) {
+    final rawLastUpdated = json['lastUpdated'];
+    final lastUpdatedMs = rawLastUpdated is int
+        ? rawLastUpdated
+        : (rawLastUpdated is num ? rawLastUpdated.toInt() : 0);
+    final rawItemCount = json['itemCount'];
+    final itemCount = rawItemCount is int
+        ? rawItemCount
+        : (rawItemCount is num ? rawItemCount.toInt() : 0);
+    return CacheMetadata(
+      lastUpdated: DateTime.fromMillisecondsSinceEpoch(lastUpdatedMs),
+      itemCount: itemCount,
+      version: json['version'] as String?,
+      extra: (json['extra'] as Map?)?.cast<String, dynamic>(),
+    );
+  }
 }

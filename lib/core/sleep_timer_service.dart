@@ -241,5 +241,6 @@ class SleepTimerService {
     _stopTimer();
     _playbackRepository = null;
     _remainingCtr.close();
+    _instance = null;
   }
 }

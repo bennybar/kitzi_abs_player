@@ -116,12 +116,11 @@ class _AuthorsPageState extends State<AuthorsPage> {
       if (!mounted) return;
       setState(() {
         _authors = authors;
-        _filteredAuthors = List.from(authors);
+        _filterAuthors();
         if (!silent) {
           _loading = false;
         }
       });
-      _prepareAuthorLetterAnchors(_filteredAuthors);
     } catch (e) {
       if (!mounted || silent) return;
       setState(() {

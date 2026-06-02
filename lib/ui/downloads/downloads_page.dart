@@ -23,11 +23,17 @@ class _DownloadsPageState extends State<DownloadsPage> {
   // latest update by taskId so we can show immediate progress
   final Map<String, TaskUpdate> _latest = {};
 
+  // Created once so rebuilds (on every progress event) don't reconstruct the
+  // repository or restart its work.
+  late final Future<BooksRepository> _booksRepoFuture;
+
   @override
   void initState() {
     super.initState();
     // make sure repo is initialized (no-op if already)
     widget.repo.init();
+
+    _booksRepoFuture = BooksRepository.create();
 
     _updates = widget.repo.progressStream();
     _sub = _updates.listen((u) {
@@ -121,7 +127,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
       builder: (context, idsSnap) {
         final allIds = idsSnap.data ?? const [];
         return FutureBuilder<BooksRepository>(
-          future: BooksRepository.create(),
+          future: _booksRepoFuture,
           builder: (context, repoSnap) {
             if (!repoSnap.hasData) {
               return const Scaffold(
@@ -215,8 +221,9 @@ class _DownloadsPageState extends State<DownloadsPage> {
     List<String> ids,
   ) async {
     final tileInfos = <_DownloadTileInfo>[];
+    // Fetch once, not per-item, to avoid a listAll() storm on every progress tick.
+    final recs = await widget.repo.listAll();
     for (final itemId in ids) {
-      final recs = await widget.repo.listAll();
       final records =
           recs.where((r) {
               final mid = _deriveItemId(r, ids.toSet());
@@ -392,12 +399,38 @@ class _BookDownloadTileState extends State<_BookDownloadTile> {
     _load();
   }
 
+  /// Match the parent's primary id-extraction rule (JSON meta keys, then
+  /// group `book-<id>`/`<id>`) so this tile's grouping agrees with _buildTiles.
+  String _deriveItemId(TaskRecord record) {
+    final meta = record.task.metaData ?? '';
+    if (meta.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(meta);
+        if (decoded is Map) {
+          for (final k in const ['libraryItemId', 'itemId', 'id']) {
+            final v = decoded[k];
+            if (v is String && v.isNotEmpty) return v;
+          }
+        }
+      } catch (_) {}
+    }
+    final group = record.task.group;
+    if (group != null && group.isNotEmpty) {
+      if (group.startsWith('book-') && group.length > 5) {
+        return group.substring(5);
+      }
+      return group;
+    }
+    return record.task.taskId;
+  }
+
   Future<void> _load() async {
     final all = await widget.repo.listAll();
+    if (!mounted) return;
     setState(() {
       _records =
           all.where((r) {
-              final id = (r.task.metaData ?? '').contains(widget.itemId);
+              final id = _deriveItemId(r) == widget.itemId;
               return id;
             }).toList()
             ..sort(

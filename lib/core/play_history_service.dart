@@ -56,9 +56,7 @@ class PlayHistoryService {
 
     final auth = await AuthRepository.ensure();
     final api = auth.api;
-    final token = await api.accessToken();
-    final tokenQS = (token != null && token.isNotEmpty) ? '?token=$token' : '';
-    final resp = await api.request('GET', '/api/libraries$tokenQS');
+    final resp = await api.request('GET', '/api/libraries');
     if (resp.statusCode != 200) {
       throw Exception('Failed to list libraries: ${resp.statusCode}');
     }
@@ -178,46 +176,43 @@ class PlayHistoryService {
       print('PlayHistory: Getting auth repository...');
       final auth = await AuthRepository.ensure();
       final api = auth.api;
-      
-      print('PlayHistory: Getting access token...');
-      final token = await api.accessToken();
+
       final baseUrl = api.baseUrl;
-      
-      print('PlayHistory: Token: ${token != null ? 'present' : 'null'}, BaseUrl: $baseUrl');
-      
-      if (token == null || token.isEmpty || baseUrl == null || baseUrl.isEmpty) {
-        print('PlayHistory: Missing auth credentials, skipping server request');
+      // Token is only needed to render cover images (binary cover GETs accept
+      // ?token=); all JSON GETs below go through api.request which sets the
+      // Bearer header and handles 401-refresh.
+      final token = await api.accessToken();
+
+      print('PlayHistory: BaseUrl: ${baseUrl != null ? 'present' : 'null'}');
+
+      if (baseUrl == null || baseUrl.isEmpty) {
+        print('PlayHistory: Missing base URL, skipping server request');
         return [];
       }
       // Determine library id
       final libId = await _ensureLibraryId();
-      
+
       // Preferred order:
       // 1) Me -> user.mediaProgress (true latest played)
       // 2) Personalized continue section
-      // 3) Library in-progress include progress
-      final meUrl = '$baseUrl/api/me?token=$token';
-      final personalizedUrl = '$baseUrl/api/libraries/$libId/personalized?view=continue&limit=${count * 3}&token=$token';
-      final libraryInProgressUrl = '$baseUrl/api/libraries/$libId/items?inProgress=true&include=progress&limit=${count * 3}&token=$token';
+      // 3) Library in-progress (derived locally from progress info)
+      final mePath = '/api/me';
+      final personalizedPath = '/api/libraries/$libId/personalized?limit=${count * 3}';
+      final libraryItemsPath = '/api/libraries/$libId/items?limit=${count * 3}';
 
-      Future<http.Response> doGet(String u) => http.get(
-        Uri.parse(u),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-          'User-Agent': 'Kitzi-ABS-Player/1.0 (Flutter)',
-        },
-      ).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () {
-          print('PlayHistory: Server request timed out after 10 seconds');
-          throw TimeoutException('Server request timed out');
-        },
-      );
+      Future<http.Response> doGet(String path) => api
+              .request('GET', path)
+              .timeout(
+            const Duration(seconds: 10),
+            onTimeout: () {
+              print('PlayHistory: Server request timed out after 10 seconds');
+              throw TimeoutException('Server request timed out');
+            },
+          );
 
       // ---- 1) Me.mediaProgress path ----
-      print('PlayHistory: Requesting Me: $meUrl');
-      var resp = await doGet(meUrl);
+      print('PlayHistory: Requesting Me');
+      var resp = await doGet(mePath);
       if (resp.statusCode == 200) {
         final data = jsonDecode(resp.body);
         final user = (data is Map) ? data as Map<String, dynamic> : const <String, dynamic>{};
@@ -256,9 +251,8 @@ class PlayHistoryService {
           for (final m in top) {
             final id = m['libraryItemId']?.toString();
             if (id == null || id.isEmpty) continue;
-            final itemUrl = '$baseUrl/api/items/$id?token=$token';
             try {
-              final itemResp = await doGet(itemUrl);
+              final itemResp = await doGet('/api/items/$id');
               if (itemResp.statusCode == 200) {
                 final bd = jsonDecode(itemResp.body);
                 Map<String, dynamic>? li;
@@ -268,9 +262,11 @@ class PlayHistoryService {
                   li = bd.cast<String, dynamic>();
                 }
                 if (li != null) {
-                  // Only include books from the current library
+                  // Only include books from the current library. The expanded
+                  // item may omit/nest libraryId; if it is absent, don't drop
+                  // the item (an empty id means "unknown", not "other library").
                   final bookLibraryId = (li['libraryId'] ?? '').toString();
-                  if (bookLibraryId == libId) {
+                  if (bookLibraryId.isEmpty || bookLibraryId == libId) {
                     final book = Book.fromLibraryItemJson(li, baseUrl: baseUrl, token: token);
                     books.add(book);
                   }
@@ -288,8 +284,8 @@ class PlayHistoryService {
       }
 
       // ---- 2) Personalized continue ----
-      print('PlayHistory: Requesting personalized continue: $personalizedUrl');
-      resp = await doGet(personalizedUrl);
+      print('PlayHistory: Requesting personalized continue');
+      resp = await doGet(personalizedPath);
       List<dynamic> items = [];
       if (resp.statusCode == 200) {
         final data = jsonDecode(resp.body);
@@ -316,9 +312,13 @@ class PlayHistoryService {
       }
 
       if (items.isEmpty) {
-        // ---- 3) Library in-progress include progress ----
-        print('PlayHistory: Falling back to library in-progress: $libraryInProgressUrl');
-        resp = await doGet(libraryInProgressUrl);
+        // ---- 3) Library items fallback ----
+        // ABS has no inProgress flag on /items (the documented mechanism is a
+        // base64 filter param), so just fetch a normal page; the progress-based
+        // filtering below (isFinished / >=99%) plus the mediaProgress path above
+        // are what actually scope this to "continue listening".
+        print('PlayHistory: Falling back to library items');
+        resp = await doGet(libraryItemsPath);
         if (resp.statusCode == 200) {
           final fb = jsonDecode(resp.body);
           if (fb is Map && fb['results'] is List) {
@@ -399,9 +399,10 @@ class PlayHistoryService {
       final seenIds = <String>{};
       for (final item in normalized) {
         try {
-          // Check if book is from the current library
+          // Check if book is from the current library. If libraryId is absent
+          // from the response shape, keep the item rather than silently dropping it.
           final bookLibraryId = (item['libraryId'] ?? '').toString();
-          if (bookLibraryId != libId) continue;
+          if (bookLibraryId.isNotEmpty && bookLibraryId != libId) continue;
 
           final rawId = (item['id'] ?? item['_id'] ?? '').toString();
           if (rawId.isEmpty || !seenIds.add(rawId)) continue;
@@ -515,11 +516,18 @@ class PlayHistoryService {
   }
 
   static Map<String, dynamic> _bookToCacheJson(Book b, {required int position}) {
+    // Strip any access token from the cover URL before persisting to disk so
+    // the secret is not written to the cache and so the cached URL does not go
+    // stale on token rotation. The cover endpoint is also reachable via the
+    // Authorization header when the URL is later re-fetched.
+    final coverUrl = b.coverUrl.contains('?token=')
+        ? b.coverUrl.substring(0, b.coverUrl.indexOf('?token='))
+        : b.coverUrl;
     return {
       'id': b.id,
       'title': b.title,
       'author': b.author,
-      'coverUrl': b.coverUrl,
+      'coverUrl': coverUrl,
       'description': b.description,
       'durationMs': b.durationMs,
       'sizeBytes': b.sizeBytes,

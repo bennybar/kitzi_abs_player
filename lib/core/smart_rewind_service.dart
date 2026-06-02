@@ -50,6 +50,10 @@ class SmartRewindService {
       final lastPauseMs = prefs.getInt(_kLastPauseMs);
       if (lastPauseMs == null || lastPauseMs <= 0) return Duration.zero;
 
+      // Consume the marker so a stale pause timestamp is not reused on the
+      // next resume/play (rewind is one-shot per recorded pause).
+      await prefs.remove(_kLastPauseMs);
+
       final elapsed = DateTime.now().millisecondsSinceEpoch - lastPauseMs;
       if (elapsed < 0) return Duration.zero;
 

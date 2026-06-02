@@ -56,7 +56,12 @@ class StreamingCacheService {
     await init();
     final dir = _cacheDir ??= await _ensureDir();
     final safeId = _sanitizeId(libraryItemId);
-    final hash = sha1.convert(utf8.encode(uri.toString())).toString();
+    // Hash on a stable identifier (scheme/host/path) and drop the query string,
+    // because ABS play-session contentUrls can carry a per-session token/segment
+    // in the query. Keying on the volatile full URL would defeat cross-session
+    // reuse; the path already encodes the item id + file ino, which is stable.
+    final stableKey = uri.replace(query: '', fragment: '').toString();
+    final hash = sha1.convert(utf8.encode(stableKey)).toString();
     final fileName = '$safeId-$trackIndex-$hash.cache';
     final file = File(p.join(dir.path, fileName));
     return LockCachingAudioSource(
@@ -80,7 +85,7 @@ class StreamingCacheService {
       if (entity is! File) continue;
       final file = entity;
       final name = p.basename(file.path);
-      if (name.startsWith(safe)) {
+      if (name.startsWith('$safe-')) {
         try {
           await file.delete();
         } catch (_) {}

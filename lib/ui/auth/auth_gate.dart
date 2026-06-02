@@ -18,7 +18,7 @@ class AuthGate extends StatefulWidget {
 }
 
 class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
-  late final AuthRepository _auth;
+  AuthRepository? _auth;
   bool? _isLoggedIn;
   Timer? _poll;
 
@@ -31,7 +31,8 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _auth = ServicesScope.of(context).services.auth;
+    // didChangeDependencies can fire multiple times; only resolve _auth once.
+    _auth ??= ServicesScope.of(context).services.auth;
     _check();
     // Reduce polling frequency to avoid unnecessary network requests
     // Only poll every 2 minutes instead of every 15 seconds
@@ -61,27 +62,26 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
   }
 
   Future<void> _check() async {
+    final auth = _auth;
+    if (auth == null) return;
     try {
       // Use proper session validation instead of just checking token existence
-      final isValid = await _auth.hasValidSession();
+      final isValid = await auth.hasValidSession();
       if (!mounted) return;
       setState(() => _isLoggedIn = isValid);
     } catch (e) {
       // Session check failed
       if (!mounted) return;
-      
-      // Check if this is a network error vs authentication error
-      if (e.toString().contains('SocketException') || 
-          e.toString().contains('TimeoutException') ||
-          e.toString().contains('HandshakeException')) {
-        // Network error - don't logout, keep current state
-        // Network error detected, keeping current auth state
-        return;
+
+      // Only log out on a definitive authentication failure (401/403).
+      // Any other error (network, DNS/proxy, 5xx, parse, generic) is treated
+      // as transient: keep the current auth state rather than forcing logout.
+      final msg = e.toString();
+      final isAuthFailure = msg.contains('401') || msg.contains('403');
+      if (isAuthFailure) {
+        setState(() => _isLoggedIn = false);
       }
-      
-      // Only set to false if we're sure the session is invalid
-      // (e.g., 401 Unauthorized, invalid tokens, etc.)
-      setState(() => _isLoggedIn = false);
+      // Otherwise keep current state.
     }
   }
 

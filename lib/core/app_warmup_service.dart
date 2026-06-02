@@ -7,37 +7,46 @@ import 'play_history_service.dart';
 /// App warmup service for faster startup
 class AppWarmupService {
   static bool _isWarmedUp = false;
-  static final Completer<void> _warmupCompleter = Completer<void>();
-  
+  static Completer<void> _warmupCompleter = Completer<void>();
+
   /// Perform app warmup
   static Future<void> warmup() async {
     if (_isWarmedUp) {
       return _warmupCompleter.future;
     }
-    
+
+    // Fresh completer for this warmup cycle so reset()+warmup() can't
+    // complete an already-completed completer.
+    if (_warmupCompleter.isCompleted) {
+      _warmupCompleter = Completer<void>();
+    }
+
     // Starting app warmup
     final stopwatch = Stopwatch()..start();
-    
+
     try {
-      // Initialize services in parallel
+      // Initialize services in parallel. _warmupBooksRepository opens the
+      // per-library SQLite DB exactly once and runs all book-related warmup
+      // work against that single connection to avoid concurrent open/close
+      // races on the same file.
       final futures = <Future>[
         _initializeAuth(),
-        _initializeBooksRepository(),
+        _warmupBooksRepository(),
         _initializePlayHistory(),
-        _preloadCriticalData(),
-        _warmupImageCache(),
       ];
-      
+
       await Future.wait(futures);
-      
+
       _isWarmedUp = true;
       _warmupCompleter.complete();
-      
+
       stopwatch.stop();
       // App warmup completed
     } catch (e) {
       // Error during warmup
-      _warmupCompleter.completeError(e);
+      if (!_warmupCompleter.isCompleted) {
+        _warmupCompleter.completeError(e);
+      }
     }
   }
   
@@ -51,17 +60,27 @@ class AppWarmupService {
     }
   }
   
-  /// Initialize books repository
-  static Future<void> _initializeBooksRepository() async {
+  /// Warm up the books repository: open the DB once, preload the first page
+  /// of books, and kick off recent-books loading. Uses a single repository
+  /// instance so the same SQLite file isn't opened/closed concurrently.
+  static Future<void> _warmupBooksRepository() async {
     try {
       final repo = await BooksRepository.create();
-      await repo.dispose();
-      // APP_WARMUP Books repository initialized');
+      try {
+        // Preload first page of books so the library lands warm.
+        await repo.listBooksFromDbPaged(page: 1, limit: 20);
+      } finally {
+        await repo.dispose();
+      }
+
+      // Load recent books in background.
+      unawaited(PlayHistoryService.getLastPlayedBooks(4));
+      // APP_WARMUP Books repository warmed');
     } catch (e) {
-      // APP_WARMUP Error initializing books repository: $e');
+      // APP_WARMUP Error warming books repository: $e');
     }
   }
-  
+
   /// Initialize play history service
   static Future<void> _initializePlayHistory() async {
     try {
@@ -69,42 +88,6 @@ class AppWarmupService {
       // APP_WARMUP Play history service ready');
     } catch (e) {
       // APP_WARMUP Error initializing play history: $e');
-    }
-  }
-  
-  /// Preload critical data
-  static Future<void> _preloadCriticalData() async {
-    try {
-      // Load first page of books in background
-      final repo = await BooksRepository.create();
-      await repo.listBooksFromDbPaged(page: 1, limit: 20);
-      await repo.dispose();
-      
-      // Load recent books in background
-      unawaited(PlayHistoryService.getLastPlayedBooks(4));
-      
-      // APP_WARMUP Critical data preloading started');
-    } catch (e) {
-      // APP_WARMUP Error preloading critical data: $e');
-    }
-  }
-  
-  /// Warmup image cache
-  static Future<void> _warmupImageCache() async {
-    try {
-      // Preload popular cover images if available
-      final repo = await BooksRepository.create();
-      final popularBooks = await repo.listBooksFromDbPaged(page: 1, limit: 10);
-      await repo.dispose();
-      
-      if (popularBooks.isNotEmpty) {
-        final urls = popularBooks.map((b) => b.coverUrl).toList();
-        // Note: We can't pass context here, so we'll skip image preloading
-        // The images will be loaded when the UI is ready
-        // APP_WARMUP Image cache warmup prepared for ${urls.length} images');
-      }
-    } catch (e) {
-      // APP_WARMUP Error warming up image cache: $e');
     }
   }
   

@@ -32,22 +32,33 @@ class ImageCacheManager {
   
   /// Public getter for the cache manager instance
   static CacheManager get instance => _instance;
+
+  /// Stable cache key for a cover URL: strips the access token (and any other
+  /// query string) so the on-disk cache key never contains the token and stays
+  /// stable across token rotation. Covers are still fetched with the full URL.
+  static String cacheKeyFor(String url) {
+    final uri = Uri.tryParse(url);
+    if (uri == null || !uri.hasQuery) return url;
+    return uri.replace(query: '').toString();
+  }
   
   /// Preload images for better user experience
   static Future<void> preloadImages(List<String> urls, BuildContext context) async {
     final futures = <Future<void>>[];
-    
+    final added = <String>[];
+
     for (final url in urls.take(10)) { // Limit to 10 concurrent preloads
       if (!_preloadingUrls.contains(url)) {
         _preloadingUrls.add(url);
+        added.add(url);
         futures.add(_preloadSingleImage(url, context));
       }
     }
-    
+
     try {
       await Future.wait(futures);
     } finally {
-      _preloadingUrls.clear();
+      _preloadingUrls.removeAll(added);
     }
   }
   
@@ -117,7 +128,11 @@ class ImageCacheManager {
       } else {
         // Handle network URLs
         await precacheImage(
-          CachedNetworkImageProvider(url, cacheManager: _instance),
+          CachedNetworkImageProvider(
+            url,
+            cacheManager: _instance,
+            cacheKey: cacheKeyFor(url),
+          ),
           context,
         );
       }
@@ -255,6 +270,7 @@ class EnhancedCoverImage extends StatelessWidget {
       borderRadius: radius,
       child: CachedNetworkImage(
         imageUrl: url,
+        cacheKey: ImageCacheManager.cacheKeyFor(url),
         width: width,
         height: height,
         fit: fit,

@@ -296,21 +296,37 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
   }
 
   @override
-  Future<void> fastForward() => _playback.nudgeSeconds(UiPrefs.seekForwardSeconds.value);
+  Future<void> fastForward() => _nudgeAcrossBook(UiPrefs.seekForwardSeconds.value);
 
   @override
-  Future<void> rewind() => _playback.nudgeSeconds(-UiPrefs.seekBackwardSeconds.value);
+  Future<void> rewind() => _nudgeAcrossBook(-UiPrefs.seekBackwardSeconds.value);
 
   @override
   Future<void> skipToNext() async {
     // Map skip to next as a 30s nudge for better hardware button UX in Android Auto
-    await _playback.nudgeSeconds(30);
+    await _nudgeAcrossBook(30);
   }
 
   @override
   Future<void> skipToPrevious() async {
     // Map skip to previous as a 15s rewind for better hardware button UX in Android Auto
-    await _playback.nudgeSeconds(-15);
+    await _nudgeAcrossBook(-15);
+  }
+
+  /// Nudge by [delta] seconds across the whole book so the jump can cross
+  /// track boundaries (e.g. forward near a track end advances into the next
+  /// track). Uses the global book position via seekGlobal when it is known;
+  /// falls back to the track-clamped nudge when the global position cannot be
+  /// computed (e.g. local tracks without known durations).
+  Future<void> _nudgeAcrossBook(int delta) async {
+    final globalPos = _playback.globalBookPosition;
+    if (globalPos == null) {
+      await _playback.nudgeSeconds(delta);
+      return;
+    }
+    var target = globalPos + Duration(seconds: delta);
+    if (target < Duration.zero) target = Duration.zero;
+    await _playback.seekGlobal(target, reportNow: true);
   }
 
   @override

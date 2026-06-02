@@ -69,7 +69,12 @@ class AudioServiceManager {
 
       _isInitialized = true;
     } catch (e) {
+      // Clean up any partially-initialized state so the manager is not left
+      // half-initialized with a live-but-unregistered handler, and rethrow so
+      // callers can observe the failure instead of it being swallowed.
       _isInitialized = false;
+      _audioHandler = null;
+      rethrow;
     }
   }
 
@@ -134,9 +139,14 @@ class AudioServiceManager {
 
   Future<void> dispose() async {
     if (_audioHandler != null) {
-      await _audioHandler!.pause();
+      // Stop (not just pause) so the Android foreground service / notification
+      // and platform audio service are torn down rather than left alive.
+      await _audioHandler!.stop();
       _audioHandler = null;
     }
     _isInitialized = false;
+    // Clear the singleton so a later initialize() starts from a clean slate
+    // instead of being blocked by stale state or re-running AudioService.init().
+    _instance = null;
   }
 }

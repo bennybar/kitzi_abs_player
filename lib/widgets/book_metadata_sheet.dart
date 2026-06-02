@@ -35,7 +35,7 @@ Future<void> showBookMetadataSheet({
     builder: (context) => _BookMetadataSheet(
       title: title,
       subtitle: subtitle,
-      cacheKey: cacheKey ?? title,
+      cacheKey: cacheKey,
       loadFacts: loadFacts,
     ),
   );
@@ -51,7 +51,7 @@ class _BookMetadataSheet extends StatefulWidget {
 
   final String title;
   final String? subtitle;
-  final String cacheKey;
+  final String? cacheKey;
   final Future<List<BookMetadataFact>> Function() loadFacts;
 
   @override
@@ -65,8 +65,11 @@ class _BookMetadataSheetState extends State<_BookMetadataSheet> {
   @override
   void initState() {
     super.initState();
-    final cached = _metadataCache[widget.cacheKey];
-    if (cached != null) _facts = cached;
+    final cacheKey = widget.cacheKey;
+    if (cacheKey != null) {
+      final cached = _metadataCache[cacheKey];
+      if (cached != null) _facts = cached;
+    }
     _refresh();
   }
 
@@ -74,7 +77,8 @@ class _BookMetadataSheetState extends State<_BookMetadataSheet> {
     if (_facts == null && mounted) setState(() => _loading = true);
     try {
       final result = await widget.loadFacts();
-      _metadataCache[widget.cacheKey] = result;
+      final cacheKey = widget.cacheKey;
+      if (cacheKey != null) _metadataCache[cacheKey] = result;
       if (mounted) setState(() { _facts = result; _loading = false; });
     } catch (_) {
       if (mounted) setState(() => _loading = false);

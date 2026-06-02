@@ -1963,9 +1963,14 @@ class _FullPlayerPageState extends State<FullPlayerPage>
           );
         }
 
-        // Navigate back to book details page
+        // Navigate back to book details page. Only pop when we're actually
+        // presented on a route (modal mode); in tab mode the player is not a
+        // route, so popping would dismiss an unrelated route.
         if (mounted) {
-          Navigator.of(context).pop(); // Close the full player
+          final nav = Navigator.of(context);
+          if (!UiPrefs.fullPlayerAsTab.value && nav.canPop()) {
+            nav.pop(); // Close the full player
+          }
           // The book details page should already be showing the updated "Completed" status
           // due to the global completion status stream we set up
         }
@@ -1990,6 +1995,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
 
             // Push the position to server after a delay to ensure it's preserved
             Future.delayed(const Duration(seconds: 1), () async {
+              if (!mounted) return;
               try {
                 // Pushing position to server after unfinish
                 await playback.reportProgressNow();

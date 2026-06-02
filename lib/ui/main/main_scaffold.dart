@@ -10,6 +10,7 @@ import '../player/full_player_overlay.dart';
 import '../player/full_player_page.dart';
 import '../home/series_page.dart';
 import '../home/authors_page.dart';
+import '../queue/queue_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/ui_prefs.dart';
 
@@ -64,10 +65,7 @@ class _MainScaffoldState extends State<MainScaffold> {
     _downloadProgressSub = widget.downloadsRepo.progressStream().listen((
       update,
     ) {
-      _debounceTimer?.cancel();
-      _debounceTimer = Timer(const Duration(milliseconds: 200), () {
-        _handleDownloadUpdate(update);
-      });
+      _handleDownloadUpdate(update);
     });
   }
 
@@ -96,7 +94,13 @@ class _MainScaffoldState extends State<MainScaffold> {
         }
       }
 
-      _recalculateAggregatedProgress();
+      // Apply every update to the maps immediately (above), but debounce only
+      // the aggregation recompute so concurrent updates within a 200ms window
+      // are all reflected and no terminal status events are dropped.
+      _debounceTimer?.cancel();
+      _debounceTimer = Timer(const Duration(milliseconds: 200), () {
+        _recalculateAggregatedProgress();
+      });
     } catch (_) {}
   }
 
@@ -206,6 +210,12 @@ class _MainScaffoldState extends State<MainScaffold> {
           label: 'Player',
         ),
       const _NavDestinationData(
+        kind: _NavKind.queue,
+        icon: Symbols.queue_music,
+        selectedIcon: Symbols.queue_music_rounded,
+        label: 'Queue',
+      ),
+      const _NavDestinationData(
         kind: _NavKind.downloads,
         icon: Symbols.download_for_offline,
         selectedIcon: Symbols.download_for_offline_rounded,
@@ -230,6 +240,8 @@ class _MainScaffoldState extends State<MainScaffold> {
         return const SeriesPage();
       case _NavKind.player:
         return const FullPlayerPage();
+      case _NavKind.queue:
+        return const QueuePage();
       case _NavKind.downloads:
         return DownloadsPage(repo: widget.downloadsRepo);
       case _NavKind.settings:
@@ -463,7 +475,7 @@ class _MainScaffoldState extends State<MainScaffold> {
   }
 }
 
-enum _NavKind { books, authors, series, player, downloads, settings }
+enum _NavKind { books, authors, series, player, queue, downloads, settings }
 
 class _NavDestinationData {
   const _NavDestinationData({

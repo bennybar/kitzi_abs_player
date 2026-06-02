@@ -82,18 +82,21 @@ class _StatsPageState extends State<StatsPage> {
         _topBooks = tops.topBooks;
         _topAuthors = tops.topAuthors;
         _topNarrators = tops.topNarrators;
-        
+
+        if (!mounted) return;
         setState(() {
           _listeningStats = data;
           _isLoading = false;
         });
       } else {
+        if (!mounted) return;
         setState(() {
           _error = 'Failed to load stats (${response.statusCode})';
           _isLoading = false;
         });
       }
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = 'Error loading stats: $e';
         _isLoading = false;

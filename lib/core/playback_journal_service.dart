@@ -208,24 +208,24 @@ class PlaybackJournalService {
     }
 
     final timeSegment = remoteTimeKey ?? _formatBookmarkTime(resolvedTime!);
-    try {
-      final api = await _getApiClient();
-      final resp = await api.request(
-        'DELETE',
-        '/api/me/item/$libraryItemId/bookmark/$timeSegment',
-      );
-      if (resp.statusCode != 200) {
-        throw Exception('Server responded with HTTP ${resp.statusCode}');
-      }
-    } finally {
-      await _deleteLocalBookmark(
-        libraryItemId: libraryItemId,
-        localId: localId,
-        remoteTimeSeconds: resolvedTime,
-        remoteTimeKey: remoteTimeKey,
-      );
-      _invalidateBookmarkCache(libraryItemId);
+    final api = await _getApiClient();
+    final resp = await api.request(
+      'DELETE',
+      '/api/me/item/$libraryItemId/bookmark/$timeSegment',
+    );
+    // Only remove local state when the server confirms deletion (200) or the
+    // bookmark is already gone (404). On any other failure, keep local state
+    // intact so we don't lose the bookmark on transient/offline errors.
+    if (resp.statusCode != 200 && resp.statusCode != 404) {
+      throw Exception('Server responded with HTTP ${resp.statusCode}');
     }
+    await _deleteLocalBookmark(
+      libraryItemId: libraryItemId,
+      localId: localId,
+      remoteTimeSeconds: resolvedTime,
+      remoteTimeKey: remoteTimeKey,
+    );
+    _invalidateBookmarkCache(libraryItemId);
   }
 
   Future<List<BookmarkEntry>> bookmarksFor(String libraryItemId, {bool forceRemote = false}) async {
@@ -351,22 +351,18 @@ class PlaybackJournalService {
   Future<List<BookmarkEntry>?> _fetchRemoteBookmarksForItem(String libraryItemId) async {
     try {
       final api = await _getApiClient();
-      final resp = await api.request('GET', '/api/me/item/$libraryItemId/bookmark');
+      // ABS exposes bookmarks on the /api/me user object's 'bookmarks' array;
+      // there is no per-item GET endpoint. Filter the array by libraryItemId.
+      final resp = await api.request('GET', '/api/me');
       if (resp.statusCode != 200) {
         return null;
       }
       final decoded = jsonDecode(resp.body);
       List<dynamic> rawList;
-      if (decoded is List) {
-        rawList = decoded;
-      } else if (decoded is Map<String, dynamic>) {
-        if (decoded['bookmarks'] is List) {
-          rawList = decoded['bookmarks'] as List<dynamic>;
-        } else if (decoded['data'] is List) {
-          rawList = decoded['data'] as List<dynamic>;
-        } else {
-          rawList = const [];
-        }
+      if (decoded is Map<String, dynamic> && decoded['bookmarks'] is List) {
+        rawList = (decoded['bookmarks'] as List<dynamic>)
+            .where((b) => b is Map<String, dynamic> && b['libraryItemId'] == libraryItemId)
+            .toList();
       } else {
         rawList = const [];
       }

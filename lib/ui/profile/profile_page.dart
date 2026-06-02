@@ -20,6 +20,7 @@ class _ProfilePageState extends State<ProfilePage> {
   // Server information cache
   Map<String, dynamic>? _serverStatus;
   Map<String, dynamic>? _libraryStats;
+  Map<String, dynamic>? _listeningStats;
 
   @override
   void initState() {
@@ -66,38 +67,52 @@ class _ProfilePageState extends State<ProfilePage> {
           }
         }
         
-        // Load server status and library stats in parallel
+        // Load server status, library stats and listening stats in parallel
         await Future.wait([
           _loadServerStatus(),
           _loadLibraryStats(),
+          _loadListeningStats(),
         ]);
         
-        // Also check if the profile data itself contains server version info
+        // Also check if the profile data itself contains server version info.
+        // Only fill in the version if /status didn't already provide one, so we
+        // don't discard a richer _serverStatus payload from _loadServerStatus().
         final serverVersionFromProfile = data['serverVersion'] ?? data['version'] ?? data['appVersion'];
         if (serverVersionFromProfile != null) {
           // Found server version in profile data
           if (mounted) {
             setState(() {
-              _serverStatus = {'serverVersion': serverVersionFromProfile, 'source': 'profile'};
+              final merged = Map<String, dynamic>.from(_serverStatus ?? const {});
+              if (merged['serverVersion'] == null) {
+                merged['serverVersion'] = serverVersionFromProfile;
+                merged['source'] = 'profile';
+              }
+              _serverStatus = merged;
             });
           }
         }
         
-        setState(() {
-          _profileData = data;
-          _isLoading = false;
-        });
+        if (mounted) {
+          setState(() {
+            _profileData = data;
+            _isLoading = false;
+          });
+        }
       } else {
+        if (mounted) {
+          setState(() {
+            _error = 'Failed to load profile data (${response.statusCode})';
+            _isLoading = false;
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
         setState(() {
-          _error = 'Failed to load profile data (${response.statusCode})';
+          _error = 'Error loading profile: $e';
           _isLoading = false;
         });
       }
-    } catch (e) {
-      setState(() {
-        _error = 'Error loading profile: $e';
-        _isLoading = false;
-      });
     }
   }
 
@@ -128,6 +143,25 @@ class _ProfilePageState extends State<ProfilePage> {
     } catch (e) {
       // Failed to load library stats
       // Don't fail the whole profile load just because of library stats
+    }
+  }
+
+  Future<void> _loadListeningStats() async {
+    try {
+      final services = ServicesScope.of(context).services;
+      final api = services.auth.api;
+      final response = await api.request('GET', '/api/me/listening-stats', auth: true);
+      if (response.statusCode == 200) {
+        final stats = jsonDecode(response.body) as Map<String, dynamic>;
+        if (mounted) {
+          setState(() {
+            _listeningStats = stats;
+          });
+        }
+      }
+    } catch (e) {
+      // Failed to load listening stats
+      // Don't fail the whole profile load just because of listening stats
     }
   }
 
@@ -175,6 +209,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   // Clear cached data and reload
                   _serverStatus = null;
                   _libraryStats = null;
+                  _listeningStats = null;
                   _loadProfileData();
                 },
                 icon: const Icon(Icons.refresh),
@@ -316,6 +351,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   // Clear cached data and reload
                   _serverStatus = null;
                   _libraryStats = null;
+                  _listeningStats = null;
                   _loadProfileData();
                 },
                 icon: const Icon(Icons.refresh),
@@ -410,14 +446,16 @@ class _ProfilePageState extends State<ProfilePage> {
       final now = DateTime.now().toUtc();
       final difference = expiry.difference(now);
       
+      // The server does not report access-token expiry, so this is an app-side
+      // estimate (~12h, or 1h without refresh). Present it as approximate.
       if (difference.isNegative) {
-        return 'Expired';
+        return 'Likely expired (estimated)';
       } else if (difference.inDays > 0) {
-        return '${difference.inDays} days remaining';
+        return '~${difference.inDays} days remaining (estimated)';
       } else if (difference.inHours > 0) {
-        return '${difference.inHours} hours remaining';
+        return '~${difference.inHours} hours remaining (estimated)';
       } else {
-        return '${difference.inMinutes} minutes remaining';
+        return '~${difference.inMinutes} minutes remaining (estimated)';
       }
     } catch (e) {
       return 'N/A';
@@ -549,24 +587,21 @@ class _ProfilePageState extends State<ProfilePage> {
 
   String _getTotalListeningTime() {
     try {
-      final mediaProgress = _profileData!['mediaProgress'];
-      if (mediaProgress == null) return '0 hours';
-      
-      int totalSeconds = 0;
-      if (mediaProgress is List<dynamic>) {
-        for (final item in mediaProgress) {
-          if (item is Map<String, dynamic>) {
-            final currentTime = item['currentTime'] as num?;
-            if (currentTime != null) {
-              totalSeconds += currentTime.toInt();
-            }
-          }
-        }
-      }
-      
+      if (_listeningStats == null) return 'Loading...';
+
+      // ABS GET /api/me/listening-stats reports cumulative listening time
+      // (seconds) under 'totalTime'. This is the real listening time, unlike
+      // summing per-item resume positions (currentTime).
+      final totalTime = _listeningStats!['totalTime'];
+      if (totalTime == null) return 'N/A';
+
+      final totalSeconds = totalTime is num
+          ? totalTime.toInt()
+          : int.tryParse(totalTime.toString()) ?? 0;
+
       final hours = totalSeconds ~/ 3600;
       final minutes = (totalSeconds % 3600) ~/ 60;
-      
+
       if (hours > 0) {
         return '${hours}h ${minutes}m';
       } else {
@@ -714,6 +749,7 @@ class _ProfilePageState extends State<ProfilePage> {
               // Clear cached data and reload
               _serverStatus = null;
               _libraryStats = null;
+              _listeningStats = null;
               _loadProfileData();
             },
             icon: const Icon(Icons.refresh),

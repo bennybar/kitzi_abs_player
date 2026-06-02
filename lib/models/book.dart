@@ -251,11 +251,11 @@ DateTime? _parseTimestampFlexible(dynamic value) {
   try {
     if (value == null) return null;
     if (value is num) {
-      // Heuristic: treat > 10^12 as ms, else seconds
+      // Heuristic: second-epochs are below ~1e11 (covers dates up to year ~5138),
+      // while millisecond-epochs are above it (ABS sends ms, ~1.7e12). Treat
+      // small values as seconds and scale to ms; everything else is already ms.
       final n = value.toDouble();
-      if (n > 1000000000000) {
-        return DateTime.fromMillisecondsSinceEpoch(n.round(), isUtc: true);
-      } else if (n > 1000000000) {
+      if (n < 100000000000) {
         return DateTime.fromMillisecondsSinceEpoch((n * 1000).round(), isUtc: true);
       } else {
         return DateTime.fromMillisecondsSinceEpoch(n.round(), isUtc: true);

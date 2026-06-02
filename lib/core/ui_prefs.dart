@@ -46,6 +46,8 @@ class UiPrefs {
       final prefs = await SharedPreferences.getInstance();
       seriesTabVisible.value = prefs.getBool(_kSeries) ?? false;
       authorViewEnabled.value = prefs.getBool(_kAuthorView) ?? true;
+      letterScrollEnabled.value = prefs.getBool(_kLetterScroll) ?? false;
+      letterScrollBooksAlpha.value = prefs.getBool(_kLetterScrollBooksAlpha) ?? false;
       progressPrimary.value = _parseProgressPrimary(prefs.getString(_kProgressPrimary));
       playerGradientBackground.value = prefs.getBool(_kPlayerGradient) ?? true;
       progressBarChapterized.value = prefs.getBool(_kProgressBarChapterized) ?? true;

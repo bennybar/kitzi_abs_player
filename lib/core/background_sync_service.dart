@@ -59,11 +59,13 @@ class BackgroundSyncService {
       // Already syncing, skipping
       return;
     }
-    
+    // Set the guard synchronously (before any await) so this and
+    // performFullSync are serialized against each other.
+    _isSyncing = true;
+
     try {
-      _isSyncing = true;
       // Starting background sync
-      
+
       // Check if we should sync
       if (!await _shouldSync()) {
         // Skipping sync - conditions not met
@@ -144,11 +146,13 @@ class BackgroundSyncService {
       // Already syncing, skipping full sync
       return;
     }
-    
+    // Set the guard synchronously (before any await) so this and
+    // _performBackgroundSync are serialized against each other.
+    _isSyncing = true;
+
     try {
-      _isSyncing = true;
       // Starting full sync
-      
+
       final repo = await BooksRepository.create();
       await repo.syncAllBooksToDb(pageSize: 100);
       

@@ -63,6 +63,10 @@ class _StoragePageState extends State<StoragePage> {
         unawaited(oldRepo.dispose());
       }
       final booksRepo = await BooksRepository.create();
+      if (!mounted) {
+        unawaited(booksRepo.dispose());
+        return;
+      }
       _booksRepo = booksRepo;
 
       final items = <_StorageItem>[];

@@ -78,6 +78,10 @@ class SessionLoggerService {
   Future<void> stopSession() async {
     if (!_isActive) return;
 
+    // Cancel the auto-stop timer first so it cannot re-enter while we tear down.
+    _timeoutTimer?.cancel();
+    _timeoutTimer = null;
+
     try {
       if (_sessionStartTime != null) {
         final duration = DateTime.now().difference(_sessionStartTime!);
@@ -88,12 +92,15 @@ class SessionLoggerService {
       }
 
       _restorePrints();
-      await _logSink?.flush();
-      await _logSink?.close();
-      _logSink = null;
+
+      // Mark inactive and detach the sink BEFORE closing it, so any concurrent
+      // _write() bails out on the _isActive guard rather than writing to a
+      // closed IOSink.
       _isActive = false;
-      _timeoutTimer?.cancel();
-      _timeoutTimer = null;
+      final sink = _logSink;
+      _logSink = null;
+      await sink?.flush();
+      await sink?.close();
     } catch (e) {
       debugPrint('Error stopping logging session: $e');
     }
@@ -157,6 +164,11 @@ class SessionLoggerService {
 
   /// Delete the current log file
   Future<void> deleteLogFile() async {
+    // Stop any active session first so the sink is flushed/closed and stops
+    // writing to a file we are about to delete.
+    if (_isActive) {
+      await stopSession();
+    }
     if (_logFile != null && await _logFile!.exists()) {
       try {
         await _logFile!.delete();

@@ -145,6 +145,13 @@ class DownloadsRepository {
       // '[DL] Error configuring holding queue: $e');
     }
 
+    // Reconnect to downloads that progressed/completed while the app was
+    // suspended or killed, so multi-file books resume on cold start instead of
+    // waiting to be re-triggered.
+    try {
+      await FileDownloader().resumeFromBackground();
+    } catch (_) {}
+
     // Load persistent blocked items (ensures hard-stop even across restarts)
     await _loadBlockedItemsFromPrefs();
 
@@ -550,15 +557,15 @@ class DownloadsRepository {
   /// the shared broadcast controller for live updates. When the last listener
   /// cancels, the controller is closed and removed to prevent leaks.
   Stream<ItemProgress> watchItemProgress(String libraryItemId) async* {
+    // One shared broadcast controller per item, kept alive for the repository's
+    // lifetime. We intentionally do NOT tear it down in onCancel: a broadcast
+    // controller drops events while it has no listeners, so leaving it open is
+    // cheap, and closing/recreating it raced with the demux/_notifyItem code
+    // (which looks the controller up again) — dropping updates for an item whose
+    // UI momentarily had zero listeners and losing the onListen snapshot.
     final ctrl = _itemCtrls.putIfAbsent(
       libraryItemId,
-      () => StreamController<ItemProgress>.broadcast(
-        onCancel: () {
-          // Last listener left; clean up so long-running sessions don't leak.
-          final c = _itemCtrls.remove(libraryItemId);
-          c?.close();
-        },
-      ),
+      () => StreamController<ItemProgress>.broadcast(),
     );
     _ensureDemuxListener();
     // Per-listener initial snapshot (broadcast onListen only fires for the
@@ -706,12 +713,24 @@ class DownloadsRepository {
       _d('Added $libraryItemId to global queue. Queue length: ${_globalDownloadQueue.length}');
     }
     
-    // Show a single download notification for this book via our custom notification service
+    // Configure a SINGLE native group notification for this book.
+    // background_downloader shows one notification with aggregate progress for
+    // all tasks sharing the group AND runs an Android foreground service, so the
+    // download keeps running in the background and survives the app being
+    // suspended. A constant groupNotificationId means books reuse one slot
+    // (only one book downloads at a time via the (1,1,1) holding queue).
+    _progressNotificationTitles[libraryItemId] = title;
     try {
-      await NotificationService.instance.showDownloadStarted(title);
-      
-      // Start showing progress updates
-      _startProgressNotifications(libraryItemId, title);
+      await FileDownloader().configureNotificationForGroup(
+        'book-$libraryItemId',
+        running: const TaskNotification(
+            '{displayName}', 'Downloading {numFinished}/{numTotal} files ({progress})'),
+        complete: const TaskNotification('{displayName}', 'Download complete'),
+        error: const TaskNotification(
+            '{displayName}', 'Download failed ({numFailed}/{numTotal})'),
+        progressBar: true,
+        groupNotificationId: 'kitzi-book-download',
+      );
     } catch (_) {}
     
     // Immediately publish a queued snapshot so UI updates without waiting for DB
@@ -750,8 +769,9 @@ class DownloadsRepository {
     _lastRunningProgress.remove(libraryItemId);
     _lastItemUpdate.remove(libraryItemId);
     _lastUpdateAt.remove(libraryItemId);
-    // Prune per-item caches so they don't accumulate across a session
-    _itemTaskIds.remove(libraryItemId);
+    // Capture live task ids BEFORE pruning so the cancellation path below can
+    // still use them (the per-item cache is removed at the end of this method).
+    final liveIds = (_itemTaskIds[libraryItemId] ?? const <String>{}).toList();
     _nextAllowedSchedule.remove(libraryItemId);
     // Brief global halt
     _globalHaltUntil = DateTime.now().add(const Duration(milliseconds: 1500));
@@ -762,7 +782,6 @@ class DownloadsRepository {
     // Cancel any active/enqueued tasks for this item and remove any downloaded files immediately
     try {
       // Cancel by group, DB, and live-tracked task ids to be thorough
-      final liveIds = (_itemTaskIds[libraryItemId] ?? const <String>{}).toList();
       if (liveIds.isNotEmpty) {
         await FileDownloader().cancelTasksWithIds(liveIds);
       }
@@ -775,6 +794,8 @@ class DownloadsRepository {
       if (groupIds.isNotEmpty) {
         await FileDownloader().cancelTasksWithIds(groupIds);
       }
+      // Now safe to prune the per-item task-id cache (ids already used above).
+      _itemTaskIds.remove(libraryItemId);
       // Clean DB records for this item with delays
       final itemRecords = all.where((r) => _extractItemId(r.task.metaData ?? '') == libraryItemId).toList();
       for (final r in itemRecords) {
@@ -1100,10 +1121,14 @@ class DownloadsRepository {
             final req = await client.openUrl('HEAD', Uri.parse(url));
             if (access != null && access.isNotEmpty) req.headers.add('Authorization', 'Bearer $access');
             final resp = await req.close();
-            final cl = resp.headers.value(HttpHeaders.contentLengthHeader);
-            if (cl != null) {
-              final n = int.tryParse(cl);
-              if (n != null && n > 0) return n;
+            // Only trust the body size on a real success (200/206); a 401/403/404
+            // error page also carries a Content-Length we must not sum.
+            if (resp.statusCode == 200 || resp.statusCode == 206) {
+              final cl = resp.headers.value(HttpHeaders.contentLengthHeader);
+              if (cl != null) {
+                final n = int.tryParse(cl);
+                if (n != null && n > 0) return n;
+              }
             }
           } catch (_) {}
           try {
@@ -1111,16 +1136,18 @@ class DownloadsRepository {
             if (access != null && access.isNotEmpty) req.headers.add('Authorization', 'Bearer $access');
             req.headers.add('Range', 'bytes=0-0');
             final resp = await req.close();
-            final cr = resp.headers.value('content-range'); // bytes 0-0/12345
-            if (cr != null && cr.contains('/')) {
-              final totalStr = cr.split('/').last.trim();
-              final n = int.tryParse(totalStr);
-              if (n != null && n > 0) return n;
-            }
-            final cl = resp.headers.value(HttpHeaders.contentLengthHeader);
-            if (cl != null) {
-              final n = int.tryParse(cl);
-              if (n != null && n > 0) return n;
+            if (resp.statusCode == 200 || resp.statusCode == 206) {
+              final cr = resp.headers.value('content-range'); // bytes 0-0/12345
+              if (cr != null && cr.contains('/')) {
+                final totalStr = cr.split('/').last.trim();
+                final n = int.tryParse(totalStr);
+                if (n != null && n > 0) return n;
+              }
+              final cl = resp.headers.value(HttpHeaders.contentLengthHeader);
+              if (cl != null) {
+                final n = int.tryParse(cl);
+                if (n != null && n > 0) return n;
+              }
             }
           } catch (_) {}
           return 0;
@@ -1214,46 +1241,15 @@ class DownloadsRepository {
   }
   
   // === Progress notifications ===
-  
-  void _startProgressNotifications(String libraryItemId, String title) {
-    _progressNotificationTitles[libraryItemId] = title;
-    
-    // Cancel any existing timer for this item
-    _progressNotificationTimers[libraryItemId]?.cancel();
-    
-    // Start a timer to update progress notifications every 5 seconds (reduced from 2 to save battery)
-    _progressNotificationTimers[libraryItemId] = Timer.periodic(
-      const Duration(seconds: 5),
-      (_) => _updateProgressNotification(libraryItemId),
-    );
-  }
-  
+  // The per-book download notification + progress is now rendered natively by
+  // background_downloader's group notification (configured in
+  // enqueueItemDownloads), which also runs the Android foreground service.
+  // _progressNotificationTitles is retained to supply the task displayName.
+
   void _stopProgressNotifications(String libraryItemId) {
     _progressNotificationTimers[libraryItemId]?.cancel();
     _progressNotificationTimers.remove(libraryItemId);
     _progressNotificationTitles.remove(libraryItemId);
-  }
-  
-  Future<void> _updateProgressNotification(String libraryItemId) async {
-    try {
-      final title = _progressNotificationTitles[libraryItemId];
-      if (title == null) return;
-      
-      // Get current progress for this item
-      final progress = await _computeItemProgress(libraryItemId);
-      final percentage = (progress.progress * 100).round();
-      
-      // Only update if there's meaningful progress
-      if (percentage > 0 && percentage < 100) {
-        await NotificationService.instance.showDownloadProgress(
-          title,
-          percentage,
-          100,
-        );
-      }
-    } catch (e) {
-      // '[DL] Error updating progress notification: $e');
-    }
   }
 
   // === Local files helpers ===
@@ -1451,8 +1447,12 @@ class DownloadsRepository {
         final nextItem = _globalDownloadQueue.removeFirst();
         final libraryItemId = nextItem.key;
         final episodeId = nextItem.value;
-        
-        _itemsInGlobalQueue.remove(libraryItemId);
+
+        // Keep the item registered in _itemsInGlobalQueue while it is being
+        // processed. It is removed only on genuine completion (see
+        // _startNextForItem / chain listener). Removing it here left items
+        // absent from both the queue and the set if the chain listener never
+        // fired, so remaining tracks would never be picked up by resumeAll.
         _d('Processing next item from global queue: $libraryItemId');
         
         // Start downloading the next track for this item
@@ -1511,18 +1511,15 @@ class DownloadsRepository {
         return;
       }
 
-      // Find first track whose file does NOT exist locally
+      // Find ALL tracks whose file does NOT exist locally.
       final dir = await _itemDir(libraryItemId);
-      _DlTrack? next;
+      final missing = <_DlTrack>[];
       for (final t in plan) {
         final filename = 'track_${t.index.toString().padLeft(3, '0')}.${_extFromMime(t.mimeType)}';
         final f = File('${dir.path}/$filename');
-        if (!f.existsSync()) {
-          next = t;
-          break;
-        }
+        if (!f.existsSync()) missing.add(t);
       }
-      if (next == null) {
+      if (missing.isEmpty) {
         // All tracks for this book are downloaded, remove from global queue
         _globalDownloadQueue.removeWhere((entry) => entry.key == libraryItemId);
         _itemsInGlobalQueue.remove(libraryItemId);
@@ -1533,13 +1530,11 @@ class DownloadsRepository {
         _notifyItem(libraryItemId);
         return;
       }
-      
-      _d('Downloading track ${next.index} for $libraryItemId');
+
+      _d('Enqueuing ${missing.length} tracks for $libraryItemId');
 
       final prefs = await SharedPreferences.getInstance();
       final wifiOnly = prefs.getBool(_wifiOnlyKey) ?? false;
-      final filename = 'track_${next.index.toString().padLeft(3, '0')}.${_extFromMime(next.mimeType)}';
-
       final baseFolder = await DownloadStorage.taskDirectoryPrefix();
       final preferredBase = await DownloadStorage.preferredTaskBaseDirectory();
       // Add Authorization header so background worker can access protected URLs
@@ -1550,52 +1545,42 @@ class DownloadsRepository {
           headers['Authorization'] = 'Bearer $access';
         }
       } catch (_) {}
-      // Build /download endpoint URL (no playback session)
-      final url = _downloadUrlFor(libraryItemId, next.fileId, episodeId: episodeId);
-      // Log the download URL with full details
-      _d('Downloading from $url');
-      
+      final displayName = _progressNotificationTitles[libraryItemId] ?? 'Audiobook';
       final logger = SessionLoggerService.instance;
-      if (logger.isActive) {
-        final sanitizedHeaders = Map<String, String>.from(headers);
-        if (sanitizedHeaders.containsKey('Authorization')) {
-          sanitizedHeaders['Authorization'] = 'Bearer [REDACTED]';
-        }
-        await logger.log('DOWNLOAD ENQUEUE:');
-        await logger.log('  URL: $url');
-        await logger.log('  LibraryItemId: $libraryItemId');
-        await logger.log('  TrackIndex: ${next.index}');
-        await logger.log('  Filename: $filename');
-        await logger.log('  Directory: $baseFolder/$libraryItemId');
-        await logger.log('  Headers: ${jsonEncode(sanitizedHeaders)}');
-        await logger.log('  RequiresWiFi: $wifiOnly');
-      }
-      
-      final task = DownloadTask(
-        url: url,
-        filename: filename,
-        directory: '$baseFolder/$libraryItemId',
-        baseDirectory: preferredBase,
-        headers: headers,
-        // Request status and progress so we can compute accurate overall %
-        updates: Updates.statusAndProgress,
-        requiresWiFi: wifiOnly,
-        allowPause: true,
-        metaData: jsonEncode({'libraryItemId': libraryItemId}),
-        group: 'book-$libraryItemId',
-      );
 
-      await FileDownloader().enqueue(task);
-      
-      if (logger.isActive) {
-        await logger.log('DOWNLOAD ENQUEUED: TaskId ${task.taskId}');
+      // Enqueue EVERY missing track up-front into the same group. The native
+      // holding queue (configured (1,1,1)) serializes them one at a time, and
+      // — crucially — the platform download workers keep advancing through the
+      // remaining tracks while the app is backgrounded or after a cold start,
+      // instead of depending on a Dart-side completion listener to chain them.
+      for (final t in missing) {
+        final filename = 'track_${t.index.toString().padLeft(3, '0')}.${_extFromMime(t.mimeType)}';
+        final url = _downloadUrlFor(libraryItemId, t.fileId, episodeId: episodeId);
+        final task = DownloadTask(
+          url: url,
+          filename: filename,
+          directory: '$baseFolder/$libraryItemId',
+          baseDirectory: preferredBase,
+          headers: headers,
+          displayName: displayName,
+          // Request status and progress so we can compute accurate overall %
+          updates: Updates.statusAndProgress,
+          requiresWiFi: wifiOnly,
+          allowPause: true,
+          metaData: jsonEncode({'libraryItemId': libraryItemId}),
+          group: 'book-$libraryItemId',
+        );
+        await FileDownloader().enqueue(task);
+        if (logger.isActive) {
+          await logger.log('DOWNLOAD ENQUEUED: track ${t.index} ($filename) for $libraryItemId -> ${task.taskId}');
+        }
       }
+
       _inFlightItems.add(libraryItemId);
       _notifyItem(libraryItemId);
 
-      // Keep this item in the global queue until all tracks are downloaded
-      // The chain listener will handle continuing with the next track
-
+      // The chain listener now only handles cleanup/blocked-item cancellation;
+      // progression between tracks is owned by the native holding queue.
       _ensureChainListener();
     } finally {
       _schedulingItems.remove(libraryItemId);

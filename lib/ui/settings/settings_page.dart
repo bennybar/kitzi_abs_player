@@ -68,6 +68,7 @@ class _SettingsPageState extends State<SettingsPage> {
   Timer? _loggingSessionTimer;
   static const _prefKeys = <String>[
     'downloads_wifi_only',
+    'downloads_auto_delete_on_finish',
     'sync_progress_before_play',
     'pause_cancels_sleep_timer',
     'ui_dual_progress_enabled',
@@ -84,7 +85,12 @@ class _SettingsPageState extends State<SettingsPage> {
     'ui_player_cover_size',
     'ui_player_scrolling_single_line_title',
     'ui_full_player_as_tab',
+    'ui_hide_series_when_same_as_author',
+    'ui_series_items_per_row',
+    'ui_seek_backward_seconds',
+    'ui_seek_forward_seconds',
     'books_library_id',
+    'books_library_media_type',
     'play_history_v1',
     'detailed_play_sessions_v1',
     'detailed_play_history_enabled',
@@ -408,12 +414,9 @@ class _SettingsPageState extends State<SettingsPage> {
     try {
       final services = ServicesScope.of(context).services;
       final api = services.auth.api;
-      final token = await api.accessToken();
-      final tokenQS =
-          (token != null && token.isNotEmpty) ? '?token=$token' : '';
       final resp = await api.request(
         'GET',
-        '/api/libraries$tokenQS',
+        '/api/libraries',
         auth: true,
       );
       if (resp.statusCode != 200) return;

@@ -56,27 +56,39 @@ class NetworkService {
     if (error is SocketException) {
       return true; // Network connectivity issues
     }
-    if (error is HttpException) {
-      return true; // HTTP errors (5xx, timeouts)
-    }
     if (error is TimeoutException) {
       return true; // Request timeouts
     }
     if (error is FormatException) {
       return false; // Data format issues (don't retry)
     }
-    
-    // Check for HTTP status codes that should be retried
+
     final errorString = error.toString().toLowerCase();
-    if (errorString.contains('500') || 
-        errorString.contains('502') || 
-        errorString.contains('503') || 
+
+    // Auth/permission/not-found are definitive failures: do not retry.
+    if (errorString.contains('401') ||
+        errorString.contains('403') ||
+        errorString.contains('404') ||
+        errorString.contains('unauthorized') ||
+        errorString.contains('forbidden')) {
+      return false;
+    }
+
+    // Retryable HTTP status codes (5xx server errors and transient 4xx) and
+    // transport-level conditions. HttpException is only retried when it carries
+    // one of these, not unconditionally.
+    if (errorString.contains('500') ||
+        errorString.contains('502') ||
+        errorString.contains('503') ||
         errorString.contains('504') ||
+        errorString.contains('408') ||
+        errorString.contains('425') ||
+        errorString.contains('429') ||
         errorString.contains('timeout') ||
         errorString.contains('connection')) {
       return true;
     }
-    
+
     return false; // Don't retry by default
   }
   
@@ -152,17 +164,23 @@ class NetworkError {
           originalError: error,
         );
       }
-      if (errorString.contains('5')) {
+      // Extract the first standalone HTTP status code (3 digits) from the message.
+      final statusMatch = RegExp(r'\b([1-5]\d{2})\b').firstMatch(errorString);
+      final statusCode =
+          statusMatch != null ? int.tryParse(statusMatch.group(1)!) : null;
+      if (statusCode != null && statusCode >= 500 && statusCode <= 599) {
         return NetworkError(
           type: NetworkErrorType.serverError,
           message: 'Server error occurred',
+          statusCode: statusCode,
           originalError: error,
         );
       }
-      if (errorString.contains('4')) {
+      if (statusCode != null && statusCode >= 400 && statusCode <= 499) {
         return NetworkError(
           type: NetworkErrorType.clientError,
           message: 'Client error occurred',
+          statusCode: statusCode,
           originalError: error,
         );
       }
@@ -200,7 +218,9 @@ class ConnectivityMonitor {
   static void updateConnectivity(bool connected) {
     if (_isConnected != connected) {
       _isConnected = connected;
-      _connectivityController.add(connected);
+      if (!_connectivityController.isClosed) {
+        _connectivityController.add(connected);
+      }
       // Only log connectivity changes, not every check
       // '[OFFLINE_FIRST] Connectivity changed: ${connected ? 'Connected' : 'Disconnected'}');
     }

@@ -54,27 +54,47 @@ class DownloadStorage {
 
     try {
       if (await oldBase.exists()) {
+        // Try a fast rename first (works within same volume). Do NOT pre-create
+        // newBase: renaming onto an existing non-empty directory fails on most
+        // platforms and would needlessly force the slow copy fallback.
+        var renamed = false;
         if (!await newBase.exists()) {
-          await newBase.create(recursive: true);
+          try {
+            await oldBase.rename(newBase.path);
+            renamed = true;
+          } catch (_) {
+            // Fall through to copy fallback below.
+          }
         }
 
-        // Try a fast rename first (works within same volume)
-        try {
-          await oldBase.rename(newBase.path);
-        } catch (_) {
-          // Fallback: copy contents
+        if (!renamed) {
+          // Fallback: copy contents, verifying each copy succeeded before any
+          // deletion of the source. If a copy throws, the exception propagates
+          // and the source is left intact (no data loss).
+          if (!await newBase.exists()) {
+            await newBase.create(recursive: true);
+          }
           final entries = await oldBase.list(followLinks: false).toList();
           for (final entity in entries) {
             if (entity is File) {
               final target = File('${newBase.path}/${entity.uri.pathSegments.last}');
               await target.create(recursive: true);
               await entity.openRead().pipe(target.openWrite());
+              // Verify the copy before considering the source disposable.
+              final srcLen = await entity.length();
+              final dstLen = await target.length();
+              if (dstLen != srcLen) {
+                throw FileSystemException(
+                  'Migration copy size mismatch (src=$srcLen dst=$dstLen)',
+                  target.path,
+                );
+              }
             } else if (entity is Directory) {
               final targetDir = Directory('${newBase.path}/${entity.uri.pathSegments.last}');
               await _copyDirectory(entity, targetDir);
             }
           }
-          // Best-effort cleanup
+          // All copies verified; safe to remove the source.
           try {
             await oldBase.delete(recursive: true);
           } catch (_) {}

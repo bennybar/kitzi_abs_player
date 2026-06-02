@@ -14,6 +14,7 @@ import 'core/playback_repository.dart';
 import 'core/downloads_repository.dart';
 import 'core/books_repository.dart';
 import 'core/theme_service.dart';
+import 'core/queue_service.dart';
 import 'core/audio_service_binding.dart';
 import 'core/notification_service.dart';
 
@@ -31,12 +32,14 @@ class AppServices {
   final DownloadsRepository downloads;
   final BooksRepository books;
   final ThemeService theme;
+  final QueueService queue;
   AppServices({
     required this.auth,
     required this.playback,
     required this.downloads,
     required this.books,
     required this.theme,
+    required this.queue,
   });
 }
 
@@ -145,13 +148,14 @@ Future<void> main() async {
 
   // Construct singletons (Auth -> Playback -> Downloads)
   final auth = await AuthRepository.ensure();
-  final prefs = await SharedPreferences.getInstance();
   final booksRepo = await BooksRepository.create();
   final playback = PlaybackRepository(auth);
   final downloads = DownloadsRepository(auth, playback, booksRepo: booksRepo);
   final theme = ThemeService();
   await theme.init();
   await downloads.init();
+  final queue = QueueService(playback);
+  await queue.init();
 
   final services = AppServices(
     auth: auth,
@@ -159,6 +163,7 @@ Future<void> main() async {
     downloads: downloads,
     books: booksRepo,
     theme: theme,
+    queue: queue,
   );
 
   await StreamingCacheService.instance.init();
@@ -192,7 +197,7 @@ class _AbsAppState extends State<AbsApp> with WidgetsBindingObserver {
       // Only proceed to app when a valid session exists
       final hasBase = auth.api.baseUrl != null && auth.api.baseUrl!.isNotEmpty;
       if (!hasBase) return false;
-      
+
       // Fast-path: if the access token is still fresh, don't block startup on network.
       if (auth.api.hasFreshAccessToken(leewaySeconds: 60)) {
         return true;
@@ -211,7 +216,12 @@ class _AbsAppState extends State<AbsApp> with WidgetsBindingObserver {
           return false;
         }
       }
-    });
+    })
+        // Guard the whole chain (incl. ensure() and any synchronous body) so a hung
+        // SharedPreferences/secure-storage read can never leave the splash spinning
+        // forever; fall back to the login screen instead.
+        .timeout(const Duration(seconds: 12), onTimeout: () => false)
+        .catchError((_) => false);
     
     // Start background sync service
     BackgroundSyncService.start();
@@ -491,6 +501,11 @@ class _AbsAppState extends State<AbsApp> with WidgetsBindingObserver {
                       home: FutureBuilder<bool>(
                         future: _sessionFuture,
                         builder: (context, snap) {
+                          // On any error, fall back to the login screen rather than
+                          // leaving the splash spinner up forever.
+                          if (snap.hasError) {
+                            return LoginScreen(auth: services.auth);
+                          }
                           if (!snap.hasData) {
                             return const Scaffold(
                               body: Center(child: CircularProgressIndicator()),

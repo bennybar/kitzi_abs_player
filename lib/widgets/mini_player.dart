@@ -1,15 +1,11 @@
-import 'dart:async';
 import 'dart:io';
-import 'dart:ui';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../core/playback_repository.dart';
-import '../core/ui_prefs.dart';
 import '../main.dart'; // ServicesScope
 import '../ui/player/full_player_page.dart';
-import '../ui/player/player_visual_cache.dart';
 import 'audio_waveform.dart';
 
 class MiniPlayer extends StatefulWidget {
@@ -22,41 +18,28 @@ class MiniPlayer extends StatefulWidget {
 }
 
 class _MiniPlayerState extends State<MiniPlayer> {
-  Color? _palettePrimary;
-  Color? _paletteSecondary;
-  String? _paletteCoverUrl;
-  bool _paletteLoading = false;
-  bool _paletteScheduled = false;
-
   @override
   Widget build(BuildContext context) {
     final playback = ServicesScope.of(context).services.playback;
     final cs = Theme.of(context).colorScheme;
-    final brightness = Theme.of(context).brightness;
 
-    return ValueListenableBuilder<bool>(
-      valueListenable: UiPrefs.playerGradientBackground,
-      builder: (_, gradientEnabled, __) {
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(4, 4, 4, 2),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(30),
-            child: DecoratedBox(
-              decoration: _miniBackgroundDecoration(
-                gradientEnabled,
-                cs,
-                brightness,
-              ),
-              child: _buildContent(
-                context,
-                playback,
-                cs,
-                showTopBorder: false,
-              ),
-            ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 4, 4, 2),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(30),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            color: Colors.transparent,
           ),
-        );
-      },
+          child: _buildContent(
+            context,
+            playback,
+            cs,
+            showTopBorder: false,
+          ),
+        ),
+      ),
     );
   }
 
@@ -94,8 +77,6 @@ class _MiniPlayerState extends State<MiniPlayer> {
               if (np == null) {
                 return const SizedBox.shrink();
               }
-
-              _schedulePaletteUpdate(np.coverUrl);
 
               return Stack(
                 children: [
@@ -436,73 +417,6 @@ class _MiniPlayerState extends State<MiniPlayer> {
     );
   }
 
-  void _schedulePaletteUpdate(String? coverUrl) {
-    if (_paletteScheduled || _paletteLoading) return;
-    _paletteScheduled = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted) {
-        _paletteScheduled = false;
-        return;
-      }
-      try {
-        await _maybeUpdatePalette(coverUrl);
-      } finally {
-        _paletteScheduled = false;
-      }
-    });
-  }
-
-  Future<void> _maybeUpdatePalette(String? coverUrl) async {
-    if (coverUrl == null || coverUrl.isEmpty) {
-      if (_paletteCoverUrl != null ||
-          _palettePrimary != null ||
-          _paletteSecondary != null) {
-        setState(() {
-          _paletteCoverUrl = null;
-          _palettePrimary = null;
-          _paletteSecondary = null;
-        });
-      }
-      return;
-    }
-
-    if (_paletteCoverUrl == coverUrl || _paletteLoading) return;
-
-    _paletteLoading = true;
-    try {
-      final palette = await PlayerVisualCache.paletteForCover(
-        coverUrl,
-        size: const Size(120, 120),
-        maximumColorCount: 10,
-      );
-      if (!mounted) return;
-      setState(() {
-        _paletteCoverUrl = coverUrl;
-        _palettePrimary = palette.primary;
-        _paletteSecondary = palette.secondary ?? palette.primary;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _paletteCoverUrl = coverUrl;
-        _palettePrimary = null;
-        _paletteSecondary = null;
-      });
-    } finally {
-      _paletteLoading = false;
-    }
-  }
-
-  BoxDecoration _miniBackgroundDecoration(
-    bool gradientEnabled,
-    ColorScheme cs,
-    Brightness brightness,
-  ) {
-    return BoxDecoration(
-      borderRadius: BorderRadius.circular(20),
-      color: Colors.transparent,
-    );
-  }
 }
 
 String _formatTime(Duration duration) {

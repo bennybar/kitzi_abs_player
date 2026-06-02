@@ -36,10 +36,10 @@ class NotificationService {
       await _createNotificationChannels();
       
       _isInitialized = true;
-      
+
       // 'Notification service initialized successfully');
     } catch (e) {
-      // 'Failed to initialize notification service: $e');
+      debugPrint('Failed to initialize notification service: $e');
     }
   }
   
@@ -63,7 +63,7 @@ class NotificationService {
       
       // 'Download notification channel created');
     } catch (e) {
-      // 'Failed to create notification channels: $e');
+      debugPrint('Failed to create notification channels: $e');
     }
   }
 
@@ -79,7 +79,7 @@ class NotificationService {
     if (!_isInitialized) return;
 
     try {
-      const androidDetails = AndroidNotificationDetails(
+      final androidDetails = AndroidNotificationDetails(
         'kitzi_media_channel',
         'Kitzi Media',
         channelDescription: 'Media playback notifications',
@@ -94,9 +94,9 @@ class NotificationService {
         category: AndroidNotificationCategory.service,
         visibility: NotificationVisibility.public,
         actions: [
-          AndroidNotificationAction('prev', 'Previous'),
-          AndroidNotificationAction('play_pause', 'Play/Pause'),
-          AndroidNotificationAction('next', 'Next'),
+          const AndroidNotificationAction('prev', 'Previous'),
+          AndroidNotificationAction('play_pause', isPlaying ? 'Pause' : 'Play'),
+          const AndroidNotificationAction('next', 'Next'),
         ],
       );
 
@@ -107,7 +107,7 @@ class NotificationService {
         presentSound: false,
       );
 
-      const details = NotificationDetails(
+      final details = NotificationDetails(
         android: androidDetails,
         iOS: iosDetails,
       );

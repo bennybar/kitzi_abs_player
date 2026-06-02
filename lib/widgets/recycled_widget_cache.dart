@@ -6,34 +6,20 @@ class RecycledWidgetCache {
   static final Map<String, DateTime> _timestamps = {};
   static const Duration _cacheTimeout = Duration(minutes: 10);
   
-  /// Get a cached widget or create a new one
+  /// Build a widget.
+  ///
+  /// NOTE: Widget instances are intentionally NOT cached/returned across
+  /// builds. Returning the same Widget object to multiple/different locations
+  /// is illegal in Flutter (a Widget may be hosted by at most one Element) and
+  /// freezes captured state such as `BuildContext`/`Theme.of`, onTap callbacks
+  /// and other inputs. The builder is always invoked so the returned widget is
+  /// fresh and reflects current inputs; Flutter's own element diffing handles
+  /// reuse.
   static Widget getOrCreate<T extends StatelessWidget>(
     String key,
     T Function() builder,
   ) {
-    final now = DateTime.now();
-    
-    // Clean expired entries
-    _timestamps.removeWhere((k, timestamp) {
-      if (now.difference(timestamp) > _cacheTimeout) {
-        _cache.remove(k);
-        return true;
-      }
-      return false;
-    });
-    
-    // Return cached widget if available
-    if (_cache.containsKey(key)) {
-      _timestamps[key] = now; // Update timestamp
-      return _cache[key]!;
-    }
-    
-    // Create new widget and cache it
-    final widget = builder();
-    _cache[key] = widget;
-    _timestamps[key] = now;
-    
-    return widget;
+    return builder();
   }
   
   /// Clear the cache

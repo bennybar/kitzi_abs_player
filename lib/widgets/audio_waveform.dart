@@ -33,7 +33,10 @@ class _AudioWaveformState extends State<AudioWaveform>
   @override
   void initState() {
     super.initState();
-    
+    _buildBars();
+  }
+
+  void _buildBars() {
     // Create individual animation controllers for each bar
     for (int i = 0; i < widget.barCount; i++) {
       final controller = AnimationController(
@@ -41,12 +44,12 @@ class _AudioWaveformState extends State<AudioWaveform>
         duration: Duration(milliseconds: 300 + _random.nextInt(200)),
       );
       _barControllers.add(controller);
-      
+
       // Create varied wave patterns - center bars tend to be taller
       final centerWeight = 1.0 - (i - widget.barCount / 2).abs() / widget.barCount;
       final minHeight = 0.2 + (centerWeight * 0.1);
       final maxHeight = 0.6 + (centerWeight * 0.4);
-      
+
       final animation = Tween<double>(
         begin: minHeight,
         end: maxHeight,
@@ -54,9 +57,9 @@ class _AudioWaveformState extends State<AudioWaveform>
         parent: controller,
         curve: Curves.easeInOut,
       ));
-      
+
       _barAnimations.add(animation);
-      
+
       if (widget.isPlaying) {
         // Start each bar with a slight delay for staggered effect
         Future.delayed(Duration(milliseconds: i * 50), () {
@@ -71,6 +74,15 @@ class _AudioWaveformState extends State<AudioWaveform>
   @override
   void didUpdateWidget(AudioWaveform oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.barCount != oldWidget.barCount) {
+      for (var controller in _barControllers) {
+        controller.dispose();
+      }
+      _barControllers.clear();
+      _barAnimations.clear();
+      _buildBars();
+      return;
+    }
     if (widget.isPlaying != oldWidget.isPlaying) {
       if (widget.isPlaying) {
         for (var controller in _barControllers) {

@@ -11,6 +11,10 @@ class ApiClient {
   final FlutterSecureStorage _secure;
   static const String _customHeadersKey = 'abs_custom_headers';
   Map<String, String>? _customHeadersCache;
+  // Single-flight guard so concurrent 401s share one refresh instead of
+  // firing a stampede of POST /auth/refresh calls (each of which may rotate
+  // the refresh token and invalidate the others).
+  Future<bool>? _refreshInFlight;
 
   String? get baseUrl => _prefs.getString('abs_base_url');
 
@@ -178,8 +182,7 @@ class ApiClient {
       }
       final refreshed = await _refreshAccessToken();
       if (refreshed) {
-        final retryHeaders = Map<String, String>.from(reqHeaders);
-        retryHeaders['Authorization'] = 'Bearer ${await _getAccessToken()}';
+        reqHeaders['Authorization'] = 'Bearer ${await _getAccessToken()}';
         resp = await send(upper);
         if (logger.isActive) {
           await logger.log('HTTP REQUEST RETRY: $upper $uri (after token refresh)');
@@ -211,7 +214,19 @@ class ApiClient {
     }
   }
 
-  Future<bool> _refreshAccessToken() async {
+  Future<bool> _refreshAccessToken() {
+    // De-duplicate concurrent refreshes: while one is in flight, return the
+    // same future to all callers so the refresh token is only rotated once.
+    final inFlight = _refreshInFlight;
+    if (inFlight != null) return inFlight;
+    final future = _doRefreshAccessToken();
+    _refreshInFlight = future;
+    return future.whenComplete(() {
+      if (identical(_refreshInFlight, future)) _refreshInFlight = null;
+    });
+  }
+
+  Future<bool> _doRefreshAccessToken() async {
     final logger = SessionLoggerService.instance;
     final base = baseUrl;
     final refresh = await _getRefreshToken();
@@ -265,6 +280,9 @@ class ApiClient {
         return false;
       }
 
+      // ABS does not report token expiry; this is a non-authoritative hint
+      // used only to proactively refresh. The 401 refresh path is the real
+      // backstop for an actually-expired token.
       final assumedExpiry = DateTime.now().toUtc().add(const Duration(hours: 12));
       await _setAccessToken(access, assumedExpiry);
       if (newRefresh != null && newRefresh.isNotEmpty) {
@@ -292,7 +310,7 @@ class ApiClient {
   }) async {
     final logger = SessionLoggerService.instance;
     await setBaseUrl(baseUrl);
-    final loginUrl = '$baseUrl/login';
+    final loginUrl = '${this.baseUrl}/login';
     
     if (logger.isActive) {
       await logger.log('LOGIN REQUEST: POST $loginUrl');

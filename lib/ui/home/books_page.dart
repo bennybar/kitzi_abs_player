@@ -20,6 +20,7 @@ import '../../widgets/author_card.dart';
 import '../../widgets/glass_widget.dart';
 import '../../utils/alphabet_utils.dart';
 import '../book_detail/book_detail_page.dart';
+import '../queue/queue_actions.dart';
 import '../player/full_player_page.dart';
 import '../profile/profile_page.dart';
 import '../home/series_page.dart';
@@ -276,10 +277,9 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       try {
         final auth = await AuthRepository.ensure();
         final api = auth.api;
-        final token = await api.accessToken();
-        final tokenQS =
-            (token != null && token.isNotEmpty) ? '?token=$token' : '';
-        final resp = await api.request('GET', '/api/libraries$tokenQS');
+        // auth:true attaches the Bearer header; no ?token query string is
+        // needed (it would otherwise leak the access token into session logs).
+        final resp = await api.request('GET', '/api/libraries', auth: true);
         if (resp.statusCode == 200) {
           final bodyStr = resp.body;
           final body = bodyStr.isNotEmpty ? jsonDecode(bodyStr) : null;
@@ -617,6 +617,9 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       setState(() {
         _books = fresh;
         _booksRev++;
+        // Invalidate any in-flight _loadMore: the list was replaced wholesale,
+        // so a page fetched against the old offset must not be appended.
+        _loadGen++;
         // Assume more exists as long as we received a full reload.
         _hasMore = fresh.length >= reloadCount;
       });
@@ -655,6 +658,9 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       setState(() {
         _books = items;
         _booksRev++;
+        // Invalidate any in-flight _loadMore: the list was replaced wholesale,
+        // so a page fetched against the old offset must not be appended.
+        _loadGen++;
         _loading = false;
         _hasMore = items.length >= 20;
         _error = null;
@@ -1064,20 +1070,6 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
           return (progress / durationSec).clamp(0.0, 1.0);
         }
       }
-      return 0.0;
-    } catch (_) {
-      return 0.0;
-    }
-  }
-
-  double _getBookProgress(String bookId) {
-    // Synchronous version for filters - uses completion cache only
-    try {
-      final playback = ServicesScope.of(context).services.playback;
-      final isCompleted = playback.completionCache[bookId];
-      if (isCompleted == true) return 1.0;
-      // For in-progress detection, we'd need async - return 0 for now
-      // Filters will work best with completed status
       return 0.0;
     } catch (_) {
       return 0.0;
@@ -1677,6 +1669,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
             key: ValueKey(b.id),
             book: b,
             onTap: b.isAudioBook ? () => _openDetails(b) : null,
+            onLongPress: b.isAudioBook ? () => showQueueSheet(context, b) : null,
             onAuthorTap:
                 b.author != null && b.author!.isNotEmpty
                     ? () => _showAuthorBooks(context, b.author!)
@@ -2469,11 +2462,13 @@ class _BookCard extends StatelessWidget {
     super.key,
     required this.book,
     required this.onTap,
+    this.onLongPress,
     this.onAuthorTap,
     this.onSeriesTap,
   });
   final Book book;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
   final VoidCallback? onAuthorTap;
   final VoidCallback? onSeriesTap;
 
@@ -2500,6 +2495,7 @@ class _BookCard extends StatelessWidget {
       ),
       child: InkWell(
         onTap: onTap,
+        onLongPress: onLongPress,
         borderRadius: BorderRadius.circular(16),
         child: Padding(
           padding: const EdgeInsets.all(12),

@@ -32,9 +32,14 @@ String buildAbsUrl({
   if (parsedContent.hasScheme) {
     u = parsedContent;
   } else {
-    // Ensure leading slash so resolve() doesn’t drop path segments unexpectedly
-    final rel = raw.startsWith('/') ? raw : '/$raw';
-    u = base.resolve(rel);
+    // Resolve relative to the FULL base path so reverse-proxy/subpath installs
+    // (e.g. https://host/audiobookshelf) are preserved. An absolute-path ref
+    // ('/api/...') would replace the entire base path per RFC 3986 and drop the
+    // subpath, so strip any leading slash and ensure the base path ends with '/'
+    // so the last base segment is not treated as a file and discarded.
+    final rel = raw.startsWith('/') ? raw.substring(1) : raw;
+    final basePath = base.path.endsWith('/') ? base.path : '${base.path}/';
+    u = base.replace(path: basePath).resolve(rel);
   }
 
   // Merge token with existing query parameters (no double ??, no spaces)

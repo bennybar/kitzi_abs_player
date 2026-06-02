@@ -1632,7 +1632,17 @@ class _CoverThumb extends StatelessWidget {
     }
     return Transform.scale(
       scale: 1.024,
-      child: Image.network(url, fit: BoxFit.cover),
+      child: Image.network(
+        url,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) {
+          final cs = Theme.of(context).colorScheme;
+          return Container(
+            color: cs.surfaceVariant,
+            child: Icon(Icons.book_outlined, color: cs.onSurfaceVariant),
+          );
+        },
+      ),
     );
   }
 }

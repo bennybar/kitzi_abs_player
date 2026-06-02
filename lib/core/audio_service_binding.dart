@@ -14,6 +14,7 @@ class AudioServiceBinding {
 
   KitziAudioHandler? _audioHandler;
   bool _isBound = false;
+  bool _isBinding = false;
   bool _isInitialized = false;
 
   /// Check if Bluetooth auto-play is enabled
@@ -35,10 +36,11 @@ class AudioServiceBinding {
   }
 
   Future<void> bindAudioService(PlaybackRepository playbackRepository) async {
-    if (_isBound) {
+    if (_isBound || _isBinding) {
       return;
     }
 
+    _isBinding = true;
     try {
       // Step 1: Configure audio session
       final session = await AudioSession.instance;
@@ -64,10 +66,14 @@ class AudioServiceBinding {
       // Step 4: Do not force playback start; remain lazy to save battery
       _isBound = true;
       _isInitialized = true;
-      
+
     } catch (e) {
       _isBound = false;
       _isInitialized = false;
+      _audioHandler = null;
+      debugPrint('AudioServiceBinding.bindAudioService failed: $e');
+    } finally {
+      _isBinding = false;
     }
   }
 

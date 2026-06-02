@@ -149,6 +149,17 @@ class _DownloadButtonState extends State<DownloadButton> {
     if (_downloads != null && oldWidget.libraryItemId != widget.libraryItemId) {
       _estimatedTotalBytes = null;
       _loadingEstimatedBytes = false;
+      // Re-subscribe to the new item's progress; the old subscription would
+      // otherwise keep emitting the previous item's progress into _snap.
+      _sub?.cancel();
+      _sub = _downloads!.watchItemProgress(widget.libraryItemId).listen((p) {
+        if (_mounted) {
+          setState(() => _snap = p);
+        }
+        if (p.status == 'running' || p.status == 'queued') {
+          unawaited(_ensureEstimatedBytes());
+        }
+      });
       _refreshSnap();
     } else {
       _refreshSnap();

@@ -189,6 +189,12 @@ class PlaybackRepository {
   Stream<NowPlaying?> get nowPlayingStream => _nowPlayingCtr.stream;
   NowPlaying? get nowPlaying => _nowPlaying;
 
+  /// Emits a libraryItemId when a book finishes playing its final track.
+  /// Used by the queue to auto-advance to the next item.
+  final StreamController<String> _bookCompletedCtr =
+      StreamController<String>.broadcast();
+  Stream<String> get bookCompletedStream => _bookCompletedCtr.stream;
+
   // Book completion status stream
   final StreamController<Map<String, bool>> _completionStatusCtr =
       StreamController.broadcast();
@@ -1122,7 +1128,8 @@ class PlaybackRepository {
 
     _startProgressSync(libraryItemId, episodeId: episodeId);
 
-    player.processingStateStream.listen((state) async {
+    _completionSub?.cancel();
+    _completionSub = player.processingStateStream.listen((state) async {
       if (state == ProcessingState.completed) {
         final cur = _nowPlaying;
         if (cur == null) return;
@@ -1147,6 +1154,9 @@ class PlaybackRepository {
           unawaited(
             StreamingCacheService.instance.evictForItem(cur.libraryItemId),
           );
+          if (!_bookCompletedCtr.isClosed) {
+            _bookCompletedCtr.add(cur.libraryItemId);
+          }
         }
       }
     });
@@ -2170,6 +2180,7 @@ class PlaybackRepository {
   double _lastSentSec = -1;
   StreamSubscription<bool>? _playingSub;
   StreamSubscription<Duration>? _positionSub;
+  StreamSubscription<ProcessingState>? _completionSub;
   DateTime? _lastPositionUpdate;
   DateTime? _lastDynamicIslandUpdate;
   static const _positionUpdateThrottle = Duration(milliseconds: 500);
@@ -2209,7 +2220,7 @@ class PlaybackRepository {
       final total = _computeTotalDurationSec();
       if (cur == null) return;
 
-      final bigJump = (_lastSentSec - cur).abs() >= 30;
+      final bigJump = _lastSentSec >= 0 && (_lastSentSec - cur).abs() >= 30;
       final isDone =
           (total != null && total > 0) ? (cur / total) >= 0.999 : false;
       if (bigJump || isDone) {
@@ -2228,6 +2239,8 @@ class PlaybackRepository {
     _playingSub = null;
     _positionSub?.cancel();
     _positionSub = null;
+    _completionSub?.cancel();
+    _completionSub = null;
   }
 
   /// Update Dynamic Island with current playback state (throttled to save battery)
@@ -2272,10 +2285,25 @@ class PlaybackRepository {
     if (itemId == null || np == null) return;
 
     final total = _computeTotalDurationSec();
-    final cur =
+    final globalPos =
         (overrideTrackPosSec != null)
             ? _computeGlobalFromTrackPos(overrideTrackPosSec)
-            : (_computeGlobalPositionSec() ?? _trackOnlyPosSec());
+            : _computeGlobalPositionSec();
+    // Only fall back to the in-track position when we're on the first track.
+    // For later tracks, a track-only value would understate whole-book progress
+    // and could overwrite correct server progress with a tiny number, so skip.
+    final double? cur;
+    if (globalPos != null) {
+      cur = globalPos;
+    } else if ((_nowPlaying?.currentIndex ?? 0) == 0) {
+      cur = _trackOnlyPosSec();
+    } else {
+      _log(
+        'Progress sync skipped: cannot compute global position on track '
+        '${_nowPlaying?.currentIndex} (prior track durations unknown)',
+      );
+      return;
+    }
 
     if (cur == null) return;
     _log(
@@ -2792,29 +2820,19 @@ class PlaybackRepository {
         payload['timeListened'] = timeListened;
       }
 
-      // Try a few likely endpoints; ignore failures and fall back to legacy progress
-      final candidates = <List<String>>[
-        ['POST', '/api/me/sessions/$sessionId/sync'],
-        ['PATCH', '/api/me/sessions/$sessionId'],
-        ['POST', '/api/sessions/$sessionId/sync'],
-        ['PATCH', '/api/sessions/$sessionId'],
-        ['POST', '/api/session/$sessionId/sync'],
-        ['PATCH', '/api/session/$sessionId'],
-      ];
-      for (final c in candidates) {
-        try {
-          final r = await api.request(
-            c[0],
-            c[1],
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode(payload),
-          );
-          if (r.statusCode == 200 || r.statusCode == 204) {
-            _log('Session sync OK via ${c[0]} ${c[1]}');
-            return true;
-          }
-        } catch (_) {}
-      }
+      // Canonical ABS sync route is the singular POST /api/session/{id}/sync.
+      try {
+        final r = await api.request(
+          'POST',
+          '/api/session/$sessionId/sync',
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode(payload),
+        );
+        if (r.statusCode == 200 || r.statusCode == 204) {
+          _log('Session sync OK via POST /api/session/$sessionId/sync');
+          return true;
+        }
+      } catch (_) {}
     } catch (e) {
       _log('Session sync error: $e');
     }
@@ -2827,25 +2845,19 @@ class PlaybackRepository {
     _activeSessionId = null; // Prevent duplicate closes
     try {
       final api = _auth.api;
-      final candidates = <List<String>>[
-        ['DELETE', '/api/me/sessions/$sessionId'],
-        ['POST', '/api/me/sessions/$sessionId/close'],
-        ['POST', '/api/sessions/$sessionId/close'],
-      ];
-      for (final c in candidates) {
-        try {
-          final r = await api.request(
-            c[0],
-            c[1],
-            headers: {'Content-Type': 'application/json'},
-          );
-          if (r.statusCode == 200 ||
-              r.statusCode == 204 ||
-              r.statusCode == 404) {
-            _log('Closed session via ${c[0]} ${c[1]} (status ${r.statusCode})');
-            break;
-          }
-        } catch (_) {}
+      // Canonical ABS close route is the singular POST /api/session/{id}/close.
+      // 200/204 => closed; 404 => already closed/gone.
+      final r = await api.request(
+        'POST',
+        '/api/session/$sessionId/close',
+        headers: {'Content-Type': 'application/json'},
+      );
+      if (r.statusCode == 200 ||
+          r.statusCode == 204 ||
+          r.statusCode == 404) {
+        _log('Closed session $sessionId (status ${r.statusCode})');
+      } else {
+        _log('Session close failed for $sessionId: HTTP ${r.statusCode}');
       }
     } catch (e) {
       _log('Session close error: $e');
@@ -2857,25 +2869,13 @@ class PlaybackRepository {
     if (sessionId.isEmpty) return;
     try {
       final api = _auth.api;
-      final candidates = <List<String>>[
-        ['DELETE', '/api/me/sessions/$sessionId'],
-        ['POST', '/api/me/sessions/$sessionId/close'],
-        ['POST', '/api/sessions/$sessionId/close'],
-      ];
-      for (final c in candidates) {
-        try {
-          final r = await api.request(
-            c[0],
-            c[1],
-            headers: {'Content-Type': 'application/json'},
-          );
-          if (r.statusCode == 200 ||
-              r.statusCode == 204 ||
-              r.statusCode == 404) {
-            break;
-          }
-        } catch (_) {}
-      }
+      // Canonical ABS close route is the singular POST /api/session/{id}/close.
+      // 200/204 => closed; 404 => already closed/gone.
+      await api.request(
+        'POST',
+        '/api/session/$sessionId/close',
+        headers: {'Content-Type': 'application/json'},
+      );
     } catch (_) {}
   }
 
@@ -2920,21 +2920,12 @@ class PlaybackRepository {
   }
 
   Future<Map<String, dynamic>> _getItemMeta(String libraryItemId) async {
-    final baseStr = _auth.api.baseUrl ?? '';
-    final base = Uri.parse(baseStr);
-    final token = await _auth.api.accessToken();
-
-    Uri meta = base.resolve('api/items/$libraryItemId');
-    if (token != null && token.isNotEmpty) {
-      meta = meta.replace(
-        queryParameters: {...meta.queryParameters, 'token': token},
-      );
+    // Route through ApiClient so this GET uses the Authorization: Bearer header
+    // and benefits from 401-refresh; no ?token= in the URL.
+    final r = await _auth.api.request('GET', '/api/items/$libraryItemId');
+    if (r.statusCode != 200) {
+      return <String, dynamic>{};
     }
-
-    final r = await http.get(
-      meta,
-      headers: {'User-Agent': 'Kitzi-ABS-Player/1.0 (Flutter)'},
-    );
     try {
       final j = jsonDecode(r.body) as Map<String, dynamic>;
       return (j['item'] as Map?)?.cast<String, dynamic>() ??

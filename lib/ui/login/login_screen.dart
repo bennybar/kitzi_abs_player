@@ -111,7 +111,7 @@ class _LoginScreenState extends State<LoginScreen> {
               if (!syncCompleter.isCompleted) {
                 syncCompleter.complete();
               }
-              if (Navigator.of(context).canPop()) {
+              if (context.mounted && Navigator.of(context).canPop()) {
                 Navigator.of(context).pop();
               }
             });

@@ -42,18 +42,19 @@ class AuthRepository {
     if (_api.baseUrl == null) {
       return false;
     }
-    
-    // Trust non-expired access tokens first to avoid forcing refresh on every launch
-    if (_api.hasFreshAccessToken(leewaySeconds: 60)) {
+
+    // The stored access-token expiry is an app-side ASSUMPTION (ABS does not
+    // report token expiry), so a "fresh" access token is not proof the session
+    // is still valid server-side. Validate authoritatively via refresh.
+    final ok = await _api.refreshAccessToken();
+    if (ok) {
       return true;
     }
-    
-    // Check if we have a refresh token before attempting refresh
-    // We'll let the refresh method handle this check internally
-    
-    // Otherwise try refresh
-    final ok = await _api.refreshAccessToken();
-    return ok;
+
+    // Refresh failed (e.g. offline or no refresh token). Fall back to trusting a
+    // still-fresh access token so we can degrade gracefully rather than force a
+    // logout on a transient/network failure.
+    return _api.hasFreshAccessToken(leewaySeconds: 60);
   }
 
   Future<bool> login({

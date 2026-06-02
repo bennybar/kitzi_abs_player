@@ -40,6 +40,7 @@ class _YearWrappedPageState extends State<YearWrappedPage> {
   }
 
   Future<void> _load() async {
+    final yearAtStart = _year;
     setState(() {
       _loading = true;
       _error = null;
@@ -98,37 +99,35 @@ class _YearWrappedPageState extends State<YearWrappedPage> {
         if (date.year != _year) continue;
 
         final libraryItemId = (m['libraryItemId'] ?? m['libraryItem'] ?? '').toString();
-        final fallbackTitle = (m['mediaMetadata']?['title'] ?? m['title'] ?? '').toString();
-        final authorsRaw = m['mediaMetadata']?['authors'];
-        String? fallbackAuthor;
-        if (authorsRaw is List && authorsRaw.isNotEmpty) {
-          fallbackAuthor = authorsRaw
-              .map((e) => e is Map ? (e['name']?.toString() ?? '') : e.toString())
-              .where((s) => s.trim().isNotEmpty)
-              .join(', ');
-          if (fallbackAuthor.isEmpty) fallbackAuthor = null;
-        } else {
-          fallbackAuthor = (m['mediaMetadata']?['authorName'])?.toString();
-        }
 
+        // ABS /api/me mediaProgress entries carry no embedded metadata, so the
+        // title/author/cover come from the library item itself: prefer the local
+        // DB copy, then fall back to a server fetch for items not cached locally.
         Book? book;
         if (libraryItemId.isNotEmpty) {
           try {
             book = await services.books.getBookFromDb(libraryItemId);
           } catch (_) {}
+          if (book == null) {
+            try {
+              book = await services.books.getBook(libraryItemId);
+            } catch (_) {}
+          }
         }
+
+        if (_year != yearAtStart) return;
 
         finishedThisYear.add(_FinishedBook(
           id: libraryItemId,
-          title: (book?.title.isNotEmpty ?? false) ? book!.title : (fallbackTitle.isNotEmpty ? fallbackTitle : 'Unknown'),
-          author: book?.author ?? fallbackAuthor,
+          title: (book?.title.isNotEmpty ?? false) ? book!.title : 'Unknown',
+          author: book?.author,
           coverUrl: book?.coverUrl,
           finishedAt: date,
         ));
       }
       finishedThisYear.sort((a, b) => b.finishedAt.compareTo(a.finishedAt));
 
-      if (!mounted) return;
+      if (!mounted || _year != yearAtStart) return;
       setState(() {
         _totalSeconds = totalSec;
         _daysListened = daysInYear.length;
@@ -139,7 +138,7 @@ class _YearWrappedPageState extends State<YearWrappedPage> {
         _loading = false;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || _year != yearAtStart) return;
       setState(() {
         _error = e.toString();
         _loading = false;
