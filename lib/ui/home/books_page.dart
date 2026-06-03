@@ -1339,7 +1339,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
 
                 SliverToBoxAdapter(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 10, 20, 18),
+                    padding: const EdgeInsets.fromLTRB(10, 10, 10, 18),
                     child: Center(
                       child: Container(
                         padding: const EdgeInsets.symmetric(
@@ -1502,7 +1502,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                     child:
                         _searchVisible
                             ? Padding(
-                              padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                              padding: const EdgeInsets.fromLTRB(10, 0, 10, 24),
                               child: Column(
                                 children: [
                                   // Material search bar
@@ -1677,7 +1677,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                       child: _SectionHeader(
                         icon: LucideIcons.library,
                         title: 'All Audiobooks',
-                        padding: const EdgeInsets.fromLTRB(20, 6, 20, 14),
+                        padding: const EdgeInsets.fromLTRB(10, 6, 10, 14),
                       ),
                     ),
                   _buildList(visible),
@@ -1694,7 +1694,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
 
   Widget _buildGrid(List<Book> list) {
     return SliverPadding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
       sliver: SliverGrid(
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 3,
@@ -1728,7 +1728,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
     final continueCount = _recentBooks.where((b) => b.isAudioBook).length;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 2, 20, 16),
+      padding: const EdgeInsets.fromLTRB(10, 2, 10, 16),
       child: AppLiquidGlass(
         blur: 42,
         opacity: Theme.of(context).brightness == Brightness.dark ? 0.18 : 0.09,
@@ -1815,7 +1815,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       return const SliverToBoxAdapter(child: SizedBox.shrink());
     return SliverToBoxAdapter(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+        padding: const EdgeInsets.fromLTRB(10, 4, 10, 4),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1878,7 +1878,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
     if (shelf.isEmpty) return const SliverToBoxAdapter(child: SizedBox.shrink());
     return SliverToBoxAdapter(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 22),
+        padding: const EdgeInsets.fromLTRB(10, 0, 10, 22),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1917,7 +1917,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
 
   Widget _buildList(List<Book> list) {
     return SliverPadding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
       sliver: SliverList.separated(
         itemCount: list.length,
         separatorBuilder: (_, __) => const SizedBox(height: 12),
@@ -2381,7 +2381,7 @@ class _SectionHeader extends StatelessWidget {
   const _SectionHeader({
     required this.icon,
     required this.title,
-    this.padding = const EdgeInsets.fromLTRB(20, 0, 20, 12),
+    this.padding = const EdgeInsets.fromLTRB(10, 0, 10, 12),
   });
 
   final IconData icon;
