@@ -391,10 +391,34 @@ class _AbsAppState extends State<AbsApp> with WidgetsBindingObserver {
                         ).copyWith(surfaceTint: Colors.transparent);
 
                     var lightScheme = gen(Brightness.light);
-                    var darkScheme = gen(Brightness.dark);
+                    // Deep, calm, indigo-tinted dark that mirrors the light
+                    // scheme's identity — off-white text and a soft accent, so
+                    // it's easy on the eyes (not flat grey, not a neon/blinding
+                    // accent).
+                    var darkScheme = gen(Brightness.dark).copyWith(
+                      surface: const Color(0xFF111218),
+                      surfaceDim: const Color(0xFF0C0D12),
+                      surfaceBright: const Color(0xFF1C1E27),
+                      surfaceContainerLowest: const Color(0xFF0A0B10),
+                      surfaceContainerLow: const Color(0xFF141520),
+                      surfaceContainer: const Color(0xFF181A24),
+                      surfaceContainerHigh: const Color(0xFF1F2230),
+                      surfaceContainerHighest: const Color(0xFF262A3A),
+                      onSurface: const Color(0xFFE3E4EC),
+                      onSurfaceVariant: const Color(0xFFB2B6C6),
+                      outline: const Color(0xFF3A3E50),
+                      outlineVariant: const Color(0xFF262A39),
+                      primary: const Color(0xFFADB4F2),
+                      onPrimary: const Color(0xFF1A1F47),
+                      primaryContainer: const Color(0xFF2C3270),
+                      onPrimaryContainer: const Color(0xFFDFE2FF),
+                      secondary: const Color(0xFFAEB4E6),
+                      surfaceTint: Colors.transparent,
+                    );
 
-                    // Optional surface warmth from the Settings tint slider.
-                    // Default ('medium') adds nothing — the calmest look.
+                    // Optional surface warmth from the Settings tint slider —
+                    // light mode only (that's how it's labelled). Default
+                    // ('medium') adds nothing.
                     final double tintT = switch (tintLevel) {
                       SurfaceTintLevel.none => 0.0,
                       SurfaceTintLevel.light => 0.012,
@@ -403,21 +427,30 @@ class _AbsAppState extends State<AbsApp> with WidgetsBindingObserver {
                       SurfaceTintLevel.veryStrong => 0.06,
                     };
                     if (tintT > 0) {
-                      ColorScheme warmer(ColorScheme s) => s.copyWith(
-                            surface: Color.lerp(s.surface, s.primary, tintT),
-                            surfaceContainerLowest: Color.lerp(
-                                s.surfaceContainerLowest, s.primary, tintT),
-                            surfaceContainerLow: Color.lerp(
-                                s.surfaceContainerLow, s.primary, tintT),
-                            surfaceContainer:
-                                Color.lerp(s.surfaceContainer, s.primary, tintT),
-                            surfaceContainerHigh: Color.lerp(
-                                s.surfaceContainerHigh, s.primary, tintT),
-                            surfaceContainerHighest: Color.lerp(
-                                s.surfaceContainerHighest, s.primary, tintT),
-                          );
-                      lightScheme = warmer(lightScheme);
-                      darkScheme = warmer(darkScheme);
+                      lightScheme = lightScheme.copyWith(
+                        surface: Color.lerp(
+                            lightScheme.surface, lightScheme.primary, tintT),
+                        surfaceContainerLowest: Color.lerp(
+                            lightScheme.surfaceContainerLowest,
+                            lightScheme.primary,
+                            tintT),
+                        surfaceContainerLow: Color.lerp(
+                            lightScheme.surfaceContainerLow,
+                            lightScheme.primary,
+                            tintT),
+                        surfaceContainer: Color.lerp(
+                            lightScheme.surfaceContainer,
+                            lightScheme.primary,
+                            tintT),
+                        surfaceContainerHigh: Color.lerp(
+                            lightScheme.surfaceContainerHigh,
+                            lightScheme.primary,
+                            tintT),
+                        surfaceContainerHighest: Color.lerp(
+                            lightScheme.surfaceContainerHighest,
+                            lightScheme.primary,
+                            tintT),
+                      );
                     }
 
                     return MaterialApp(

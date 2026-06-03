@@ -577,12 +577,51 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
     } catch (e, stackTrace) {
       debugPrint('[REFRESH] Error during refresh: $e');
       debugPrint('[REFRESH] Stack trace: $stackTrace');
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Refresh failed: $e')));
+      if (!mounted) return;
+      if (_isTransientNetworkError(e)) {
+        // Offline-first: a dropped/blip connection mid-refresh shouldn't alarm
+        // the user — the cached library is still on screen. Only mention it if
+        // the device is genuinely offline now (sanity check), and only on the
+        // initial load so we don't nag on every auto/pull refresh.
+        try {
+          final conn = await Connectivity().checkConnectivity();
+          final online = conn.contains(ConnectivityResult.mobile) ||
+              conn.contains(ConnectivityResult.wifi) ||
+              conn.contains(ConnectivityResult.ethernet) ||
+              conn.contains(ConnectivityResult.vpn);
+          if (!online && mounted && initial) _showNoInternetSnack();
+        } catch (_) {}
+      } else if (mounted) {
+        // Genuine, non-network failure — friendly message, never the raw error.
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Couldn't refresh your library. Pull down to try again."),
+          ),
+        );
       }
     }
+  }
+
+  /// True for transient connectivity issues (dropped/blip connection, DNS,
+  /// timeouts) that shouldn't surface a scary error in an offline-first app.
+  bool _isTransientNetworkError(Object e) {
+    final s = e.toString().toLowerCase();
+    return s.contains('clientexception') ||
+        s.contains('socketexception') ||
+        s.contains('timeoutexception') ||
+        s.contains('httpexception') ||
+        s.contains('connection closed') ||
+        s.contains('connection reset') ||
+        s.contains('connection refused') ||
+        s.contains('connection terminated') ||
+        s.contains('connection attempt') ||
+        s.contains('software caused connection abort') ||
+        s.contains('failed host lookup') ||
+        s.contains('network is unreachable') ||
+        s.contains('handshake') ||
+        s.contains('timed out') ||
+        s.contains('timeout') ||
+        s.contains('broken pipe');
   }
 
   void _showNoInternetSnack() {
