@@ -68,8 +68,8 @@ class _MiniPlayerState extends State<MiniPlayer> {
               child: SizedBox(
                 height: widget.height,
                 child: Padding(
-                  // Tight side padding so the bar runs wide.
-                  padding: const EdgeInsets.fromLTRB(9, 8, 8, 8),
+                  // Wide bar, with a little breathing room at the edges.
+                  padding: const EdgeInsets.fromLTRB(13, 8, 12, 8),
                   child: Row(
                     children: [
                       _cover(np, cs),
@@ -89,10 +89,10 @@ class _MiniPlayerState extends State<MiniPlayer> {
   }
 
   Widget _cover(NowPlaying np, ColorScheme cs) {
-    const size = 50.0;
+    const size = 54.0;
     return Container(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
+        shape: BoxShape.circle,
         boxShadow: [
           BoxShadow(
             color: cs.shadow.withOpacity(0.18),
@@ -101,8 +101,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
           ),
         ],
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
+      child: ClipOval(
         child: _MiniCover(url: np.coverUrl, size: size),
       ),
     );
@@ -341,7 +340,7 @@ class _MiniCover extends StatelessWidget {
       height: size,
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(12),
+        shape: BoxShape.circle,
       ),
       child: Icon(
         LucideIcons.bookOpen,
