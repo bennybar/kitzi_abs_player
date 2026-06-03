@@ -1694,7 +1694,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
 
   Widget _buildGrid(List<Book> list) {
     return SliverPadding(
-      padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+      padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
       sliver: SliverGrid(
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 3,
@@ -1815,14 +1815,14 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       return const SliverToBoxAdapter(child: SizedBox.shrink());
     return SliverToBoxAdapter(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(10, 4, 10, 4),
+        padding: const EdgeInsets.symmetric(vertical: 4),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const _SectionHeader(
               icon: LucideIcons.play,
               title: 'Continue Listening',
-              padding: EdgeInsets.zero,
+              padding: EdgeInsets.symmetric(horizontal: 10),
             ),
             const SizedBox(height: 18),
             Builder(
@@ -1837,7 +1837,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                   child: ListView.separated(
                     scrollDirection: Axis.horizontal,
                     physics: const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.only(right: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
                     itemCount: visible.length,
                     separatorBuilder: (_, __) => const SizedBox(width: 12),
                     itemBuilder: (context, index) {
@@ -1878,14 +1878,14 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
     if (shelf.isEmpty) return const SliverToBoxAdapter(child: SizedBox.shrink());
     return SliverToBoxAdapter(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(10, 0, 10, 22),
+        padding: const EdgeInsets.fromLTRB(0, 0, 0, 22),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const _SectionHeader(
               icon: LucideIcons.sparkles,
               title: 'Recently Added',
-              padding: EdgeInsets.zero,
+              padding: EdgeInsets.symmetric(horizontal: 10),
             ),
             const SizedBox(height: 16),
             SizedBox(
@@ -1893,6 +1893,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 physics: const BouncingScrollPhysics(),
+                padding: const EdgeInsets.symmetric(horizontal: 10),
                 itemCount: shelf.length,
                 separatorBuilder: (_, __) => const SizedBox(width: 12),
                 itemBuilder: (context, index) {
@@ -1917,7 +1918,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
 
   Widget _buildList(List<Book> list) {
     return SliverPadding(
-      padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
+      padding: const EdgeInsets.fromLTRB(10, 0, 10, 12),
       sliver: SliverList.separated(
         itemCount: list.length,
         separatorBuilder: (_, __) => const SizedBox(height: 12),
@@ -2531,6 +2532,7 @@ class _BookCard extends StatelessWidget {
 
     return Card(
       elevation: 0,
+      margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(
@@ -3196,6 +3198,7 @@ class _BookListTileState extends State<_BookListTile> {
 
     return Card(
       elevation: 0,
+      margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
         side: BorderSide(
