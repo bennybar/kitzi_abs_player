@@ -314,7 +314,7 @@ class _MainScaffoldState extends State<MainScaffold> {
                       curve: const Cubic(0.05, 0.7, 0.1, 1.0),
                       child: hasMini
                           ? Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
+                              padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
                               child: Material(
                                 color: cs.surfaceContainerHigh,
                                 elevation: 1,

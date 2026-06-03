@@ -9,12 +9,12 @@ import '../main.dart'; // ServicesScope
 import '../ui/player/full_player_page.dart';
 import '../ui/player/player_visual_cache.dart';
 
-/// Compact mini-player: small cover, title + author, a thin progress hairline
-/// at the bottom edge, a subtle rewind and a filled play/pause control. The
-/// background is tinted from the cover art's palette so each book feels
-/// distinct (never flat grey); it falls back to the brand accent.
+/// Compact mini-player with a waveform scrubber: small cover, title above a
+/// slim audio-style waveform that doubles as the seek bar (played portion in
+/// the accent, the rest muted), and a play/pause control. The background is
+/// tinted from the cover art's palette so each book feels distinct.
 class MiniPlayer extends StatefulWidget {
-  const MiniPlayer({super.key, this.height = 64});
+  const MiniPlayer({super.key, this.height = 74});
 
   final double height;
 
@@ -37,11 +37,8 @@ class _MiniPlayerState extends State<MiniPlayer> {
       initialData: playback.nowPlaying,
       builder: (context, snap) {
         final np = snap.data;
-        // Parent AnimatedSize collapses this when there's nothing playing.
         if (np == null) return const SizedBox.shrink();
 
-        // Cover-derived tint (cached; warmed by the full player). Kick a
-        // one-shot compute if we don't have it yet for this cover.
         final url = np.coverUrl;
         final pd = PlayerVisualCache.paletteFor(url);
         if (pd == null && url != null && url.isNotEmpty && _loadingUrl != url) {
@@ -70,29 +67,18 @@ class _MiniPlayerState extends State<MiniPlayer> {
               onTap: () => FullPlayerPage.openOnce(context),
               child: SizedBox(
                 height: widget.height,
-                child: Column(
-                  children: [
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(18, 10, 16, 6),
-                        child: Row(
-                          children: [
-                            _cover(np, cs),
-                            const SizedBox(width: 12),
-                            Expanded(child: _meta(np, playback, cs, text)),
-                            const SizedBox(width: 8),
-                            _rewind(playback, cs),
-                            const SizedBox(width: 6),
-                            _playButton(context, playback, np, cs),
-                          ],
-                        ),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(18, 0, 18, 10),
-                      child: _hairline(playback, cs),
-                    ),
-                  ],
+                child: Padding(
+                  // Tight side padding so the bar runs wide.
+                  padding: const EdgeInsets.fromLTRB(9, 8, 8, 8),
+                  child: Row(
+                    children: [
+                      _cover(np, cs),
+                      const SizedBox(width: 12),
+                      Expanded(child: _titleAndWave(np, playback, cs, text)),
+                      const SizedBox(width: 8),
+                      _playButton(context, playback, np, cs),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -103,10 +89,10 @@ class _MiniPlayerState extends State<MiniPlayer> {
   }
 
   Widget _cover(NowPlaying np, ColorScheme cs) {
-    const size = 44.0;
+    const size = 50.0;
     return Container(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(11),
+        borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
             color: cs.shadow.withOpacity(0.18),
@@ -116,47 +102,35 @@ class _MiniPlayerState extends State<MiniPlayer> {
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(11),
+        borderRadius: BorderRadius.circular(12),
         child: _MiniCover(url: np.coverUrl, size: size),
       ),
     );
   }
 
-  Widget _meta(NowPlaying np, PlaybackRepository playback, ColorScheme cs,
-      TextTheme text) {
+  Widget _titleAndWave(NowPlaying np, PlaybackRepository playback,
+      ColorScheme cs, TextTheme text) {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          np.title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: text.bodyMedium?.copyWith(
-            fontSize: 14.5,
-            fontWeight: FontWeight.w700,
-            color: cs.onSurface,
-            letterSpacing: -0.2,
-          ),
-        ),
-        const SizedBox(height: 2),
         Row(
           children: [
-            if (np.author != null && np.author!.isNotEmpty)
-              Flexible(
-                child: Text(
-                  np.author!,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: text.bodySmall?.copyWith(
-                    fontSize: 12,
-                    color: cs.onSurfaceVariant,
-                  ),
+            Expanded(
+              child: Text(
+                np.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: text.bodyMedium?.copyWith(
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.w700,
+                  color: cs.onSurface,
+                  letterSpacing: -0.2,
                 ),
               ),
-            // Only surface the sync state when something is actually pending —
-            // keeps the bar clean the rest of the time.
+            ),
+            // Surface the sync state only when a write is pending.
             ValueListenableBuilder<ProgressSyncStatus>(
               valueListenable: playback.progressSyncStatus,
               builder: (_, status, __) {
@@ -173,63 +147,48 @@ class _MiniPlayerState extends State<MiniPlayer> {
             ),
           ],
         ),
-      ],
-    );
-  }
-
-  Widget _rewind(PlaybackRepository playback, ColorScheme cs) {
-    return Material(
-      color: Colors.transparent,
-      shape: const CircleBorder(),
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: () => playback.nudgeSeconds(-10),
-        child: SizedBox(
-          width: 34,
-          height: 34,
-          child: Icon(LucideIcons.rotateCcw, size: 19, color: cs.onSurfaceVariant),
-        ),
-      ),
-    );
-  }
-
-  Widget _hairline(PlaybackRepository playback, ColorScheme cs) {
-    return ValueListenableBuilder<Duration>(
-      valueListenable: playback.currentPosition,
-      builder: (_, currentPos, __) {
-        final pos = playback.globalBookPosition ?? currentPos;
-        final dur = playback.totalBookDuration;
-        if (dur == null || dur == Duration.zero) {
-          return const SizedBox.shrink();
-        }
-        final fraction =
-            (pos.inMilliseconds / dur.inMilliseconds).clamp(0.0, 1.0);
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(2),
-          child: LinearProgressIndicator(
-            value: fraction,
-            minHeight: 2.5,
-            backgroundColor: cs.onSurface.withOpacity(0.12),
-            valueColor: AlwaysStoppedAnimation<Color>(cs.primary),
+        const SizedBox(height: 7),
+        SizedBox(
+          height: 20,
+          child: ValueListenableBuilder<Duration>(
+            valueListenable: playback.currentPosition,
+            builder: (_, curPos, __) {
+              final pos = playback.globalBookPosition ?? curPos;
+              final total = playback.totalBookDuration;
+              final frac = (total != null && total.inMilliseconds > 0)
+                  ? (pos.inMilliseconds / total.inMilliseconds).clamp(0.0, 1.0)
+                  : 0.0;
+              return _Waveform(
+                fraction: frac,
+                seed: np.libraryItemId.hashCode,
+                played: cs.primary,
+                unplayed: cs.onSurface.withOpacity(0.22),
+                onSeek: (f) {
+                  if (total == null || total.inMilliseconds <= 0) return;
+                  playback.seekGlobal(
+                    Duration(milliseconds: (total.inMilliseconds * f).round()),
+                    reportNow: true,
+                  );
+                },
+              );
+            },
           ),
-        );
-      },
+        ),
+      ],
     );
   }
 
   Widget _playButton(BuildContext context, PlaybackRepository playback,
       NowPlaying np, ColorScheme cs) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
     return StreamBuilder<bool>(
       stream: playback.playingStream,
       initialData: playback.player.playing,
       builder: (_, playSnap) {
-        final playing = playSnap.data ?? false;
-        final isPlaying = playing;
-        final dark = Theme.of(context).brightness == Brightness.dark;
+        final isPlaying = playSnap.data ?? false;
         return Material(
           color: isPlaying ? cs.primary : cs.primary.withOpacity(0.16),
           shape: const CircleBorder(),
-          // No coloured glow/halo in dark mode.
           elevation: (isPlaying && !dark) ? 2 : 0,
           shadowColor: dark ? Colors.transparent : cs.primary.withOpacity(0.3),
           child: InkWell(
@@ -261,11 +220,11 @@ class _MiniPlayerState extends State<MiniPlayer> {
               }
             },
             child: SizedBox(
-              width: 44,
-              height: 44,
+              width: 46,
+              height: 46,
               child: Icon(
                 isPlaying ? LucideIcons.pause : LucideIcons.play,
-                size: 24,
+                size: 25,
                 color: isPlaying ? cs.onPrimary : cs.primary,
               ),
             ),
@@ -274,6 +233,99 @@ class _MiniPlayerState extends State<MiniPlayer> {
       },
     );
   }
+}
+
+/// A slim audio waveform that doubles as a scrubber. The bar heights are
+/// deterministic per [seed] (so a given book always shows the same shape) and
+/// the played fraction is drawn in [played], the remainder in [unplayed].
+class _Waveform extends StatelessWidget {
+  const _Waveform({
+    required this.fraction,
+    required this.seed,
+    required this.played,
+    required this.unplayed,
+    required this.onSeek,
+  });
+
+  final double fraction;
+  final int seed;
+  final Color played;
+  final Color unplayed;
+  final ValueChanged<double> onSeek;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(builder: (context, c) {
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (d) =>
+            onSeek((d.localPosition.dx / c.maxWidth).clamp(0.0, 1.0)),
+        onHorizontalDragUpdate: (d) =>
+            onSeek((d.localPosition.dx / c.maxWidth).clamp(0.0, 1.0)),
+        child: CustomPaint(
+          size: Size(c.maxWidth, c.maxHeight),
+          painter: _WavePainter(
+            fraction: fraction,
+            seed: seed,
+            played: played,
+            unplayed: unplayed,
+          ),
+        ),
+      );
+    });
+  }
+}
+
+class _WavePainter extends CustomPainter {
+  _WavePainter({
+    required this.fraction,
+    required this.seed,
+    required this.played,
+    required this.unplayed,
+  });
+
+  final double fraction;
+  final int seed;
+  final Color played;
+  final Color unplayed;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const barW = 3.0;
+    const gap = 2.0;
+    final step = barW + gap;
+    final n = (size.width / step).floor().clamp(1, 200);
+    // Deterministic pseudo-random heights from the seed (stable per book).
+    var s = seed & 0x7fffffff;
+    int next() {
+      s = (s * 1103515245 + 12345) & 0x7fffffff;
+      return s;
+    }
+
+    final playedX = size.width * fraction;
+    final paint = Paint()..isAntiAlias = true;
+    final mid = size.height / 2;
+    for (var i = 0; i < n; i++) {
+      final r = (next() % 1000) / 1000.0; // 0..1
+      // bias toward mid heights with occasional tall bars
+      final hFrac = 0.22 + r * r * 0.78;
+      final h = (size.height * hFrac).clamp(2.0, size.height);
+      final x = i * step;
+      paint.color = (x + barW / 2) <= playedX ? played : unplayed;
+      final rect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(x, mid - h / 2, barW, h),
+        const Radius.circular(1.5),
+      );
+      canvas.drawRRect(rect, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _WavePainter old) =>
+      old.fraction != fraction ||
+      old.seed != seed ||
+      old.played != played ||
+      old.unplayed != unplayed;
 }
 
 class _MiniCover extends StatelessWidget {
@@ -289,7 +341,7 @@ class _MiniCover extends StatelessWidget {
       height: size,
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(11),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Icon(
         LucideIcons.bookOpen,
