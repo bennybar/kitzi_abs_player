@@ -396,23 +396,28 @@ class _AbsAppState extends State<AbsApp> with WidgetsBindingObserver {
                     // it's easy on the eyes (not flat grey, not a neon/blinding
                     // accent).
                     var darkScheme = gen(Brightness.dark).copyWith(
-                      surface: const Color(0xFF111218),
-                      surfaceDim: const Color(0xFF0C0D12),
-                      surfaceBright: const Color(0xFF1C1E27),
-                      surfaceContainerLowest: const Color(0xFF0A0B10),
-                      surfaceContainerLow: const Color(0xFF141520),
-                      surfaceContainer: const Color(0xFF181A24),
-                      surfaceContainerHigh: const Color(0xFF1F2230),
-                      surfaceContainerHighest: const Color(0xFF262A3A),
-                      onSurface: const Color(0xFFE3E4EC),
-                      onSurfaceVariant: const Color(0xFFB2B6C6),
-                      outline: const Color(0xFF3A3E50),
-                      outlineVariant: const Color(0xFF262A39),
-                      primary: const Color(0xFFADB4F2),
-                      onPrimary: const Color(0xFF1A1F47),
-                      primaryContainer: const Color(0xFF2C3270),
-                      onPrimaryContainer: const Color(0xFFDFE2FF),
-                      secondary: const Color(0xFFAEB4E6),
+                      // Deep, low-contrast OLED-friendly dark. Elevation steps
+                      // are kept very tight so cards/sheets/tiles don't read as
+                      // bright grey blocks ("flashlight") on the near-black base.
+                      surface: const Color(0xFF0B0C11),
+                      surfaceDim: const Color(0xFF08090D),
+                      surfaceBright: const Color(0xFF15161D),
+                      surfaceContainerLowest: const Color(0xFF070809),
+                      surfaceContainerLow: const Color(0xFF0E0F15),
+                      surfaceContainer: const Color(0xFF111219),
+                      surfaceContainerHigh: const Color(0xFF15171F),
+                      surfaceContainerHighest: const Color(0xFF1A1C26),
+                      // Softer than pure white to cut glare.
+                      onSurface: const Color(0xFFD2D4DD),
+                      onSurfaceVariant: const Color(0xFF989CAC),
+                      outline: const Color(0xFF343745),
+                      outlineVariant: const Color(0xFF20222D),
+                      // Muted (not neon) indigo accent.
+                      primary: const Color(0xFF9AA1E2),
+                      onPrimary: const Color(0xFF161B40),
+                      primaryContainer: const Color(0xFF252A5E),
+                      onPrimaryContainer: const Color(0xFFDDE0FB),
+                      secondary: const Color(0xFFA6ABD6),
                       surfaceTint: Colors.transparent,
                     );
 
