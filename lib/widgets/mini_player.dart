@@ -225,11 +225,13 @@ class _MiniPlayerState extends State<MiniPlayer> {
       builder: (_, playSnap) {
         final playing = playSnap.data ?? false;
         final isPlaying = playing;
+        final dark = Theme.of(context).brightness == Brightness.dark;
         return Material(
           color: isPlaying ? cs.primary : cs.primary.withOpacity(0.16),
           shape: const CircleBorder(),
-          elevation: isPlaying ? 2 : 0,
-          shadowColor: cs.primary.withOpacity(0.3),
+          // No coloured glow/halo in dark mode.
+          elevation: (isPlaying && !dark) ? 2 : 0,
+          shadowColor: dark ? Colors.transparent : cs.primary.withOpacity(0.3),
           child: InkWell(
             customBorder: const CircleBorder(),
             onTap: () async {

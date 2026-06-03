@@ -4351,13 +4351,17 @@ class _ControlButton extends StatelessWidget {
             shape: isCircular ? BoxShape.circle : BoxShape.rectangle,
             borderRadius: isCircular ? null : primaryRadius,
             color: cs.primary,
-            boxShadow: [
-              BoxShadow(
-                color: cs.primary.withOpacity(isDark ? 0.45 : 0.32),
-                blurRadius: 24,
-                offset: const Offset(0, 8),
-              ),
-            ],
+            // No coloured glow in dark mode — a primary-tinted shadow reads as a
+            // halo on a dark background. Keep only a soft shadow in light mode.
+            boxShadow: isDark
+                ? const []
+                : [
+                    BoxShadow(
+                      color: cs.primary.withOpacity(0.28),
+                      blurRadius: 18,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
           ),
           child: Material(
             color: Colors.transparent,
