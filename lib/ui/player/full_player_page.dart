@@ -3107,7 +3107,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                               },
                                             ),
                                           ),
-                                          const SizedBox(height: 1),
+                                          const SizedBox(height: 8),
                                           _buildHeroMetadata(
                                             context: context,
                                             text: text,
