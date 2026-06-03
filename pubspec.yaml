@@ -17,7 +17,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.6.253+253
+version: 1.6.254+254
 
 environment:
   sdk: ^3.7.2
@@ -77,7 +77,7 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^5.0.0
-  flutter_launcher_icons: ^0.13.1
+  flutter_launcher_icons: ^0.14.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -148,14 +148,21 @@ flutter:
 # Flutter Launcher Icons configuration
 flutter_launcher_icons:
   android: "launcher_icon"
-  ios: true
-  image_path: "assets/icon/icon.png"
   min_sdk_android: 28
+  image_path: "assets/icon/icon.png"
+  adaptive_icon_background: "assets/icon/bg.png"
+  adaptive_icon_foreground: "assets/icon/fg.png"
+  adaptive_icon_monochrome: "assets/icon/mono.png"
+  ios: true
+  remove_alpha_ios: true
+  image_path_ios: "assets/icon/icon.png"
+  image_path_ios_dark_transparent: "assets/icon/fg.png"
+  image_path_ios_tinted_grayscale: "assets/icon/tinted.png"
   web:
     generate: true
     image_path: "assets/icon/icon.png"
-    background_color: "#6366F1"
-    theme_color: "#6366F1"
+    background_color: "#6266EA"
+    theme_color: "#6266EA"
   windows:
     generate: true
     image_path: "assets/icon/icon.png"
