@@ -63,7 +63,7 @@ class ThemeService {
         }
       }
 
-      final storedFontScalePercent = prefs.getInt('ui_font_scale_percent');
+      final storedFontScalePercent = prefs.getInt('ui_font_scale_percent_v2');
       if (storedFontScalePercent != null) {
         fontScalePercent.value = _normalizeFontScalePercent(storedFontScalePercent);
       }
@@ -107,7 +107,7 @@ class ThemeService {
     fontScalePercent.value = normalized;
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt('ui_font_scale_percent', normalized);
+      await prefs.setInt('ui_font_scale_percent_v2', normalized);
     } catch (_) {
       // Ignore save errors
     }

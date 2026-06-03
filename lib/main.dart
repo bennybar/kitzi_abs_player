@@ -374,7 +374,9 @@ class _AbsAppState extends State<AbsApp> with WidgetsBindingObserver {
             return ValueListenableBuilder<int>(
               valueListenable: fontScalePercent,
               builder: (_, fontPercent, __) {
-                final appTextScale = 0.94 * (fontPercent / 100.0);
+                // 100% is calibrated to the previously-comfortable "105%" size;
+                // every other step derives proportionally from this base.
+                final appTextScale = 0.987 * (fontPercent / 100.0);
 
                 return DynamicColorBuilder(
                   builder: (lightDynamic, darkDynamic) {

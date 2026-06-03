@@ -3234,62 +3234,6 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                                   crossAxisAlignment:
                                       CrossAxisAlignment.stretch,
                                   children: [
-                                    Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Text(
-                                          preferChapter
-                                              ? 'CHAPTER PROGRESS'
-                                              : 'BOOK PROGRESS',
-                                          style: text.labelSmall?.copyWith(
-                                            letterSpacing: 0.8,
-                                            color: cs.onSurfaceVariant
-                                                .withOpacity(0.6),
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        ),
-                                        GestureDetector(
-                                          onTap:
-                                              hasGlobal
-                                                  ? () {
-                                                    final next =
-                                                        _progressPrimary ==
-                                                                ProgressPrimary
-                                                                    .chapter
-                                                            ? ProgressPrimary
-                                                                .book
-                                                            : ProgressPrimary
-                                                                .chapter;
-                                                    UiPrefs.setProgressPrimary(
-                                                      next,
-                                                    );
-                                                  }
-                                                  : null,
-                                          child: Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 10,
-                                              vertical: 5,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: cs.primary.withOpacity(
-                                                0.12,
-                                              ),
-                                              borderRadius:
-                                                  BorderRadius.circular(999),
-                                            ),
-                                            child: Text(
-                                              preferChapter ? 'Chapter' : 'Book',
-                                              style: text.labelSmall?.copyWith(
-                                                color: cs.primary,
-                                                fontWeight: FontWeight.w700,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 10),
                                     progressContent,
                                   ],
                                 ),
