@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../core/playback_repository.dart';
+import '../core/ui_prefs.dart';
 import '../main.dart'; // ServicesScope
 import '../ui/player/full_player_page.dart';
 import '../ui/player/player_visual_cache.dart';
@@ -75,7 +76,9 @@ class _MiniPlayerState extends State<MiniPlayer> {
                       _cover(np, cs),
                       const SizedBox(width: 12),
                       Expanded(child: _titleAndWave(np, playback, cs, text)),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 4),
+                      _backButton(playback, cs),
+                      const SizedBox(width: 2),
                       _playButton(context, playback, np, cs),
                     ],
                   ),
@@ -89,7 +92,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
   }
 
   Widget _cover(NowPlaying np, ColorScheme cs) {
-    const size = 54.0;
+    const size = 50.0;
     return Container(
       decoration: BoxDecoration(
         shape: BoxShape.circle,
@@ -157,23 +160,38 @@ class _MiniPlayerState extends State<MiniPlayer> {
               final frac = (total != null && total.inMilliseconds > 0)
                   ? (pos.inMilliseconds / total.inMilliseconds).clamp(0.0, 1.0)
                   : 0.0;
-              return _Waveform(
-                fraction: frac,
-                seed: np.libraryItemId.hashCode,
-                played: cs.primary,
-                unplayed: cs.onSurface.withOpacity(0.22),
-                onSeek: (f) {
-                  if (total == null || total.inMilliseconds <= 0) return;
-                  playback.seekGlobal(
-                    Duration(milliseconds: (total.inMilliseconds * f).round()),
-                    reportNow: true,
-                  );
-                },
+              // Display-only: no scrubbing here (a stray tap would jump the
+              // book) and it lets taps fall through to open the full player.
+              return IgnorePointer(
+                child: _Waveform(
+                  fraction: frac,
+                  seed: np.libraryItemId.hashCode,
+                  played: cs.primary,
+                  unplayed: cs.onSurface.withOpacity(0.22),
+                ),
               );
             },
           ),
         ),
       ],
+    );
+  }
+
+  Widget _backButton(PlaybackRepository playback, ColorScheme cs) {
+    return Material(
+      color: Colors.transparent,
+      shape: const CircleBorder(),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: () =>
+            playback.nudgeSeconds(-UiPrefs.seekBackwardSeconds.value),
+        child: SizedBox(
+          width: 40,
+          height: 40,
+          child: Icon(LucideIcons.rotateCcw,
+              size: 20, color: cs.onSurfaceVariant),
+        ),
+      ),
     );
   }
 
@@ -234,44 +252,34 @@ class _MiniPlayerState extends State<MiniPlayer> {
   }
 }
 
-/// A slim audio waveform that doubles as a scrubber. The bar heights are
-/// deterministic per [seed] (so a given book always shows the same shape) and
-/// the played fraction is drawn in [played], the remainder in [unplayed].
+/// A slim audio waveform used purely as a progress indicator (not a scrubber).
+/// The bar heights are deterministic per [seed] (so a given book always shows
+/// the same shape); the played fraction is drawn in [played], the remainder in
+/// [unplayed].
 class _Waveform extends StatelessWidget {
   const _Waveform({
     required this.fraction,
     required this.seed,
     required this.played,
     required this.unplayed,
-    required this.onSeek,
   });
 
   final double fraction;
   final int seed;
   final Color played;
   final Color unplayed;
-  final ValueChanged<double> onSeek;
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(builder: (context, c) {
-      return GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTapDown: (d) =>
-            onSeek((d.localPosition.dx / c.maxWidth).clamp(0.0, 1.0)),
-        onHorizontalDragUpdate: (d) =>
-            onSeek((d.localPosition.dx / c.maxWidth).clamp(0.0, 1.0)),
-        child: CustomPaint(
-          size: Size(c.maxWidth, c.maxHeight),
-          painter: _WavePainter(
-            fraction: fraction,
-            seed: seed,
-            played: played,
-            unplayed: unplayed,
-          ),
-        ),
-      );
-    });
+    return CustomPaint(
+      size: Size.infinite,
+      painter: _WavePainter(
+        fraction: fraction,
+        seed: seed,
+        played: played,
+        unplayed: unplayed,
+      ),
+    );
   }
 }
 

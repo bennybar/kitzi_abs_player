@@ -320,9 +320,9 @@ class _MainScaffoldState extends State<MainScaffold> {
                                 elevation: 1,
                                 shadowColor: cs.shadow.withOpacity(0.12),
                                 surfaceTintColor: Colors.transparent,
-                                borderRadius: BorderRadius.circular(40),
+                                borderRadius: BorderRadius.circular(37),
                                 clipBehavior: Clip.antiAlias,
-                                child: const MiniPlayer(height: 80),
+                                child: const MiniPlayer(height: 74),
                               ),
                             )
                           : const SizedBox.shrink(),
