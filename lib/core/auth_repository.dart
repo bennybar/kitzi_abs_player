@@ -1,3 +1,7 @@
+import 'dart:convert';
+import 'dart:math';
+
+import 'package:crypto/crypto.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -68,4 +72,90 @@ class AuthRepository {
   Future<void> logout() => _api.logout();
 
   ApiClient get api => _api;
+
+  // ===== OpenID Connect (SSO) =====
+
+  // Transient PKCE/session state held between [openIdBegin] and [openIdFinish].
+  String? _oidcVerifier;
+  String? _oidcState;
+  String? _oidcCookies;
+
+  /// The auth methods the server advertises (e.g. `['local','openid']`).
+  Future<List<String>> serverAuthMethods(String baseUrl) async {
+    try {
+      final s = await _api.publicStatus(baseUrl);
+      final m = s['authMethods'];
+      if (m is List) return m.map((e) => e.toString()).toList();
+    } catch (_) {}
+    return const [];
+  }
+
+  /// Full unauthenticated status (for the OIDC button text, etc.).
+  Future<Map<String, dynamic>> serverStatus(String baseUrl) async {
+    try {
+      return await _api.publicStatus(baseUrl);
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  /// Begin SSO: generate PKCE, hit `/auth/openid`, and return the IdP authorize
+  /// URL to open in a browser. Returns null on failure.
+  Future<String?> openIdBegin({
+    required String baseUrl,
+    required String redirectUri,
+  }) async {
+    final verifier = _randomUrlSafe(64);
+    final challenge =
+        base64Url.encode(sha256.convert(ascii.encode(verifier)).bytes)
+            .replaceAll('=', '');
+    final state = _randomUrlSafe(16);
+    final res = await _api.openIdStart(
+      baseUrl: baseUrl,
+      redirectUri: redirectUri,
+      codeChallenge: challenge,
+      state: state,
+    );
+    if (res == null) return null;
+    _oidcVerifier = verifier;
+    _oidcState = state;
+    _oidcCookies = res.cookies;
+    return res.authUrl;
+  }
+
+  /// Finish SSO after the browser returns the custom-scheme [callbackUrl].
+  /// Verifies state, exchanges the code, and stores tokens. Returns true on
+  /// success.
+  Future<bool> openIdFinish({
+    required String baseUrl,
+    required String callbackUrl,
+  }) async {
+    final verifier = _oidcVerifier;
+    final state = _oidcState;
+    final cookies = _oidcCookies ?? '';
+    try {
+      if (verifier == null || state == null) return false;
+      final uri = Uri.tryParse(callbackUrl);
+      final code = uri?.queryParameters['code'];
+      final returnedState = uri?.queryParameters['state'];
+      if (code == null || returnedState != state) return false;
+      return await _api.openIdComplete(
+        baseUrl: baseUrl,
+        code: code,
+        state: state,
+        codeVerifier: verifier,
+        cookies: cookies,
+      );
+    } finally {
+      _oidcVerifier = null;
+      _oidcState = null;
+      _oidcCookies = null;
+    }
+  }
+
+  String _randomUrlSafe(int bytes) {
+    final rnd = Random.secure();
+    final b = List<int>.generate(bytes, (_) => rnd.nextInt(256));
+    return base64Url.encode(b).replaceAll('=', '');
+  }
 }

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -399,6 +400,117 @@ class ApiClient {
       }
     } finally {
       await clearTokens();
+    }
+  }
+
+  // ===== OpenID Connect (SSO) =====
+
+  /// Unauthenticated server status. ABS includes `authMethods` (e.g.
+  /// `["local","openid"]`) and `authFormData` (openid button text, etc.) here,
+  /// which the login UI uses to decide whether to offer SSO.
+  Future<Map<String, dynamic>> publicStatus(String baseUrl) async {
+    final resp = await http.get(
+      Uri.parse('$baseUrl/status'),
+      headers: {
+        'User-Agent': 'Kitzi-ABS-Player/1.0 (Flutter)',
+        ..._currentCustomHeaders(),
+      },
+    ).timeout(const Duration(seconds: 10));
+    if (resp.statusCode != 200 || resp.body.isEmpty) return const {};
+    final d = jsonDecode(resp.body);
+    return d is Map ? d.cast<String, dynamic>() : const {};
+  }
+
+  /// Step 1 of the OIDC mobile flow: call `/auth/openid` WITHOUT following the
+  /// redirect, so we can read the IdP authorize URL (Location) and the session
+  /// cookies that must be replayed on the callback. Returns null on failure.
+  Future<({String authUrl, String cookies})?> openIdStart({
+    required String baseUrl,
+    required String redirectUri,
+    required String codeChallenge,
+    required String state,
+    String clientId = 'Audiobookshelf',
+  }) async {
+    final uri = Uri.parse('$baseUrl/auth/openid').replace(queryParameters: {
+      'response_type': 'code',
+      'client_id': clientId,
+      'redirect_uri': redirectUri,
+      'code_challenge': codeChallenge,
+      'code_challenge_method': 'S256',
+      'state': state,
+    });
+    final client = HttpClient();
+    try {
+      final req = await client.getUrl(uri);
+      req.followRedirects = false;
+      req.headers.set('User-Agent', 'Kitzi-ABS-Player/1.0 (Flutter)');
+      _currentCustomHeaders().forEach((k, v) => req.headers.set(k, v));
+      final resp = await req.close().timeout(const Duration(seconds: 15));
+      final cookies =
+          resp.cookies.map((c) => '${c.name}=${c.value}').join('; ');
+      final location = resp.headers.value(HttpHeaders.locationHeader);
+      await resp.drain<void>();
+      if (location == null || location.isEmpty) return null;
+      return (authUrl: location, cookies: cookies);
+    } catch (_) {
+      return null;
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  /// Step 2: exchange the authorization `code` (returned to our custom-scheme
+  /// redirect) at `/auth/openid/callback`, replaying the cookies from step 1.
+  /// Stores the returned access/refresh tokens just like password login.
+  Future<bool> openIdComplete({
+    required String baseUrl,
+    required String code,
+    required String state,
+    required String codeVerifier,
+    required String cookies,
+  }) async {
+    final uri =
+        Uri.parse('$baseUrl/auth/openid/callback').replace(queryParameters: {
+      'state': state,
+      'code': code,
+      'code_verifier': codeVerifier,
+    });
+    final client = HttpClient();
+    try {
+      final req = await client.getUrl(uri);
+      req.headers.set('User-Agent', 'Kitzi-ABS-Player/1.0 (Flutter)');
+      req.headers.set('x-return-tokens', 'true');
+      if (cookies.isNotEmpty) req.headers.set('cookie', cookies);
+      _currentCustomHeaders().forEach((k, v) => req.headers.set(k, v));
+      final resp = await req.close().timeout(const Duration(seconds: 20));
+      if (resp.statusCode != 200) {
+        await resp.drain<void>();
+        return false;
+      }
+      final body = await resp.transform(utf8.decoder).join();
+      final data = jsonDecode(body) as Map<String, dynamic>;
+      await setBaseUrl(baseUrl);
+      final user = data['user'] as Map<String, dynamic>?;
+      final access = (user?['accessToken'] ??
+          data['accessToken'] ??
+          user?['token']) as String?;
+      final refresh =
+          (user?['refreshToken'] ?? data['refreshToken']) as String?;
+      if (access == null) return false;
+      final assumedExpiry = DateTime.now().toUtc().add(
+            (refresh == null || refresh.isEmpty)
+                ? const Duration(hours: 1)
+                : const Duration(hours: 12),
+          );
+      await _setAccessToken(access, assumedExpiry);
+      if (refresh != null && refresh.isNotEmpty) {
+        await _setRefreshToken(refresh);
+      }
+      return true;
+    } catch (_) {
+      return false;
+    } finally {
+      client.close(force: true);
     }
   }
 }

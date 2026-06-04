@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui' show ImageFilter;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -49,19 +50,24 @@ class _MiniPlayerState extends State<MiniPlayer> {
           });
         }
         final seed = pd?.primary ?? pd?.secondary ?? cs.primary;
-        final tintA = Color.alphaBlend(
-            seed.withOpacity(dark ? 0.34 : 0.20), cs.surfaceContainerHigh);
-        final tintB = Color.alphaBlend(
-            seed.withOpacity(dark ? 0.16 : 0.06), cs.surfaceContainerHigh);
+        // Aurora Glass: a translucent frosted base (white in light, near-black
+        // in dark) that lets the home content blur through, washed with a faint
+        // diagonal tint from the cover so each book still feels distinct.
+        final base = dark ? const Color(0xFF14141C) : Colors.white;
+        final glassA = Color.lerp(base, seed, dark ? 0.22 : 0.13)!
+            .withOpacity(dark ? 0.58 : 0.52);
+        final glassB = Color.lerp(base, seed, dark ? 0.10 : 0.05)!
+            .withOpacity(dark ? 0.50 : 0.44);
 
         return ValueListenableBuilder<bool>(
           valueListenable: UiPrefs.miniPlayerCollapsed,
           builder: (context, collapsed, __) {
             if (collapsed) {
-              return _collapsedPill(context, np, playback, cs, tintA, tintB);
+              return _collapsedPill(
+                  context, np, playback, cs, dark, glassA, glassB);
             }
             return _expandedBar(
-                context, np, playback, cs, text, tintA, tintB);
+                context, np, playback, cs, text, dark, glassA, glassB);
           },
         );
       },
@@ -70,22 +76,14 @@ class _MiniPlayerState extends State<MiniPlayer> {
 
   Widget _expandedBar(BuildContext context, NowPlaying np,
       PlaybackRepository playback, ColorScheme cs, TextTheme text,
-      Color tintA, Color tintB) {
-    return Material(
-      color: cs.surfaceContainerHigh,
-      elevation: 1,
-      shadowColor: cs.shadow.withOpacity(0.12),
-      surfaceTintColor: Colors.transparent,
-      borderRadius: BorderRadius.circular(37),
-      clipBehavior: Clip.antiAlias,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-            colors: [tintA, tintB],
-          ),
-        ),
+      bool dark, Color glassA, Color glassB) {
+    return _glassShell(
+      radius: 28,
+      dark: dark,
+      glassA: glassA,
+      glassB: glassB,
+      child: Material(
+        type: MaterialType.transparency,
         child: InkWell(
           onTap: () => FullPlayerPage.openOnce(context),
           child: SizedBox(
@@ -105,7 +103,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                   const SizedBox(width: 4),
                   _backButton(playback, cs),
                   const SizedBox(width: 2),
-                  _playButton(context, playback, np, cs),
+                  _playButton(context, playback, np, cs, dark),
                 ],
               ),
             ),
@@ -115,15 +113,85 @@ class _MiniPlayerState extends State<MiniPlayer> {
     );
   }
 
+  /// The floating frosted-glass surface shared by both mini-player states:
+  /// a soft drop shadow (so it hovers above the page), a [BackdropFilter] that
+  /// blurs the content behind it, a translucent tinted fill, and a bright
+  /// hairline edge. This is the "Aurora Glass" look.
+  Widget _glassShell({
+    required double radius,
+    required bool dark,
+    required Color glassA,
+    required Color glassB,
+    required Widget child,
+  }) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(radius),
+        boxShadow: [
+          BoxShadow(
+            color: dark
+                ? Colors.black.withOpacity(0.50)
+                : const Color(0xFF2D285A).withOpacity(0.30),
+            blurRadius: dark ? 30 : 34,
+            spreadRadius: dark ? -8 : -10,
+            offset: const Offset(0, 13),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(radius),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(radius),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [glassA, glassB],
+              ),
+              border: Border.all(
+                color: dark
+                    ? Colors.white.withOpacity(0.12)
+                    : Colors.white.withOpacity(0.70),
+                width: 0.8,
+              ),
+            ),
+            child: child,
+          ),
+        ),
+      ),
+    );
+  }
+
+  LinearGradient _playGradient(ColorScheme cs) => LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [cs.primary, Color.lerp(cs.primary, Colors.black, 0.28)!],
+      );
+
+  List<BoxShadow> _playShadow(ColorScheme cs, bool dark) => dark
+      ? const []
+      : [
+          BoxShadow(
+            color: cs.primary.withOpacity(0.50),
+            blurRadius: 18,
+            spreadRadius: -4,
+            offset: const Offset(0, 8),
+          ),
+        ];
+
   /// Collapsed state: a small left-aligned pill — the cover with a progress
   /// ring, and a play/pause button beside it. Tapping the pill body (cover /
   /// empty space) expands the bar again; the play button toggles playback.
   Widget _collapsedPill(BuildContext context, NowPlaying np,
-      PlaybackRepository playback, ColorScheme cs, Color tintA, Color tintB) {
+      PlaybackRepository playback, ColorScheme cs, bool dark, Color glassA,
+      Color glassB) {
     const cover = 50.0;
     const ring = 56.0;
     // Same height + padding as the expanded bar, left-aligned, so collapsing
-    // reads as the bar shrinking in place rather than moving.
+    // reads as the bar shrinking in place rather than moving. Shares the same
+    // Aurora Glass surface so the float/frost is consistent.
     return SizedBox(
       height: widget.height,
       child: Align(
@@ -131,96 +199,91 @@ class _MiniPlayerState extends State<MiniPlayer> {
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: () => UiPrefs.setMiniPlayerCollapsed(false),
-          child: Material(
-            color: cs.surfaceContainerHigh,
-            elevation: 1,
-            shadowColor: cs.shadow.withOpacity(0.12),
-            surfaceTintColor: Colors.transparent,
-            borderRadius: BorderRadius.circular(widget.height / 2),
-            clipBehavior: Clip.antiAlias,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
-                  colors: [tintA, tintB],
-                ),
-              ),
-              child: SizedBox(
-                height: widget.height,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(13, 8, 12, 8),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      SizedBox(
-                        width: ring,
-                        height: ring,
-                        child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        ValueListenableBuilder<Duration>(
-                          valueListenable: playback.currentPosition,
-                          builder: (_, curPos, __) {
-                            final pos = playback.globalBookPosition ?? curPos;
-                            final total = playback.totalBookDuration;
-                            final frac =
-                                (total != null && total.inMilliseconds > 0)
-                                    ? (pos.inMilliseconds /
-                                            total.inMilliseconds)
-                                        .clamp(0.0, 1.0)
-                                    : 0.0;
-                            return CustomPaint(
-                              size: const Size(ring, ring),
-                              painter: _RingPainter(
-                                frac,
-                                cs.primary,
-                                cs.onSurface.withOpacity(0.18),
-                              ),
-                            );
-                          },
-                        ),
-                        ClipOval(
-                          child: _MiniCover(url: np.coverUrl, size: cover),
-                        ),
-                      ],
+          child: _glassShell(
+            radius: widget.height / 2,
+            dark: dark,
+            glassA: glassA,
+            glassB: glassB,
+            child: SizedBox(
+              height: widget.height,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(13, 8, 12, 8),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: ring,
+                      height: ring,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          ValueListenableBuilder<Duration>(
+                            valueListenable: playback.currentPosition,
+                            builder: (_, curPos, __) {
+                              final pos =
+                                  playback.globalBookPosition ?? curPos;
+                              final total = playback.totalBookDuration;
+                              final frac =
+                                  (total != null && total.inMilliseconds > 0)
+                                      ? (pos.inMilliseconds /
+                                              total.inMilliseconds)
+                                          .clamp(0.0, 1.0)
+                                      : 0.0;
+                              return CustomPaint(
+                                size: const Size(ring, ring),
+                                painter: _RingPainter(
+                                  frac,
+                                  cs.primary,
+                                  cs.onSurface.withOpacity(0.18),
+                                ),
+                              );
+                            },
+                          ),
+                          ClipOval(
+                            child: _MiniCover(url: np.coverUrl, size: cover),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  StreamBuilder<bool>(
-                    stream: playback.playingStream,
-                    initialData: playback.player.playing,
-                    builder: (_, snap) {
-                      final isPlaying = snap.data ?? false;
-                      return Material(
-                        color: isPlaying
-                            ? cs.primary
-                            : cs.primary.withOpacity(0.16),
-                        shape: const CircleBorder(),
-                        child: InkWell(
-                          customBorder: const CircleBorder(),
-                          onTap: () async {
-                            if (isPlaying) {
-                              await playback.pause();
-                            } else {
-                              await playback.resume(context: context);
-                            }
-                          },
-                          child: SizedBox(
-                            width: 46,
-                            height: 46,
-                            child: Icon(
-                              isPlaying ? LucideIcons.pause : LucideIcons.play,
-                              size: 25,
-                              color: isPlaying ? cs.onPrimary : cs.primary,
+                    const SizedBox(width: 12),
+                    StreamBuilder<bool>(
+                      stream: playback.playingStream,
+                      initialData: playback.player.playing,
+                      builder: (_, snap) {
+                        final isPlaying = snap.data ?? false;
+                        return Container(
+                          width: 46,
+                          height: 46,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: _playGradient(cs),
+                            boxShadow: _playShadow(cs, dark),
+                          ),
+                          child: Material(
+                            color: Colors.transparent,
+                            shape: const CircleBorder(),
+                            child: InkWell(
+                              customBorder: const CircleBorder(),
+                              onTap: () async {
+                                if (isPlaying) {
+                                  await playback.pause();
+                                } else {
+                                  await playback.resume(context: context);
+                                }
+                              },
+                              child: Icon(
+                                isPlaying
+                                    ? LucideIcons.pause
+                                    : LucideIcons.play,
+                                size: 24,
+                                color: Colors.white,
+                              ),
                             ),
                           ),
-                        ),
-                      );
-                    },
-                  ),
-                    ],
-                  ),
+                        );
+                      },
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -335,53 +398,55 @@ class _MiniPlayerState extends State<MiniPlayer> {
   }
 
   Widget _playButton(BuildContext context, PlaybackRepository playback,
-      NowPlaying np, ColorScheme cs) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
+      NowPlaying np, ColorScheme cs, bool dark) {
     return StreamBuilder<bool>(
       stream: playback.playingStream,
       initialData: playback.player.playing,
       builder: (_, playSnap) {
         final isPlaying = playSnap.data ?? false;
-        return Material(
-          color: isPlaying ? cs.primary : cs.primary.withOpacity(0.16),
-          shape: const CircleBorder(),
-          elevation: (isPlaying && !dark) ? 2 : 0,
-          shadowColor: dark ? Colors.transparent : cs.primary.withOpacity(0.3),
-          child: InkWell(
-            customBorder: const CircleBorder(),
-            onTap: () async {
-              if (isPlaying) {
-                await playback.pause();
-                return;
-              }
-              bool success = await playback.resume(context: context);
-              if (!success) {
-                try {
-                  await playback.warmLoadLastItem(playAfterLoad: true);
-                  success = true;
-                } catch (_) {
-                  success = false;
+        return Container(
+          width: 46,
+          height: 46,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: _playGradient(cs),
+            boxShadow: _playShadow(cs, dark),
+          ),
+          child: Material(
+            color: Colors.transparent,
+            shape: const CircleBorder(),
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: () async {
+                if (isPlaying) {
+                  await playback.pause();
+                  return;
                 }
-              }
-              if (!success && context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                        'Cannot play: server unavailable and sync progress is required'),
-                    duration: Duration(seconds: 4),
-                  ),
-                );
-              } else if (success && context.mounted) {
-                await FullPlayerPage.openOnce(context);
-              }
-            },
-            child: SizedBox(
-              width: 46,
-              height: 46,
+                bool success = await playback.resume(context: context);
+                if (!success) {
+                  try {
+                    await playback.warmLoadLastItem(playAfterLoad: true);
+                    success = true;
+                  } catch (_) {
+                    success = false;
+                  }
+                }
+                if (!success && context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                          'Cannot play: server unavailable and sync progress is required'),
+                      duration: Duration(seconds: 4),
+                    ),
+                  );
+                } else if (success && context.mounted) {
+                  await FullPlayerPage.openOnce(context);
+                }
+              },
               child: Icon(
                 isPlaying ? LucideIcons.pause : LucideIcons.play,
                 size: 25,
-                color: isPlaying ? cs.onPrimary : cs.primary,
+                color: Colors.white,
               ),
             ),
           ),

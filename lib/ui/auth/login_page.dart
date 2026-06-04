@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import '../../main.dart';
+import '../login/login_screen.dart';
+
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key, this.onRetryCheck});
 
@@ -28,34 +31,35 @@ class _LoginPageState extends State<LoginPage> {
                 Text('You’re signed out', style: text.headlineSmall),
                 const SizedBox(height: 8),
                 Text(
-                  'Please open Settings and sign in to your Audiobookshelf server. '
-                      'When you’re done, return here and tap Retry.',
+                  'Sign in again to your Audiobookshelf server. '
+                      'Password and SSO are both supported.',
                   style: text.bodyMedium,
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 20),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () {
-                          // If your app already has a settings route, push it.
-                          // Adjust the route name if different in your app.
-                          Navigator.of(context).pushNamed('/settings');
-                        },
-                        icon: const Icon(LucideIcons.settings),
-                        label: const Text('Open Settings'),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed: widget.onRetryCheck,
-                        icon: const Icon(LucideIcons.refreshCw),
-                        label: const Text('Retry'),
-                      ),
-                    ),
-                  ],
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () {
+                      final auth = ServicesScope.of(context).services.auth;
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => LoginScreen(auth: auth),
+                        ),
+                      );
+                    },
+                    icon: const Icon(LucideIcons.logIn),
+                    label: const Text('Sign in'),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: widget.onRetryCheck,
+                    icon: const Icon(LucideIcons.refreshCw),
+                    label: const Text('Retry'),
+                  ),
                 ),
               ],
             ),
