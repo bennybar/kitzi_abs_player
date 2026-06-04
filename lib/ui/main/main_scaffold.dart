@@ -313,17 +313,9 @@ class _MainScaffoldState extends State<MainScaffold> {
                       duration: const Duration(milliseconds: 320),
                       curve: const Cubic(0.05, 0.7, 0.1, 1.0),
                       child: hasMini
-                          ? Padding(
-                              padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
-                              child: Material(
-                                color: cs.surfaceContainerHigh,
-                                elevation: 1,
-                                shadowColor: cs.shadow.withOpacity(0.12),
-                                surfaceTintColor: Colors.transparent,
-                                borderRadius: BorderRadius.circular(37),
-                                clipBehavior: Clip.antiAlias,
-                                child: const MiniPlayer(height: 74),
-                              ),
+                          ? const Padding(
+                              padding: EdgeInsets.fromLTRB(8, 8, 8, 10),
+                              child: MiniPlayer(height: 74),
                             )
                           : const SizedBox.shrink(),
                     ),

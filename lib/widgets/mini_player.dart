@@ -54,40 +54,179 @@ class _MiniPlayerState extends State<MiniPlayer> {
         final tintB = Color.alphaBlend(
             seed.withOpacity(dark ? 0.16 : 0.06), cs.surfaceContainerHigh);
 
-        return DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.centerLeft,
-              end: Alignment.centerRight,
-              colors: [tintA, tintB],
+        return ValueListenableBuilder<bool>(
+          valueListenable: UiPrefs.miniPlayerCollapsed,
+          builder: (context, collapsed, __) {
+            if (collapsed) {
+              return _collapsedPill(context, np, playback, cs, tintA, tintB);
+            }
+            return _expandedBar(
+                context, np, playback, cs, text, tintA, tintB);
+          },
+        );
+      },
+    );
+  }
+
+  Widget _expandedBar(BuildContext context, NowPlaying np,
+      PlaybackRepository playback, ColorScheme cs, TextTheme text,
+      Color tintA, Color tintB) {
+    return Material(
+      color: cs.surfaceContainerHigh,
+      elevation: 1,
+      shadowColor: cs.shadow.withOpacity(0.12),
+      surfaceTintColor: Colors.transparent,
+      borderRadius: BorderRadius.circular(37),
+      clipBehavior: Clip.antiAlias,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+            colors: [tintA, tintB],
+          ),
+        ),
+        child: InkWell(
+          onTap: () => FullPlayerPage.openOnce(context),
+          child: SizedBox(
+            height: widget.height,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(13, 8, 12, 8),
+              child: Row(
+                children: [
+                  // Tap the cover to collapse into the side orb.
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => UiPrefs.setMiniPlayerCollapsed(true),
+                    child: _cover(np, cs),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(child: _titleAndWave(np, playback, cs, text)),
+                  const SizedBox(width: 4),
+                  _backButton(playback, cs),
+                  const SizedBox(width: 2),
+                  _playButton(context, playback, np, cs),
+                ],
+              ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  /// Collapsed state: a small left-aligned pill — the cover with a progress
+  /// ring, and a play/pause button beside it. Tapping the pill body (cover /
+  /// empty space) expands the bar again; the play button toggles playback.
+  Widget _collapsedPill(BuildContext context, NowPlaying np,
+      PlaybackRepository playback, ColorScheme cs, Color tintA, Color tintB) {
+    const cover = 50.0;
+    const ring = 56.0;
+    // Same height + padding as the expanded bar, left-aligned, so collapsing
+    // reads as the bar shrinking in place rather than moving.
+    return SizedBox(
+      height: widget.height,
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => UiPrefs.setMiniPlayerCollapsed(false),
           child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: () => FullPlayerPage.openOnce(context),
+            color: cs.surfaceContainerHigh,
+            elevation: 1,
+            shadowColor: cs.shadow.withOpacity(0.12),
+            surfaceTintColor: Colors.transparent,
+            borderRadius: BorderRadius.circular(widget.height / 2),
+            clipBehavior: Clip.antiAlias,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                  colors: [tintA, tintB],
+                ),
+              ),
               child: SizedBox(
                 height: widget.height,
                 child: Padding(
-                  // Wide bar, with a little breathing room at the edges.
                   padding: const EdgeInsets.fromLTRB(13, 8, 12, 8),
                   child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      _cover(np, cs),
-                      const SizedBox(width: 12),
-                      Expanded(child: _titleAndWave(np, playback, cs, text)),
-                      const SizedBox(width: 4),
-                      _backButton(playback, cs),
-                      const SizedBox(width: 2),
-                      _playButton(context, playback, np, cs),
+                      SizedBox(
+                        width: ring,
+                        height: ring,
+                        child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        ValueListenableBuilder<Duration>(
+                          valueListenable: playback.currentPosition,
+                          builder: (_, curPos, __) {
+                            final pos = playback.globalBookPosition ?? curPos;
+                            final total = playback.totalBookDuration;
+                            final frac =
+                                (total != null && total.inMilliseconds > 0)
+                                    ? (pos.inMilliseconds /
+                                            total.inMilliseconds)
+                                        .clamp(0.0, 1.0)
+                                    : 0.0;
+                            return CustomPaint(
+                              size: const Size(ring, ring),
+                              painter: _RingPainter(
+                                frac,
+                                cs.primary,
+                                cs.onSurface.withOpacity(0.18),
+                              ),
+                            );
+                          },
+                        ),
+                        ClipOval(
+                          child: _MiniCover(url: np.coverUrl, size: cover),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  StreamBuilder<bool>(
+                    stream: playback.playingStream,
+                    initialData: playback.player.playing,
+                    builder: (_, snap) {
+                      final isPlaying = snap.data ?? false;
+                      return Material(
+                        color: isPlaying
+                            ? cs.primary
+                            : cs.primary.withOpacity(0.16),
+                        shape: const CircleBorder(),
+                        child: InkWell(
+                          customBorder: const CircleBorder(),
+                          onTap: () async {
+                            if (isPlaying) {
+                              await playback.pause();
+                            } else {
+                              await playback.resume(context: context);
+                            }
+                          },
+                          child: SizedBox(
+                            width: 46,
+                            height: 46,
+                            child: Icon(
+                              isPlaying ? LucideIcons.pause : LucideIcons.play,
+                              size: 25,
+                              color: isPlaying ? cs.onPrimary : cs.primary,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
                     ],
                   ),
                 ),
               ),
             ),
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 
@@ -333,6 +472,44 @@ class _WavePainter extends CustomPainter {
       old.seed != seed ||
       old.played != played ||
       old.unplayed != unplayed;
+}
+
+/// Circular progress ring drawn around the collapsed orb.
+class _RingPainter extends CustomPainter {
+  _RingPainter(this.fraction, this.played, this.track);
+  final double fraction;
+  final Color played;
+  final Color track;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const stroke = 3.0;
+    final c = Offset(size.width / 2, size.height / 2);
+    final r = (size.width - stroke) / 2;
+    final base = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke
+      ..color = track;
+    canvas.drawCircle(c, r, base);
+    final arc = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke
+      ..strokeCap = StrokeCap.round
+      ..color = played;
+    canvas.drawArc(
+      Rect.fromCircle(center: c, radius: r),
+      -1.5707963, // start at top (-90°)
+      6.2831853 * fraction.clamp(0.0, 1.0),
+      false,
+      arc,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _RingPainter old) =>
+      old.fraction != fraction ||
+      old.played != played ||
+      old.track != track;
 }
 
 class _MiniCover extends StatelessWidget {

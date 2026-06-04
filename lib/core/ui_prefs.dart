@@ -16,6 +16,7 @@ class UiPrefs {
   static final ValueNotifier<bool> letterScrollBooksAlpha = ValueNotifier<bool>(false);
   static final ValueNotifier<ProgressPrimary> progressPrimary = ValueNotifier<ProgressPrimary>(ProgressPrimary.book);
   static final ValueNotifier<bool> playerGradientBackground = ValueNotifier<bool>(false);
+  static final ValueNotifier<bool> miniPlayerCollapsed = ValueNotifier<bool>(false);
   static final ValueNotifier<bool> progressBarChapterized = ValueNotifier<bool>(true); // Default to true
   static final ValueNotifier<PlayerCoverSize> playerCoverSize =
       ValueNotifier<PlayerCoverSize>(PlayerCoverSize.large);
@@ -32,6 +33,7 @@ class UiPrefs {
   static const String _kLetterScrollBooksAlpha = 'ui_letter_scroll_books_alpha';
   static const String _kProgressPrimary = 'ui_progress_primary';
   static const String _kPlayerGradient = 'ui_player_gradient_background';
+  static const String _kMiniCollapsed = 'ui_mini_player_collapsed';
   static const String _kProgressBarChapterized = 'ui_progress_bar_chapterized';
   static const String _kPlayerCoverSize = 'ui_player_cover_size';
   static const String _kHideSeriesWhenSameAsAuthor = 'ui_hide_series_when_same_as_author';
@@ -50,6 +52,7 @@ class UiPrefs {
       letterScrollBooksAlpha.value = prefs.getBool(_kLetterScrollBooksAlpha) ?? false;
       progressPrimary.value = _parseProgressPrimary(prefs.getString(_kProgressPrimary));
       playerGradientBackground.value = prefs.getBool(_kPlayerGradient) ?? true;
+      miniPlayerCollapsed.value = prefs.getBool(_kMiniCollapsed) ?? false;
       progressBarChapterized.value = prefs.getBool(_kProgressBarChapterized) ?? true;
       playerCoverSize.value = _parseCoverSize(prefs.getString(_kPlayerCoverSize));
       hideSeriesWhenSameAsAuthor.value = prefs.getBool(_kHideSeriesWhenSameAsAuthor) ?? true;
@@ -69,6 +72,14 @@ class UiPrefs {
     } catch (_) {}
     fullPlayerAsTab.value = value;
     if (pinToSettingsOnChange) pinSettings.value = true;
+  }
+
+  static Future<void> setMiniPlayerCollapsed(bool value) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_kMiniCollapsed, value);
+    } catch (_) {}
+    miniPlayerCollapsed.value = value;
   }
 
   static Future<void> setSeriesVisible(bool value, {bool pinToSettingsOnChange = false}) async {
