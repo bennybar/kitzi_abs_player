@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
-import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
@@ -393,26 +392,26 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
     try {
       final repo = await _repoFut;
 
-      // Paint instantly from local data so opening the view (or the Series
-      // drawer) never blocks on the network — the server fetch below then
-      // upgrades the list in place.
+      // Paint instantly from the persisted series cache so opening the view
+      // never blocks on the network; the server refresh below updates it.
       if (initial && _series.isEmpty) {
         try {
-          final all = await _loadAllBooksFromDb(repo);
+          final cached = await repo.getCachedSeries();
           if (!mounted) return;
-          if (all.isNotEmpty) {
-            _processBooksDataFallback(all);
-            setState(() => _loading = false);
+          if (cached.isNotEmpty) {
+            setState(() {
+              _series = cached;
+              _loading = false;
+            });
           }
         } catch (_) {}
       }
 
       // For series, use the direct series API
       if (_isOnline) {
-        // Fetch series directly from server
-        // Fetching series from server
-        final series = await repo.getAllSeries(sort: 'name', desc: false);
-        // Fetched series from server
+        // Silent background refresh from the server (persists to the cache).
+        final series =
+            await repo.refreshSeriesFromServer(sort: 'name', desc: false);
 
         if (!mounted) return;
         setState(() {
@@ -2125,27 +2124,51 @@ class _SeriesSheetState extends State<SeriesSheet> {
     try {
       final repo = await _repoFut;
       _repo = repo;
-      // Prefer the authoritative server list (same source as the Series tab, so
-      // the full set of series shows) and fall back to the local grouping when
-      // offline. We render once — after it resolves — so the list never visibly
-      // re-shuffles the way a local-then-server swap did.
-      List<Series> result;
-      try {
-        final online = await repo.getAllSeries(sort: 'name', desc: false);
-        result = online.isNotEmpty ? online : await _localSeries(repo);
-      } catch (_) {
-        result = await _localSeries(repo);
+
+      // 1) Instant: persisted series cache (survives restarts, works offline).
+      final cached = await repo.getCachedSeries();
+      if (mounted && cached.isNotEmpty) {
+        setState(() {
+          _series = _byName(cached);
+          _loading = false;
+        });
       }
-      result.sort(
-          (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
-      if (!mounted) return;
-      setState(() {
-        _series = result;
-        _loading = false;
-      });
+
+      // 2) Silent background refresh from the server. Same source/order as the
+      // cache, and items are keyed by id, so unchanged lists don't re-shuffle.
+      try {
+        final fresh = await repo.refreshSeriesFromServer(sort: 'name');
+        if (mounted && fresh.isNotEmpty) {
+          final sorted = _byName(fresh);
+          if (!_sameSeriesOrder(sorted, _series)) {
+            setState(() => _series = sorted);
+          }
+        }
+      } catch (_) {}
+
+      // 3) Fallback to local grouping if we still have nothing.
+      if (mounted && _series.isEmpty) {
+        final local = await _localSeries(repo);
+        if (mounted) setState(() => _series = local);
+      }
+      if (mounted && _loading) setState(() => _loading = false);
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  List<Series> _byName(List<Series> s) {
+    final list = List<Series>.from(s)
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    return list;
+  }
+
+  bool _sameSeriesOrder(List<Series> a, List<Series> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].id != b[i].id || a[i].numBooks != b[i].numBooks) return false;
+    }
+    return true;
   }
 
   Future<List<Series>> _localSeries(BooksRepository repo) async {

@@ -94,6 +94,7 @@ class BooksRepository {
   static const _cacheKey = 'books_list_cache_json';
   static const _libIdKey = 'books_library_id';
   static const _cacheMetadataKey = 'books_cache_metadata';
+  static const _seriesCacheJsonKey = 'series_list_cache_json';
 
   Future<String> _ensureLibraryId() async {
     final cached = _prefs.getString(_libIdKey);
@@ -318,6 +319,8 @@ class BooksRepository {
       await prefs.remove(_etagKey);
       await prefs.remove(_cacheKey);
       await prefs.remove(_libIdKey);
+      await prefs.remove(_seriesCacheJsonKey);
+      _seriesCache = null;
     } catch (_) {}
 
     // Clear DB contents even if another connection is open (current library only)
@@ -561,6 +564,8 @@ class BooksRepository {
       await _prefs.remove(_etagKey);
       await _prefs.remove(_cacheKey);
       await _prefs.remove(_cacheMetadataKey);
+      await _prefs.remove(_seriesCacheJsonKey);
+      _seriesCache = null;
       for (final k in _prefs.getKeys()) {
         if (k.startsWith('books_etag_') || k.startsWith('books_last_sync_')) {
           await _prefs.remove(k);
@@ -1681,43 +1686,67 @@ class BooksRepository {
   }
 
   /// Get all series as Series objects
-  // In-memory cache for the (expensive, paginated) series list. Static so it
-  // survives short-lived repository instances (e.g. the Series drawer creates a
-  // fresh repo each open). Keyed by library + sort/filter; honours _cacheTTL.
+  // Warm in-memory copy of the series list, mirrored to prefs so it also
+  // survives app restarts. Static so it persists across the short-lived repo
+  // instances the Series drawer creates.
   static List<Series>? _seriesCache;
-  static DateTime? _seriesCacheAt;
-  static String? _seriesCacheKey;
   // Books we've already tried to backfill a release-year for this session, so we
   // don't re-hit the network for year-less books on every series open.
   static final Set<String> _yearBackfillTried = <String>{};
 
+  /// Series from the persisted cache — instant and available offline / at cold
+  /// start. Returns empty if nothing has been cached yet.
+  Future<List<Series>> getCachedSeries() async {
+    final mem = _seriesCache;
+    if (mem != null && mem.isNotEmpty) return mem;
+    try {
+      final raw = _prefs.getString(_seriesCacheJsonKey);
+      if (raw == null || raw.isEmpty) return <Series>[];
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return <Series>[];
+      final data = decoded
+          .whereType<Map>()
+          .map((e) => e.cast<String, dynamic>())
+          .toList();
+      final objs = await _seriesToObjects(data);
+      _seriesCache = objs;
+      return objs;
+    } catch (_) {
+      return <Series>[];
+    }
+  }
+
+  /// Fetch the series list from the server, persist it to prefs, and return it.
+  Future<List<Series>> refreshSeriesFromServer({
+    String sort = 'name',
+    bool desc = false,
+    String filter = 'all',
+  }) async {
+    final seriesData =
+        await fetchAllSeries(sort: sort, desc: desc, filter: filter);
+    final objs = await _seriesToObjects(seriesData);
+    if (seriesData.isNotEmpty) {
+      _seriesCache = objs;
+      try {
+        await _prefs.setString(_seriesCacheJsonKey, jsonEncode(seriesData));
+      } catch (_) {}
+    }
+    return objs;
+  }
+
+  /// Cache-first series list: the persisted copy if present, otherwise a fetch.
   Future<List<Series>> getAllSeries({
     String sort = 'name',
     bool desc = false,
     String filter = 'all',
   }) async {
-    final libId = _prefs.getString(_libIdKey) ?? '';
-    final key = '$libId|$sort|$desc|$filter';
-    final cached = _seriesCache;
-    final at = _seriesCacheAt;
-    if (cached != null &&
-        _seriesCacheKey == key &&
-        at != null &&
-        DateTime.now().difference(at) < _cacheTTL) {
-      return cached;
-    }
+    final cached = await getCachedSeries();
+    if (cached.isNotEmpty) return cached;
     try {
-      final seriesData = await fetchAllSeries(sort: sort, desc: desc, filter: filter);
-      final objs = await _seriesToObjects(seriesData);
-      if (objs.isNotEmpty) {
-        _seriesCache = objs;
-        _seriesCacheAt = DateTime.now();
-        _seriesCacheKey = key;
-      }
-      return objs;
+      return await refreshSeriesFromServer(sort: sort, desc: desc, filter: filter);
     } catch (e) {
       _log('[BOOKS] getAllSeries error: $e');
-      return cached ?? <Series>[]; // fall back to stale cache on error
+      return cached;
     }
   }
 
