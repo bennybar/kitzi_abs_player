@@ -445,6 +445,20 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
     try {
       final repo = await _repoFut;
 
+      // Paint instantly from local data so opening the view (or the Series
+      // drawer) never blocks on the network — the server fetch below then
+      // upgrades the list in place.
+      if (initial && _series.isEmpty) {
+        try {
+          final all = await _loadAllBooksFromDb(repo);
+          if (!mounted) return;
+          if (all.isNotEmpty) {
+            _processBooksDataFallback(all);
+            setState(() => _loading = false);
+          }
+        } catch (_) {}
+      }
+
       // For series, use the direct series API
       if (_isOnline) {
         // Fetch series directly from server
@@ -454,7 +468,7 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
 
         if (!mounted) return;
         setState(() {
-          _series = series;
+          if (series.isNotEmpty) _series = series;
           _loading = false;
         });
 
@@ -769,6 +783,11 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
                     child: IconButton(
                       tooltip: 'Search',
                       onPressed: _toggleSearch,
+                      iconSize: 20,
+                      padding: EdgeInsets.zero,
+                      visualDensity: VisualDensity.compact,
+                      constraints:
+                          const BoxConstraints.tightFor(width: 36, height: 36),
                       icon: Icon(
                         _searchVisible
                             ? LucideIcons.searchX
@@ -794,6 +813,11 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
                       child: IconButton(
                         tooltip: 'Series options',
                         onPressed: _showSeriesOptions,
+                        iconSize: 20,
+                        padding: EdgeInsets.zero,
+                        visualDensity: VisualDensity.compact,
+                        constraints: const BoxConstraints.tightFor(
+                            width: 36, height: 36),
                         icon: const Icon(LucideIcons.slidersHorizontal),
                         style: IconButton.styleFrom(
                           backgroundColor: Colors.transparent,

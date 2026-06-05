@@ -1230,6 +1230,64 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
     return 'about $pages pages';
   }
 
+  /// Pill used in the header. [expand] makes it fill its slot (so the
+  /// Audiobooks / Series buttons render at the same size side by side).
+  Widget _headerPill(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    VoidCallback? onTap,
+    bool expand = false,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    return Material(
+      color: Color.alphaBlend(cs.primary.withOpacity(0.12), cs.surface),
+      borderRadius: BorderRadius.circular(999),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+          child: Row(
+            mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: cs.primary, size: 16),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        color: cs.onSurface,
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _openSeriesDrawer(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => FractionallySizedBox(
+        heightFactor: 0.92,
+        child: ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          child: const SeriesPage(),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -1260,104 +1318,46 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                   elevation: 0,
                   toolbarHeight: 72,
                   titleSpacing: 20,
-                  title: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Color.alphaBlend(
-                            cs.primary.withOpacity(0.12),
-                            cs.surface,
-                          ),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
+                  title: ValueListenableBuilder<bool>(
+                    valueListenable: UiPrefs.seriesTabVisible,
+                    builder: (context, seriesVisible, __) {
+                      // Series has its own tab — just show the section label.
+                      if (seriesVisible) {
+                        return Row(
                           children: [
-                            Icon(
-                              LucideIcons.activity,
-                              color: cs.primary,
-                              size: 16,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Audiobooks',
-                              style: Theme.of(context).textTheme.labelLarge
-                                  ?.copyWith(
-                                    color: cs.onSurface,
-                                    fontWeight: FontWeight.w700,
-                                  ),
+                            _headerPill(
+                              context,
+                              icon: LucideIcons.activity,
+                              label: 'Audiobooks',
                             ),
                           ],
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          _query.trim().isEmpty ? 'Home' : 'Search',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(
-                            context,
-                          ).textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: -0.3,
-                          ),
-                        ),
-                      ),
-                      // When the Series tab is hidden, offer a quick way into it.
-                      ValueListenableBuilder<bool>(
-                        valueListenable: UiPrefs.seriesTabVisible,
-                        builder: (context, seriesVisible, __) {
-                          if (seriesVisible) return const SizedBox.shrink();
-                          return Padding(
-                            padding: const EdgeInsets.only(left: 8),
-                            child: Material(
-                              color: Color.alphaBlend(
-                                cs.primary.withOpacity(0.12),
-                                cs.surface,
-                              ),
-                              borderRadius: BorderRadius.circular(999),
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(999),
-                                onTap: () => Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (_) => const SeriesPage(),
-                                  ),
-                                ),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 8,
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(LucideIcons.library,
-                                          color: cs.primary, size: 16),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        'Series',
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .labelLarge
-                                            ?.copyWith(
-                                              color: cs.onSurface,
-                                              fontWeight: FontWeight.w700,
-                                            ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
+                        );
+                      }
+                      // No Series tab — show two equal-size buttons; "Series"
+                      // opens a bottom drawer.
+                      return Row(
+                        children: [
+                          Expanded(
+                            child: _headerPill(
+                              context,
+                              icon: LucideIcons.activity,
+                              label: 'Audiobooks',
+                              expand: true,
                             ),
-                          );
-                        },
-                      ),
-                    ],
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _headerPill(
+                              context,
+                              icon: LucideIcons.library,
+                              label: 'Series',
+                              expand: true,
+                              onTap: () => _openSeriesDrawer(context),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
                   ),
                   bottom: PreferredSize(
                     preferredSize: Size.fromHeight(_isOnline ? 0 : 28),
