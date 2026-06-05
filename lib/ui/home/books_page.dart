@@ -1308,6 +1308,55 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                           ),
                         ),
                       ),
+                      // When the Series tab is hidden, offer a quick way into it.
+                      ValueListenableBuilder<bool>(
+                        valueListenable: UiPrefs.seriesTabVisible,
+                        builder: (context, seriesVisible, __) {
+                          if (seriesVisible) return const SizedBox.shrink();
+                          return Padding(
+                            padding: const EdgeInsets.only(left: 8),
+                            child: Material(
+                              color: Color.alphaBlend(
+                                cs.primary.withOpacity(0.12),
+                                cs.surface,
+                              ),
+                              borderRadius: BorderRadius.circular(999),
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(999),
+                                onTap: () => Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => const SeriesPage(),
+                                  ),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 8,
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(LucideIcons.library,
+                                          color: cs.primary, size: 16),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        'Series',
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .labelLarge
+                                            ?.copyWith(
+                                              color: cs.onSurface,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
                     ],
                   ),
                   bottom: PreferredSize(

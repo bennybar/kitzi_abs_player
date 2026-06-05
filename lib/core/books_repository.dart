@@ -1800,30 +1800,38 @@ class BooksRepository {
   }
 
   List<Book> _sortSeriesBooks(List<Book> books, Series series) {
+    // Fallback order when no explicit series sequence is available: by year of
+    // release (oldest first), then title.
+    int byYearThenTitle(Book a, Book b) {
+      final ya = a.publishYear;
+      final yb = b.publishYear;
+      if (ya != null && yb != null && ya != yb) return ya.compareTo(yb);
+      if (ya != null && yb == null) return -1;
+      if (ya == null && yb != null) return 1;
+      return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+    }
+
     books.sort((a, b) {
       final sa = a.seriesSequence;
       final sb = b.seriesSequence;
       final aHasSeq = sa != null && !sa.isNaN;
       final bHasSeq = sb != null && !sb.isNaN;
-      
-      // Primary sort: by seriesSequence if both have it
+
+      // Primary: the series' explicit sequence is the most reliable order.
       if (aHasSeq && bHasSeq) {
         final cmp = sa!.compareTo(sb!);
         if (cmp != 0) return cmp;
-        // If sequences are equal, fall through to title comparison
+        return byYearThenTitle(a, b);
       } else if (aHasSeq && !bHasSeq) {
-        // Books with sequence come before books without
+        // Books with an explicit sequence come before those without.
         return -1;
       } else if (!aHasSeq && bHasSeq) {
-        // Books with sequence come before books without
         return 1;
       }
-      // If neither has sequence, or both have the same sequence, fall through
-      
-      // Secondary sort: by book title (alphabetically)
-      return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+      // Neither has an explicit sequence: fall back to year of release.
+      return byYearThenTitle(a, b);
     });
-    
+
     return books;
   }
 

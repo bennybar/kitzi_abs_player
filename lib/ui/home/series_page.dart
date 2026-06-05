@@ -556,18 +556,9 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
       (seriesMap[normalizedName] ??= <Book>[]).add(b);
     }
 
-    // Sort each series by sequence then title
+    // Sort each series by explicit sequence, else year of release, else title.
     for (final e in seriesMap.entries) {
-      e.value.sort((a, b) {
-        final sa = a.seriesSequence ?? double.nan;
-        final sb = b.seriesSequence ?? double.nan;
-        final aNum = !sa.isNaN;
-        final bNum = !sb.isNaN;
-        if (aNum && bNum) return sa.compareTo(sb);
-        if (aNum && !bNum) return -1;
-        if (!aNum && bNum) return 1;
-        return a.title.toLowerCase().compareTo(b.title.toLowerCase());
-      });
+      e.value.sort(_compareSeriesBooks);
     }
 
     // Convert to Series objects
@@ -2091,6 +2082,29 @@ class _SeriesBookCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Orders books within a series: the explicit series sequence is the most
+/// reliable order; when it's missing, fall back to year of release, then title.
+int _compareSeriesBooks(Book a, Book b) {
+  final sa = a.seriesSequence;
+  final sb = b.seriesSequence;
+  final aHasSeq = sa != null && !sa.isNaN;
+  final bHasSeq = sb != null && !sb.isNaN;
+  if (aHasSeq && bHasSeq) {
+    final cmp = sa!.compareTo(sb!);
+    if (cmp != 0) return cmp;
+  } else if (aHasSeq && !bHasSeq) {
+    return -1;
+  } else if (!aHasSeq && bHasSeq) {
+    return 1;
+  }
+  final ya = a.publishYear;
+  final yb = b.publishYear;
+  if (ya != null && yb != null && ya != yb) return ya.compareTo(yb);
+  if (ya != null && yb == null) return -1;
+  if (ya == null && yb != null) return 1;
+  return a.title.toLowerCase().compareTo(b.title.toLowerCase());
 }
 
 enum _SeriesBookStatus { notStarted, inProgress, completed }
