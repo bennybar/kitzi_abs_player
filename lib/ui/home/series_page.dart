@@ -520,7 +520,7 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
 
     // Sort each series by explicit sequence, else year of release, else title.
     for (final e in seriesMap.entries) {
-      e.value.sort(_compareSeriesBooks);
+      _sortSeriesBookList(e.value);
     }
 
     // Convert to Series objects
@@ -2184,7 +2184,7 @@ class _SeriesSheetState extends State<SeriesSheet> {
       (map[name] ??= <Book>[]).add(b);
     }
     final list = map.entries.map((e) {
-      e.value.sort(_compareSeriesBooks);
+      _sortSeriesBookList(e.value);
       return Series(
         id: 'local_${e.key}',
         name: e.key,
@@ -2296,27 +2296,32 @@ class _SeriesSheetState extends State<SeriesSheet> {
   }
 }
 
-/// Orders books within a series: the explicit series sequence is the most
-/// reliable order; when it's missing, fall back to year of release, then title.
-int _compareSeriesBooks(Book a, Book b) {
-  final sa = a.seriesSequence;
-  final sb = b.seriesSequence;
-  final aHasSeq = sa != null && !sa.isNaN;
-  final bHasSeq = sb != null && !sb.isNaN;
-  if (aHasSeq && bHasSeq) {
-    final cmp = sa.compareTo(sb);
-    if (cmp != 0) return cmp;
-  } else if (aHasSeq && !bHasSeq) {
-    return -1;
-  } else if (!aHasSeq && bHasSeq) {
-    return 1;
-  }
+int _compareByYearThenTitle(Book a, Book b) {
   final ya = a.publishYear;
   final yb = b.publishYear;
   if (ya != null && yb != null && ya != yb) return ya.compareTo(yb);
   if (ya != null && yb == null) return -1;
   if (ya == null && yb != null) return 1;
   return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+}
+
+/// Orders books within a series. The explicit series sequence is authoritative
+/// ONLY when every book has one — a partial sequence is unreliable (it would
+/// shove the few numbered books ahead of un-numbered ones, e.g. book #2 before
+/// an un-numbered book #1), so in that case we fall back to year of release.
+void _sortSeriesBookList(List<Book> books) {
+  final allHaveSeq = books.every((b) {
+    final s = b.seriesSequence;
+    return s != null && !s.isNaN;
+  });
+  if (allHaveSeq) {
+    books.sort((a, b) {
+      final cmp = a.seriesSequence!.compareTo(b.seriesSequence!);
+      return cmp != 0 ? cmp : _compareByYearThenTitle(a, b);
+    });
+  } else {
+    books.sort(_compareByYearThenTitle);
+  }
 }
 
 enum _SeriesBookStatus { notStarted, inProgress, completed }

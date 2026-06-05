@@ -1800,8 +1800,8 @@ class BooksRepository {
   }
 
   List<Book> _sortSeriesBooks(List<Book> books, Series series) {
-    // Fallback order when no explicit series sequence is available: by year of
-    // release (oldest first), then title.
+    // Fallback order when the explicit series sequence isn't reliable: by year
+    // of release (oldest first), then title.
     int byYearThenTitle(Book a, Book b) {
       final ya = a.publishYear;
       final yb = b.publishYear;
@@ -1811,26 +1811,23 @@ class BooksRepository {
       return a.title.toLowerCase().compareTo(b.title.toLowerCase());
     }
 
-    books.sort((a, b) {
-      final sa = a.seriesSequence;
-      final sb = b.seriesSequence;
-      final aHasSeq = sa != null && !sa.isNaN;
-      final bHasSeq = sb != null && !sb.isNaN;
-
-      // Primary: the series' explicit sequence is the most reliable order.
-      if (aHasSeq && bHasSeq) {
-        final cmp = sa!.compareTo(sb!);
-        if (cmp != 0) return cmp;
-        return byYearThenTitle(a, b);
-      } else if (aHasSeq && !bHasSeq) {
-        // Books with an explicit sequence come before those without.
-        return -1;
-      } else if (!aHasSeq && bHasSeq) {
-        return 1;
-      }
-      // Neither has an explicit sequence: fall back to year of release.
-      return byYearThenTitle(a, b);
+    // The explicit sequence is authoritative ONLY when every book has one. A
+    // partial sequence is unreliable: it would push the few numbered books ahead
+    // of un-numbered ones (e.g. book #2 before an un-numbered book #1), so in
+    // that case fall back to year of release.
+    final allHaveSeq = books.every((b) {
+      final s = b.seriesSequence;
+      return s != null && !s.isNaN;
     });
+
+    if (allHaveSeq) {
+      books.sort((a, b) {
+        final cmp = a.seriesSequence!.compareTo(b.seriesSequence!);
+        return cmp != 0 ? cmp : byYearThenTitle(a, b);
+      });
+    } else {
+      books.sort(byYearThenTitle);
+    }
 
     return books;
   }
