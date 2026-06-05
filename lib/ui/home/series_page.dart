@@ -2143,17 +2143,14 @@ class _SeriesSheetState extends State<SeriesSheet> {
     try {
       final repo = await _repoFut;
       _repo = repo;
-      // Paint instantly from local data, then upgrade from the server.
+      // Use the synced local library grouping only: it's complete and stably
+      // name-sorted, so the list doesn't visibly re-shuffle after opening.
       final local = await _localSeries(repo);
       if (!mounted) return;
       setState(() {
         _series = local;
         _loading = false;
       });
-      try {
-        final online = await repo.getAllSeries(sort: 'name', desc: false);
-        if (mounted && online.isNotEmpty) setState(() => _series = online);
-      } catch (_) {}
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
@@ -2297,7 +2294,7 @@ int _compareSeriesBooks(Book a, Book b) {
   final aHasSeq = sa != null && !sa.isNaN;
   final bHasSeq = sb != null && !sb.isNaN;
   if (aHasSeq && bHasSeq) {
-    final cmp = sa!.compareTo(sb!);
+    final cmp = sa.compareTo(sb);
     if (cmp != 0) return cmp;
   } else if (aHasSeq && !bHasSeq) {
     return -1;
