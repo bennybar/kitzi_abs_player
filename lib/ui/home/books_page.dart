@@ -69,6 +69,9 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
   Map<String, _ProgressEntry>? _memoVisibleProgress;
   bool? _memoVisibleIsEbook;
   List<Book> _recentBooks = [];
+  // Throttles the on-resume server refresh so rapid app-switching doesn't fire
+  // a full refetch each time (the cache already paints the UI instantly).
+  DateTime? _lastResumeRefreshAt;
   bool _loading = true;
   String? _error;
   bool _homeStatsLoading = false;
@@ -184,8 +187,15 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
     } else if (state == AppLifecycleState.resumed) {
       // Resume connectivity watch when app comes to foreground
       _startConnectivityWatch();
-      // Refresh books when app returns to foreground to check for new books
-      _refresh();
+      // Refresh books when app returns to foreground to check for new books,
+      // but skip if we refreshed very recently — flipping away and back in
+      // quick succession shouldn't trigger a full refetch each time.
+      final now = DateTime.now();
+      if (_lastResumeRefreshAt == null ||
+          now.difference(_lastResumeRefreshAt!) > const Duration(seconds: 90)) {
+        _lastResumeRefreshAt = now;
+        _refresh();
+      }
     }
   }
 
@@ -2471,7 +2481,8 @@ class _ShelfBookCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(14),
                   child: SizedBox(
                     width: double.infinity,
-                    child: EnhancedCoverImage(url: book.coverUrl),
+                    child: EnhancedCoverImage(
+                        url: book.coverUrl, cacheVersion: book.updatedAt),
                   ),
                 ),
               ),
@@ -2604,6 +2615,7 @@ class _BookCard extends StatelessWidget {
                                   scale: 1.024,
                                   child: EnhancedCoverImage(
                                     url: book.coverUrl,
+                                    cacheVersion: book.updatedAt,
                                   ),
                                 ),
                               ),
@@ -2880,6 +2892,7 @@ class _ResumeBookCardState extends State<_ResumeBookCard> {
                               scale: 1.024,
                               child: EnhancedCoverImage(
                                 url: widget.book.coverUrl,
+                                cacheVersion: widget.book.updatedAt,
                               ),
                             ),
                           ),
@@ -3223,6 +3236,7 @@ class _BookListTileState extends State<_BookListTile> {
                       url: widget.book.coverUrl,
                       width: 76,
                       height: 76,
+                      cacheVersion: widget.book.updatedAt,
                     ),
                   ),
                   // Material 3 progress indicator overlay

@@ -1380,15 +1380,26 @@ class BooksRepository {
     } else {
       _log('[REFRESH_FROM_SERVER] No ETag found');
     }
-    final path = '/api/libraries/$libId/items?limit=50&sort=addedAt&desc=1';
+    // Order by updatedAt (not addedAt) so a user-initiated refresh surfaces
+    // BOTH newly-added items (their updatedAt is recent) and edits to existing
+    // items (title/author/series/metadata changed server-side), which an
+    // addedAt ordering would never pull. The DB upsert is updatedAt-guarded, so
+    // unchanged rows are no-ops.
+    final path = '/api/libraries/$libId/items?limit=50&sort=updatedAt&desc=1';
     final bool localEmpty = await _isDbEmpty();
     _log('[REFRESH_FROM_SERVER] Requesting: $path (localEmpty=$localEmpty)');
     http.Response resp = await api.request('GET', path, headers: headers);
     _log('[REFRESH_FROM_SERVER] Response status: ${resp.statusCode}');
 
     if (resp.statusCode == 304) {
-      _log('[REFRESH_FROM_SERVER] 304 Not Modified, forcing refetch without ETag...');
-      // Force a network fetch without ETag to get fresh data
+      // Nothing changed since our ETag — trust the cache instead of re-fetching
+      // the full payload (the old behaviour negated the conditional request).
+      // Only force a fetch if we have no local rows to fall back on.
+      if (!localEmpty) {
+        _log('[REFRESH_FROM_SERVER] 304 Not Modified — using local DB');
+        return await _listBooksFromDb();
+      }
+      _log('[REFRESH_FROM_SERVER] 304 but DB empty — forcing refetch without ETag');
       resp = await api.request('GET', path, headers: {});
       _log('[REFRESH_FROM_SERVER] Forced refetch status: ${resp.statusCode}');
     }

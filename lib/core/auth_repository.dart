@@ -47,9 +47,16 @@ class AuthRepository {
       return false;
     }
 
-    // The stored access-token expiry is an app-side ASSUMPTION (ABS does not
-    // report token expiry), so a "fresh" access token is not proof the session
-    // is still valid server-side. Validate authoritatively via refresh.
+    // Trust a comfortably-fresh access token without a network round-trip.
+    // This check runs frequently (e.g. the 2-min foreground auth poll), so
+    // hitting /auth/refresh every time would wake the radio and rotate tokens
+    // pointlessly. ApiClient.request() already refreshes on a real 401, which
+    // is the authoritative backstop for a token revoked/expired between checks.
+    if (_api.hasFreshAccessToken(leewaySeconds: 300)) {
+      return true;
+    }
+
+    // Token is near/past its assumed expiry — refresh authoritatively now.
     final ok = await _api.refreshAccessToken();
     if (ok) {
       return true;

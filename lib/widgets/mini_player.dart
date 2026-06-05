@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import '../core/image_cache_manager.dart';
 import '../core/playback_repository.dart';
 import '../core/ui_prefs.dart';
 import '../main.dart'; // ServicesScope
@@ -611,6 +612,8 @@ class _MiniCover extends StatelessWidget {
 
     return CachedNetworkImage(
       imageUrl: src,
+      cacheKey: ImageCacheManager.cacheKeyFor(src),
+      cacheManager: ImageCacheManager.instance,
       width: size,
       height: size,
       fit: BoxFit.cover,

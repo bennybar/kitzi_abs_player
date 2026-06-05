@@ -42,7 +42,18 @@ class ImageCacheManager {
     if (uri == null || !uri.hasQuery) return url;
     return uri.replace(query: '').toString();
   }
-  
+
+  /// Cache key for a cover that ALSO busts when the item's [updatedAt] advances.
+  /// Covers live at a stable URL (`/api/items/{id}/cover`), so without a version
+  /// component a replaced cover would serve stale bytes for the full stale
+  /// period. Builds on [cacheKeyFor] so it stays stable across access-token
+  /// rotation while refreshing exactly when the item changes.
+  static String coverCacheKey(String url, {DateTime? updatedAt}) {
+    final base = cacheKeyFor(url);
+    if (updatedAt == null) return base;
+    return '$base#v=${updatedAt.millisecondsSinceEpoch}';
+  }
+
   /// Preload images for better user experience
   static Future<void> preloadImages(List<String> urls, BuildContext context) async {
     final futures = <Future<void>>[];
@@ -189,7 +200,10 @@ class EnhancedCoverImage extends StatelessWidget {
   final BoxFit fit;
   final Widget? placeholder;
   final Widget? errorWidget;
-  
+  /// When provided, the cover refreshes once the item's `updatedAt` advances
+  /// (a replaced cover at the same URL), instead of serving stale bytes.
+  final DateTime? cacheVersion;
+
   const EnhancedCoverImage({
     super.key,
     required this.url,
@@ -198,6 +212,7 @@ class EnhancedCoverImage extends StatelessWidget {
     this.fit = BoxFit.cover,
     this.placeholder,
     this.errorWidget,
+    this.cacheVersion,
   });
   
   @override
@@ -271,7 +286,7 @@ class EnhancedCoverImage extends StatelessWidget {
       borderRadius: radius,
       child: CachedNetworkImage(
         imageUrl: url,
-        cacheKey: ImageCacheManager.cacheKeyFor(url),
+        cacheKey: ImageCacheManager.coverCacheKey(url, updatedAt: cacheVersion),
         width: width,
         height: height,
         fit: fit,

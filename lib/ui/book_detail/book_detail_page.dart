@@ -8,6 +8,7 @@ import 'package:rxdart/rxdart.dart';
 import 'dart:io';
 import 'package:flutter_html/flutter_html.dart';
 import '../../core/books_repository.dart';
+import '../../core/image_cache_manager.dart';
 import '../../models/book.dart';
 import '../../models/series.dart';
 import '../../core/playback_repository.dart';
@@ -1159,6 +1160,14 @@ class _BookDetailPageState extends State<BookDetailPage> {
                                                   scale: 1.024,
                                                   child: CachedNetworkImage(
                                                     imageUrl: b.coverUrl,
+                                                    cacheKey: ImageCacheManager
+                                                        .coverCacheKey(
+                                                            b.coverUrl,
+                                                            updatedAt:
+                                                                b.updatedAt),
+                                                    cacheManager:
+                                                        ImageCacheManager
+                                                            .instance,
                                                     width: coverWidth,
                                                     height: coverHeight,
                                                     fit: BoxFit.cover,
@@ -2122,6 +2131,10 @@ class _RelatedBooksSectionState extends State<_RelatedBooksSection> {
                           aspectRatio: 2 / 3,
                           child: CachedNetworkImage(
                             imageUrl: b.coverUrl,
+                            cacheKey: ImageCacheManager.coverCacheKey(
+                                b.coverUrl,
+                                updatedAt: b.updatedAt),
+                            cacheManager: ImageCacheManager.instance,
                             fit: BoxFit.cover,
                             errorWidget:
                                 (_, __, ___) => Container(

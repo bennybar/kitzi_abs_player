@@ -385,6 +385,8 @@ class _AuthorTile extends StatelessWidget {
                           borderRadius: BorderRadius.circular(24),
                           child: CachedNetworkImage(
                             imageUrl: author.imageUrl!,
+                            cacheKey:
+                                ImageCacheManager.cacheKeyFor(author.imageUrl!),
                             cacheManager: ImageCacheManager.instance,
                             fit: BoxFit.cover,
                             placeholder:

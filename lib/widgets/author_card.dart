@@ -82,6 +82,8 @@ class _AuthorCardState extends State<AuthorCard> {
                               borderRadius: BorderRadius.circular(32),
                               child: CachedNetworkImage(
                                 imageUrl: widget.author.imageUrl!,
+                                cacheKey: ImageCacheManager.cacheKeyFor(
+                                    widget.author.imageUrl!),
                                 cacheManager: ImageCacheManager.instance,
                                 fit: BoxFit.cover,
                                 placeholder: (context, url) => Icon(
