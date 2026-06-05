@@ -2143,12 +2143,22 @@ class _SeriesSheetState extends State<SeriesSheet> {
     try {
       final repo = await _repoFut;
       _repo = repo;
-      // Use the synced local library grouping only: it's complete and stably
-      // name-sorted, so the list doesn't visibly re-shuffle after opening.
-      final local = await _localSeries(repo);
+      // Prefer the authoritative server list (same source as the Series tab, so
+      // the full set of series shows) and fall back to the local grouping when
+      // offline. We render once — after it resolves — so the list never visibly
+      // re-shuffles the way a local-then-server swap did.
+      List<Series> result;
+      try {
+        final online = await repo.getAllSeries(sort: 'name', desc: false);
+        result = online.isNotEmpty ? online : await _localSeries(repo);
+      } catch (_) {
+        result = await _localSeries(repo);
+      }
+      result.sort(
+          (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
       if (!mounted) return;
       setState(() {
-        _series = local;
+        _series = result;
         _loading = false;
       });
     } catch (_) {
