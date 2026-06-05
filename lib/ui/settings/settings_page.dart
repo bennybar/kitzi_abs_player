@@ -45,7 +45,6 @@ class _SettingsPageState extends State<SettingsPage> {
   bool? _fullPlayerAsTab;
   bool? _bluetoothAutoPlay;
   bool? _hideSeriesWhenSameAsAuthor;
-  int? _seriesItemsPerRow;
   int? _seekBackwardSeconds;
   int? _seekForwardSeconds;
   bool? _playerScrollingSingleLineTitle;
@@ -365,7 +364,6 @@ class _SettingsPageState extends State<SettingsPage> {
 
         _hideSeriesWhenSameAsAuthor =
             prefs.getBool('ui_hide_series_when_same_as_author') ?? true;
-        _seriesItemsPerRow = prefs.getInt('ui_series_items_per_row') ?? 2;
         _seekBackwardSeconds = prefs.getInt('ui_seek_backward_seconds') ?? 30;
         _seekForwardSeconds = prefs.getInt('ui_seek_forward_seconds') ?? 30;
         _playerScrollingSingleLineTitle =
@@ -1234,34 +1232,6 @@ class _SettingsPageState extends State<SettingsPage> {
                     _hideSeriesWhenSameAsAuthor = v;
                   });
               },
-            ),
-            ListTile(
-              title: const Text('Series items per row'),
-              subtitle: const Text(
-                'Number of series cards to display in each row',
-              ),
-              trailing: DropdownButton<int>(
-                value: _seriesItemsPerRow ?? 2,
-                items:
-                    [1, 2, 3, 4, 5, 6].map((value) {
-                      return DropdownMenuItem<int>(
-                        value: value,
-                        child: Text('$value'),
-                      );
-                    }).toList(),
-                onChanged: (v) async {
-                  if (v != null) {
-                    await UiPrefs.setSeriesItemsPerRow(
-                      v,
-                      pinToSettingsOnChange: true,
-                    );
-                    if (mounted)
-                      setState(() {
-                        _seriesItemsPerRow = v;
-                      });
-                  }
-                },
-              ),
             ),
             SwitchListTile(
               title: const Text('Gradient background in player'),
