@@ -1278,13 +1278,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => FractionallySizedBox(
-        heightFactor: 0.92,
-        child: ClipRRect(
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          child: const SeriesPage(),
-        ),
-      ),
+      builder: (_) => const SeriesSheet(),
     );
   }
 

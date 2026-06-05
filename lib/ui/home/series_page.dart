@@ -121,59 +121,7 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
     if (mounted) setState(() {});
   }
 
-  void _showSeriesOptions() {
-    final cs = Theme.of(context).colorScheme;
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Series options',
-                  style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                ),
-                const SizedBox(height: 4),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(LucideIcons.eyeOff, color: cs.onSurfaceVariant),
-                  title: const Text('Hide small series'),
-                  subtitle: const Text('Hide series with fewer books'),
-                  trailing: ValueListenableBuilder<int>(
-                    valueListenable: UiPrefs.seriesMinBooks,
-                    builder: (_, minBooks, __) {
-                      return DropdownButton<int>(
-                        value: minBooks,
-                        underline: const SizedBox.shrink(),
-                        items: const [
-                          DropdownMenuItem(value: 1, child: Text('Off')),
-                          DropdownMenuItem(value: 2, child: Text('< 2 books')),
-                          DropdownMenuItem(value: 3, child: Text('< 3 books')),
-                          DropdownMenuItem(value: 4, child: Text('< 4 books')),
-                          DropdownMenuItem(value: 5, child: Text('< 5 books')),
-                          DropdownMenuItem(value: 10, child: Text('< 10 books')),
-                        ],
-                        onChanged: (v) {
-                          if (v != null) UiPrefs.setSeriesMinBooks(v);
-                        },
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
+  void _showSeriesOptions() => showSeriesOptionsSheet(context);
 
   Future<void> _loadViewTypePref() async {
     try {
@@ -2102,6 +2050,239 @@ class _SeriesBookCard extends StatelessWidget {
               Icon(LucideIcons.chevronRight, color: cs.onSurfaceVariant),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Series options sheet (e.g. "hide small series"). Shared by the Series tab
+/// app bar and the slim Series drawer.
+void showSeriesOptionsSheet(BuildContext context) {
+  final cs = Theme.of(context).colorScheme;
+  showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    builder: (ctx) {
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Series options',
+                style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+              const SizedBox(height: 4),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(LucideIcons.eyeOff, color: cs.onSurfaceVariant),
+                title: const Text('Hide small series'),
+                subtitle: const Text('Hide series with fewer books'),
+                trailing: ValueListenableBuilder<int>(
+                  valueListenable: UiPrefs.seriesMinBooks,
+                  builder: (_, minBooks, __) {
+                    return DropdownButton<int>(
+                      value: minBooks,
+                      underline: const SizedBox.shrink(),
+                      items: const [
+                        DropdownMenuItem(value: 1, child: Text('Off')),
+                        DropdownMenuItem(value: 2, child: Text('< 2 books')),
+                        DropdownMenuItem(value: 3, child: Text('< 3 books')),
+                        DropdownMenuItem(value: 4, child: Text('< 4 books')),
+                        DropdownMenuItem(value: 5, child: Text('< 5 books')),
+                        DropdownMenuItem(value: 10, child: Text('< 10 books')),
+                      ],
+                      onChanged: (v) {
+                        if (v != null) UiPrefs.setSeriesMinBooks(v);
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+}
+
+/// A slim, solid-background bottom sheet listing series (Spine Shelf cards).
+/// Used when the Series tab is hidden — lighter than the full Series page.
+class SeriesSheet extends StatefulWidget {
+  const SeriesSheet({super.key});
+
+  @override
+  State<SeriesSheet> createState() => _SeriesSheetState();
+}
+
+class _SeriesSheetState extends State<SeriesSheet> {
+  final Future<BooksRepository> _repoFut = BooksRepository.create();
+  BooksRepository? _repo;
+  List<Series> _series = const <Series>[];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _repo?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    try {
+      final repo = await _repoFut;
+      _repo = repo;
+      // Paint instantly from local data, then upgrade from the server.
+      final local = await _localSeries(repo);
+      if (!mounted) return;
+      setState(() {
+        _series = local;
+        _loading = false;
+      });
+      try {
+        final online = await repo.getAllSeries(sort: 'name', desc: false);
+        if (mounted && online.isNotEmpty) setState(() => _series = online);
+      } catch (_) {}
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<List<Series>> _localSeries(BooksRepository repo) async {
+    final all = <Book>[];
+    var page = 1;
+    const limit = 200;
+    while (true) {
+      final chunk = await repo.listBooksFromDbPaged(page: page, limit: limit);
+      if (chunk.isEmpty) break;
+      all.addAll(chunk);
+      if (chunk.length < limit) break;
+      page += 1;
+    }
+    final map = <String, List<Book>>{};
+    for (final b in all) {
+      final name = (b.series ?? '').trim();
+      if (name.isEmpty) continue;
+      (map[name] ??= <Book>[]).add(b);
+    }
+    final list = map.entries.map((e) {
+      e.value.sort(_compareSeriesBooks);
+      return Series(
+        id: 'local_${e.key}',
+        name: e.key,
+        numBooks: e.value.length,
+        bookIds: e.value.map((b) => b.id).toList(),
+        coverUrl: e.value.first.coverUrl,
+      );
+    }).toList()
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    return list;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return FractionallySizedBox(
+      heightFactor: 0.86,
+      child: Container(
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerLow,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          children: [
+            const SizedBox(height: 10),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: cs.onSurfaceVariant.withOpacity(0.35),
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 8, 8),
+              child: Row(
+                children: [
+                  Icon(LucideIcons.library, color: cs.primary, size: 22),
+                  const SizedBox(width: 10),
+                  Text(
+                    'Series',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.2,
+                        ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    tooltip: 'Series options',
+                    onPressed: () => showSeriesOptionsSheet(context),
+                    icon: const Icon(LucideIcons.slidersHorizontal),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: ValueListenableBuilder<int>(
+                valueListenable: UiPrefs.seriesMinBooks,
+                builder: (context, minBooks, __) {
+                  final repo = _repo;
+                  final visible = minBooks > 1
+                      ? _series.where((s) => s.numBooks >= minBooks).toList()
+                      : _series;
+                  if (_loading && _series.isEmpty) {
+                    return const Center(
+                        child: CircularProgressIndicator(strokeWidth: 2));
+                  }
+                  if (visible.isEmpty || repo == null) {
+                    return Center(
+                      child: Text(
+                        'No series yet',
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              color: cs.onSurfaceVariant,
+                            ),
+                      ),
+                    );
+                  }
+                  return ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+                    itemCount: visible.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    itemBuilder: (context, i) {
+                      final series = visible[i];
+                      return _NewSeriesCard(
+                        key: ValueKey('sheet-series-${series.id}'),
+                        series: series,
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => SeriesBooksPage(
+                                series: series,
+                                getBooksForSeries: repo.getBooksForSeries,
+                              ),
+                            ),
+                          );
+                        },
+                        getBooksForSeries: repo.getBooksForSeries,
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
         ),
       ),
     );
