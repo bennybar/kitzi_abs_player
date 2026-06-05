@@ -583,11 +583,12 @@ class BooksRepository {
     final ids = items.map((e) => e.id).where((id) => id.isNotEmpty).toList();
     final Map<String, int?> existingUpdatedAt = {};
     final Map<String, bool> existingHasNarrators = {};
+    final Map<String, bool> existingHasYear = {};
     if (ids.isNotEmpty) {
       final placeholders = List.filled(ids.length, '?').join(',');
       final rows = await db.query(
         'books',
-        columns: ['id', 'updatedAt', 'narrators'],
+        columns: ['id', 'updatedAt', 'narrators', 'publishYear'],
         where: 'id IN ($placeholders)',
         whereArgs: ids,
       );
@@ -597,12 +598,14 @@ class BooksRepository {
         existingUpdatedAt[id] = ts;
         final narrStr = r['narrators'] as String?;
         existingHasNarrators[id] = narrStr != null && narrStr.isNotEmpty;
+        existingHasYear[id] = r['publishYear'] != null;
       }
     }
 
-    // Filter items to only those newer than existing rows.
-    // Always allow through if the existing row is missing narrators but the new one has them —
-    // this fixes books written before narrator data was stored.
+    // Filter items to only those newer than existing rows. Always allow through
+    // when the existing row is missing data the new one has (narrators, or the
+    // release year used for series ordering) — this backfills books stored
+    // before those fields were parsed, even when updatedAt is unchanged.
     final itemsToInsert = <Book>[];
     for (final b in items) {
       final existingTs = existingUpdatedAt[b.id];
@@ -610,7 +613,10 @@ class BooksRepository {
       if (existingTs != null && newTs != null && newTs <= existingTs) {
         final incomingHasNarrators = b.narrators != null && b.narrators!.isNotEmpty;
         final alreadyHasNarrators = existingHasNarrators[b.id] ?? false;
-        if (alreadyHasNarrators || !incomingHasNarrators) continue; // skip unchanged/older
+        final narratorBackfill = incomingHasNarrators && !alreadyHasNarrators;
+        final yearBackfill =
+            b.publishYear != null && !(existingHasYear[b.id] ?? false);
+        if (!narratorBackfill && !yearBackfill) continue; // skip unchanged/older
       }
       itemsToInsert.add(b);
     }
@@ -1730,6 +1736,35 @@ class BooksRepository {
     }
     
     if (books.isEmpty) return const [];
+
+    // Books cached before release-year was parsed have a null publishYear,
+    // which breaks year-based ordering. Refresh those from the server once
+    // (best-effort) and persist, so ordering self-corrects on first view.
+    if (_auth.api.baseUrl != null) {
+      final staleIds =
+          books.where((b) => b.publishYear == null).map((b) => b.id).toList();
+      if (staleIds.isNotEmpty) {
+        final refreshed = <Book>[];
+        for (final id in staleIds) {
+          try {
+            refreshed.add(await getBook(id));
+          } catch (_) {
+            break; // likely offline / failing — don't hammer the network
+          }
+        }
+        if (refreshed.isNotEmpty) {
+          final byId = {for (final r in refreshed) r.id: r};
+          for (var i = 0; i < books.length; i++) {
+            final r = byId[books[i].id];
+            if (r != null) books[i] = r;
+          }
+          try {
+            await _upsertBooks(refreshed);
+          } catch (_) {}
+        }
+      }
+    }
+
     return _sortSeriesBooks(books, series);
   }
 

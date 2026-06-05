@@ -110,9 +110,23 @@ class Book {
 
     final publisher = (meta['publisher'] ?? j['publisher'])?.toString();
     int? publishYear;
-    final y = (meta['publishYear'] ?? meta['year'] ?? j['publishYear'] ?? j['year']);
+    // Audiobookshelf's field is `publishedYear` (string); keep the older keys as
+    // fallbacks. Without this the year is null and series can't order by it.
+    final y = (meta['publishedYear'] ??
+        meta['publishYear'] ??
+        meta['year'] ??
+        j['publishedYear'] ??
+        j['publishYear'] ??
+        j['year']);
     if (y is num) publishYear = y.toInt();
-    if (y is String) publishYear = int.tryParse(y);
+    if (y is String) publishYear = int.tryParse(y.trim());
+    // Fall back to the year embedded in publishedDate (e.g. "2009-01-01").
+    if (publishYear == null) {
+      final pd = (meta['publishedDate'] ?? j['publishedDate'])?.toString();
+      if (pd != null && pd.length >= 4) {
+        publishYear = int.tryParse(pd.substring(0, 4));
+      }
+    }
 
     List<String>? genresList;
     final genRaw = meta['genres'] ?? j['genres'];
