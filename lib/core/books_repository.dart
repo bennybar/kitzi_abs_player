@@ -1681,17 +1681,43 @@ class BooksRepository {
   }
 
   /// Get all series as Series objects
+  // In-memory cache for the (expensive, paginated) series list. Static so it
+  // survives short-lived repository instances (e.g. the Series drawer creates a
+  // fresh repo each open). Keyed by library + sort/filter; honours _cacheTTL.
+  static List<Series>? _seriesCache;
+  static DateTime? _seriesCacheAt;
+  static String? _seriesCacheKey;
+  // Books we've already tried to backfill a release-year for this session, so we
+  // don't re-hit the network for year-less books on every series open.
+  static final Set<String> _yearBackfillTried = <String>{};
+
   Future<List<Series>> getAllSeries({
     String sort = 'name',
     bool desc = false,
     String filter = 'all',
   }) async {
+    final libId = _prefs.getString(_libIdKey) ?? '';
+    final key = '$libId|$sort|$desc|$filter';
+    final cached = _seriesCache;
+    final at = _seriesCacheAt;
+    if (cached != null &&
+        _seriesCacheKey == key &&
+        at != null &&
+        DateTime.now().difference(at) < _cacheTTL) {
+      return cached;
+    }
     try {
       final seriesData = await fetchAllSeries(sort: sort, desc: desc, filter: filter);
-      return await _seriesToObjects(seriesData);
+      final objs = await _seriesToObjects(seriesData);
+      if (objs.isNotEmpty) {
+        _seriesCache = objs;
+        _seriesCacheAt = DateTime.now();
+        _seriesCacheKey = key;
+      }
+      return objs;
     } catch (e) {
       _log('[BOOKS] getAllSeries error: $e');
-      return <Series>[];
+      return cached ?? <Series>[]; // fall back to stale cache on error
     }
   }
 
@@ -1741,11 +1767,15 @@ class BooksRepository {
     // which breaks year-based ordering. Refresh those from the server once
     // (best-effort) and persist, so ordering self-corrects on first view.
     if (_auth.api.baseUrl != null) {
-      final staleIds =
-          books.where((b) => b.publishYear == null).map((b) => b.id).toList();
+      final staleIds = books
+          .where((b) =>
+              b.publishYear == null && !_yearBackfillTried.contains(b.id))
+          .map((b) => b.id)
+          .toList();
       if (staleIds.isNotEmpty) {
         final refreshed = <Book>[];
         for (final id in staleIds) {
+          _yearBackfillTried.add(id); // only attempt once per session
           try {
             refreshed.add(await getBook(id));
           } catch (_) {

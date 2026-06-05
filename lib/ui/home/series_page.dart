@@ -1652,29 +1652,11 @@ class _CoverThumb extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final uri = Uri.tryParse(url);
-    if (uri != null && uri.scheme == 'file') {
-      final f = File(uri.toFilePath());
-      if (f.existsSync()) {
-        return Transform.scale(
-          scale: 1.024,
-          child: Image.file(f, fit: BoxFit.cover),
-        );
-      }
-    }
+    // Use the shared disk cache with a token-stable key so covers aren't
+    // re-downloaded on every view / token rotation.
     return Transform.scale(
       scale: 1.024,
-      child: Image.network(
-        url,
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) {
-          final cs = Theme.of(context).colorScheme;
-          return Container(
-            color: cs.surfaceVariant,
-            child: Icon(LucideIcons.book, color: cs.onSurfaceVariant),
-          );
-        },
-      ),
+      child: EnhancedCoverImage(url: url, fit: BoxFit.cover),
     );
   }
 }
