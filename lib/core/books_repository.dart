@@ -1754,7 +1754,11 @@ class BooksRepository {
   Future<List<Book>> getBooksForSeries(Series series) async {
     final seen = <String>{};
     final books = <Book>[];
-    
+    // Books pulled from the network this call — persisted at the end so future
+    // app starts read them (with their release-year) straight from the local DB
+    // instead of re-fetching every book on every open.
+    final serverFetched = <Book>[];
+
     if (series.bookIds.isNotEmpty) {
       try {
         final local = await _loadBooksByIds(series.bookIds);
@@ -1764,13 +1768,16 @@ class BooksRepository {
       } catch (e) {
         _log('[BOOKS] getBooksForSeries: DB error loading ids: $e');
       }
-      
+
       final missing = series.bookIds.where((id) => !seen.contains(id)).toList();
       if (missing.isNotEmpty) {
         for (final bookId in missing) {
           try {
             final book = await getBook(bookId);
-            if (seen.add(book.id)) books.add(book);
+            if (seen.add(book.id)) {
+              books.add(book);
+              serverFetched.add(book);
+            }
           } catch (e) {
             _log('[BOOKS] getBooksForSeries: server fetch error for $bookId: $e');
           }
@@ -1781,20 +1788,23 @@ class BooksRepository {
       for (final book in fromDb) {
         if (seen.add(book.id)) books.add(book);
       }
-      
+
       if (books.isEmpty && series.id.isNotEmpty) {
         final remote = await _fetchBooksForSeriesRemote(series);
         for (final book in remote) {
-          if (seen.add(book.id)) books.add(book);
+          if (seen.add(book.id)) {
+            books.add(book);
+            serverFetched.add(book);
+          }
         }
       }
     }
-    
+
     if (books.isEmpty) return const [];
 
     // Books cached before release-year was parsed have a null publishYear,
     // which breaks year-based ordering. Refresh those from the server once
-    // (best-effort) and persist, so ordering self-corrects on first view.
+    // (best-effort), so ordering self-corrects on first view.
     if (_auth.api.baseUrl != null) {
       final staleIds = books
           .where((b) =>
@@ -1817,11 +1827,17 @@ class BooksRepository {
             final r = byId[books[i].id];
             if (r != null) books[i] = r;
           }
-          try {
-            await _upsertBooks(refreshed);
-          } catch (_) {}
+          serverFetched.addAll(refreshed);
         }
       }
+    }
+
+    // Persist all network-fetched books so the local DB becomes the warm source
+    // on the next launch (fixes slow re-pulls + makes year-ordering stick).
+    if (serverFetched.isNotEmpty) {
+      try {
+        await _upsertBooks(serverFetched);
+      } catch (_) {}
     }
 
     return _sortSeriesBooks(books, series);
