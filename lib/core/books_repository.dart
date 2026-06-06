@@ -1728,10 +1728,43 @@ class BooksRepository {
     if (seriesData.isNotEmpty) {
       _seriesCache = objs;
       try {
-        await _prefs.setString(_seriesCacheJsonKey, jsonEncode(seriesData));
+        // Persist only the fields Series.fromJson needs, so the cold-start
+        // decode stays small/fast (the raw server payload carries full media).
+        final slim = seriesData.map(_slimSeriesForCache).toList();
+        await _prefs.setString(_seriesCacheJsonKey, jsonEncode(slim));
       } catch (_) {}
     }
     return objs;
+  }
+
+  Map<String, dynamic> _slimSeriesForCache(Map<String, dynamic> s) {
+    final books = <Map<String, dynamic>>[];
+    final raw = s['books'];
+    if (raw is List) {
+      for (final b in raw) {
+        if (b is! Map) continue;
+        final media = (b['media'] is Map) ? b['media'] as Map : const {};
+        final meta =
+            (media['metadata'] is Map) ? media['metadata'] as Map : const {};
+        books.add({
+          'id': (b['id'] ?? b['_id'] ?? '').toString(),
+          'media': {
+            'metadata': {
+              'publishedYear': meta['publishedYear'],
+              'title': meta['title'],
+              'authorName': meta['authorName'],
+            }
+          },
+        });
+      }
+    }
+    return {
+      'id': s['id'] ?? s['_id'],
+      'name': s['name'] ?? s['title'],
+      'numBooks': s['numBooks'] ?? s['bookCount'] ?? books.length,
+      'cover': s['cover'],
+      'books': books,
+    };
   }
 
   /// Cache-first series list: the persisted copy if present, otherwise a fetch.
@@ -1751,7 +1784,11 @@ class BooksRepository {
   }
 
   /// Get books for a specific series by fetching all books that belong to that series
-  Future<List<Book>> getBooksForSeries(Series series) async {
+  /// [refreshMissing] off = DB-only (no network): fast path for list cards that
+  /// only need locally-cached books. On (default) fetches+persists missing books
+  /// and backfills release-year — used by the series detail page.
+  Future<List<Book>> getBooksForSeries(Series series,
+      {bool refreshMissing = true}) async {
     final seen = <String>{};
     final books = <Book>[];
     // Books pulled from the network this call — persisted at the end so future
@@ -1770,7 +1807,7 @@ class BooksRepository {
       }
 
       final missing = series.bookIds.where((id) => !seen.contains(id)).toList();
-      if (missing.isNotEmpty) {
+      if (refreshMissing && missing.isNotEmpty) {
         for (final bookId in missing) {
           try {
             final book = await getBook(bookId);
@@ -1789,7 +1826,7 @@ class BooksRepository {
         if (seen.add(book.id)) books.add(book);
       }
 
-      if (books.isEmpty && series.id.isNotEmpty) {
+      if (refreshMissing && books.isEmpty && series.id.isNotEmpty) {
         final remote = await _fetchBooksForSeriesRemote(series);
         for (final book in remote) {
           if (seen.add(book.id)) {
@@ -1805,7 +1842,7 @@ class BooksRepository {
     // Books cached before release-year was parsed have a null publishYear,
     // which breaks year-based ordering. Refresh those from the server once
     // (best-effort), so ordering self-corrects on first view.
-    if (_auth.api.baseUrl != null) {
+    if (refreshMissing && _auth.api.baseUrl != null) {
       final staleIds = books
           .where((b) =>
               b.publishYear == null && !_yearBackfillTried.contains(b.id))

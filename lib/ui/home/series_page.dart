@@ -533,6 +533,9 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
             numBooks: books.length,
             bookIds: books.map((b) => b.id).toList(),
             coverUrl: firstBook.coverUrl,
+            previewCoverUrls:
+                books.take(4).map((b) => b.coverUrl).toList(),
+            author: firstBook.author,
           );
         }).toList();
 
@@ -958,7 +961,6 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
                                     ),
                                   );
                                 },
-                                getBooksForSeries: _getBooksForSeries,
                               );
                             },
                           )
@@ -1084,72 +1086,21 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
   }
 }
 
-class _NewSeriesCard extends StatefulWidget {
+class _NewSeriesCard extends StatelessWidget {
   const _NewSeriesCard({
     super.key,
     required this.series,
     required this.onTap,
-    required this.getBooksForSeries,
   });
 
   final Series series;
   final VoidCallback onTap;
-  final Future<List<Book>> Function(Series) getBooksForSeries;
-
-  @override
-  State<_NewSeriesCard> createState() => _NewSeriesCardState();
-}
-
-class _NewSeriesCardState extends State<_NewSeriesCard> {
-  List<Book>? _books;
-  String? _lastSeriesId;
-  // Memoized per-book status resolve (cache-backed) so progress doesn't refire
-  // on every rebuild. Reset whenever the loaded books change.
-  Future<List<_SeriesBookStatus>>? _statusesFuture;
-
-  @override
-  void initState() {
-    super.initState();
-    _lastSeriesId = widget.series.id;
-    _loadBooks();
-  }
-
-  @override
-  void didUpdateWidget(_NewSeriesCard oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // Reload books if series changed
-    if (oldWidget.series.id != widget.series.id) {
-      _lastSeriesId = widget.series.id;
-      _loadBooks();
-    }
-  }
-
-  Future<void> _loadBooks() async {
-    try {
-      final books = await widget.getBooksForSeries(widget.series);
-      if (mounted && widget.series.id == _lastSeriesId) {
-        setState(() {
-          _books = books;
-          _statusesFuture = null;
-        });
-      }
-    } catch (e) {
-      if (mounted && widget.series.id == _lastSeriesId) {
-        setState(() {
-          _books = <Book>[];
-          _statusesFuture = null;
-        });
-      }
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final books = _books ?? const <Book>[];
-    final firstBook = books.isNotEmpty ? books.first : null;
-    final numBooks = widget.series.numBooks;
-    final author = firstBook?.author;
+    final numBooks = series.numBooks;
+    final author = series.author;
 
     return Card(
       elevation: 0,
@@ -1159,19 +1110,17 @@ class _NewSeriesCardState extends State<_NewSeriesCard> {
         side: BorderSide(color: cs.outline.withOpacity(0.1), width: 1),
       ),
       child: InkWell(
-        onTap: widget.onTap,
+        onTap: onTap,
         borderRadius: BorderRadius.circular(16),
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Row(
             children: [
-              // A fanned deck of the series' first covers behind a fixed-size
-              // hero — the hero is always the same size, so the row stays
-              // visually consistent no matter how many books the series has.
+              // Fanned deck rendered straight from the cached series data — no
+              // per-card book load, so the list paints instantly.
               _FannedCover(
-                books: books,
+                coverUrls: series.previewCoverUrls,
                 heroWidth: 58,
-                statusBook: firstBook,
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -1180,7 +1129,7 @@ class _NewSeriesCardState extends State<_NewSeriesCard> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      widget.series.name,
+                      series.name,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
@@ -1200,7 +1149,13 @@ class _NewSeriesCardState extends State<_NewSeriesCard> {
                       ),
                     ],
                     const SizedBox(height: 8),
-                    _countAndProgress(context, books, numBooks),
+                    Text(
+                      '$numBooks ${numBooks == 1 ? 'book' : 'books'}',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: cs.primary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                    ),
                   ],
                 ),
               ),
@@ -1213,88 +1168,32 @@ class _NewSeriesCardState extends State<_NewSeriesCard> {
       ),
     );
   }
-
-  Widget _countAndProgress(
-      BuildContext context, List<Book> books, int numBooks) {
-    final cs = Theme.of(context).colorScheme;
-    final text = Theme.of(context).textTheme;
-    final countLabel = '$numBooks ${numBooks == 1 ? 'book' : 'books'}';
-    final countText = Text(
-      countLabel,
-      style: text.bodySmall?.copyWith(
-        color: cs.primary,
-        fontWeight: FontWeight.w600,
-      ),
-    );
-    if (books.isEmpty) return countText;
-
-    final services = ServicesScope.of(context).services;
-    _statusesFuture ??= Future.wait(
-      books.map((b) => _SeriesBookStatusResolver.resolve(services, b)),
-    );
-
-    return FutureBuilder<List<_SeriesBookStatus>>(
-      future: _statusesFuture,
-      builder: (context, snap) {
-        if (!snap.hasData) return countText;
-        final statuses = snap.data!;
-        final total = statuses.length;
-        final finished =
-            statuses.where((s) => s == _SeriesBookStatus.completed).length;
-        final started =
-            statuses.where((s) => s == _SeriesBookStatus.inProgress).length;
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                Flexible(child: countText),
-                if (finished > 0) ...[
-                  const SizedBox(width: 8),
-                  Text(
-                    '· $finished finished',
-                    style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant),
-                  ),
-                ],
-              ],
-            ),
-            const SizedBox(height: 7),
-            _SeriesProgressBar(
-                total: total, finished: finished, started: started),
-          ],
-        );
-      },
-    );
-  }
 }
 
-/// A fanned deck of book covers: a fixed-size hero cover with up to two more of
-/// the series' covers peeking out behind it (offset, tilted, dimmed). The hero
-/// size is constant, so the surrounding layout never depends on book count.
+/// A fanned deck of book covers: a fixed-size hero cover with up to two more
+/// covers peeking out behind it (offset, tilted, dimmed). Renders from a list of
+/// already-ordered cover URLs, so it never needs to load the member books.
 class _FannedCover extends StatelessWidget {
   const _FannedCover({
-    required this.books,
+    required this.coverUrls,
     required this.heroWidth,
-    this.statusBook,
   });
 
-  final List<Book> books;
+  final List<String> coverUrls;
   final double heroWidth;
-  final Book? statusBook;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final w = heroWidth;
     final h = w * 1.5; // 2:3 book proportion
-    final extra = books.length > 1
-        ? books.sublist(1, books.length.clamp(0, 3))
-        : const <Book>[];
+    final extra = coverUrls.length > 1
+        ? coverUrls.sublist(1, coverUrls.length.clamp(0, 3))
+        : const <String>[];
     final spread = extra.isEmpty ? 0.0 : (extra.length == 1 ? 16.0 : 28.0);
 
-    Widget coverFor(Book? b) {
-      if (b == null || b.coverUrl.isEmpty) {
+    Widget coverFor(String? url) {
+      if (url == null || url.isEmpty) {
         return Container(
           width: w,
           height: h,
@@ -1306,7 +1205,7 @@ class _FannedCover extends StatelessWidget {
               color: cs.onSurfaceVariant, size: w * 0.4),
         );
       }
-      return EnhancedCoverImage(url: b.coverUrl, width: w, height: h);
+      return EnhancedCoverImage(url: url, width: w, height: h);
     }
 
     final layers = <Widget>[];
@@ -1341,31 +1240,21 @@ class _FannedCover extends StatelessWidget {
     layers.add(Positioned(
       left: 0,
       top: 0,
-      child: Stack(
-        children: [
-          Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              boxShadow: [
-                BoxShadow(
-                  color: cs.shadow.withOpacity(0.22),
-                  blurRadius: 8,
-                  offset: const Offset(0, 3),
-                ),
-              ],
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          boxShadow: [
+            BoxShadow(
+              color: cs.shadow.withOpacity(0.22),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
             ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: coverFor(books.isNotEmpty ? books.first : null),
-            ),
-          ),
-          if (statusBook != null)
-            Positioned(
-              top: 5,
-              left: 5,
-              child: _BookStatusIndicator(book: statusBook!, compact: true),
-            ),
-        ],
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: coverFor(coverUrls.isNotEmpty ? coverUrls.first : null),
+        ),
       ),
     ));
 
@@ -1373,54 +1262,6 @@ class _FannedCover extends StatelessWidget {
       width: w + spread + 4,
       height: h + 8,
       child: Stack(clipBehavior: Clip.none, children: layers),
-    );
-  }
-}
-
-/// Slim segmented bar showing how far through a series the user is. Segments are
-/// capped so very long series stay compact; colors come straight from the theme.
-class _SeriesProgressBar extends StatelessWidget {
-  const _SeriesProgressBar({
-    required this.total,
-    required this.finished,
-    required this.started,
-  });
-
-  final int total;
-  final int finished;
-  final int started;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    if (total <= 0) return const SizedBox.shrink();
-    final segs = total <= 10 ? total : 10;
-    final doneSegs = (finished / total * segs).round().clamp(0, segs);
-    final startSegs =
-        (started / total * segs).round().clamp(0, segs - doneSegs);
-    return SizedBox(
-      height: 5,
-      child: Row(
-        children: List.generate(segs, (i) {
-          Color c;
-          if (i < doneSegs) {
-            c = cs.primary;
-          } else if (i < doneSegs + startSegs) {
-            c = cs.tertiary;
-          } else {
-            c = cs.onSurface.withOpacity(0.14);
-          }
-          return Expanded(
-            child: Container(
-              margin: EdgeInsets.only(right: i == segs - 1 ? 0 : 3),
-              decoration: BoxDecoration(
-                color: c,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          );
-        }),
-      ),
     );
   }
 }
@@ -2196,6 +2037,8 @@ class _SeriesSheetState extends State<SeriesSheet> {
         numBooks: e.value.length,
         bookIds: e.value.map((b) => b.id).toList(),
         coverUrl: e.value.first.coverUrl,
+        previewCoverUrls: e.value.take(4).map((b) => b.coverUrl).toList(),
+        author: e.value.first.author,
       );
     }).toList()
       ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
@@ -2287,7 +2130,6 @@ class _SeriesSheetState extends State<SeriesSheet> {
                             ),
                           );
                         },
-                        getBooksForSeries: repo.getBooksForSeries,
                       );
                     },
                   );

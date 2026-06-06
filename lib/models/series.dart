@@ -8,6 +8,12 @@ class Series {
   final bool isFinished;
   final DateTime? addedAt;
   final DateTime? updatedAt;
+  /// Cover URLs for the first few books, already ordered (release year, then
+  /// title). Lets cards render the fanned deck instantly from cached list data
+  /// without loading each series' member books.
+  final List<String> previewCoverUrls;
+  /// First book's author, for instant display on the card.
+  final String? author;
 
   const Series({
     required this.id,
@@ -19,6 +25,8 @@ class Series {
     this.isFinished = false,
     this.addedAt,
     this.updatedAt,
+    this.previewCoverUrls = const <String>[],
+    this.author,
   });
 
   factory Series.fromJson(Map<String, dynamic> json, {String? baseUrl, String? token}) {
@@ -32,6 +40,52 @@ class Series {
         } else if (book is String) {
           bookIds.add(book);
         }
+      }
+    }
+
+    // Build ordered preview cover URLs (and author) from the embedded books so
+    // cards can render the fanned deck without a secondary per-series load.
+    final previewCoverUrls = <String>[];
+    String? author;
+    if (json['books'] is List && baseUrl != null) {
+      final entries = <Map<String, dynamic>>[];
+      for (final b in (json['books'] as List)) {
+        if (b is! Map) continue;
+        final bid = (b['id'] ?? b['_id'] ?? '').toString();
+        if (bid.isEmpty) continue;
+        final media = (b['media'] is Map) ? b['media'] as Map : const {};
+        final meta = (media['metadata'] is Map) ? media['metadata'] as Map : const {};
+        int? yr;
+        final y = meta['publishedYear'];
+        if (y is num) {
+          yr = y.toInt();
+        } else if (y is String) {
+          yr = int.tryParse(y.trim());
+        }
+        entries.add({
+          'id': bid,
+          'year': yr,
+          'title': (meta['title'] ?? '').toString(),
+          'author': (meta['authorName'] ?? '').toString(),
+        });
+      }
+      entries.sort((a, b) {
+        final ya = a['year'] as int?;
+        final yb = b['year'] as int?;
+        if (ya != null && yb != null && ya != yb) return ya.compareTo(yb);
+        if (ya != null && yb == null) return -1;
+        if (ya == null && yb != null) return 1;
+        return (a['title'] as String)
+            .toLowerCase()
+            .compareTo((b['title'] as String).toLowerCase());
+      });
+      final tokenParam = (token != null && token.isNotEmpty) ? '?token=$token' : '';
+      for (final e in entries.take(4)) {
+        previewCoverUrls.add('$baseUrl/api/items/${e['id']}/cover$tokenParam');
+      }
+      if (entries.isNotEmpty) {
+        final a = entries.first['author'] as String;
+        if (a.isNotEmpty) author = a;
       }
     }
 
@@ -57,7 +111,9 @@ class Series {
       bookIds: bookIds,
       coverUrl: coverUrl,
       isFinished: json['isFinished'] == true || json['finished'] == true,
-      addedAt: json['addedAt'] is int 
+      previewCoverUrls: previewCoverUrls,
+      author: author,
+      addedAt: json['addedAt'] is int
           ? DateTime.fromMillisecondsSinceEpoch(json['addedAt'] as int)
           : DateTime.tryParse(json['addedAt']?.toString() ?? ''),
       updatedAt: json['updatedAt'] is int 
