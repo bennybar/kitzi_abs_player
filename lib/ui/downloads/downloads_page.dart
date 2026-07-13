@@ -8,6 +8,7 @@ import '../../core/download_storage.dart';
 import '../../core/books_repository.dart';
 import '../../core/downloads_repository.dart';
 import '../book_detail/book_detail_page.dart';
+import '../../widgets/skeleton_widgets.dart';
 
 class DownloadsPage extends StatefulWidget {
   const DownloadsPage({super.key, required this.repo});
@@ -131,9 +132,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
           future: _booksRepoFuture,
           builder: (context, repoSnap) {
             if (!repoSnap.hasData) {
-              return const Scaffold(
-                body: Center(child: CircularProgressIndicator()),
-              );
+              return const Scaffold(body: SkeletonList());
             }
             final repo = repoSnap.data!;
             return FutureBuilder<List<Widget>>(
@@ -179,24 +178,29 @@ class _DownloadsPageState extends State<DownloadsPage> {
                       right: false,
                       child: Column(
                         children: [
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(20, 8, 20, 6),
-                            child: Align(
-                              alignment: Alignment.centerLeft,
-                              child: Text(
-                                'Swipe left on an item to remove downloaded files',
-                                style: Theme.of(context).textTheme.labelMedium
-                                    ?.copyWith(color: cs.onSurfaceVariant),
+                          if (tiles.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(20, 8, 20, 6),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      'Swipe left on an item to remove downloaded files',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .labelMedium
+                                          ?.copyWith(color: cs.onSurfaceVariant),
+                                    ),
+                                  ),
+                                  _TotalDownloadSize(itemIds: allIds),
+                                ],
                               ),
                             ),
-                          ),
                           const SizedBox(height: 4),
                           Expanded(
                             child:
                                 tiles.isEmpty
-                                    ? const Center(
-                                      child: Text('No downloads yet'),
-                                    )
+                                    ? _EmptyDownloads(cs: cs)
                                     : ListView.separated(
                                       itemCount: tiles.length,
                                       separatorBuilder:
@@ -716,4 +720,81 @@ class _BookDownloadTileState extends State<_BookDownloadTile> {
       ),
     );
   }
+}
+
+/// Total bytes on disk across all downloaded books. Previously this number was
+/// only visible on the Storage page buried in Settings.
+class _TotalDownloadSize extends StatelessWidget {
+  const _TotalDownloadSize({required this.itemIds});
+
+  final List<String> itemIds;
+
+  Future<int> _totalBytes() async {
+    var total = 0;
+    for (final id in itemIds) {
+      total += await DownloadStorage.downloadedBytesForItem(id);
+    }
+    return total;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return FutureBuilder<int>(
+      future: _totalBytes(),
+      builder: (context, snap) {
+        final bytes = snap.data ?? 0;
+        if (bytes <= 0) return const SizedBox.shrink();
+        return Text(
+          '${itemIds.length} book${itemIds.length == 1 ? '' : 's'} · ${_formatBytes(bytes)}',
+          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+            color: cs.onSurfaceVariant,
+            fontWeight: FontWeight.w600,
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _EmptyDownloads extends StatelessWidget {
+  const _EmptyDownloads({required this.cs});
+
+  final ColorScheme cs;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(LucideIcons.download, size: 48, color: cs.onSurfaceVariant),
+            const SizedBox(height: 16),
+            Text('No downloads yet', style: text.titleMedium),
+            const SizedBox(height: 8),
+            Text(
+              'Download a book from its detail page to listen offline. '
+              'Books download one at a time and queue up behind each other.',
+              textAlign: TextAlign.center,
+              style: text.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+String _formatBytes(int bytes) {
+  const k = 1024;
+  if (bytes < k) return '$bytes B';
+  final kb = bytes / k;
+  if (kb < k) return '${kb.toStringAsFixed(1)} KB';
+  final mb = kb / k;
+  if (mb < k) return '${mb.toStringAsFixed(1)} MB';
+  final gb = mb / k;
+  return '${gb.toStringAsFixed(2)} GB';
 }

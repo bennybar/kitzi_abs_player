@@ -15,6 +15,7 @@ import '../../widgets/glass_widget.dart';
 import '../../widgets/letter_scrollbar.dart';
 import '../book_detail/book_detail_page.dart';
 import '../../main.dart';
+import '../../widgets/skeleton_widgets.dart';
 
 enum SeriesViewType { series, collections }
 
@@ -574,7 +575,7 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const SkeletonList();
     }
     if (_error != null) {
       return Center(
@@ -686,39 +687,6 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
                       ),
                     ),
                   ],
-                ),
-                bottom: PreferredSize(
-                  preferredSize: Size.fromHeight(_isOnline ? 0 : 28),
-                  child:
-                      _isOnline
-                          ? const SizedBox.shrink()
-                          : Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 6,
-                            ),
-                            color: cs.errorContainer,
-                            child: Row(
-                              children: [
-                                Icon(
-                                  LucideIcons.wifiOff,
-                                  size: 16,
-                                  color: cs.onErrorContainer,
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    'Offline – showing cached ${_viewType.name}',
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .labelMedium
-                                        ?.copyWith(color: cs.onErrorContainer),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
                 ),
                 actions: [
                   // Search button

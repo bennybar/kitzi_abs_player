@@ -4,8 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:flutter_displaymode/flutter_displaymode.dart';
 
 import 'core/auth_repository.dart';
@@ -23,7 +21,7 @@ import 'ui/main/main_scaffold.dart';
 import 'core/app_warmup_service.dart';
 import 'core/background_sync_service.dart';
 import 'core/streaming_cache_service.dart';
-import 'core/firebase_analytics_service.dart';
+import 'core/analytics_service.dart';
 
 /// Simple app-wide service container
 class AppServices {
@@ -73,111 +71,118 @@ Future<void> main() async {
     ..maximumSize = 20
     ..maximumSizeBytes = 16 * 1024 * 1024; // 16 MB ceiling
 
-  // Request the highest supported refresh rate (Android only; iOS ProMotion is
-  // handled by CADisableMinimumFrameDurationOnPhone in Info.plist).
-  if (Platform.isAndroid) {
-    try {
-      await FlutterDisplayMode.setHighRefreshRate();
-      if (!kReleaseMode) {
-        final supported = await FlutterDisplayMode.supported;
-        final active = await FlutterDisplayMode.active;
-        debugPrint(
-          '[DisplayMode] active=${active.refreshRate}Hz (${active.width}x${active.height}) '
-          'supported=${supported.map((m) => '${m.refreshRate}Hz ${m.width}x${m.height}').join(', ')}',
-        );
-      }
-    } catch (e) {
-      if (!kReleaseMode) debugPrint('[DisplayMode] setHighRefreshRate failed: $e');
-    }
-  }
-
-  // Initialize Firebase
-  try {
-    await Firebase.initializeApp();
-    final analytics = FirebaseAnalytics.instance;
-    FirebaseAnalyticsService.instance.initialize(analytics);
-    
-    // Track app open (daily active user)
-    unawaited(FirebaseAnalyticsService.instance.logAppOpen().catchError((error) {
-      if (kDebugMode) {
-        debugPrint('[Main] Firebase Analytics error: $error');
-      }
-    }));
-    
-    if (kDebugMode) {
-      debugPrint('[Main] Firebase initialized successfully');
-    }
-  } catch (e) {
-    // Firebase initialization failed - app can still work without analytics
-    if (kDebugMode) {
-      debugPrint('[Main] Firebase initialization failed: $e');
-      debugPrint('[Main] App will continue without analytics');
-    }
-  }
-
   // Reduce logging noise in release builds
   if (kReleaseMode) {
     debugPrint = (String? message, {int? wrapWidth}) {};
   }
 
-  if (await Permission.notification.isDenied) {
-    await Permission.notification.request();
+  // Paint immediately. Only the services the first screen genuinely needs are
+  // awaited (behind the splash); everything else — analytics, notifications,
+  // audio binding, permissions — runs after the app is on screen.
+  runApp(const _Bootstrap());
+}
+
+/// Shows the splash while the core services are constructed, then swaps in the
+/// real app. Nothing here blocks the first frame.
+class _Bootstrap extends StatefulWidget {
+  const _Bootstrap();
+  @override
+  State<_Bootstrap> createState() => _BootstrapState();
+}
+
+class _BootstrapState extends State<_Bootstrap> {
+  AppServices? _services;
+
+  @override
+  void initState() {
+    super.initState();
+    _boot();
   }
 
-  // Request battery optimization exemption (one-time on first launch)
-  // This helps prevent disconnection issues by preventing Android from killing background services
-  try {
-    final prefs = await SharedPreferences.getInstance();
-    final batteryOptRequested = prefs.getBool('battery_opt_requested') ?? false;
-    if (!batteryOptRequested && Platform.isAndroid) {
-      // Check if already ignored, if not, request it
-      final status = await Permission.ignoreBatteryOptimizations.status;
-      if (!status.isGranted) {
-        // Request permission (will show system dialog)
-        await Permission.ignoreBatteryOptimizations.request();
+  Future<void> _boot() async {
+    // Construct singletons (Auth -> Playback -> Downloads)
+    final auth = await AuthRepository.ensure();
+    final booksRepo = await BooksRepository.create();
+    final playback = PlaybackRepository(auth);
+    final downloads = DownloadsRepository(auth, playback, booksRepo: booksRepo);
+    final theme = ThemeService();
+    await theme.init();
+    await downloads.init();
+    final queue = QueueService(playback);
+    await queue.init();
+
+    final services = AppServices(
+      auth: auth,
+      playback: playback,
+      downloads: downloads,
+      books: booksRepo,
+      theme: theme,
+      queue: queue,
+    );
+
+    if (!mounted) return;
+    setState(() => _services = services);
+    unawaited(_initAfterFirstFrame(services));
+  }
+
+  /// Everything that used to sit in front of `runApp`. Ordered so playback is
+  /// usable as early as possible and permission dialogs come last — the user
+  /// should see the app before the app asks them for anything.
+  Future<void> _initAfterFirstFrame(AppServices services) async {
+    await NotificationService.instance.initialize();
+    // Init AudioService early so Android Auto can discover the
+    // MediaBrowserService without requiring the UI to build first.
+    await AudioServiceBinding.instance.bindAudioService(services.playback);
+    await StreamingCacheService.instance.init();
+    AppWarmupService.warmup();
+
+    // Request the highest supported refresh rate (Android only; iOS ProMotion
+    // is handled by CADisableMinimumFrameDurationOnPhone in Info.plist).
+    if (Platform.isAndroid) {
+      try {
+        await FlutterDisplayMode.setHighRefreshRate();
+      } catch (e) {
+        if (!kReleaseMode) {
+          debugPrint('[DisplayMode] setHighRefreshRate failed: $e');
+        }
       }
-      // Mark as requested so we don't ask again
-      await prefs.setBool('battery_opt_requested', true);
     }
-  } catch (_) {
-    // Ignore errors - battery optimization is optional
+
+    await AnalyticsService.instance.initialize();
+    unawaited(AnalyticsService.instance.logAppOpen());
+
+    if (await Permission.notification.isDenied) {
+      await Permission.notification.request();
+    }
+
+    // Battery optimization exemption (one-time on first launch) keeps Android
+    // from killing the playback service.
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final requested = prefs.getBool('battery_opt_requested') ?? false;
+      if (!requested && Platform.isAndroid) {
+        final status = await Permission.ignoreBatteryOptimizations.status;
+        if (!status.isGranted) {
+          await Permission.ignoreBatteryOptimizations.request();
+        }
+        await prefs.setBool('battery_opt_requested', true);
+      }
+    } catch (_) {
+      // Battery optimization is optional.
+    }
   }
 
-  // Initialize notifications early
-  await NotificationService.instance.initialize();
-
-  // Construct singletons (Auth -> Playback -> Downloads)
-  final auth = await AuthRepository.ensure();
-  final booksRepo = await BooksRepository.create();
-  final playback = PlaybackRepository(auth);
-  final downloads = DownloadsRepository(auth, playback, booksRepo: booksRepo);
-  final theme = ThemeService();
-  await theme.init();
-  await downloads.init();
-  final queue = QueueService(playback);
-  await queue.init();
-
-  final services = AppServices(
-    auth: auth,
-    playback: playback,
-    downloads: downloads,
-    books: booksRepo,
-    theme: theme,
-    queue: queue,
-  );
-
-  await StreamingCacheService.instance.init();
-  // Ensure AudioService is initialized early so Android Auto can discover the
-  // MediaBrowserService without requiring the UI to build first.
-  await AudioServiceBinding.instance.bindAudioService(services.playback);
-  
-  // Start app warmup in background
-  AppWarmupService.warmup();
-
-  runApp(ServicesScope(
-    services: services,
-    child: const AbsApp(),
-  ));
+  @override
+  Widget build(BuildContext context) {
+    final services = _services;
+    if (services == null) {
+      return const MaterialApp(
+        debugShowCheckedModeBanner: false,
+        home: SplashContent(),
+      );
+    }
+    return ServicesScope(services: services, child: const AbsApp());
+  }
 }
 
 class AbsApp extends StatefulWidget {

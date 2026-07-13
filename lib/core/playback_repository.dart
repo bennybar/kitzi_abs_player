@@ -1003,13 +1003,18 @@ class PlaybackRepository {
       }
     } catch (_) {}
 
-    // Check if sync is required and server is available
-    final canProceed = await _checkSyncRequirement(context: context);
-    if (!canProceed) {
-      _log(
-        'Cannot play: server unavailable and sync progress is required, or user cancelled',
-      );
-      return false;
+    // A downloaded book plays entirely from disk, so don't gate it on a server
+    // preflight — that's what made an offline tap on a local file pop a
+    // "No Internet Connection" dialog.
+    final hasLocalFiles = (await _localTracks(libraryItemId)).isNotEmpty;
+    if (!hasLocalFiles) {
+      final canProceed = await _checkSyncRequirement(context: context);
+      if (!canProceed) {
+        _log(
+          'Cannot play: server unavailable and sync progress is required, or user cancelled',
+        );
+        return false;
+      }
     }
 
     final session = await AudioSession.instance;
@@ -2179,6 +2184,10 @@ class PlaybackRepository {
 
   Timer? _progressTimer;
   double _lastSentSec = -1;
+  // Wall-clock time actually spent playing since the last successful sync.
+  // Never derived from position, so seeks/chapter skips don't inflate it.
+  DateTime? _playStartedAt;
+  double _pendingListenedSec = 0;
   StreamSubscription<bool>? _playingSub;
   StreamSubscription<Duration>? _positionSub;
   StreamSubscription<ProcessingState>? _completionSub;
@@ -2187,19 +2196,37 @@ class PlaybackRepository {
   static const _positionUpdateThrottle = Duration(milliseconds: 500);
   static const _dynamicIslandUpdateThrottle = Duration(seconds: 2);
 
+  /// Fold the time spent playing since the last accrual into
+  /// [_pendingListenedSec] and restart the clock from now.
+  void _accrueListening() {
+    final startedAt = _playStartedAt;
+    if (startedAt == null) return;
+    final now = DateTime.now();
+    final elapsed = now.difference(startedAt).inMilliseconds / 1000.0;
+    if (elapsed > 0) _pendingListenedSec += elapsed;
+    _playStartedAt = now;
+  }
+
   void _startProgressSync(String libraryItemId, {String? episodeId}) {
     _progressTimer?.cancel();
     _playingSub?.cancel();
     _positionSub?.cancel();
 
+    _lastSentSec = -1;
+    _playStartedAt = null;
+    _pendingListenedSec = 0;
+
     // Start/stop heartbeat based on actual playing state
     _playingSub = player.playingStream.listen((isPlaying) async {
       if (isPlaying) {
+        _playStartedAt ??= DateTime.now();
         // Start periodic ping if not already running
         _progressTimer ??= Timer.periodic(_kProgressPing, (_) async {
           await _sendProgressImmediate();
         });
       } else {
+        _accrueListening();
+        _playStartedAt = null;
         // Stop periodic ping when paused/stopped
         _progressTimer?.cancel();
         _progressTimer = null;
@@ -2316,14 +2343,14 @@ class PlaybackRepository {
       await prefs.setDouble('$_kLocalProgPrefix$itemId', cur);
     } catch (_) {}
 
-    final previousSent = _lastSentSec >= 0 ? _lastSentSec : null;
-    double? timeListened;
-    if (previousSent != null) {
-      final delta = cur - previousSent;
-      if (delta.isFinite && delta > 0) {
-        // Cap to avoid huge jumps when resuming after long gaps.
-        timeListened = delta.clamp(0, 1800).toDouble(); // seconds
-      }
+    // Report only wall-clock time spent playing. Deriving this from the
+    // position delta would bill seeks and chapter skips as listening time.
+    _accrueListening();
+    final reported = _pendingListenedSec;
+    final double? timeListened = reported > 0 ? reported : null;
+    void consumeListened() {
+      _pendingListenedSec =
+          (_pendingListenedSec - reported).clamp(0.0, double.infinity);
     }
 
     // Prefer syncing an active streaming session when available
@@ -2338,6 +2365,7 @@ class PlaybackRepository {
     if (synced) {
       _markSyncSuccess();
       _lastSentSec = cur;
+      consumeListened();
       return;
     }
 
@@ -2378,6 +2406,7 @@ class PlaybackRepository {
       if (resp.statusCode == 200 || resp.statusCode == 204) {
         _markSyncSuccess();
         _lastSentSec = cur;
+        consumeListened();
         return;
       }
     } catch (e) {
@@ -2396,6 +2425,7 @@ class PlaybackRepository {
       if (resp.statusCode == 200 || resp.statusCode == 204) {
         _markSyncSuccess();
         _lastSentSec = cur;
+        consumeListened();
         return;
       }
     } catch (e) {
@@ -2413,6 +2443,7 @@ class PlaybackRepository {
       if (resp.statusCode == 200 || resp.statusCode == 204) {
         _markSyncSuccess();
         _lastSentSec = cur;
+        consumeListened();
         return;
       }
     } catch (e) {

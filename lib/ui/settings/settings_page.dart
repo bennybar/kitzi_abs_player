@@ -32,6 +32,8 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
+  final TextEditingController _settingsSearchCtrl = TextEditingController();
+  String _settingsQuery = '';
   bool? _wifiOnly;
   bool? _autoDeleteOnFinish;
   bool? _syncProgressBeforePlay;
@@ -117,6 +119,7 @@ class _SettingsPageState extends State<SettingsPage> {
   void dispose() {
     _reloadDebounce?.cancel();
     _loggingSessionTimer?.cancel();
+    _settingsSearchCtrl.dispose();
     super.dispose();
   }
 
@@ -1101,9 +1104,94 @@ class _SettingsPageState extends State<SettingsPage> {
                 ],
               ),
             ],
-        body: ListView(
-          children: [
-            const ListTile(title: Text('Library')),
+        body: _buildSettingsList(),
+      ),
+    );
+  }
+
+  Widget _buildSettingsList() {
+    final q = _settingsQuery.trim().toLowerCase();
+    final all = _sections();
+    final sections =
+        q.isEmpty ? all : all.where((s) => s.matches(q)).toList();
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: TextField(
+            controller: _settingsSearchCtrl,
+            onChanged: (v) => setState(() => _settingsQuery = v),
+            decoration: InputDecoration(
+              hintText: 'Search settings',
+              prefixIcon: const Icon(LucideIcons.search),
+              suffixIcon:
+                  _settingsQuery.isEmpty
+                      ? null
+                      : IconButton(
+                        icon: const Icon(LucideIcons.x),
+                        onPressed: () {
+                          _settingsSearchCtrl.clear();
+                          setState(() => _settingsQuery = '');
+                        },
+                      ),
+              filled: true,
+              fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide.none,
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 12,
+              ),
+            ),
+          ),
+        ),
+        Expanded(
+          child:
+              sections.isEmpty
+                  ? Center(
+                    child: Text(
+                      'No settings match "${_settingsQuery.trim()}"',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  )
+                  // Builder, so only the sections on screen are built — the old
+                  // flat ListView built all ~35 controls on every setState.
+                  : ListView.builder(
+                    itemCount: sections.length,
+                    itemBuilder: (context, i) {
+                      final section = sections[i];
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (i > 0) const Divider(height: 32),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                            child: Text(
+                              section.title,
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                          ),
+                          ...section.children,
+                        ],
+                      );
+                    },
+                  ),
+        ),
+      ],
+    );
+  }
+
+  List<_SettingsSection> _sections() {
+    final services = ServicesScope.of(context).services;
+    final theme = services.theme;
+    return [
+      _SettingsSection(
+        title: 'Library',
+        keywords: 'library active switch clear deleted broken resync metadata cleanup log',
+        children: [
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
@@ -1157,8 +1245,12 @@ class _SettingsPageState extends State<SettingsPage> {
               trailing: const Icon(LucideIcons.chevronRight),
               onTap: () => _showCleanupLog(),
             ),
-            const Divider(height: 32),
-            const ListTile(title: Text('Server access')),
+        ],
+      ),
+      _SettingsSection(
+        title: 'Server access',
+        keywords: 'server access custom http headers url token',
+        children: [
             ListTile(
               leading: const Icon(LucideIcons.keyRound),
               title: const Text('Custom HTTP headers'),
@@ -1171,8 +1263,12 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
               onTap: _openCustomHeadersSheet,
             ),
-            const Divider(height: 32),
-            const ListTile(title: Text('Appearance')),
+        ],
+      ),
+      _SettingsSection(
+        title: 'Appearance',
+        keywords: 'appearance theme dark light mode series tab authors tab full player font size surface tint gradient scrolling title letter scrolling alphabetical cover',
+        children: [
             SwitchListTile(
               title: const Text('Show Series tab'),
               subtitle: const Text('Enable the Series view'),
@@ -1398,14 +1494,12 @@ class _SettingsPageState extends State<SettingsPage> {
                 );
               },
             ),
-            const Divider(height: 32),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-              child: Text(
-                'Downloads',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-            ),
+        ],
+      ),
+      _SettingsSection(
+        title: 'Downloads',
+        keywords: 'downloads wifi wi-fi cellular auto delete finish battery optimization streaming cache size storage',
+        children: [
             SwitchListTile(
               title: const Text('Wi‑Fi only downloads'),
               subtitle: const Text(
@@ -1622,14 +1716,12 @@ class _SettingsPageState extends State<SettingsPage> {
             //     );
             //   },
             // ),
-            const Divider(height: 32),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-              child: Text(
-                'Playback',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-            ),
+        ],
+      ),
+      _SettingsSection(
+        title: 'Playback',
+        keywords: 'playback smart rewind sync before play pause sleep timer dual progress resume position ask history seek back forward duration bluetooth auto play speed',
+        children: [
             SwitchListTile(
               title: const Text('Smart rewind on resume'),
               subtitle: const Text(
@@ -1922,8 +2014,12 @@ class _SettingsPageState extends State<SettingsPage> {
                 } catch (_) {}
               },
             ),
-            const Divider(height: 32),
-            const ListTile(title: Text('Backup & restore')),
+        ],
+      ),
+      _SettingsSection(
+        title: 'Backup & restore',
+        keywords: 'backup restore export import settings json',
+        children: [
             ListTile(
               leading: const Icon(LucideIcons.download),
               title: const Text('Export settings (JSON)'),
@@ -1938,8 +2034,12 @@ class _SettingsPageState extends State<SettingsPage> {
               subtitle: const Text('Load settings from a JSON file'),
               onTap: _importSettings,
             ),
-            const Divider(height: 32),
-            const ListTile(title: Text('Debug & logging')),
+        ],
+      ),
+      _SettingsSection(
+        title: 'Debug & logging',
+        keywords: 'debug logging session export log',
+        children: [
             SwitchListTile(
               title: const Text('Logging session'),
               subtitle:
@@ -1972,14 +2072,12 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
                 onTap: _exportLogFile,
               ),
-            const Divider(height: 32),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-              child: Text(
-                'Account',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-            ),
+        ],
+      ),
+      _SettingsSection(
+        title: 'Account',
+        keywords: 'account log out logout sign out exit app',
+        children: [
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: FilledButton.tonalIcon(
@@ -2160,12 +2258,30 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
               ),
             ),
-          ],
-        ),
+        ],
       ),
-    );
+    ];
   }
 }
+
+/// A group of settings, searchable by title or by the keywords of the controls
+/// it contains.
+class _SettingsSection {
+  const _SettingsSection({
+    required this.title,
+    required this.keywords,
+    required this.children,
+  });
+
+  final String title;
+  final String keywords;
+  final List<Widget> children;
+
+  bool matches(String query) =>
+      title.toLowerCase().contains(query) ||
+      keywords.toLowerCase().contains(query);
+}
+
 
 // --- Helpers for preferences ---
 Future<void> _setWifiOnly(bool value) async {

@@ -9,6 +9,7 @@ import '../../core/image_cache_manager.dart';
 import '../../utils/alphabet_utils.dart';
 import '../../widgets/author_card.dart';
 import '../../widgets/letter_scrollbar.dart';
+import '../../widgets/skeleton_widgets.dart';
 
 class AuthorsPage extends StatefulWidget {
   const AuthorsPage({super.key});
@@ -228,7 +229,7 @@ class _AuthorsPageState extends State<AuthorsPage> {
 
   Widget _buildAuthorsBody(ThemeData theme, ColorScheme cs) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const SkeletonList();
     }
     if (_error != null) {
       return Center(

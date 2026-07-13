@@ -1528,6 +1528,10 @@ class DownloadsRepository {
         _stopProgressNotifications(libraryItemId);
         try { await NotificationService.instance.hideDownloadNotification(); } catch (_) {}
         _notifyItem(libraryItemId);
+        // This book is done — start the next one waiting in the queue. Without
+        // this, a queued book sat untouched until the next app launch.
+        // Deferred a turn so the in-progress queue pass can unwind first.
+        unawaited(Future(() => _processGlobalQueue()));
         return;
       }
 

@@ -11,6 +11,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart'
     hide ImageCacheManager;
 import '../../core/image_cache_manager.dart';
+import '../../widgets/download_button.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/playback_repository.dart';
@@ -4038,53 +4039,11 @@ class _ChaptersDownloadButtonState extends State<_ChaptersDownloadButton> {
         return;
       }
 
+      if (!mounted) return;
+      if (!await ensureDownloadAllowed(context)) return;
+
+      // Queued behind any book already downloading, rather than cancelling it.
       final othersActive = await _downloads!.hasActiveOrQueued();
-      bool requireCancelOthers = false;
-      if (othersActive) {
-        try {
-          final tracked = await _downloads!.listTrackedItemIds();
-          final onlyThis =
-              tracked.isNotEmpty &&
-              tracked.every((id) => id == widget.libraryItemId);
-          if (!onlyThis) requireCancelOthers = true;
-        } catch (_) {
-          requireCancelOthers = true;
-        }
-      }
-
-      bool proceed = true;
-      bool cancelOthers = false;
-      if (requireCancelOthers) {
-        if (!mounted) return;
-        final ans = await showDialog<bool>(
-          context: context,
-          builder:
-              (context) => AlertDialog(
-                title: const Text('Single download at a time'),
-                content: const Text(
-                  'Another book is downloading. Cancel it and download this book now?',
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context, false),
-                    child: const Text('No'),
-                  ),
-                  FilledButton(
-                    onPressed: () => Navigator.pop(context, true),
-                    child: const Text('Yes, switch downloads'),
-                  ),
-                ],
-              ),
-        );
-        proceed = ans == true;
-        cancelOthers = ans == true;
-      }
-
-      if (!proceed) return;
-
-      if (cancelOthers) {
-        await _downloads!.cancelAll();
-      }
 
       await _downloads!.enqueueItemDownloads(
         widget.libraryItemId,
@@ -4093,9 +4052,11 @@ class _ChaptersDownloadButtonState extends State<_ChaptersDownloadButton> {
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             content: Text(
-              'Download started – follow progress from Downloads tab.',
+              othersActive
+                  ? 'Queued – starts when the current download finishes.'
+                  : 'Download started – follow progress from Downloads tab.',
             ),
             duration: Duration(seconds: 3),
           ),

@@ -12,6 +12,7 @@ import '../home/authors_page.dart';
 import '../queue/queue_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/ui_prefs.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 import '../../core/downloads_repository.dart';
 import '../../core/playback_repository.dart';
@@ -295,6 +296,9 @@ class _MainScaffoldState extends State<MainScaffold> {
                 final chrome = Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    // App-wide: offline used to be signalled on three screens
+                    // only, so failures elsewhere just looked like breakage.
+                    const _OfflineBanner(),
                     AnimatedSize(
                       duration: const Duration(milliseconds: 320),
                       curve: const Cubic(0.05, 0.7, 0.1, 1.0),
@@ -549,4 +553,84 @@ class _NavDestinationData {
   final IconData icon;
   final IconData selectedIcon;
   final String label;
+}
+
+/// A single app-wide offline indicator, shown above the bottom chrome on every
+/// tab. Sits here rather than in individual pages so screens like Downloads,
+/// Book Detail and Queue stop presenting offline failures as unexplained errors.
+class _OfflineBanner extends StatefulWidget {
+  const _OfflineBanner();
+
+  @override
+  State<_OfflineBanner> createState() => _OfflineBannerState();
+}
+
+class _OfflineBannerState extends State<_OfflineBanner> {
+  bool _online = true;
+  StreamSubscription<List<ConnectivityResult>>? _sub;
+
+  static bool _connected(List<ConnectivityResult> r) =>
+      r.isNotEmpty && !r.every((c) => c == ConnectivityResult.none);
+
+  @override
+  void initState() {
+    super.initState();
+    _watch();
+  }
+
+  Future<void> _watch() async {
+    final current = await Connectivity().checkConnectivity();
+    if (mounted) setState(() => _online = _connected(current));
+    _sub = Connectivity().onConnectivityChanged.listen((conn) {
+      if (!mounted) return;
+      setState(() => _online = _connected(conn));
+    });
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 250),
+      child:
+          _online
+              ? const SizedBox(width: double.infinity)
+              : Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 6,
+                ),
+                margin: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+                decoration: BoxDecoration(
+                  color: cs.errorContainer,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      LucideIcons.wifiOff,
+                      size: 16,
+                      color: cs.onErrorContainer,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Offline – downloaded books still play',
+                        style: Theme.of(context).textTheme.labelMedium
+                            ?.copyWith(color: cs.onErrorContainer),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+    );
+  }
 }

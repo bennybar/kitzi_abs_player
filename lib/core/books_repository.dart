@@ -12,7 +12,6 @@ import '../models/book.dart';
 import '../models/series.dart';
 import 'auth_repository.dart';
 import 'network_service.dart';
-import 'offline_first_repository.dart';
 import 'image_cache_manager.dart';
 
 class BooksRepository {
@@ -91,6 +90,8 @@ class BooksRepository {
   }
 
   static const _etagKey = 'books_list_etag';
+  // No longer written: the library payload lives in the sqflite `books` table.
+  // Still removed on cache invalidation to purge the blob from older installs.
   static const _cacheKey = 'books_list_cache_json';
   static const _libIdKey = 'books_library_id';
   static const _cacheMetadataKey = 'books_cache_metadata';
@@ -765,6 +766,9 @@ class BooksRepository {
         updatedAt: (m['updatedAt'] as int?) != null
             ? DateTime.fromMillisecondsSinceEpoch((m['updatedAt'] as int), isUtc: true)
             : null,
+        addedAt: (m['addedAt'] as int?) != null
+            ? DateTime.fromMillisecondsSinceEpoch((m['addedAt'] as int), isUtc: true)
+            : null,
         series: m['series'] as String?,
         seriesSequence: (m['seriesSequence'] is num)
             ? (m['seriesSequence'] as num).toDouble()
@@ -811,11 +815,20 @@ class BooksRepository {
     String sort = 'updatedAt:desc',
     String? query,
     int? offset,
+    Set<String>? onlyIds,
+    Set<String>? excludeIds,
   }) async {
+    // An empty `onlyIds` means "restrict to nothing", not "no restriction".
+    if (onlyIds != null && onlyIds.isEmpty) return <Book>[];
+
     // Check cache first
     _cleanExpiredCache();
     final resolvedOffset = offset ?? ((page <= 1) ? 0 : (page - 1) * limit);
-    final cacheKey = 'books_paged_${resolvedOffset}_${limit}_${sort}_${query ?? 'all'}';
+    final idKey =
+        '${onlyIds == null ? '' : 'in${onlyIds.length}:${onlyIds.hashCode}'}'
+        '${excludeIds == null || excludeIds.isEmpty ? '' : 'out${excludeIds.length}:${excludeIds.hashCode}'}';
+    final cacheKey =
+        'books_paged_${resolvedOffset}_${limit}_${sort}_${query ?? 'all'}_$idKey';
     final cached = _queryCache[cacheKey];
     final timestamp = _cacheTimestamps[cacheKey];
 
@@ -844,6 +857,17 @@ class BooksRepository {
     }
     // Only audiobooks
     whereParts.add('((isAudioBook = 1) OR (isAudioBook IS NULL AND durationMs IS NOT NULL AND durationMs > 0))');
+    // Id restrictions are inlined as escaped literals rather than bound
+    // parameters: the lists can run to hundreds of ids and older Android
+    // SQLite caps a statement at 999 variables.
+    String literals(Set<String> ids) =>
+        ids.map((id) => "'${id.replaceAll("'", "''")}'").join(',');
+    if (onlyIds != null) {
+      whereParts.add('id IN (${literals(onlyIds)})');
+    }
+    if (excludeIds != null && excludeIds.isNotEmpty) {
+      whereParts.add('id NOT IN (${literals(excludeIds)})');
+    }
     final where = whereParts.isEmpty ? null : whereParts.join(' AND ');
 
     String orderBy;
@@ -1419,7 +1443,6 @@ class BooksRepository {
       final bodyStr = resp.body;
       final body = bodyStr.isNotEmpty ? jsonDecode(bodyStr) : null;
       final newEtag = resp.headers['etag'];
-      await _prefs.setString(_cacheKey, bodyStr);
       if (newEtag != null) await _prefs.setString(_etagKey, newEtag);
 
       final items = _extractItems(body);
@@ -2669,6 +2692,9 @@ class BooksRepository {
         updatedAt: (m['updatedAt'] as int?) != null
             ? DateTime.fromMillisecondsSinceEpoch((m['updatedAt'] as int), isUtc: true)
             : null,
+        addedAt: (m['addedAt'] as int?) != null
+            ? DateTime.fromMillisecondsSinceEpoch((m['addedAt'] as int), isUtc: true)
+            : null,
         series: m['series'] as String?,
         seriesSequence: (m['seriesSequence'] is num)
             ? (m['seriesSequence'] as num).toDouble()
@@ -2972,4 +2998,45 @@ class BookDbChange {
   const BookDbChange({required this.type, required this.ids});
   final BookDbChangeType type;
   final Set<String> ids;
+}
+
+/// Cache metadata for tracking cache state
+class CacheMetadata {
+  final DateTime lastUpdated;
+  final int itemCount;
+  final String? version;
+  final Map<String, dynamic>? extra;
+
+  const CacheMetadata({
+    required this.lastUpdated,
+    required this.itemCount,
+    this.version,
+    this.extra,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'lastUpdated': lastUpdated.millisecondsSinceEpoch,
+    'itemCount': itemCount,
+    'version': version,
+    'extra': extra,
+  };
+
+  factory CacheMetadata.fromJson(Map<String, dynamic> json) {
+    final rawLastUpdated = json['lastUpdated'];
+    final lastUpdatedMs =
+        rawLastUpdated is int
+            ? rawLastUpdated
+            : (rawLastUpdated is num ? rawLastUpdated.toInt() : 0);
+    final rawItemCount = json['itemCount'];
+    final itemCount =
+        rawItemCount is int
+            ? rawItemCount
+            : (rawItemCount is num ? rawItemCount.toInt() : 0);
+    return CacheMetadata(
+      lastUpdated: DateTime.fromMillisecondsSinceEpoch(lastUpdatedMs),
+      itemCount: itemCount,
+      version: json['version'] as String?,
+      extra: (json['extra'] as Map?)?.cast<String, dynamic>(),
+    );
+  }
 }

@@ -9,6 +9,52 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../core/downloads_repository.dart';
 import '../main.dart'; // ServicesScope for DI
 
+/// The Wi‑Fi-only gate every download entry point must pass through. Returns
+/// false when the user declines to download over cellular.
+///
+/// Shared so the swipe-to-download shortcut in the library enforces the same
+/// rule as the download button — it used to bypass it entirely.
+Future<bool> ensureDownloadAllowed(BuildContext context) async {
+  final prefs = await SharedPreferences.getInstance();
+  final wifiOnly = prefs.getBool('downloads_wifi_only') ?? false;
+  if (!wifiOnly) return true;
+
+  final connectivity = await Connectivity().checkConnectivity();
+  final isOnCellular =
+      connectivity.contains(ConnectivityResult.mobile) &&
+      !connectivity.contains(ConnectivityResult.wifi) &&
+      !connectivity.contains(ConnectivityResult.ethernet);
+  if (!isOnCellular) return true;
+  if (!context.mounted) return false;
+
+  final allowCellular = await showDialog<bool>(
+    context: context,
+    builder:
+        (context) => AlertDialog(
+          title: const Text('Wi‑Fi only downloads enabled'),
+          content: const Text(
+            'Downloads are restricted to Wi‑Fi only. You are currently on cellular data. Would you like to allow downloads on cellular data?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('No'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Yes, allow cellular'),
+            ),
+          ],
+        ),
+  );
+
+  if (allowCellular == true) {
+    await prefs.setBool('downloads_wifi_only', false);
+    return true;
+  }
+  return false;
+}
+
 enum DownloadButtonProgressStyle { fill, outlineRing }
 
 class _OutlineProgressBorderPainter extends CustomPainter {
@@ -234,97 +280,12 @@ class _DownloadButtonState extends State<DownloadButton> {
         return;
       }
 
-      // Check wifi-only setting and connectivity
-      final prefs = await SharedPreferences.getInstance();
-      final wifiOnly = prefs.getBool('downloads_wifi_only') ?? false;
+      if (!await ensureDownloadAllowed(context)) return;
 
-      if (wifiOnly) {
-        final connectivity = await Connectivity().checkConnectivity();
-        final isOnCellular =
-            connectivity.contains(ConnectivityResult.mobile) &&
-            !connectivity.contains(ConnectivityResult.wifi) &&
-            !connectivity.contains(ConnectivityResult.ethernet);
-
-        if (isOnCellular) {
-          final changeSetting = await showDialog<bool>(
-            context: context,
-            builder:
-                (context) => AlertDialog(
-                  title: const Text('Wi‑Fi only downloads enabled'),
-                  content: const Text(
-                    'Downloads are restricted to Wi‑Fi only. You are currently on cellular data. Would you like to allow downloads on cellular data?',
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context, false),
-                      child: const Text('No'),
-                    ),
-                    FilledButton(
-                      onPressed: () => Navigator.pop(context, true),
-                      child: const Text('Yes, allow cellular'),
-                    ),
-                  ],
-                ),
-          );
-
-          if (changeSetting == true) {
-            await prefs.setBool('downloads_wifi_only', false);
-          } else {
-            return; // User declined, do nothing
-          }
-        }
-      }
-
-      // Check whether other items are active/queued
+      // Books download one at a time, but the repository queues them — so a
+      // second book waits its turn instead of cancelling the first.
       final othersActive = await _downloads!.hasActiveOrQueued();
-      bool requireCancelOthers = false;
-      if (othersActive) {
-        // If only this item is tracked or active, allow enqueue directly
-        try {
-          final tracked = await _downloads!.listTrackedItemIds();
-          final onlyThis =
-              tracked.isNotEmpty &&
-              tracked.every((id) => id == widget.libraryItemId);
-          if (!onlyThis) requireCancelOthers = true;
-        } catch (_) {
-          requireCancelOthers = true; // be conservative if unknown
-        }
-      }
 
-      bool proceed = true;
-      bool cancelOthers = false;
-      if (requireCancelOthers) {
-        final ans = await showDialog<bool>(
-          context: context,
-          builder:
-              (context) => AlertDialog(
-                title: const Text('Single download at a time'),
-                content: const Text(
-                  'Another book is downloading. Cancel it and download this book now?',
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context, false),
-                    child: const Text('No'),
-                  ),
-                  FilledButton(
-                    onPressed: () => Navigator.pop(context, true),
-                    child: const Text('Yes, switch downloads'),
-                  ),
-                ],
-              ),
-        );
-        proceed = ans == true;
-        cancelOthers = ans == true;
-      }
-
-      if (!proceed) return;
-
-      if (cancelOthers) {
-        await _downloads!.cancelAll();
-      }
-
-      // Proceed to enqueue this item
       await _downloads!.enqueueItemDownloads(
         widget.libraryItemId,
         episodeId: widget.episodeId,
@@ -332,11 +293,13 @@ class _DownloadButtonState extends State<DownloadButton> {
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             content: Text(
-              'Download started – follow progress from Downloads tab.',
+              othersActive
+                  ? 'Queued – starts when the current download finishes.'
+                  : 'Download started – follow progress from Downloads tab.',
             ),
-            duration: Duration(seconds: 3),
+            duration: const Duration(seconds: 3),
           ),
         );
       }

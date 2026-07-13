@@ -134,7 +134,7 @@ class _OptimizedSplashScreenState extends State<OptimizedSplashScreen> {
       future: AppWarmupService.waitForWarmup(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const _SplashContent();
+          return const SplashContent();
         }
         
         if (snapshot.hasError) {
@@ -150,8 +150,8 @@ class _OptimizedSplashScreenState extends State<OptimizedSplashScreen> {
 }
 
 /// Simple splash content
-class _SplashContent extends StatelessWidget {
-  const _SplashContent();
+class SplashContent extends StatelessWidget {
+  const SplashContent({super.key});
   
   @override
   Widget build(BuildContext context) {

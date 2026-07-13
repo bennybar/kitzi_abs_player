@@ -15,6 +15,7 @@ import '../../core/image_cache_manager.dart';
 import '../../core/ui_prefs.dart';
 import '../../models/book.dart';
 import '../../widgets/skeleton_widgets.dart';
+import '../../widgets/download_button.dart';
 import '../../widgets/letter_scrollbar.dart';
 import '../../widgets/author_card.dart';
 import '../../widgets/glass_widget.dart';
@@ -23,6 +24,7 @@ import '../book_detail/book_detail_page.dart';
 import '../queue/queue_actions.dart';
 import '../player/full_player_page.dart';
 import '../profile/profile_page.dart';
+import '../stats/stats_page.dart';
 import '../home/series_page.dart';
 import '../../models/series.dart';
 import '../../main.dart';
@@ -69,6 +71,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
   Map<String, _ProgressEntry>? _memoVisibleProgress;
   bool? _memoVisibleIsEbook;
   List<Book> _recentBooks = [];
+  List<Book> _recentlyAdded = [];
   // Throttles the on-resume server refresh so rapid app-switching doesn't fire
   // a full refetch each time (the cache already paints the UI instantly).
   DateTime? _lastResumeRefreshAt;
@@ -79,8 +82,6 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
   int _currentStreakDays = 0;
   int? _libraryTotalItems;
   Timer? _timer;
-  StreamSubscription<List<ConnectivityResult>>? _connSub;
-  bool _isOnline = true;
   final ScrollController _scrollCtrl = ScrollController();
   StreamSubscription<BookDbChange>? _dbChangeSub;
   Timer? _dbReloadDebounce;
@@ -139,7 +140,6 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       _onScrollChanged,
     ); // Add scroll listener for image preloading
     WidgetsBinding.instance.addObserver(this); // Observe app lifecycle
-    _startConnectivityWatch();
     _restorePrefs().then((_) {
       // Load recent first so the section appears immediately
       _loadRecentBooks();
@@ -181,12 +181,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
         });
         _saveSearchPref('');
       }
-      // Pause connectivity watch when app goes to background to save battery
-      _connSub?.cancel();
-      _connSub = null;
     } else if (state == AppLifecycleState.resumed) {
-      // Resume connectivity watch when app comes to foreground
-      _startConnectivityWatch();
       // Refresh books when app returns to foreground to check for new books,
       // but skip if we refreshed very recently — flipping away and back in
       // quick succession shouldn't trigger a full refetch each time.
@@ -223,7 +218,6 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
     _searchDebounce?.cancel();
 
     // Cancel all stream subscriptions
-    _connSub?.cancel();
     if (_letterScrollListener != null) {
       UiPrefs.letterScrollEnabled.removeListener(_letterScrollListener!);
     }
@@ -349,15 +343,6 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _startConnectivityWatch() async {
-    final current = await Connectivity().checkConnectivity();
-    if (mounted) setState(() => _isOnline = _isConnectedList(current));
-    _connSub = Connectivity().onConnectivityChanged.listen((conn) {
-      if (!mounted) return;
-      setState(() => _isOnline = _isConnectedList(conn));
-    });
-  }
-
   void _setupCompletionStatusListener() {
     // Listen to completion status changes and refresh the UI
     final playback = ServicesScope.of(context).services.playback;
@@ -422,18 +407,6 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
     }
   }
 
-  bool _isConnectedList(List<ConnectivityResult> results) {
-    for (final r in results) {
-      if (r == ConnectivityResult.mobile ||
-          r == ConnectivityResult.wifi ||
-          r == ConnectivityResult.ethernet ||
-          r == ConnectivityResult.vpn) {
-        return true;
-      }
-    }
-    return false;
-  }
-
   Future<void> _saveViewPref(LibraryView v) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_viewKey, v == LibraryView.grid ? 'grid' : 'list');
@@ -492,6 +465,9 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       }
       if (!mounted) return;
       setState(() => _progressByBookId = map);
+      // A progress filter is driven by these ids, so the list it produced
+      // before the map landed is stale.
+      if (_filter != LibraryFilter.all) _loadBooksFromCache();
     } catch (_) {
       // offline: keep existing map
     }
@@ -675,6 +651,41 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
     } catch (_) {}
   }
 
+  /// The sort/filter the DB query must apply. Doing this in SQL rather than on
+  /// the loaded page window is what makes sort and filter cover the whole
+  /// library instead of just the books paged in so far.
+  String get _dbSort =>
+      (_forceAlphaSort || _sort == SortMode.nameAsc) ? 'nameAsc' : 'addedDesc';
+
+  /// Book ids the current progress filter restricts to (`onlyIds`), or that it
+  /// excludes (`excludeIds`). `_progressByBookId` comes from `/api/me`, so it
+  /// covers every book the user has touched — not just the loaded ones.
+  Set<String>? get _filterOnlyIds {
+    switch (_filter) {
+      case LibraryFilter.finished:
+        return _progressByBookId.entries
+            .where((e) => e.value.isFinished)
+            .map((e) => e.key)
+            .toSet();
+      case LibraryFilter.inProgress:
+        return _progressByBookId.entries
+            .where((e) => !e.value.isFinished && e.value.progress > 0.0)
+            .map((e) => e.key)
+            .toSet();
+      case LibraryFilter.notStarted:
+      case LibraryFilter.all:
+        return null;
+    }
+  }
+
+  Set<String>? get _filterExcludeIds {
+    if (_filter != LibraryFilter.notStarted) return null;
+    return _progressByBookId.entries
+        .where((e) => e.value.isFinished || e.value.progress > 0.0)
+        .map((e) => e.key)
+        .toSet();
+  }
+
   Future<void> _loadBooksFromCache({bool showSpinner = false}) async {
     debugPrint('[LOAD_FROM_CACHE] Starting (query: "${_query.trim()}")');
     if (showSpinner) {
@@ -689,8 +700,12 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       final items = await repo.listBooksFromDbPaged(
         page: 1,
         limit: 20,
+        sort: _dbSort,
         query: q.isEmpty ? null : q,
+        onlyIds: _filterOnlyIds,
+        excludeIds: _filterExcludeIds,
       );
+      unawaited(_loadRecentlyAdded());
       debugPrint('[LOAD_FROM_CACHE] Loaded ${items.length} books from DB');
       if (items.isNotEmpty) {
         debugPrint(
@@ -1353,41 +1368,6 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                       );
                     },
                   ),
-                  bottom: PreferredSize(
-                    preferredSize: Size.fromHeight(_isOnline ? 0 : 28),
-                    child:
-                        _isOnline
-                            ? const SizedBox.shrink()
-                            : Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 6,
-                              ),
-                              color: cs.errorContainer,
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    LucideIcons.wifiOff,
-                                    size: 16,
-                                    color: cs.onErrorContainer,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      'Offline – showing cached library',
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.labelMedium?.copyWith(
-                                        color: cs.onErrorContainer,
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                  ),
                 ),
 
                 SliverToBoxAdapter(
@@ -1419,6 +1399,19 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                                       : LucideIcons.search,
                               onTap: _toggleSearch,
                               emphasized: _searchVisible,
+                            ),
+                            // Stats were three taps deep behind the profile
+                            // icon; give listening stats their own entry point.
+                            _ToolbarSurfaceButton(
+                              tooltip: 'Listening stats',
+                              icon: LucideIcons.chartColumn,
+                              onTap: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (context) => const StatsPage(),
+                                  ),
+                                );
+                              },
                             ),
                             _ToolbarSurfaceButton(
                               tooltip: 'Profile',
@@ -1452,6 +1445,9 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                               onSelected: (f) {
                                 setState(() => _filter = f);
                                 _saveFilterPref(f);
+                                // Re-query: the filter is applied in SQL over
+                                // the whole library, not over the loaded page.
+                                _loadBooksFromCache();
                               },
                               itemBuilder: (context) => [
                                 PopupMenuItem(
@@ -1504,6 +1500,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                                       ? (mode) {
                                         setState(() => _sort = mode);
                                         _saveSortPref(mode);
+                                        _loadBooksFromCache();
                                       }
                                       : null,
                               itemBuilder:
@@ -1724,7 +1721,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                   if (_recentBooks.isNotEmpty && _query.trim().isEmpty)
                     _buildContinueListeningSection(),
                   if (_query.trim().isEmpty)
-                    _buildRecentlyAddedShelf(visible),
+                    _buildRecentlyAddedShelf(_recentlyAdded),
                   if (_query.trim().isEmpty)
                     SliverToBoxAdapter(
                       child: _SectionHeader(
@@ -1885,8 +1882,9 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                     .take(6)
                     .toList(growable: false);
                 if (visible.isEmpty) return const SizedBox.shrink();
+                // Same card size/appearance as the Recently Added shelf.
                 return SizedBox(
-                  height: 248,
+                  height: 190,
                   child: ListView.separated(
                     scrollDirection: Axis.horizontal,
                     physics: const BouncingScrollPhysics(),
@@ -1896,22 +1894,12 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                     itemBuilder: (context, index) {
                       final book = visible[index];
                       return SizedBox(
-                        width: 172,
-                        height: 248,
-                        child: _ResumeBookCard(
-                          key: ValueKey(book.id),
+                        width: 132,
+                        height: 190,
+                        child: _ShelfBookCard(
+                          key: ValueKey('continue-${book.id}'),
                           book: book,
                           onTap: () => _openDetails(book),
-                          onAuthorTap:
-                              book.author != null && book.author!.isNotEmpty
-                                  ? () =>
-                                      _showAuthorBooks(context, book.author!)
-                                  : null,
-                          onSeriesTap:
-                              book.series != null && book.series!.isNotEmpty
-                                  ? () =>
-                                      _showSeriesBooks(context, book.series!)
-                                  : null,
                         ),
                       );
                     },
@@ -1924,6 +1912,23 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
         ),
       ),
     );
+  }
+
+  /// Sourced from its own query so it stays "recently added" regardless of the
+  /// sort/filter the user has applied to the main list.
+  Future<void> _loadRecentlyAdded() async {
+    try {
+      final repo = await _repoFut;
+      final items = await repo.listBooksFromDbPaged(
+        page: 1,
+        limit: 10,
+        sort: 'addedDesc',
+      );
+      if (!mounted || _bookListsMatch(_recentlyAdded, items)) return;
+      setState(() => _recentlyAdded = items);
+    } catch (_) {
+      // Leave the previous shelf contents in place.
+    }
   }
 
   Widget _buildRecentlyAddedShelf(List<Book> list) {
@@ -2050,6 +2055,11 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                             );
                           }
                         } else {
+                          if (!ctx.mounted) return;
+                          // Same Wi‑Fi-only gate the download button enforces.
+                          if (!await ensureDownloadAllowed(ctx)) return;
+                          final othersActive =
+                              await downloads.hasActiveOrQueued();
                           await downloads.enqueueItemDownloads(
                             b.id,
                             displayTitle: b.title,
@@ -2057,7 +2067,11 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                           if (ctx.mounted) {
                             ScaffoldMessenger.of(ctx).showSnackBar(
                               SnackBar(
-                                content: Text('Downloading: ${b.title}'),
+                                content: Text(
+                                  othersActive
+                                      ? 'Queued: ${b.title}'
+                                      : 'Downloading: ${b.title}',
+                                ),
                                 duration: const Duration(seconds: 2),
                               ),
                             );
@@ -2087,6 +2101,10 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
               key: ValueKey('tile-${b.id}'),
               book: b,
               onTap: b.isAudioBook ? () => _openDetails(b) : null,
+              // Add to queue: this lived only on the removed grid view, which
+              // left queueing unreachable from the library list.
+              onLongPress:
+                  b.isAudioBook ? () => showQueueSheet(context, b) : null,
               checkIfCompleted: _checkIfCompleted,
               hideSeriesWhenSameAsAuthor: _hideSeriesWhenSameAsAuthor,
               onAuthorTap:
@@ -2139,7 +2157,10 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
         page: 1,
         limit: 50,
         offset: offsetAtStart,
+        sort: _dbSort,
         query: queryAtStart.isEmpty ? null : queryAtStart,
+        onlyIds: _filterOnlyIds,
+        excludeIds: _filterExcludeIds,
       );
       if (!mounted || gen != _loadGen) return;
       // Guard against the list having been replaced while we were fetching.
@@ -3194,6 +3215,7 @@ class _BookListTile extends StatefulWidget {
     required this.hideSeriesWhenSameAsAuthor,
     this.onAuthorTap,
     this.onSeriesTap,
+    this.onLongPress,
   });
   final Book book;
   final VoidCallback? onTap;
@@ -3201,6 +3223,7 @@ class _BookListTile extends StatefulWidget {
   final bool hideSeriesWhenSameAsAuthor;
   final VoidCallback? onAuthorTap;
   final VoidCallback? onSeriesTap;
+  final VoidCallback? onLongPress;
 
   @override
   State<_BookListTile> createState() => _BookListTileState();
@@ -3264,6 +3287,7 @@ class _BookListTileState extends State<_BookListTile> {
       ),
       child: InkWell(
         onTap: widget.onTap,
+        onLongPress: widget.onLongPress,
         borderRadius: BorderRadius.circular(20),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(12, 12, 10, 12),

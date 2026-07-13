@@ -454,3 +454,21 @@ class BooksPageSkeleton extends StatelessWidget {
     );
   }
 }
+
+/// Placeholder tiles for a list-shaped screen while its content loads.
+class SkeletonList extends StatelessWidget {
+  const SkeletonList({super.key, this.itemCount = 8});
+
+  final int itemCount;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.separated(
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(12),
+      itemCount: itemCount,
+      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      itemBuilder: (_, __) => const BookListTileSkeleton(),
+    );
+  }
+}
