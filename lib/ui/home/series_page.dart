@@ -16,6 +16,7 @@ import '../../widgets/letter_scrollbar.dart';
 import '../book_detail/book_detail_page.dart';
 import '../../main.dart';
 import '../../widgets/skeleton_widgets.dart';
+import '../../utils/error_messages.dart';
 
 enum SeriesViewType { series, collections }
 
@@ -943,32 +944,7 @@ class _SeriesPageState extends State<SeriesPage> with WidgetsBindingObserver {
                                 name: name,
                                 books: items,
                                 onTapBook: (b) {
-                                  showModalBottomSheet(
-                                    context: context,
-                                    isScrollControlled: true,
-                                    useSafeArea: true,
-                                    backgroundColor: Colors.transparent,
-                                    builder:
-                                        (context) => Container(
-                                          height:
-                                              MediaQuery.of(
-                                                context,
-                                              ).size.height *
-                                              0.95,
-                                          decoration: BoxDecoration(
-                                            color:
-                                                Theme.of(
-                                                  context,
-                                                ).colorScheme.surface,
-                                            borderRadius:
-                                                const BorderRadius.vertical(
-                                                  top: Radius.circular(24),
-                                                ),
-                                          ),
-                                          clipBehavior: Clip.antiAlias,
-                                          child: BookDetailPage(bookId: b.id),
-                                        ),
-                                  );
+                                  BookDetailPage.push(context, b.id);
                                 },
                               );
                             },
@@ -1557,7 +1533,7 @@ class _SeriesBooksPageState extends State<SeriesBooksPage> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = e.toString();
+          _error = humanErrorMessage(e);
           _loading = false;
         });
       }
@@ -1611,24 +1587,7 @@ class _SeriesBooksPageState extends State<SeriesBooksPage> {
   }
 
   void _openDetails(Book book) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      builder:
-          (context) => Container(
-            height: MediaQuery.of(context).size.height * 0.95,
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface,
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(24),
-              ),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: BookDetailPage(bookId: book.id),
-          ),
-    );
+    BookDetailPage.push(context, book.id);
   }
 
   @override

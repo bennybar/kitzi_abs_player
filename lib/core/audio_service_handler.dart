@@ -6,6 +6,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'playback_repository.dart';
 import 'books_repository.dart';
 import 'ui_prefs.dart';
+import 'download_storage.dart';
+import 'play_history_service.dart';
 
 class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   final PlaybackRepository _playback;
@@ -301,17 +303,15 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
   @override
   Future<void> rewind() => _nudgeAcrossBook(-UiPrefs.seekBackwardSeconds.value);
 
+  // Next/previous move by chapter (falling back to track when a book has no
+  // chapters). Seeking is what fastForward/rewind are for — mapping the car's
+  // and headset's "next track" button to a 30s nudge meant there was no way to
+  // change chapter without unlocking the phone.
   @override
-  Future<void> skipToNext() async {
-    // Map skip to next as a 30s nudge for better hardware button UX in Android Auto
-    await _nudgeAcrossBook(30);
-  }
+  Future<void> skipToNext() => _playback.nextTrack();
 
   @override
-  Future<void> skipToPrevious() async {
-    // Map skip to previous as a 15s rewind for better hardware button UX in Android Auto
-    await _nudgeAcrossBook(-15);
-  }
+  Future<void> skipToPrevious() => _playback.prevTrack();
 
   /// Nudge by [delta] seconds across the whole book so the jump can cross
   /// track boundaries (e.g. forward near a track end advances into the next
@@ -431,14 +431,128 @@ class KitziAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
     // Handle search queries
     final String? query = options?['android.media.browse.extra.QUERY'] as String?;
     final bool isSearch = query != null && query.trim().isNotEmpty;
-    
-    if (parentMediaId == 'root') {
-      return await _getBrowsableBooks(query: isSearch ? query.trim() : null);
+
+    // A search from the car should always search the library, whatever node
+    // the user happens to be sitting in.
+    if (isSearch) return await _getBrowsableBooks(query: query.trim());
+
+    switch (parentMediaId) {
+      case 'root':
+        return await _rootMenu();
+      case 'kitzi_downloaded':
+        return await _downloadedBooks();
+      case 'kitzi_recent':
+        return await _recentBooks();
+      case 'kitzi_all':
+        return await _getBrowsableBooks();
+      default:
+        return const <MediaItem>[];
     }
-    
-    // Handle other parent IDs if needed in the future
-    return const <MediaItem>[];
   }
+
+  /// Root menu. Previously the root was a flat list of 50 books and
+  /// `kitzi_resume_current` was handled in playFromMediaId but never listed —
+  /// so nothing could ever trigger it.
+  Future<List<MediaItem>> _rootMenu() async {
+    final items = <MediaItem>[];
+
+    // One-tap resume: the single most useful thing to do when you get in a car.
+    final np = _playback.nowPlaying;
+    String? resumeTitle = np?.title;
+    if (resumeTitle == null) {
+      try {
+        final recent = await PlayHistoryService.getLastPlayedBooksLocal(1);
+        if (recent.isNotEmpty) resumeTitle = recent.first.title;
+      } catch (_) {}
+    }
+    if (resumeTitle != null) {
+      items.add(MediaItem(
+        id: 'kitzi_resume_current',
+        album: 'Kitzi',
+        title: 'Continue listening',
+        artist: resumeTitle,
+        displayTitle: 'Continue listening',
+        displaySubtitle: resumeTitle,
+        playable: true,
+      ));
+    }
+
+    items.addAll(const [
+      MediaItem(
+        id: 'kitzi_recent',
+        album: 'Kitzi',
+        title: 'Recent',
+        artist: ' ',
+        playable: false,
+      ),
+      MediaItem(
+        id: 'kitzi_downloaded',
+        album: 'Kitzi',
+        title: 'Downloaded',
+        artist: ' ',
+        playable: false,
+      ),
+      MediaItem(
+        id: 'kitzi_all',
+        album: 'Kitzi',
+        title: 'All books',
+        artist: ' ',
+        playable: false,
+      ),
+    ]);
+    return items;
+  }
+
+  /// Books with files on disk — the only ones guaranteed to play with no signal.
+  Future<List<MediaItem>> _downloadedBooks() async {
+    try {
+      final ids = await DownloadStorage.listItemIdsWithLocalDownloads();
+      if (ids.isEmpty) {
+        return <MediaItem>[
+          const MediaItem(
+            id: 'kitzi_placeholder_no_downloads',
+            album: 'Kitzi',
+            title: 'No downloaded books',
+            artist: ' ',
+            playable: false,
+          ),
+        ];
+      }
+      final repo = await BooksRepository.create();
+      try {
+        final items = <MediaItem>[];
+        for (final id in ids) {
+          final book = await repo.getBookFromDb(id);
+          if (book != null) items.add(_toMediaItem(book));
+        }
+        return items;
+      } finally {
+        await repo.dispose();
+      }
+    } catch (e) {
+      return const <MediaItem>[];
+    }
+  }
+
+  Future<List<MediaItem>> _recentBooks() async {
+    try {
+      final books = await PlayHistoryService.getLastPlayedBooksLocal(20);
+      return books.map(_toMediaItem).toList(growable: false);
+    } catch (e) {
+      return const <MediaItem>[];
+    }
+  }
+
+  MediaItem _toMediaItem(dynamic book) => MediaItem(
+        id: book.id,
+        album: 'Audiobooks',
+        title: book.title,
+        artist: book.author ?? 'Unknown author',
+        artUri: Uri.tryParse(book.coverUrl),
+        playable: true,
+        displayTitle: book.title,
+        displaySubtitle: book.author,
+      );
 
   /// Get browsable books from local cache only, sorted by date added desc, with optional search
   Future<List<MediaItem>> _getBrowsableBooks({String? query}) async {

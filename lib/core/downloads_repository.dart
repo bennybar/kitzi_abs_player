@@ -2,7 +2,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:collection';
 
 import 'package:background_downloader/background_downloader.dart';
 import 'package:flutter/foundation.dart';
@@ -123,10 +122,9 @@ class DownloadsRepository {
   DateTime? _globalHaltUntil;
   // Foreground path removed; we use background_downloader exclusively
   
-  // Global download queue management
-  final Queue<MapEntry<String, String?>> _globalDownloadQueue = Queue<MapEntry<String, String?>>();
-  bool _isProcessingGlobalQueue = false;
-  final Set<String> _itemsInGlobalQueue = <String>{};
+  // Book ordering is owned by background_downloader's native holding queue,
+  // configured (1,1,1) in init(). A second Dart-side queue used to sit on top
+  // of it and was the reason a queued book never started.
   // Track active download session ids per item to enable closing on cancel
   final Map<String, String> _downloadSessionByItem = <String, String>{};
   // Cached per-item download plan (fileIds, indices, mimeTypes) to avoid sessions entirely
@@ -654,9 +652,14 @@ class DownloadsRepository {
       final hasRunning = recs.any((r) => r.status == TaskStatus.running);
       final hasQueued = recs.any((r) => r.status == TaskStatus.enqueued);
       final hasFailed = recs.any((r) => r.status == TaskStatus.failed);
-      if (hasRunning) {
+      // A live progress update means bytes are moving *now*. Task records lag
+      // behind that (they're cached, and a task reads as `enqueued` until the
+      // native worker picks it up), which is why a downloading book showed
+      // "Queued" next to a moving progress bar.
+      final hasLiveProgress = _lastRunningProgress.containsKey(libraryItemId);
+      if (hasRunning || hasLiveProgress) {
         status = 'running';
-      } else if (hasQueued || _uiActive[libraryItemId] == true || _itemsInGlobalQueue.contains(libraryItemId)) {
+      } else if (hasQueued || _uiActive[libraryItemId] == true) {
         status = 'queued';
       } else if (hasFailed) {
         status = 'failed';
@@ -706,13 +709,6 @@ class DownloadsRepository {
         ? displayTitle
         : 'Audiobook';
 
-    // Add to background queue
-    if (!_itemsInGlobalQueue.contains(libraryItemId)) {
-      _globalDownloadQueue.add(MapEntry(libraryItemId, episodeId));
-      _itemsInGlobalQueue.add(libraryItemId);
-      _d('Added $libraryItemId to global queue. Queue length: ${_globalDownloadQueue.length}');
-    }
-    
     // Configure a SINGLE native group notification for this book.
     // background_downloader shows one notification with aggregate progress for
     // all tasks sharing the group AND runs an Android foreground service, so the
@@ -752,8 +748,9 @@ class DownloadsRepository {
       if (ctrl != null && !ctrl.isClosed) ctrl.add(snap);
     } catch (_) {}
 
-    // Start processing the global queue
-    _processGlobalQueue();
+    // Hand the book's tracks to the native holding queue, which serializes
+    // them (and any book already downloading) one task at a time.
+    unawaited(_startNextForItem(libraryItemId, episodeId: episodeId));
   }
 
   /// Cancel all queued/running tasks for a book.
@@ -775,10 +772,6 @@ class DownloadsRepository {
     _nextAllowedSchedule.remove(libraryItemId);
     // Brief global halt
     _globalHaltUntil = DateTime.now().add(const Duration(milliseconds: 1500));
-    // Remove any queued entries for this item
-    _globalDownloadQueue.removeWhere((entry) => entry.key == libraryItemId);
-    _itemsInGlobalQueue.remove(libraryItemId);
-    
     // Cancel any active/enqueued tasks for this item and remove any downloaded files immediately
     try {
       // Cancel by group, DB, and live-tracked task ids to be thorough
@@ -987,11 +980,6 @@ class DownloadsRepository {
       await FileDownloader().cancelTasksWithIds(ids);
     }
     
-    // Clear the global queue completely
-    _globalDownloadQueue.clear();
-    _itemsInGlobalQueue.clear();
-    _isProcessingGlobalQueue = false;
-    
     // Block all items from auto-chaining
     final allItemIds = await listTrackedItemIds();
     for (final id in allItemIds) {
@@ -1039,8 +1027,6 @@ class DownloadsRepository {
     _cachedAllRecords = null;
     _cacheTimestamp = null;
 
-    _globalDownloadQueue.clear();
-    _itemsInGlobalQueue.clear();
     _inFlightItems.clear();
     _pendingQueuedUntil.clear();
     _activeItems.clear();
@@ -1180,22 +1166,15 @@ class DownloadsRepository {
     for (final id in ids) {
       // Unblock items that were previously blocked
       _blockedItems.remove(id);
-      // Add back to global queue if they have pending downloads
-      if (!_itemsInGlobalQueue.contains(id)) {
-        _globalDownloadQueue.add(MapEntry(id, null));
-        _itemsInGlobalQueue.add(id);
-      }
+      // Re-enqueue whatever is still missing; the holding queue serializes.
+      unawaited(_startNextForItem(id));
     }
-    // Start processing the queue
-    _processGlobalQueue();
   }
 
   /// Get current queue status for debugging
   Map<String, dynamic> getQueueStatus() {
     return {
-      'queueLength': _globalDownloadQueue.length,
-      'itemsInQueue': _itemsInGlobalQueue.toList(),
-      'isProcessing': _isProcessingGlobalQueue,
+      'inFlightItems': _inFlightItems.toList(),
       'blockedItems': _blockedItems.toList(),
     };
   }
@@ -1208,7 +1187,6 @@ class DownloadsRepository {
       if (hasDbActive) return true;
     } catch (_) {}
     if (_inFlightItems.isNotEmpty) return true;
-    if (_itemsInGlobalQueue.isNotEmpty) return true;
     if (_uiActive.values.any((v) => v == true)) return true;
     return false;
   }
@@ -1413,59 +1391,6 @@ class DownloadsRepository {
   // Foreground downloader removed
 
   /// Process the global download queue - ensures only one download runs at a time
-  Future<void> _processGlobalQueue() async {
-    // Respect global halt
-    if (_globalHaltUntil != null && DateTime.now().isBefore(_globalHaltUntil!)) {
-      _d('Global halt active; skipping queue processing');
-      return;
-    }
-    if (_isProcessingGlobalQueue || _globalDownloadQueue.isEmpty) {
-      _d('Global queue processing skipped: isProcessing=$_isProcessingGlobalQueue, isEmpty=${_globalDownloadQueue.isEmpty}');
-      return;
-    }
-    
-    _isProcessingGlobalQueue = true;
-    _d('Starting global queue processing. Queue length: ${_globalDownloadQueue.length}');
-    
-    try {
-      while (_globalDownloadQueue.isNotEmpty) {
-        if (_inFlightItems.isNotEmpty) {
-          _d('A task is already in flight, deferring queue processing');
-          break;
-        }
-        // Check if there's already a download running
-        final allRecords = await _getAllRecordsCached();
-        final hasRunning = allRecords.any((r) => 
-          r.status == TaskStatus.running || r.status == TaskStatus.enqueued);
-        
-        if (hasRunning) {
-          _d('Download already running, skipping queue processing now');
-          break;
-        }
-        
-        // Take the next item from the queue
-        final nextItem = _globalDownloadQueue.removeFirst();
-        final libraryItemId = nextItem.key;
-        final episodeId = nextItem.value;
-
-        // Keep the item registered in _itemsInGlobalQueue while it is being
-        // processed. It is removed only on genuine completion (see
-        // _startNextForItem / chain listener). Removing it here left items
-        // absent from both the queue and the set if the chain listener never
-        // fired, so remaining tracks would never be picked up by resumeAll.
-        _d('Processing next item from global queue: $libraryItemId');
-        
-        // Start downloading the next track for this item
-        await _startNextForItem(libraryItemId, episodeId: episodeId);
-        // After scheduling once, exit; chain listener will continue
-        break;
-      }
-    } finally {
-      _isProcessingGlobalQueue = false;
-      _d('Finished global queue processing');
-    }
-  }
-
   // Serial per-item scheduler: ensure only one active task for a given item
   Future<void> _startNextForItem(String libraryItemId, {String? episodeId}) async {
     _d('_startNextForItem called for $libraryItemId');
@@ -1481,10 +1406,6 @@ class DownloadsRepository {
     }
     if (_schedulingItems.contains(libraryItemId)) {
       _d('Item $libraryItemId is already being scheduled, skipping');
-      return;
-    }
-    if (_inFlightItems.isNotEmpty) {
-      _d('Another task is in flight globally, skipping scheduling');
       return;
     }
     if (_inFlightItems.contains(libraryItemId)) {
@@ -1520,18 +1441,11 @@ class DownloadsRepository {
         if (!f.existsSync()) missing.add(t);
       }
       if (missing.isEmpty) {
-        // All tracks for this book are downloaded, remove from global queue
-        _globalDownloadQueue.removeWhere((entry) => entry.key == libraryItemId);
-        _itemsInGlobalQueue.remove(libraryItemId);
-        _d('Book $libraryItemId is complete, removed from global queue');
+        _d('Book $libraryItemId is complete');
         // Stop the periodic progress-notification timer so it doesn't tick forever
         _stopProgressNotifications(libraryItemId);
         try { await NotificationService.instance.hideDownloadNotification(); } catch (_) {}
         _notifyItem(libraryItemId);
-        // This book is done — start the next one waiting in the queue. Without
-        // this, a queued book sat untouched until the next app launch.
-        // Deferred a turn so the in-progress queue pass can unwind first.
-        unawaited(Future(() => _processGlobalQueue()));
         return;
       }
 
@@ -1714,9 +1628,7 @@ class DownloadsRepository {
           _nextAllowedSchedule[id] = now.add(const Duration(milliseconds: 750));
           await _startNextForItem(id);
         } else {
-          // Completed: clear queues and hide notification
-          _globalDownloadQueue.removeWhere((entry) => entry.key == id);
-          _itemsInGlobalQueue.remove(id);
+          // Completed: hide notification
           _uiActive[id] = false;
           _inFlightItems.remove(id);
           try {

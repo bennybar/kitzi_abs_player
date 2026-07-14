@@ -22,7 +22,6 @@ import 'playback_speed_service.dart';
 import 'download_storage.dart';
 import 'play_history_service.dart';
 import 'playback_journal_service.dart';
-import 'dynamic_island_service.dart';
 import '../models/book.dart';
 import 'books_repository.dart';
 import 'smart_rewind_service.dart';
@@ -2022,9 +2021,6 @@ class PlaybackRepository {
     _setNowPlaying(null);
     _progressItemId = null;
     await _closeActiveSession();
-
-    // Stop Dynamic Island Live Activity
-    AudioServiceManager.instance.stopDynamicIsland();
   }
 
   /// If the current item has fully downloaded local files, switch playback from
@@ -2192,9 +2188,7 @@ class PlaybackRepository {
   StreamSubscription<Duration>? _positionSub;
   StreamSubscription<ProcessingState>? _completionSub;
   DateTime? _lastPositionUpdate;
-  DateTime? _lastDynamicIslandUpdate;
   static const _positionUpdateThrottle = Duration(milliseconds: 500);
-  static const _dynamicIslandUpdateThrottle = Duration(seconds: 2);
 
   /// Fold the time spent playing since the last accrual into
   /// [_pendingListenedSec] and restart the clock from now.
@@ -2254,9 +2248,6 @@ class PlaybackRepository {
       if (bigJump || isDone) {
         _sendProgressImmediate(finished: isDone);
       }
-
-      // Update Dynamic Island with current position (throttled)
-      _updateDynamicIsland();
     });
   }
 
@@ -2269,36 +2260,6 @@ class PlaybackRepository {
     _positionSub = null;
     _completionSub?.cancel();
     _completionSub = null;
-  }
-
-  /// Update Dynamic Island with current playback state (throttled to save battery)
-  void _updateDynamicIsland() {
-    final np = _nowPlaying;
-    if (np == null) return;
-
-    // Throttle Dynamic Island updates (max once per 2 seconds)
-    final now = DateTime.now();
-    if (_lastDynamicIslandUpdate != null &&
-        now.difference(_lastDynamicIslandUpdate!) <
-            _dynamicIslandUpdateThrottle) {
-      return; // Skip if updated less than 2 seconds ago
-    }
-    _lastDynamicIslandUpdate = now;
-
-    final position = Duration(
-      milliseconds: (_computeGlobalPositionSec() ?? 0.0).round() * 1000,
-    );
-    final duration = Duration(
-      milliseconds: (_computeTotalDurationSec() ?? 0.0).round() * 1000,
-    );
-    final isPlaying = player.playing;
-
-    // Update Dynamic Island asynchronously
-    AudioServiceManager.instance.updateDynamicIsland(
-      isPlaying: isPlaying,
-      position: position,
-      duration: duration,
-    );
   }
 
   /// Always try to send at least `currentTime`. Include `duration/progress`
@@ -2984,11 +2945,6 @@ class PlaybackRepository {
   void _setNowPlaying(NowPlaying? np) {
     _nowPlaying = np;
     _nowPlayingCtr.add(np);
-
-    // Start Dynamic Island Live Activity when new content starts playing
-    if (np != null && DynamicIslandService.instance.isSupported) {
-      _updateDynamicIsland();
-    }
   }
 
   // ----- Mapping / helpers -----

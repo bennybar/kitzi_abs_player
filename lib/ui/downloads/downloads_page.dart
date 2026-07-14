@@ -18,6 +18,10 @@ class DownloadsPage extends StatefulWidget {
   State<DownloadsPage> createState() => _DownloadsPageState();
 }
 
+enum DownloadsFilter { all, downloading, downloaded }
+
+enum DownloadsSort { status, titleAsc, sizeDesc }
+
 class _DownloadsPageState extends State<DownloadsPage> {
   late final Stream<TaskUpdate> _updates;
   StreamSubscription<TaskUpdate>? _sub;
@@ -28,6 +32,31 @@ class _DownloadsPageState extends State<DownloadsPage> {
   // Created once so rebuilds (on every progress event) don't reconstruct the
   // repository or restart its work.
   late final Future<BooksRepository> _booksRepoFuture;
+
+  final TextEditingController _searchCtrl = TextEditingController();
+  String _query = '';
+  DownloadsFilter _filter = DownloadsFilter.all;
+  DownloadsSort _sort = DownloadsSort.status;
+
+  // On-disk bytes per item. Measured once per item rather than in build(): the
+  // page rebuilds on every progress tick, and scanning directories that often
+  // would hammer the filesystem while a download is running.
+  final Map<String, int> _bytesByItem = {};
+  final Set<String> _sizingIds = {};
+
+  Future<void> _ensureSizes(List<String> ids) async {
+    final missing = ids
+        .where((id) => !_bytesByItem.containsKey(id) && !_sizingIds.contains(id))
+        .toList();
+    if (missing.isEmpty) return;
+    _sizingIds.addAll(missing);
+    for (final id in missing) {
+      final bytes = await DownloadStorage.downloadedBytesForItem(id);
+      _bytesByItem[id] = bytes;
+      _sizingIds.remove(id);
+    }
+    if (mounted) setState(() {});
+  }
 
   @override
   void initState() {
@@ -47,6 +76,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
   @override
   void dispose() {
     _sub?.cancel();
+    _searchCtrl.dispose();
     super.dispose();
   }
 
@@ -127,7 +157,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
     return FutureBuilder<List<String>>(
       future: _getAllDownloadItemIds(),
       builder: (context, idsSnap) {
-        final allIds = idsSnap.data ?? const [];
+        final allIds = idsSnap.data ?? const <String>[];
         return FutureBuilder<BooksRepository>(
           future: _booksRepoFuture,
           builder: (context, repoSnap) {
@@ -135,10 +165,17 @@ class _DownloadsPageState extends State<DownloadsPage> {
               return const Scaffold(body: SkeletonList());
             }
             final repo = repoSnap.data!;
-            return FutureBuilder<List<Widget>>(
-              future: _buildTiles(repo, allIds),
-              builder: (context, tilesSnap) {
-                final tiles = tilesSnap.data ?? const <Widget>[];
+            return FutureBuilder<List<_DownloadEntry>>(
+              future: _buildEntries(repo, allIds),
+              builder: (context, entriesSnap) {
+                final all = entriesSnap.data ?? const <_DownloadEntry>[];
+                unawaited(_ensureSizes(all.map((e) => e.itemId).toList()));
+                final entries = _visibleEntries(all);
+                final totalBytes = all
+                    .map((e) => _bytesByItem[e.itemId] ?? 0)
+                    .fold<int>(0, (a, b) => a + b);
+                final activeCount = all.where((e) => e.hasActive).length;
+
                 return Scaffold(
                   body: NestedScrollView(
                     headerSliverBuilder:
@@ -158,17 +195,63 @@ class _DownloadsPageState extends State<DownloadsPage> {
                                   size: 22,
                                 ),
                                 const SizedBox(width: 10),
-                                Text(
-                                  'Downloads',
-                                  style: Theme.of(
-                                    context,
-                                  ).textTheme.headlineSmall?.copyWith(
-                                    fontWeight: FontWeight.w700,
-                                    letterSpacing: -0.2,
-                                  ),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      'Downloads',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .headlineSmall
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w700,
+                                            letterSpacing: -0.2,
+                                          ),
+                                    ),
+                                    if (all.isNotEmpty)
+                                      Text(
+                                        _summaryLine(
+                                          all.length,
+                                          activeCount,
+                                          totalBytes,
+                                        ),
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .labelMedium
+                                            ?.copyWith(
+                                              color: cs.onSurfaceVariant,
+                                            ),
+                                      ),
+                                  ],
                                 ),
                               ],
                             ),
+                            actions: [
+                              PopupMenuButton<DownloadsSort>(
+                                tooltip: 'Sort',
+                                initialValue: _sort,
+                                icon: const Icon(LucideIcons.arrowUpDown),
+                                onSelected:
+                                    (v) => setState(() => _sort = v),
+                                itemBuilder:
+                                    (context) => const [
+                                      PopupMenuItem(
+                                        value: DownloadsSort.status,
+                                        child: Text('Status'),
+                                      ),
+                                      PopupMenuItem(
+                                        value: DownloadsSort.titleAsc,
+                                        child: Text('Title A–Z'),
+                                      ),
+                                      PopupMenuItem(
+                                        value: DownloadsSort.sizeDesc,
+                                        child: Text('Largest first'),
+                                      ),
+                                    ],
+                              ),
+                              const SizedBox(width: 8),
+                            ],
                           ),
                         ],
                     body: SafeArea(
@@ -178,34 +261,85 @@ class _DownloadsPageState extends State<DownloadsPage> {
                       right: false,
                       child: Column(
                         children: [
-                          if (tiles.isNotEmpty)
+                          if (all.isNotEmpty) ...[
                             Padding(
-                              padding: const EdgeInsets.fromLTRB(20, 8, 20, 6),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      'Swipe left on an item to remove downloaded files',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .labelMedium
-                                          ?.copyWith(color: cs.onSurfaceVariant),
-                                    ),
+                              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                              child: TextField(
+                                controller: _searchCtrl,
+                                onChanged:
+                                    (v) => setState(() => _query = v),
+                                decoration: InputDecoration(
+                                  hintText: 'Search downloads',
+                                  prefixIcon: const Icon(LucideIcons.search),
+                                  suffixIcon:
+                                      _query.isEmpty
+                                          ? null
+                                          : IconButton(
+                                            icon: const Icon(LucideIcons.x),
+                                            onPressed: () {
+                                              _searchCtrl.clear();
+                                              setState(() => _query = '');
+                                            },
+                                          ),
+                                  filled: true,
+                                  fillColor: cs.surfaceContainerHighest,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                    borderSide: BorderSide.none,
                                   ),
-                                  _TotalDownloadSize(itemIds: allIds),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 12,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            SizedBox(
+                              height: 40,
+                              child: ListView(
+                                scrollDirection: Axis.horizontal,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                ),
+                                children: [
+                                  _filterChip('All', DownloadsFilter.all),
+                                  const SizedBox(width: 8),
+                                  _filterChip(
+                                    'Downloading',
+                                    DownloadsFilter.downloading,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  _filterChip(
+                                    'Downloaded',
+                                    DownloadsFilter.downloaded,
+                                  ),
                                 ],
                               ),
                             ),
-                          const SizedBox(height: 4),
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(20, 8, 20, 6),
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  'Swipe left on an item to remove downloaded files',
+                                  style: Theme.of(context).textTheme.labelMedium
+                                      ?.copyWith(color: cs.onSurfaceVariant),
+                                ),
+                              ),
+                            ),
+                          ],
                           Expanded(
                             child:
-                                tiles.isEmpty
+                                all.isEmpty
                                     ? _EmptyDownloads(cs: cs)
+                                    : entries.isEmpty
+                                    ? _NoMatches(cs: cs)
                                     : ListView.separated(
-                                      itemCount: tiles.length,
+                                      itemCount: entries.length,
                                       separatorBuilder:
                                           (_, __) => const Divider(height: 1),
-                                      itemBuilder: (_, i) => tiles[i],
+                                      itemBuilder:
+                                          (_, i) => _tileFor(entries[i]),
                                     ),
                           ),
                         ],
@@ -221,19 +355,115 @@ class _DownloadsPageState extends State<DownloadsPage> {
     );
   }
 
-  Future<List<Widget>> _buildTiles(
+  String _summaryLine(int count, int active, int bytes) {
+    final books = '$count book${count == 1 ? '' : 's'}';
+    final size = bytes > 0 ? ' · ${_formatBytes(bytes)}' : '';
+    final downloading = active > 0 ? ' · $active downloading' : '';
+    return '$books$size$downloading';
+  }
+
+  Widget _filterChip(String label, DownloadsFilter value) {
+    return FilterChip(
+      label: Text(label),
+      selected: _filter == value,
+      onSelected: (_) => setState(() => _filter = value),
+    );
+  }
+
+  /// Applies the search box, the filter chips and the sort menu.
+  List<_DownloadEntry> _visibleEntries(List<_DownloadEntry> all) {
+    final q = _query.trim().toLowerCase();
+    var list =
+        all.where((e) {
+          switch (_filter) {
+            case DownloadsFilter.downloading:
+              if (!e.hasActive) return false;
+              break;
+            case DownloadsFilter.downloaded:
+              if (!e.isComplete) return false;
+              break;
+            case DownloadsFilter.all:
+              break;
+          }
+          if (q.isEmpty) return true;
+          return e.title.toLowerCase().contains(q) ||
+              (e.author ?? '').toLowerCase().contains(q);
+        }).toList();
+
+    switch (_sort) {
+      case DownloadsSort.titleAsc:
+        list.sort(
+          (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()),
+        );
+        break;
+      case DownloadsSort.sizeDesc:
+        list.sort(
+          (a, b) => (_bytesByItem[b.itemId] ?? 0).compareTo(
+            _bytesByItem[a.itemId] ?? 0,
+          ),
+        );
+        break;
+      case DownloadsSort.status:
+        // Active first, then partially downloaded, then complete.
+        list.sort((a, b) {
+          if (a.hasActive != b.hasActive) return a.hasActive ? -1 : 1;
+          if (a.isComplete != b.isComplete) return a.isComplete ? 1 : -1;
+          return 0;
+        });
+        break;
+    }
+    return list;
+  }
+
+  Widget _tileFor(_DownloadEntry e) {
+    return Dismissible(
+      key: ValueKey('dl-${e.itemId}'),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        color: Theme.of(context).colorScheme.error,
+        child: Icon(
+          LucideIcons.trash2,
+          color: Theme.of(context).colorScheme.onError,
+        ),
+      ),
+      confirmDismiss: (_) async => true,
+      onDismissed: (_) async {
+        await widget.repo.cancelForItem(e.itemId);
+        await widget.repo.deleteLocal(e.itemId);
+        _bytesByItem.remove(e.itemId);
+        if (mounted) setState(() {});
+      },
+      child: _BookDownloadTile(
+        itemId: e.itemId,
+        title: e.title,
+        author: e.author,
+        coverUrl: e.coverUrl,
+        durationMs: e.durationMs,
+        sizeBytes: e.sizeBytes,
+        taskGroup: e.taskGroup,
+        taskFilename: e.taskFilename,
+        repo: widget.repo,
+        latest: _latest,
+        hasLocalPrefetched: e.isComplete,
+      ),
+    );
+  }
+
+  /// Returns the download list as data (not widgets) so the page can search,
+  /// filter and sort it.
+  Future<List<_DownloadEntry>> _buildEntries(
     BooksRepository repo,
     List<String> ids,
   ) async {
-    final tileInfos = <_DownloadTileInfo>[];
+    final entries = <_DownloadEntry>[];
     // Fetch once, not per-item, to avoid a listAll() storm on every progress tick.
     final recs = await widget.repo.listAll();
+    final idSet = ids.toSet();
     for (final itemId in ids) {
       final records =
-          recs.where((r) {
-              final mid = _deriveItemId(r, ids.toSet());
-              return mid == itemId;
-            }).toList()
+          recs.where((r) => _deriveItemId(r, idSet) == itemId).toList()
             ..sort(
               (a, b) =>
                   (a.task.filename ?? '').compareTo(b.task.filename ?? ''),
@@ -244,75 +474,36 @@ class _DownloadsPageState extends State<DownloadsPage> {
 
       final book = await repo.getBookFromDb(itemId);
       final firstTask = records.isNotEmpty ? records.first.task : null;
-      final titleFallback =
-          book?.title ?? firstTask?.filename ?? 'Downloading…';
-      final authorFallback = book?.author ?? (firstTask?.group ?? '');
 
-      // Check latest stream updates for active tasks even if DB has no records yet
+      // Live updates can show a task as active before the DB has records.
       bool hasLatestActive = false;
-      _latest.forEach((_, update) {
-        String? itemIdFromMeta;
+      for (final update in _latest.values) {
+        String? metaId;
         final meta = update.task.metaData ?? '';
         if (meta.isNotEmpty) {
           try {
             final decoded = jsonDecode(meta);
             if (decoded is Map && decoded['libraryItemId'] is String) {
-              itemIdFromMeta = decoded['libraryItemId'] as String;
+              metaId = decoded['libraryItemId'] as String;
             }
           } catch (_) {}
         }
-        // Fallback: group may be book-<id> or just <id>
-        itemIdFromMeta ??=
+        metaId ??=
             (update.task.group != null &&
                     update.task.group!.startsWith('book-') &&
                     update.task.group!.length > 5)
                 ? update.task.group!.substring(5)
                 : update.task.group;
-        if (itemIdFromMeta == itemId) {
-          if (update is TaskProgressUpdate) {
-            hasLatestActive = true;
-          } else if (update is TaskStatusUpdate) {
-            if (update.status == TaskStatus.running ||
-                update.status == TaskStatus.enqueued) {
-              hasLatestActive = true;
-            }
-          }
+        if (metaId != itemId) continue;
+        if (update is TaskProgressUpdate) {
+          hasLatestActive = true;
+        } else if (update is TaskStatusUpdate &&
+            (update.status == TaskStatus.running ||
+                update.status == TaskStatus.enqueued)) {
+          hasLatestActive = true;
         }
-      });
-      final w = Dismissible(
-        key: ValueKey('dl-$itemId'),
-        direction: DismissDirection.endToStart,
-        background: Container(
-          alignment: Alignment.centerRight,
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          color: Theme.of(context).colorScheme.error,
-          child: Icon(
-            LucideIcons.trash2,
-            color: Theme.of(context).colorScheme.onError,
-          ),
-        ),
-        confirmDismiss: (_) async => true,
-        onDismissed: (_) async {
-          await widget.repo.cancelForItem(itemId);
-          await widget.repo.deleteLocal(itemId);
-          if (mounted) setState(() {});
-        },
-        child: _BookDownloadTile(
-          itemId: itemId,
-          title: titleFallback,
-          author: authorFallback,
-          coverUrl: book?.coverUrl,
-          durationMs: book?.durationMs,
-          sizeBytes: book?.sizeBytes,
-          taskGroup: firstTask?.group,
-          taskFilename: firstTask?.filename,
-          repo: widget.repo,
-          latest: _latest,
-          hasLocalPrefetched: hasLocal,
-        ),
-      );
+      }
 
-      // Show tiles:
       final hasActive =
           records.any(
             (r) =>
@@ -321,43 +512,70 @@ class _DownloadsPageState extends State<DownloadsPage> {
           ) ||
           hasLatestActive;
       final isComplete = hasLocal || (total > 0 && done == total);
-      final isInProgress =
-          hasActive || hasLatestActive || (done > 0 && done < total);
+      final isInProgress = hasActive || (done > 0 && done < total);
+      if (!isComplete && !isInProgress) continue;
 
-      if (isComplete || isInProgress) {
-        tileInfos.add(
-          _DownloadTileInfo(
-            widget: w,
-            hasActive: hasActive,
-            isComplete: isComplete,
-          ),
-        );
-      }
+      entries.add(
+        _DownloadEntry(
+          itemId: itemId,
+          title: book?.title ?? firstTask?.filename ?? 'Downloading…',
+          author: book?.author ?? firstTask?.group,
+          coverUrl: book?.coverUrl,
+          durationMs: book?.durationMs,
+          sizeBytes: book?.sizeBytes,
+          taskGroup: firstTask?.group,
+          taskFilename: firstTask?.filename,
+          hasActive: hasActive,
+          isComplete: isComplete,
+        ),
+      );
     }
-
-    // Sort: active downloads first, then in-progress, then completed
-    tileInfos.sort((a, b) {
-      if (a.hasActive && !b.hasActive) return -1;
-      if (!a.hasActive && b.hasActive) return 1;
-      if (!a.isComplete && b.isComplete) return -1;
-      if (a.isComplete && !b.isComplete) return 1;
-      return 0;
-    });
-
-    return tileInfos.map((info) => info.widget).toList();
+    return entries;
   }
 }
 
-class _DownloadTileInfo {
-  final Widget widget;
-  final bool hasActive;
-  final bool isComplete;
-
-  _DownloadTileInfo({
-    required this.widget,
+class _DownloadEntry {
+  const _DownloadEntry({
+    required this.itemId,
+    required this.title,
+    required this.author,
+    required this.coverUrl,
+    required this.durationMs,
+    required this.sizeBytes,
+    required this.taskGroup,
+    required this.taskFilename,
     required this.hasActive,
     required this.isComplete,
   });
+
+  final String itemId;
+  final String title;
+  final String? author;
+  final String? coverUrl;
+  final int? durationMs;
+  final int? sizeBytes;
+  final String? taskGroup;
+  final String? taskFilename;
+  final bool hasActive;
+  final bool isComplete;
+}
+
+class _NoMatches extends StatelessWidget {
+  const _NoMatches({required this.cs});
+
+  final ColorScheme cs;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Text(
+        'No downloads match your search',
+        style: Theme.of(
+          context,
+        ).textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+      ),
+    );
+  }
 }
 
 class _BookDownloadTile extends StatefulWidget {
@@ -564,23 +782,7 @@ class _BookDownloadTileState extends State<_BookDownloadTile> {
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       onTap: () {
-        showModalBottomSheet(
-          context: context,
-          isScrollControlled: true,
-          useSafeArea: true,
-          backgroundColor: Colors.transparent,
-          builder:
-              (context) => Container(
-                height: MediaQuery.of(context).size.height * 0.95,
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surface,
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(16),
-                  ),
-                ),
-                child: BookDetailPage(bookId: widget.itemId),
-              ),
-        );
+        BookDetailPage.push(context, widget.itemId);
       },
       leading: Hero(
         tag: 'downloads-cover-${widget.itemId}',
@@ -718,41 +920,6 @@ class _BookDownloadTileState extends State<_BookDownloadTile> {
         fit: BoxFit.cover,
         errorBuilder: (_, __, ___) => ph,
       ),
-    );
-  }
-}
-
-/// Total bytes on disk across all downloaded books. Previously this number was
-/// only visible on the Storage page buried in Settings.
-class _TotalDownloadSize extends StatelessWidget {
-  const _TotalDownloadSize({required this.itemIds});
-
-  final List<String> itemIds;
-
-  Future<int> _totalBytes() async {
-    var total = 0;
-    for (final id in itemIds) {
-      total += await DownloadStorage.downloadedBytesForItem(id);
-    }
-    return total;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return FutureBuilder<int>(
-      future: _totalBytes(),
-      builder: (context, snap) {
-        final bytes = snap.data ?? 0;
-        if (bytes <= 0) return const SizedBox.shrink();
-        return Text(
-          '${itemIds.length} book${itemIds.length == 1 ? '' : 's'} · ${_formatBytes(bytes)}',
-          style: Theme.of(context).textTheme.labelMedium?.copyWith(
-            color: cs.onSurfaceVariant,
-            fontWeight: FontWeight.w600,
-          ),
-        );
-      },
     );
   }
 }

@@ -178,21 +178,7 @@ class _AuthorCardState extends State<AuthorCard> {
                           // Open book detail as modal on top of author books
                           // Don't close the author books modal - when book detail is dismissed,
                           // user returns to this author's books list
-                          showModalBottomSheet(
-                            context: context,
-                            isScrollControlled: true,
-                            useSafeArea: true,
-                            backgroundColor: Colors.transparent,
-                            builder: (context) => Container(
-                              height: MediaQuery.of(context).size.height * 0.95,
-                              decoration: BoxDecoration(
-                                color: Theme.of(context).colorScheme.surface,
-                                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-                              ),
-                              clipBehavior: Clip.antiAlias,
-                              child: BookDetailPage(bookId: book.id),
-                            ),
-                          );
+                          BookDetailPage.push(context, book.id);
                         },
                       );
                     },

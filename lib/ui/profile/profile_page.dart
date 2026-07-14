@@ -4,6 +4,7 @@ import 'dart:convert';
 import '../../main.dart'; // ServicesScope
 import '../../core/books_repository.dart';
 import '../stats/stats_page.dart';
+import '../../utils/error_messages.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -110,7 +111,7 @@ class _ProfilePageState extends State<ProfilePage> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = 'Error loading profile: $e';
+          _error = humanErrorMessage(e);
           _isLoading = false;
         });
       }

@@ -5,7 +5,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'playback_repository.dart';
 import 'audio_service_handler.dart';
-import 'dynamic_island_service.dart';
 
 class AudioServiceManager {
   static AudioServiceManager? _instance;
@@ -40,9 +39,6 @@ class AudioServiceManager {
     }
 
     try {
-      // Initialize Dynamic Island service
-      await DynamicIslandService.instance.initialize();
-      
       // Configure audio session
       final session = await AudioSession.instance;
       await _configureAudioSession(session);
@@ -84,13 +80,6 @@ class AudioServiceManager {
     if (_audioHandler != null) {
       try {
         await _audioHandler!.updateQueueFromNowPlaying(nowPlaying);
-        
-        // Update Dynamic Island if supported
-        if (DynamicIslandService.instance.isSupported) {
-          // Get current playing state from the playback repository
-          // We'll update Dynamic Island through the playback repository instead
-          // since it has direct access to the player
-        }
       } catch (e) {
         // Error updating audio handler
       }
@@ -109,28 +98,6 @@ class AudioServiceManager {
     }
   }
   
-  /// Update Dynamic Island with current playback state
-  Future<void> updateDynamicIsland({
-    required bool isPlaying,
-    required Duration position,
-    required Duration duration,
-  }) async {
-    if (DynamicIslandService.instance.isSupported) {
-      await DynamicIslandService.instance.updateLiveActivity(
-        isPlaying: isPlaying,
-        position: position,
-        duration: duration,
-      );
-    }
-  }
-  
-  /// Stop Dynamic Island Live Activity
-  Future<void> stopDynamicIsland() async {
-    if (DynamicIslandService.instance.isSupported) {
-      await DynamicIslandService.instance.stopLiveActivity();
-    }
-  }
-
   bool get isInitialized => _isInitialized;
 
   Future<void> checkAudioServiceStatus() async {

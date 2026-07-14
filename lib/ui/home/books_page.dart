@@ -28,6 +28,7 @@ import '../stats/stats_page.dart';
 import '../home/series_page.dart';
 import '../../models/series.dart';
 import '../../main.dart';
+import '../../utils/error_messages.dart';
 
 // For unawaited background tasks
 void _unawaited(Future<void> future) {
@@ -266,6 +267,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
     String? activeLibId = prefs.getString('books_library_id');
 
     if (v == 'list') _view = LibraryView.list;
+    if (v == 'grid') _view = LibraryView.grid;
     if (s == 'nameAsc') _sort = SortMode.nameAsc;
     final fRaw = prefs.getString(_filterKey);
     switch (fRaw) {
@@ -739,7 +741,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString();
+        _error = humanErrorMessage(e);
       });
     }
   }
@@ -906,24 +908,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
   }
 
   void _openDetails(Book b) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      builder:
-          (context) => Container(
-            height: MediaQuery.of(context).size.height * 0.95,
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface,
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(24),
-              ),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: BookDetailPage(bookId: b.id),
-          ),
-    );
+    BookDetailPage.push(context, b.id);
   }
 
   Future<void> _showAuthorBooks(BuildContext context, String authorName) async {
@@ -1401,6 +1386,27 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                               onTap: _toggleSearch,
                               emphasized: _searchVisible,
                             ),
+                            // Grid/list toggle. The grid builder survived the
+                            // removal of the old view switcher; a cover grid is
+                            // how most people want to browse a library.
+                            _ToolbarSurfaceButton(
+                              tooltip:
+                                  _view == LibraryView.grid
+                                      ? 'List view'
+                                      : 'Grid view',
+                              icon:
+                                  _view == LibraryView.grid
+                                      ? LucideIcons.list
+                                      : LucideIcons.layoutGrid,
+                              onTap: () {
+                                final next =
+                                    _view == LibraryView.grid
+                                        ? LibraryView.list
+                                        : LibraryView.grid;
+                                setState(() => _view = next);
+                                _saveViewPref(next);
+                              },
+                            ),
                             // Stats were three taps deep behind the profile
                             // icon; give listening stats their own entry point.
                             _ToolbarSurfaceButton(
@@ -1731,7 +1737,10 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
                         padding: const EdgeInsets.fromLTRB(10, 6, 10, 14),
                       ),
                     ),
-                  _buildList(visible),
+                  if (_view == LibraryView.grid)
+                    _buildGrid(visible)
+                  else
+                    _buildList(visible),
                   _buildLoadMore(),
                 ],
               ],

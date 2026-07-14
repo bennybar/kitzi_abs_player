@@ -105,6 +105,8 @@ class _MiniPlayerState extends State<MiniPlayer> {
                   _backButton(playback, cs),
                   const SizedBox(width: 2),
                   _playButton(context, playback, np, cs, dark),
+                  const SizedBox(width: 2),
+                  _forwardButton(playback, cs),
                 ],
               ),
             ),
@@ -380,19 +382,37 @@ class _MiniPlayerState extends State<MiniPlayer> {
     );
   }
 
-  Widget _backButton(PlaybackRepository playback, ColorScheme cs) {
+  Widget _backButton(PlaybackRepository playback, ColorScheme cs) => _seekButton(
+        playback,
+        cs,
+        seconds: -UiPrefs.seekBackwardSeconds.value,
+        icon: LucideIcons.rotateCcw,
+      );
+
+  Widget _forwardButton(PlaybackRepository playback, ColorScheme cs) =>
+      _seekButton(
+        playback,
+        cs,
+        seconds: UiPrefs.seekForwardSeconds.value,
+        icon: LucideIcons.rotateCw,
+      );
+
+  Widget _seekButton(
+    PlaybackRepository playback,
+    ColorScheme cs, {
+    required int seconds,
+    required IconData icon,
+  }) {
     return Material(
       color: Colors.transparent,
       shape: const CircleBorder(),
       child: InkWell(
         customBorder: const CircleBorder(),
-        onTap: () =>
-            playback.nudgeSeconds(-UiPrefs.seekBackwardSeconds.value),
+        onTap: () => playback.nudgeSeconds(seconds),
         child: SizedBox(
           width: 40,
           height: 40,
-          child: Icon(LucideIcons.rotateCcw,
-              size: 20, color: cs.onSurfaceVariant),
+          child: Icon(icon, size: 20, color: cs.onSurfaceVariant),
         ),
       ),
     );

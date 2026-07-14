@@ -10,6 +10,7 @@ import '../../utils/alphabet_utils.dart';
 import '../../widgets/author_card.dart';
 import '../../widgets/letter_scrollbar.dart';
 import '../../widgets/skeleton_widgets.dart';
+import '../../utils/error_messages.dart';
 
 class AuthorsPage extends StatefulWidget {
   const AuthorsPage({super.key});
@@ -126,7 +127,7 @@ class _AuthorsPageState extends State<AuthorsPage> {
     } catch (e) {
       if (!mounted || silent) return;
       setState(() {
-        _error = e.toString();
+        _error = humanErrorMessage(e);
         _loading = false;
       });
     }

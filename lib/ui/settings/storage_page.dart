@@ -8,6 +8,7 @@ import '../../core/books_repository.dart';
 import '../../core/download_storage.dart';
 import '../../core/streaming_cache_service.dart';
 import '../../main.dart';
+import '../../utils/error_messages.dart';
 
 class StoragePage extends StatefulWidget {
   const StoragePage({super.key});
@@ -112,7 +113,7 @@ class _StoragePageState extends State<StoragePage> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = '$e';
+        _error = humanErrorMessage(e);
         _loading = false;
       });
     }

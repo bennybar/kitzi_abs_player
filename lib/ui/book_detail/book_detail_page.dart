@@ -27,6 +27,17 @@ import '../player/journal_sheets.dart';
 
 class BookDetailPage extends StatefulWidget {
   const BookDetailPage({super.key, required this.bookId});
+
+  /// Open the book as a real page.
+  ///
+  /// It used to be shown as a 95%-height modal sheet, which meant it had no
+  /// back stack and no route of its own — and navigating author -> series ->
+  /// metadata from inside it stacked modals on top of modals.
+  static Future<void> push(BuildContext context, String bookId) {
+    return Navigator.of(context).push<void>(
+      MaterialPageRoute(builder: (_) => BookDetailPage(bookId: bookId)),
+    );
+  }
   final String bookId;
 
   @override
@@ -981,26 +992,21 @@ class _BookDetailPageState extends State<BookDetailPage> {
 
     return Scaffold(
       backgroundColor: cs.surface,
-      body: Column(
+      body: SafeArea(
+        child: Column(
         children: [
-          // Material Design drag handle (centered, subtle)
-          Center(
-            child: Container(
-              width: 36,
-              height: 4,
-              margin: const EdgeInsets.only(top: 10, bottom: 12),
-              decoration: BoxDecoration(
-                color: cs.onSurfaceVariant.withOpacity(0.28),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-          // Header with title and mark as finished button
+          const SizedBox(height: 4),
+          // Header with back, title and mark as finished button
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+            padding: const EdgeInsets.fromLTRB(8, 0, 20, 10),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
+                IconButton(
+                  tooltip: 'Back',
+                  icon: const Icon(LucideIcons.arrowLeft),
+                  onPressed: () => Navigator.of(context).maybePop(),
+                ),
                 Expanded(
                   child: Text(
                     'Book Details',
@@ -1853,6 +1859,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
                     ),
           ),
         ],
+        ),
       ),
     );
   }

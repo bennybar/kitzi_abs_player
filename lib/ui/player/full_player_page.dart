@@ -2554,6 +2554,10 @@ class _FullPlayerPageState extends State<FullPlayerPage>
 
     // Create a ScrollController to auto-scroll to current chapter
     final scrollController = ScrollController();
+    // Anchors the current row so we can scroll to it exactly. Rows are variable
+    // height (titles wrap to two lines), so the old fixed 72px-per-row estimate
+    // landed in the wrong place on any book with long chapter titles.
+    final currentChapterKey = GlobalKey();
 
     await showModalBottomSheet<void>(
       context: context,
@@ -2562,21 +2566,27 @@ class _FullPlayerPageState extends State<FullPlayerPage>
       isScrollControlled: true,
       backgroundColor: Theme.of(context).colorScheme.surface,
       builder: (ctx) {
-        // Auto-scroll to current chapter after the sheet is built
+        // Auto-scroll to current chapter after the sheet is built.
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (scrollController.hasClients) {
-            // Estimate item height (approximately 72px per item including separator)
-            final estimatedItemHeight = 72.0;
-            final targetOffset = currentIdx * estimatedItemHeight;
-            scrollController.animateTo(
-              targetOffset.clamp(
-                0.0,
-                scrollController.position.maxScrollExtent,
-              ),
-              duration: const Duration(milliseconds: 300),
+          if (!scrollController.hasClients) return;
+          // Rough jump first: the list only builds visible rows, so the current
+          // chapter has no context to scroll to until we're near it.
+          const rowGuess = 72.0;
+          scrollController.jumpTo(
+            (currentIdx * rowGuess)
+                .clamp(0.0, scrollController.position.maxScrollExtent),
+          );
+          // Then land it exactly, whatever the real row heights turned out to be.
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            final target = currentChapterKey.currentContext;
+            if (target == null) return;
+            Scrollable.ensureVisible(
+              target,
+              alignment: 0.3,
+              duration: const Duration(milliseconds: 250),
               curve: Curves.easeOut,
             );
-          }
+          });
         });
 
         return Container(
@@ -2636,6 +2646,7 @@ class _FullPlayerPageState extends State<FullPlayerPage>
                         final c = chapters[i];
                         final isCurrent = i == liveIdx;
                         return ListTile(
+                          key: i == currentIdx ? currentChapterKey : null,
                           dense: false,
                           contentPadding: const EdgeInsets.symmetric(
                             vertical: 8,
