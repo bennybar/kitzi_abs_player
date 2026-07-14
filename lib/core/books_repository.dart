@@ -1402,18 +1402,23 @@ class BooksRepository {
     await _prefs.remove(_cacheKey);
   }
 
-  /// Explicit refresh from server; persists to DB and cache, returns fresh list
-  Future<List<Book>> refreshFromServer() async {
-    _log('[REFRESH_FROM_SERVER] Starting...');
+  /// Explicit refresh from server; persists to DB and cache, returns fresh list.
+  ///
+  /// [force] skips the conditional request. A user-initiated pull-to-refresh
+  /// must never be answered from a cache: if the server (or a proxy in front of
+  /// it) replied 304, we fell back to the local DB and newly added books never
+  /// showed up, no matter how many times the user pulled.
+  Future<List<Book>> refreshFromServer({bool force = false}) async {
+    _log('[REFRESH_FROM_SERVER] Starting (force=$force)...');
     final api = _auth.api;
     final libId = await _ensureLibraryId();
-    final etag = _prefs.getString(_etagKey);
+    final etag = force ? null : _prefs.getString(_etagKey);
     final headers = <String, String>{};
     if (etag != null) {
       headers['If-None-Match'] = etag;
       _log('[REFRESH_FROM_SERVER] Using ETag: $etag');
     } else {
-      _log('[REFRESH_FROM_SERVER] No ETag found');
+      _log('[REFRESH_FROM_SERVER] No ETag sent');
     }
     // Order by updatedAt (not addedAt) so a user-initiated refresh surfaces
     // BOTH newly-added items (their updatedAt is recent) and edits to existing

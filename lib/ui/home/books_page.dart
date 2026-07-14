@@ -487,8 +487,9 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
     // Disabled: manual pull-to-refresh or toolbar refresh triggers updates.
   }
 
-  Future<void> _refresh({bool initial = false}) async {
-    debugPrint('[REFRESH] Starting refresh (initial=$initial)');
+  /// [force] bypasses the ETag so a pull-to-refresh always hits the server.
+  Future<void> _refresh({bool initial = false, bool force = false}) async {
+    debugPrint('[REFRESH] Starting refresh (initial=$initial, force=$force)');
     // Always start from current cache for snappy UI
     await _loadBooksFromCache(showSpinner: initial && _books.isEmpty);
     debugPrint('[REFRESH] Loaded ${_books.length} books from cache');
@@ -513,7 +514,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
 
       // Always pull fresh data from server (ETag-aware; falls back to full fetch)
       debugPrint('[REFRESH] Calling refreshFromServer()...');
-      final refreshedBooks = await repo.refreshFromServer();
+      final refreshedBooks = await repo.refreshFromServer(force: force);
       debugPrint(
         '[REFRESH] refreshFromServer returned ${refreshedBooks.length} books',
       );
@@ -1308,7 +1309,7 @@ class _BooksPageState extends State<BooksPage> with WidgetsBindingObserver {
       body: Stack(
         children: [
           RefreshIndicator(
-            onRefresh: () => _refresh(),
+            onRefresh: () => _refresh(force: true),
             edgeOffset: 120,
             color: cs.primary,
             backgroundColor: cs.surface,
