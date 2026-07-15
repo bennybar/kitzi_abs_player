@@ -106,11 +106,25 @@ class PlaybackService : MediaLibraryService() {
         // wrapper (per-track timeline reporting book position/duration) is why One UI
         // withholds the media pill. Off by default — turning it on trades away
         // book-coordinate lock-screen position and chapter-skip until turned off.
+        // The activity that opens when the media notification / lock screen / Samsung
+        // Now Bar pill is tapped. BOTH the working Flutter app (audio_service) and
+        // other working Media3 apps (e.g. Gramophone) set this; we didn't — and a
+        // session with no tappable target is exactly what One UI's Now Bar withholds
+        // the status-bar pill for.
+        val sessionActivity = android.app.PendingIntent.getActivity(
+            this, 0,
+            Intent(this, com.bennybar.kitzi.MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT,
+        )
         val plainSession = Services.prefs.getBoolean("debug_plain_media_session", false)
         session = if (plainSession) {
-            MediaLibrarySession.Builder(this, player, LibraryCallback()).build()
+            MediaLibrarySession.Builder(this, player, LibraryCallback())
+                .setSessionActivity(sessionActivity)
+                .build()
         } else {
             MediaLibrarySession.Builder(this, BookCoordinatePlayer(player), LibraryCallback())
+                .setSessionActivity(sessionActivity)
                 .setMediaButtonPreferences(ImmutableList.of(rewindButton, forwardButton))
                 .build()
         }

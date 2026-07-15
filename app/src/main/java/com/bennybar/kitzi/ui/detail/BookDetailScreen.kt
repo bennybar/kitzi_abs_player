@@ -119,7 +119,7 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
         Column(
             Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)
                 .padding(bottom = com.bennybar.kitzi.LocalMiniPlayerInset.current),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Surface(
                 color = MaterialTheme.colorScheme.surfaceContainer,
@@ -181,6 +181,41 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
                 }
             }
 
+            // Primary actions right under the header, so Resume/Play is reachable
+            // without scrolling past the metadata.
+            val d = download
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button(
+                    onClick = { scope.launch { Services.playback.playItem(itemId); onPlay() } },
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Icon(Icons.Default.PlayArrow, null)
+                    Text(
+                        if ((progress?.progress ?: 0.0) > 0) "Resume" else "Play",
+                        modifier = Modifier.padding(start = 6.dp),
+                    )
+                }
+                if (d?.isComplete == true) {
+                    OutlinedButton(
+                        onClick = { scope.launch { Services.downloads.delete(itemId) } },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Icon(Icons.Default.Delete, null)
+                        Text("Remove", modifier = Modifier.padding(start = 6.dp))
+                    }
+                } else {
+                    OutlinedButton(
+                        onClick = { scope.launch { Services.downloads.download(itemId) } },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Icon(Icons.Default.Download, null)
+                        Text("Download", modifier = Modifier.padding(start = 6.dp))
+                    }
+                }
+            }
+
+            ProgressCard(progress)
+
             // Year / Publisher / Genres, as icon-badged fact cards in a grid — the
             // Year and Publisher share a row; Genres spans full width below.
             val facts = buildList {
@@ -226,9 +261,6 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
                 }
             }
 
-            ProgressCard(progress)
-
-            val d = download
             if (d != null && !d.isComplete && d.status != DownloadStatus.CANCELED) {
                 Surface(
                     color = MaterialTheme.colorScheme.surfaceContainer,
@@ -244,37 +276,6 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
                             progress = { d.progress.toFloat() },
                             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                         )
-                    }
-                }
-            }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(
-                    onClick = { scope.launch { Services.playback.playItem(itemId); onPlay() } },
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Icon(Icons.Default.PlayArrow, null)
-                    Text(
-                        if ((progress?.progress ?: 0.0) > 0) "Resume" else "Play",
-                        modifier = Modifier.padding(start = 6.dp),
-                    )
-                }
-
-                if (d?.isComplete == true) {
-                    OutlinedButton(
-                        onClick = { scope.launch { Services.downloads.delete(itemId) } },
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        Icon(Icons.Default.Delete, null)
-                        Text("Remove", modifier = Modifier.padding(start = 6.dp))
-                    }
-                } else {
-                    OutlinedButton(
-                        onClick = { scope.launch { Services.downloads.download(itemId) } },
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        Icon(Icons.Default.Download, null)
-                        Text("Download", modifier = Modifier.padding(start = 6.dp))
                     }
                 }
             }
