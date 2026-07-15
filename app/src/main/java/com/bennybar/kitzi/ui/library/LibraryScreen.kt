@@ -37,6 +37,9 @@ import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.LibraryBooks
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.MonitorHeart
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Schedule
@@ -114,6 +117,9 @@ fun LibraryScreen(
     }
 
     var showSearch by remember { mutableStateOf(false) }
+    // The search/grid/stats/filter/sort toolbar is hidden by default and revealed by
+    // the control button to the right of the Series pill, so the top stays clean.
+    var toolbarVisible by rememberSaveable { mutableStateOf(false) }
     var showFilter by remember { mutableStateOf(false) }
     var showSort by remember { mutableStateOf(false) }
 
@@ -140,6 +146,11 @@ fun LibraryScreen(
                 selected = false,
                 modifier = Modifier.weight(1f),
                 onClick = onOpenSeries,
+            )
+            CircleIconButton(
+                if (toolbarVisible) Icons.Default.KeyboardArrowUp else Icons.Default.Tune,
+                if (toolbarVisible) "Hide controls" else "Show controls",
+                onClick = { toolbarVisible = !toolbarVisible },
             )
         }
 
@@ -174,15 +185,17 @@ fun LibraryScreen(
             @Composable
             fun Header() {
                 Column {
-                    Toolbar(
-                        grid = grid,
-                        onSearch = { showSearch = !showSearch },
-                        onToggleLayout = vm::toggleGrid,
-                        onStats = onOpenStats,
-                        onProfile = onOpenProfile,
-                        onFilter = { showFilter = !showFilter },
-                        onSort = { showSort = !showSort },
-                    )
+                    if (toolbarVisible) {
+                        Toolbar(
+                            grid = grid,
+                            onSearch = { showSearch = !showSearch },
+                            onToggleLayout = vm::toggleGrid,
+                            onStats = onOpenStats,
+                            onProfile = onOpenProfile,
+                            onFilter = { showFilter = !showFilter },
+                            onSort = { showSort = !showSort },
+                        )
+                    }
 
                     if (showSearch) {
                         KitziSearchField(
