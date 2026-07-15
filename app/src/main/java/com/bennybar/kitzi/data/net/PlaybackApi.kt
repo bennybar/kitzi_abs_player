@@ -215,7 +215,8 @@ class PlaybackApi(
 
     private companion object {
         const val TAG = "PlaybackApi"
-        const val CLIENT_VERSION = "kitzi-android-1.6.282"
+        // Derived from the app version so server session diagnostics never drift.
+        val CLIENT_VERSION = "kitzi-android-${com.bennybar.kitzi.BuildConfig.VERSION_NAME}"
         val JSON_MEDIA = "application/json".toMediaType()
         val SUPPORTED_MIME_TYPES = listOf(
             "audio/mpeg", "audio/mp4", "audio/aac", "audio/flac",

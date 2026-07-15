@@ -210,9 +210,11 @@ class BooksRepository(
         }
     }
 
-    /** Refreshed at most daily; the portraits rarely change. */
+    /** Refreshed at most daily; the portraits rarely change. Keyed per library so
+     *  switching libraries doesn't suppress the new one's author fetch. */
     private suspend fun syncAuthorMetadata() {
-        val last = prefs.getDouble(KEY_AUTHORS_SYNCED, 0.0).toLong()
+        val key = "${KEY_AUTHORS_SYNCED}_$libraryId"
+        val last = prefs.getDouble(key, 0.0).toLong()
         if (System.currentTimeMillis() - last < 24 * 3600 * 1000L) return
 
         val fetched = runCatching { api.authors(libraryId) }.getOrNull() ?: return
@@ -228,7 +230,7 @@ class BooksRepository(
         }
         if (rows.isNotEmpty()) {
             dao.upsertAuthors(rows)
-            prefs.putDouble(KEY_AUTHORS_SYNCED, System.currentTimeMillis().toDouble())
+            prefs.putDouble(key, System.currentTimeMillis().toDouble())
         }
     }
 
@@ -477,8 +479,14 @@ class BooksRepository(
      * search all run as SQL over the cache, so a partially-cached library would
      * sort and filter only the part that happened to be loaded — the exact bug
      * REWRITE.md warns about. It also means the library works offline.
+     *
+     * pageSize is 50 because the ABS items endpoint caps a page at 50 regardless of
+     * the requested `limit`. Asking for 100 returned only 50 rows while the offset
+     * still advanced by 100 — so half of every 100 items (items 50–99, 150–199, …)
+     * were skipped and never cached. This is the "not all books show" bug the
+     * Flutter app fixed the same way.
      */
-    suspend fun syncAll(pageSize: Int = 100): Int = withContext(Dispatchers.IO) {
+    suspend fun syncAll(pageSize: Int = 50): Int = withContext(Dispatchers.IO) {
         var page = 1
         var total = 0
         val seen = HashSet<String>()

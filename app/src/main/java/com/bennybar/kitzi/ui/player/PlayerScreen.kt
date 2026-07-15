@@ -29,8 +29,9 @@ import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -263,36 +264,25 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
             val sliderMax = if (chapterMode) chapter!!.durationSec else total
             val sliderPos = if (chapterMode) chapter!!.elapsedSec else positionSec
             val sliderValue = scrubbing ?: sliderPos.toFloat()
-            Box(Modifier.fillMaxWidth().padding(top = 16.dp)) {
-                Slider(
-                    value = sliderValue,
-                    onValueChange = { scrubbing = it },
-                    onValueChangeFinished = {
-                        scrubbing?.let {
-                            val target = if (chapterMode) chapter!!.startSec + it else it.toDouble()
-                            controller.seekGlobal(target.toDouble(), reportNow = true)
-                        }
-                        scrubbing = null
-                    },
-                    valueRange = 0f..(sliderMax.toFloat().coerceAtLeast(1f)),
-                    colors = SliderDefaults.colors(
-                        thumbColor = MaterialTheme.colorScheme.primary,
-                        activeTrackColor = MaterialTheme.colorScheme.primary,
-                        inactiveTrackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                    ),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                // Chapter ticks only in book mode (they're book-scale positions) and
-                // when the setting is on (ui_progress_bar_chapterized).
-                if (!chapterMode && chapterizedBar && np.chapters.size > 1 && total > 0) {
-                    ChapterTicks(
-                        chapters = np.chapters,
-                        totalSec = total,
-                        progress = (sliderValue / total.toFloat()).coerceIn(0f, 1f),
-                        modifier = Modifier.fillMaxWidth().height(30.dp).align(Alignment.Center),
-                    )
-                }
-            }
+            // Chapter boundaries as fractions, drawn as subtle notches on the track —
+            // only in book mode (they're book-scale) and when the setting is on.
+            val tickFractions = if (!chapterMode && chapterizedBar && np.chapters.size > 1 && total > 0) {
+                np.chapters.map { (it.startSec / total).toFloat() }.filter { it > 0.008f && it < 0.992f }
+            } else emptyList()
+            PlayerProgressBar(
+                value = sliderValue,
+                valueRange = 0f..(sliderMax.toFloat().coerceAtLeast(1f)),
+                onValueChange = { scrubbing = it },
+                onValueChangeFinished = {
+                    scrubbing?.let {
+                        val target = if (chapterMode) chapter!!.startSec + it else it.toDouble()
+                        controller.seekGlobal(target.toDouble(), reportNow = true)
+                    }
+                    scrubbing = null
+                },
+                chapterTicks = tickFractions,
+                modifier = Modifier.fillMaxWidth().padding(top = 14.dp),
+            )
 
             // position / -remaining (of the chapter in chapter mode, else the book)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -444,5 +434,82 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
             },
             onDismiss = { showMore = false },
         )
+    }
+}
+
+/**
+ * A modern scrubber: a slim rounded track, a primary fill, faint chapter notches
+ * cut into it, and a small thumb that swells while dragging. Tap anywhere to seek;
+ * drag to scrub. Replaces the stock Material Slider (chunky thumb + a separate tick
+ * overlay), which read as dated.
+ */
+@Composable
+private fun PlayerProgressBar(
+    value: Float,
+    valueRange: ClosedFloatingPointRange<Float>,
+    onValueChange: (Float) -> Unit,
+    onValueChangeFinished: () -> Unit,
+    chapterTicks: List<Float>,
+    modifier: Modifier = Modifier,
+) {
+    val primary = MaterialTheme.colorScheme.primary
+    val inactive = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.14f)
+    val notch = MaterialTheme.colorScheme.surface
+    val span = (valueRange.endInclusive - valueRange.start).coerceAtLeast(0.001f)
+    val fraction = ((value - valueRange.start) / span).coerceIn(0f, 1f)
+    var dragging by remember { mutableStateOf(false) }
+    val thumbRadius by androidx.compose.animation.core.animateDpAsState(
+        if (dragging) 9.dp else 6.5.dp, label = "thumb",
+    )
+
+    fun posToValue(x: Float, width: Int): Float =
+        valueRange.start + (x / width).coerceIn(0f, 1f) * span
+
+    androidx.compose.foundation.Canvas(
+        modifier
+            .height(28.dp)
+            .pointerInput(valueRange) {
+                detectTapGestures { offset ->
+                    onValueChange(posToValue(offset.x, size.width)); onValueChangeFinished()
+                }
+            }
+            .pointerInput(valueRange) {
+                detectHorizontalDragGestures(
+                    onDragStart = { dragging = true; onValueChange(posToValue(it.x, size.width)) },
+                    onDragEnd = { dragging = false; onValueChangeFinished() },
+                    onDragCancel = { dragging = false; onValueChangeFinished() },
+                    onHorizontalDrag = { change, _ ->
+                        onValueChange(posToValue(change.position.x, size.width))
+                    },
+                )
+            },
+    ) {
+        val w = size.width
+        val cy = size.height / 2
+        val trackH = 6.dp.toPx()
+        val r = trackH / 2
+        // inactive track
+        drawRoundRect(
+            inactive, topLeft = Offset(0f, cy - r), size = androidx.compose.ui.geometry.Size(w, trackH),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(r, r),
+        )
+        // active fill
+        drawRoundRect(
+            primary, topLeft = Offset(0f, cy - r),
+            size = androidx.compose.ui.geometry.Size(w * fraction, trackH),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(r, r),
+        )
+        // chapter notches, cut into the track with the background colour
+        val nw = 2.dp.toPx()
+        chapterTicks.forEach { t ->
+            drawRoundRect(
+                notch, topLeft = Offset(w * t - nw / 2, cy - r),
+                size = androidx.compose.ui.geometry.Size(nw, trackH),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(nw / 2, nw / 2),
+            )
+        }
+        // thumb
+        val cx = (w * fraction).coerceIn(0f, w)
+        drawCircle(primary, radius = thumbRadius.toPx(), center = Offset(cx, cy))
     }
 }

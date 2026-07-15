@@ -109,7 +109,16 @@ object BookMapper {
             ).firstNotNullOfOrNull { it.str() }?.lowercase(),
             libraryId = json["libraryId"].str(),
             authors = authors,
-            narrators = meta?.get("narrators").arr().names(),
+            // The library LIST endpoint returns minified metadata: the full
+            // `narrators` array is absent and only `narratorName` (a comma-joined
+            // string) is present — same as `authorName` above. Without this fallback
+            // narrators show only on books that were fetched in full (e.g. once
+            // downloaded), which is why they went missing on most of the library.
+            narrators = meta?.get("narrators").arr().names().ifEmpty {
+                meta?.get("narratorName").str()
+                    ?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }
+                    .orEmpty()
+            },
             publisher = meta?.get("publisher").str(),
             publishYear = meta?.get("publishedYear").int()
                 ?: meta?.get("publishYear").int()
@@ -133,9 +142,13 @@ object BookMapper {
             !media["tracks"].arr().isNullOrEmpty() ||
             (media["audioTrackCount"].int() ?: 0) > 0
 
-        val hasEbook = media["ebook"] != null ||
-            media["ebookFile"] != null ||
-            media["ebookFormat"] != null
+        // A JSON `null` value must count as ABSENT, exactly like Dart's `??`
+        // (book.dart:229). `media["ebook"]` returns JsonNull — not Kotlin null —
+        // when the key is present-but-null, so a plain `!= null` check wrongly
+        // flagged real audiobooks as ebooks and DROPPED them from the library.
+        fun present(key: String): Boolean =
+            media[key]?.let { it !is kotlinx.serialization.json.JsonNull } == true
+        val hasEbook = present("ebook") || present("ebookFile") || present("ebookFormat")
 
         return hasAudio && !hasEbook
     }

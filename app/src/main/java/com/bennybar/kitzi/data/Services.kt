@@ -84,9 +84,11 @@ object Services {
         }
 
         // Bring downloads the Flutter app made into the database, so they show up
-        // in Downloads and count as "already downloaded".
+        // in Downloads and count as "already downloaded"; and bring across the
+        // playback journal (per-book jump-back history) once.
         CoroutineScope(Dispatchers.IO).launch {
             runCatching { downloads.adoptExistingDownloads() }
+            runCatching { com.bennybar.kitzi.data.db.LegacyHistoryImport.importIfNeeded(appContext, prefs) }
         }
 
         // Local playback only engages for COMPLETE downloads; a partial download

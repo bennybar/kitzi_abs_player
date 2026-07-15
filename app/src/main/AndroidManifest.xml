@@ -55,6 +55,8 @@
             <intent-filter>
                 <action android:name="androidx.media3.session.MediaLibraryService" />
                 <action android:name="android.media.browse.MediaBrowserService" />
+                <!-- Lets Android Auto / Assistant voice "play <book>" reach the service. -->
+                <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
                 <category android:name="android.media.intent.category.CAR_MEDIA" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>

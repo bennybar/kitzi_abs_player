@@ -1,7 +1,6 @@
 package com.bennybar.kitzi.ui.player
 
 import android.graphics.Bitmap
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -69,7 +68,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -177,31 +175,6 @@ fun formatClock(totalSeconds: Long): String {
     val m = (s % 3600) / 60
     val sec = s % 60
     return if (h > 0) "%d:%02d:%02d".format(h, m, sec) else "%d:%02d".format(m, sec)
-}
-
-/** Chapter boundary tick marks painted over the slider track. */
-@Composable
-fun ChapterTicks(
-    chapters: List<Chapter>,
-    totalSec: Double,
-    progress: Float,
-    modifier: Modifier = Modifier,
-) {
-    val active = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.55f)
-    val inactive = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
-    Canvas(modifier) {
-        val trackY = size.height / 2f
-        chapters.drop(1).forEach { chapter ->
-            val frac = (chapter.startSec / totalSec).toFloat()
-            if (frac <= 0f || frac >= 1f) return@forEach
-            val x = frac * size.width
-            drawRect(
-                color = if (frac <= progress) active else inactive,
-                topLeft = Offset(x - 1.dp.toPx(), trackY - 3.dp.toPx()),
-                size = androidx.compose.ui.geometry.Size(2.dp.toPx(), 6.dp.toPx()),
-            )
-        }
-    }
 }
 
 /** A translucent icon (optionally labelled) button that floats over the cover. */

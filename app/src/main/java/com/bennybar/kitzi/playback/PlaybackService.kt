@@ -270,7 +270,11 @@ class PlaybackService : MediaLibraryService() {
             mediaId: String,
         ): ListenableFuture<LibraryResult<MediaItem>> = scope.future {
             val book = Services.books.getBook(mediaId)
-                ?: return@future LibraryResult.ofError<MediaItem>(LibraryResult.RESULT_ERROR_BAD_VALUE)
+                ?: return@future LibraryResult.ofError<MediaItem>(
+                    androidx.media3.session.SessionError(
+                        androidx.media3.session.SessionError.ERROR_BAD_VALUE, "Item not found",
+                    )
+                )
             LibraryResult.ofItem(book.toMediaItem(), null)
         }
 
@@ -286,9 +290,16 @@ class PlaybackService : MediaLibraryService() {
             startIndex: Int,
             startPositionMs: Long,
         ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
-            val itemId = mediaItems.firstOrNull()?.mediaId?.substringBefore('#')
-            if (!itemId.isNullOrEmpty()) {
-                scope.launch { controller.playItem(itemId) }
+            val requested = mediaItems.firstOrNull()
+            val itemId = requested?.mediaId?.substringBefore('#')?.takeIf { it.isNotEmpty() }
+            // Voice "play <book>" (MEDIA_PLAY_FROM_SEARCH) arrives with no media id,
+            // only a search query — resolve it to the best-matching book and play.
+            val query = requested?.requestMetadata?.searchQuery?.takeIf { it.isNotBlank() }
+            when {
+                itemId != null -> scope.launch { controller.playItem(itemId) }
+                query != null -> scope.launch {
+                    searchHits(query).firstOrNull()?.let { controller.playItem(it.id) }
+                }
             }
             // The controller populates the playlist itself.
             return Futures.immediateFuture(
@@ -345,11 +356,21 @@ class PlaybackService : MediaLibraryService() {
                 .setIsBrowsable(true)
                 .setIsPlayable(false)
                 .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_AUDIO_BOOKS)
+                // Tell Android Auto to render this node's children as a list of
+                // categories, and their books (playables) as a cover grid.
+                .setExtras(CONTENT_STYLE_EXTRAS)
                 .build()
         )
         .build()
 
     private companion object {
+        /** Android Auto layout hints: category rows as a list, book covers as a grid. */
+        val CONTENT_STYLE_EXTRAS = Bundle().apply {
+            // Documented content-style values: 1 = list items, 2 = grid items.
+            putInt(androidx.media3.session.MediaConstants.EXTRAS_KEY_CONTENT_STYLE_BROWSABLE, 1)
+            putInt(androidx.media3.session.MediaConstants.EXTRAS_KEY_CONTENT_STYLE_PLAYABLE, 2)
+        }
+
         const val CMD_REWIND = "com.bennybar.kitzi.REWIND"
         const val CMD_FORWARD = "com.bennybar.kitzi.FORWARD"
         const val ROOT = "kitzi_root"

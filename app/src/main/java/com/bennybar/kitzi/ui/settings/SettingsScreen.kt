@@ -535,7 +535,15 @@ private fun BackupDialog(onDismiss: () -> Unit) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { json = SettingsBackup.export(prefs) }, modifier = Modifier.weight(1f)) { Text("Export") }
                     OutlinedButton(
-                        onClick = { restored = SettingsBackup.import(prefs, json); if (restored) ThemeState.load(prefs) },
+                        onClick = {
+                            restored = SettingsBackup.import(prefs, json)
+                            // Reload BOTH state holders — otherwise restored tab/player
+                            // preferences don't take effect until the next launch.
+                            if (restored) {
+                                ThemeState.load(prefs)
+                                com.bennybar.kitzi.ui.UiPrefsState.load(prefs)
+                            }
+                        },
                         enabled = json.isNotBlank(), modifier = Modifier.weight(1f),
                     ) { Text(if (restored) "Restored" else "Restore") }
                 }
