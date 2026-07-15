@@ -151,6 +151,26 @@ fun LibraryScreen(
             val listState = rememberLazyListState()
             val gridState = rememberLazyGridState()
 
+            // Infinite scroll: widen the query window as the end of the list nears,
+            // so the library isn't capped at the first 60 of N books. loadMore()
+            // self-terminates once the cache is exhausted.
+            LaunchedEffect(grid, listState, gridState) {
+                val flow = if (grid) {
+                    androidx.compose.runtime.snapshotFlow {
+                        (gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0) to
+                            gridState.layoutInfo.totalItemsCount
+                    }
+                } else {
+                    androidx.compose.runtime.snapshotFlow {
+                        (listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0) to
+                            listState.layoutInfo.totalItemsCount
+                    }
+                }
+                flow.collect { (lastVisible, total) ->
+                    if (total > 0 && lastVisible >= total - 6) vm.loadMore()
+                }
+            }
+
             @Composable
             fun Header() {
                 Column {

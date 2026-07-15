@@ -137,6 +137,10 @@ class LibraryViewModel : ViewModel() {
 
     fun loadMore() {
         val q = query.value
+        // The current window came back smaller than requested -> the cache has no
+        // more rows to show, so widening the window would do nothing. Stops the
+        // infinite-scroll trigger from firing forever at the end of the list.
+        if (items.value.size < q.limit) return
         viewModelScope.launch {
             // Widen the window; the query re-runs and Room emits the longer list.
             query.value = q.copy(limit = q.limit + 60)
