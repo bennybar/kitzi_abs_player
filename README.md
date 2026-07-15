@@ -6,6 +6,12 @@ Kitzi started life as a Flutter app and was rebuilt from the ground up in Kotlin
 
 This is an unofficial client and isn't affiliated with the Audiobookshelf project.
 
+## Screenshots
+
+| Library | Player | Downloads |
+|:---:|:---:|:---:|
+| <img src="screenshots/library.jpg" width="240"> | <img src="screenshots/player.jpg" width="240"> | <img src="screenshots/downloads.jpg" width="240"> |
+
 ## What it does
 
 - Streams from your server, or downloads books for offline listening
