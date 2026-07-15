@@ -73,6 +73,7 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
     var showSpeed by remember { mutableStateOf(false) }
     var showInfo by remember { mutableStateOf(false) }
     var showMore by remember { mutableStateOf(false) }
+    var showHistory by remember { mutableStateOf(false) }
     val sleep by Services.sleepTimer.mode.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
 
@@ -405,10 +406,19 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
     if (showInfo) {
         PlayerInfoSheet(itemId = np.itemId, onDismiss = { showInfo = false })
     }
+    if (showHistory) {
+        PlayHistorySheet(
+            itemId = np.itemId,
+            bookTitle = np.title,
+            onPick = { controller.seekGlobal(it, reportNow = true); showHistory = false },
+            onDismiss = { showHistory = false },
+        )
+    }
     if (showMore) {
         PlayerMoreSheet(
             gradientEnabled = gradientEnabled,
             chapterized = chapterizedBar,
+            onPlayHistory = { showMore = false; showHistory = true },
             onToggleGradient = {
                 gradientEnabled = !gradientEnabled
                 prefs.putBoolean("ui_player_gradient_background", gradientEnabled)

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -42,6 +43,7 @@ import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Forward30
 import androidx.compose.material.icons.filled.Forward5
 import androidx.compose.material.icons.filled.Headphones
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Replay10
@@ -486,6 +488,7 @@ private fun factIcon(key: String): ImageVector = when (key) {
 fun PlayerMoreSheet(
     gradientEnabled: Boolean,
     chapterized: Boolean,
+    onPlayHistory: () -> Unit,
     onToggleGradient: () -> Unit,
     onToggleChapterized: () -> Unit,
     onMarkFinished: () -> Unit,
@@ -494,6 +497,7 @@ fun PlayerMoreSheet(
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
             MoreRow(Icons.Default.CheckCircle, "Mark as finished", onMarkFinished)
+            MoreRow(Icons.Default.History, "Play history", onPlayHistory)
             MoreRow(
                 Icons.Default.Gradient,
                 if (gradientEnabled) "Disable gradient background" else "Enable gradient background",
@@ -505,6 +509,81 @@ fun PlayerMoreSheet(
                 onToggleChapterized,
             )
         }
+    }
+}
+
+/** Play history: the position snapshots recorded on each pause; tap one to jump back. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PlayHistorySheet(
+    itemId: String,
+    bookTitle: String,
+    onPick: (Double) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val entries by produceState<List<com.bennybar.kitzi.data.PlaybackJournal.Entry>?>(null, itemId) {
+        value = com.bennybar.kitzi.data.PlaybackJournal.historyFor(itemId)
+    }
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+            Text("Play history", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            Text(
+                bookTitle,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(bottom = 12.dp),
+            )
+        }
+        val e = entries
+        when {
+            e == null -> Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+            e.isEmpty() -> Text(
+                "No recent pauses recorded.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+            )
+            else -> LazyColumn(Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
+                items(e) { entry ->
+                    Row(
+                        Modifier.fillMaxWidth().clickable { onPick(entry.positionSec) }
+                            .padding(horizontal = 20.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Default.History, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Column(Modifier.padding(start = 16.dp)) {
+                            Text(
+                                entry.chapterTitle?.takeIf { it.isNotBlank() }
+                                    ?: "Chapter ${(entry.chapterIndex ?: 0) + 1}",
+                                style = MaterialTheme.typography.bodyLarge,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                "${relativeTime(entry.atMs)} • ${formatClock(entry.positionSec.toLong())}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun relativeTime(ms: Long): String {
+    val diff = System.currentTimeMillis() - ms
+    val min = diff / 60000
+    return when {
+        min < 1 -> "Just now"
+        min < 60 -> "${min}m ago"
+        min < 1440 -> "${min / 60}h ago"
+        else -> "${min / 1440}d ago"
     }
 }
 

@@ -379,6 +379,13 @@ class PlaybackController(
                 accrual.onPlaybackStopped()
                 pausedAtMs = android.os.SystemClock.elapsedRealtime()
                 onPaused?.invoke()
+                // Snapshot where we paused so the player's Play history can jump back.
+                _nowPlaying.value?.let { np ->
+                    globalPositionSec()?.let { pos ->
+                        val ch = currentChapter()
+                        com.bennybar.kitzi.data.PlaybackJournal.record(np.itemId, pos, ch?.title, ch?.index)
+                    }
+                }
                 syncNow()
                 // A session is closed on pause and reopened on resume — that is what
                 // stops the server transcoding for a paused client.

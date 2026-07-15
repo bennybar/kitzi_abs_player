@@ -419,21 +419,23 @@ private fun App() {
                             )
                         },
                 ) {
-                    Column(Modifier.fillMaxSize()) {
-                        // Drag handle affordance.
-                        Box(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 2.dp), contentAlignment = Alignment.Center) {
-                            Box(
-                                Modifier
-                                    .size(width = 40.dp, height = 4.dp)
-                                    .clip(RoundedCornerShape(2.dp))
-                                    .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)),
-                            )
-                        }
+                    // The player fills the whole card so its gradient reaches the
+                    // rounded top edge (no flat band behind the handle). The drag
+                    // handle floats over it.
+                    Box(Modifier.fillMaxSize()) {
                         PlayerScreen(
                             contentPadding = PaddingValues(
-                                top = 2.dp,
+                                top = 22.dp,
                                 bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 6.dp,
                             ),
+                        )
+                        Box(
+                            Modifier
+                                .align(Alignment.TopCenter)
+                                .padding(top = 8.dp)
+                                .size(width = 40.dp, height = 4.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)),
                         )
                     }
                 }
