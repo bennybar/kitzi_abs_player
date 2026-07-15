@@ -22,18 +22,18 @@ class ListeningAccrual(
     val pending: Double get() = pendingSec
 
     /** Call when playback actually starts rendering audio (not merely buffering). */
-    fun onPlaybackStarted() {
+    @Synchronized fun onPlaybackStarted() {
         if (playStartedAt == null) playStartedAt = nowMs()
     }
 
     /** Call when playback stops. Captures the final partial interval before clearing. */
-    fun onPlaybackStopped() {
+    @Synchronized fun onPlaybackStopped() {
         accrue()
         playStartedAt = null
     }
 
     /** Folds elapsed wall-clock time into the pending total and re-arms. Idempotent. */
-    fun accrue() {
+    @Synchronized fun accrue() {
         val started = playStartedAt ?: return
         val now = nowMs()
         val elapsed = (now - started) / 1000.0
@@ -42,7 +42,7 @@ class ListeningAccrual(
     }
 
     /** The value to send, or null when there is nothing to report. */
-    fun snapshot(): Double? {
+    @Synchronized fun snapshot(): Double? {
         accrue()
         return pendingSec.takeIf { it > 0 }
     }
@@ -52,12 +52,12 @@ class ListeningAccrual(
      * pending and rolls into the next successful report — that is what makes
      * listening time survive an offline stretch instead of being lost.
      */
-    fun consume(reported: Double) {
+    @Synchronized fun consume(reported: Double) {
         pendingSec = (pendingSec - reported).coerceAtLeast(0.0)
     }
 
     /** New book: nothing carries over. */
-    fun reset() {
+    @Synchronized fun reset() {
         playStartedAt = null
         pendingSec = 0.0
     }

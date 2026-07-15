@@ -554,18 +554,23 @@ class BooksRepository(
 
             val duration = m["duration"].num() ?: 0.0
             val currentTime = m["currentTime"].num() ?: 0.0
-            // ABS sometimes reports progress as 0 while currentTime is set; derive it.
+            val finished = m["isFinished"].bool() == true
+            // DERIVE progress from position/duration — the server's own `progress`
+            // field is unreliable: ABS can report it as 0 while currentTime is set,
+            // OR leave it stuck at 1.0 (a book "100% complete" 23 minutes in) after
+            // an old finish. Position over duration is authoritative; only fall back
+            // to the reported figure when the duration is unknown.
             val reported = m["progress"].num() ?: 0.0
             val progress = when {
-                reported > 0 -> reported
+                finished -> 1.0
                 duration > 0 -> currentTime / duration
-                else -> 0.0
+                else -> reported
             }.coerceIn(0.0, 1.0).let { if (it.isNaN()) 0.0 else it }
 
             MediaProgressEntity(
                 itemId = itemId,
                 progress = progress,
-                isFinished = m["isFinished"].bool() == true,
+                isFinished = finished,
                 currentTimeSec = currentTime,
                 durationSec = duration,
                 lastUpdate = m["lastUpdate"].num()?.toLong() ?: System.currentTimeMillis(),

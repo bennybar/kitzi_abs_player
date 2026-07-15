@@ -330,16 +330,19 @@ class PlaybackController(
         val pos = globalPositionSec()
 
         // Unknown book position: reporting the track-local value would overwrite
-        // the server's correct progress with a much smaller number. Say nothing.
-        val current = pos ?: run {
-            if (player.currentMediaItemIndex == 0) player.currentPosition / 1000.0 else return
+        // the server's correct progress with a much smaller number. Say nothing —
+        // except when the book just FINISHED, where "the end" must still be sent
+        // even if an earlier track's duration was never hydrated.
+        val current = pos ?: when {
+            finished -> totalDurationSec() ?: (player.currentPosition / 1000.0)
+            player.currentMediaItemIndex == 0 -> player.currentPosition / 1000.0
+            else -> return
         }
 
         prefs.putDouble(progressKey(np.itemId), current)
 
         val listened = accrual.snapshot()
         val total = totalDurationSec()
-        android.util.Log.i("KITZISYNC", "item=${np.itemId} cur=$current total=$total serverDur=${np.serverDurationSec} trackDurs=${np.tracks.map { it.durationSec }} finished=$finished")
         val paused = !player.isPlaying
 
         scope.launch(Dispatchers.IO) {
