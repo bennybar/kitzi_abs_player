@@ -11,6 +11,7 @@ import com.bennybar.kitzi.data.db.MediaProgressEntity
 import com.bennybar.kitzi.data.legacy.FlutterPrefs
 import com.bennybar.kitzi.data.model.Book
 import com.bennybar.kitzi.data.model.BookMapper
+import com.bennybar.kitzi.data.model.arr
 import com.bennybar.kitzi.data.model.bool
 import com.bennybar.kitzi.data.model.int
 import com.bennybar.kitzi.data.model.num
@@ -53,6 +54,9 @@ data class ListeningStats(
 
 /** A "top" list entry: a label, total listened seconds, and an optional cover. */
 data class TopEntry(val label: String, val listenedSec: Double, val coverUrl: String?)
+
+/** One row of "extra information" for a book (label, value, icon key). */
+data class MetaFact(val label: String, val value: String, val icon: String)
 
 /** The signed-in user + server summary for the profile screen. */
 data class ProfileInfo(
@@ -348,6 +352,52 @@ class BooksRepository(
         while (d in days) { streak++; d = d.minusDays(1) }
 
         DetailedStats(topBooks, topAuthors, topNarrators, streak, days.size, total)
+    }
+
+    /**
+     * The full "extra information" fact list for a book, matching the Flutter
+     * metadata sheet. Pulls the live item (for language / ISBN / distribution /
+     * file type + bitrate) and combines it with the cached book fields.
+     */
+    suspend fun metadataFacts(book: Book): List<MetaFact> = withContext(Dispatchers.IO) {
+        val item = runCatching { api.item(book.id) }.getOrNull()
+        val media = item?.get("media").obj()
+        val meta = media?.get("metadata").obj()
+        val audioFiles = media?.get("audioFiles").arr()
+
+        val facts = mutableListOf<MetaFact>()
+        fun add(label: String, value: String?, icon: String) {
+            value?.trim()?.takeIf { it.isNotEmpty() }?.let { facts += MetaFact(label, it, icon) }
+        }
+        fun hm(sec: Long): String {
+            val h = sec / 3600; val m = (sec % 3600) / 60
+            return if (h > 0) "${h}h ${m}m" else "${m}m"
+        }
+        fun sizeStr(b: Long): String {
+            val mb = b / 1024.0 / 1024.0
+            return if (mb >= 1024) String.format(java.util.Locale.US, "%.2f GB", mb / 1024)
+            else String.format(java.util.Locale.US, "%.1f MB", mb)
+        }
+
+        add("Author", book.author, "user")
+        add("Narrator", book.narrators.joinToString(", ").ifBlank { null }, "mic")
+        add("Released year", book.publishYear?.toString() ?: meta?.get("publishedYear").str(), "calendar")
+        add("Publisher", book.publisher, "building")
+        add("Distribution", meta?.get("distribution").str() ?: meta?.get("distributor").str(), "truck")
+        add("Genres", book.genres.joinToString(" / ").ifBlank { null }, "tags")
+        add("Series", book.series, "library")
+        add("Collection", book.collection, "folder")
+        add("Media", if (book.isAudioBook) "Audiobook" else (book.mediaKind ?: "Book"), "book")
+        add("Length", book.durationMs?.let { hm(it / 1000) }, "clock")
+        add("Size", (book.sizeBytes ?: item?.get("size").num()?.toLong())?.let { sizeStr(it) }, "archive")
+        val exts = audioFiles?.mapNotNull { it.obj()?.get("metadata").obj()?.get("ext").str()?.trimStart('.') }
+            ?.distinct().orEmpty()
+        add("File type", exts.joinToString(", ").uppercase().ifBlank { null }, "audio")
+        val bitrates = audioFiles?.mapNotNull { it.obj()?.get("bitRate").num()?.toLong() }.orEmpty()
+        add("Bitrate", bitrates.maxOrNull()?.let { "${it / 1000} kbps" }, "activity")
+        add("Language", meta?.get("language").str(), "language")
+        add("ISBN", meta?.get("isbn").str() ?: meta?.get("isbn13").str() ?: meta?.get("asin").str(), "pin")
+        facts
     }
 
     suspend fun profile(): ProfileInfo = withContext(Dispatchers.IO) {

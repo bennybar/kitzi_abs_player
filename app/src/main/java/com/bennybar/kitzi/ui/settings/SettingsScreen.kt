@@ -34,7 +34,6 @@ import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Animation
 import androidx.compose.material.icons.filled.SortByAlpha
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Timer
@@ -146,7 +145,7 @@ fun SettingsScreen(onSignedOut: () -> Unit) {
         }
 
         // ---------- Appearance ----------
-        if (matches("appearance", "theme", "dark", "series", "author", "player", "font", "tint", "letter", "animation")) {
+        if (matches("appearance", "theme", "dark", "series", "author", "player", "font", "tint", "letter")) {
             Section("Appearance")
             TogglePref("ui_show_series_tab", false, "Show Series tab", "Enable the Series view")
             TogglePref("ui_author_view_enabled", true, "Authors tab", "Show a dedicated Authors tab in the main navigation")
@@ -179,15 +178,6 @@ fun SettingsScreen(onSignedOut: () -> Unit) {
                 selectedLabel = TINT_LABELS[tint],
                 options = TINT_LABELS.mapIndexed { i, l -> i.toString() to l },
                 onSelect = { ThemeState.setSurfaceTint(it.toInt(), prefs) },
-            )
-            // Screen-transition speed: smoother (slower) vs snappier (faster).
-            val animSpeed by com.bennybar.kitzi.ui.UiPrefsState.animationSpeed
-            DropdownRow(
-                icon = Icons.Default.Animation,
-                title = "Animation speed",
-                selectedLabel = animSpeed.replaceFirstChar { it.uppercase() },
-                options = listOf("fast" to "Fast", "normal" to "Normal", "smooth" to "Smooth"),
-                onSelect = { com.bennybar.kitzi.ui.UiPrefsState.setAnimationSpeed(prefs, it) },
             )
             HorizontalDivider()
         }

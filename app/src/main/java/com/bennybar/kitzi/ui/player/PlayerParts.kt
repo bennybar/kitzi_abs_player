@@ -15,13 +15,29 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AudioFile
+import androidx.compose.material.icons.filled.Book
+import androidx.compose.material.icons.filled.Business
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.FastForward
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Gradient
+import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Inventory2
+import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.LibraryBooks
+import androidx.compose.material.icons.filled.LocalOffer
+import androidx.compose.material.icons.filled.LocalShipping
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Segment
+import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Forward30
 import androidx.compose.material.icons.filled.Forward5
@@ -31,6 +47,7 @@ import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.Replay30
 import androidx.compose.material.icons.filled.Replay5
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -359,78 +376,108 @@ fun SpeedSheet(current: Float, onPick: (Float) -> Unit, onDismiss: () -> Unit) {
     }
 }
 
-/** "More info" — the book's metadata, opened from the player cover. */
+/** "More info" — the book's full metadata fact list, opened from the player cover or book detail. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlayerInfoSheet(itemId: String, onDismiss: () -> Unit) {
-    val book by produceState<Book?>(null, itemId) { value = Services.books.getBook(itemId) }
+    val data by produceState<Pair<Book?, List<com.bennybar.kitzi.data.MetaFact>>?>(null, itemId) {
+        val b = Services.books.getBook(itemId)
+        value = b to (b?.let { Services.books.metadataFacts(it) } ?: emptyList())
+    }
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        val b = book
-        if (b == null) {
-            Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
-            }
-            return@ModalBottomSheet
-        }
+        val b = data?.first
+        val facts = data?.second
         LazyColumn(
             Modifier.fillMaxWidth().padding(horizontal = 20.dp),
             contentPadding = PaddingValues(bottom = 32.dp),
         ) {
-            item {
-                Row(verticalAlignment = Alignment.Top) {
-                    AsyncImage(
-                        model = b.coverUrl,
-                        contentDescription = b.title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.size(width = 92.dp, height = 138.dp).clip(RoundedCornerShape(12.dp)),
-                    )
-                    Column(Modifier.weight(1f).padding(start = 16.dp)) {
-                        Text(b.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                        b.author?.let {
-                            Text(
-                                it,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(top = 4.dp),
-                            )
-                        }
-                        b.narrators.takeIf { it.isNotEmpty() }?.let {
-                            Text(
-                                "Narrated by ${it.joinToString(", ")}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(top = 6.dp),
-                            )
-                        }
-                    }
-                }
-                val facts = buildList {
-                    b.publishYear?.let { add("Year" to it.toString()) }
-                    b.publisher?.let { add("Publisher" to it) }
-                    b.genres.takeIf { it.isNotEmpty() }?.let { add("Genres" to it.joinToString(", ")) }
-                }
-                facts.forEach { (k, v) ->
-                    Row(Modifier.fillMaxWidth().padding(top = 12.dp)) {
-                        Text(
-                            k,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.width(84.dp),
+            if (b != null) {
+                item {
+                    Row(verticalAlignment = Alignment.Top) {
+                        AsyncImage(
+                            model = b.coverUrl,
+                            contentDescription = b.title,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.size(width = 84.dp, height = 126.dp).clip(RoundedCornerShape(12.dp)),
                         )
-                        Text(v, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                        Column(Modifier.weight(1f).padding(start = 16.dp)) {
+                            Text(b.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            b.author?.let {
+                                Text(
+                                    it,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(top = 4.dp),
+                                )
+                            }
+                        }
                     }
-                }
-                b.description?.takeIf { it.isNotBlank() }?.let {
                     Text(
-                        it,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 16.dp),
+                        "More info",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(top = 16.dp, bottom = 4.dp),
                     )
+                }
+            }
+            if (data == null) {
+                item { Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() } }
+            } else {
+                items(facts.orEmpty()) { fact -> FactRow(fact) }
+                b?.description?.takeIf { it.isNotBlank() }?.let { desc ->
+                    item {
+                        Text(
+                            "Description",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(top = 16.dp, bottom = 6.dp),
+                        )
+                        Text(desc, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun FactRow(fact: com.bennybar.kitzi.data.MetaFact) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.Top) {
+        Box(
+            Modifier.size(32.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceContainerHighest),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(factIcon(fact.icon), null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+        }
+        Column(Modifier.weight(1f).padding(start = 12.dp)) {
+            Text(
+                fact.label.uppercase(),
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(fact.value, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 2.dp))
+        }
+    }
+}
+
+private fun factIcon(key: String): ImageVector = when (key) {
+    "user" -> Icons.Default.Person
+    "mic" -> Icons.Default.Mic
+    "calendar" -> Icons.Default.CalendarMonth
+    "building" -> Icons.Default.Business
+    "truck" -> Icons.Default.LocalShipping
+    "tags" -> Icons.Default.LocalOffer
+    "library" -> Icons.Default.LibraryBooks
+    "folder" -> Icons.Default.Folder
+    "book" -> Icons.Default.Book
+    "clock" -> Icons.Default.Schedule
+    "archive" -> Icons.Default.Inventory2
+    "audio" -> Icons.Default.AudioFile
+    "activity" -> Icons.Default.GraphicEq
+    "language" -> Icons.Default.Language
+    "pin" -> Icons.Default.Tag
+    else -> Icons.Default.Info
 }
 
 /** The player "More" menu: mark finished, and the two player display toggles. */

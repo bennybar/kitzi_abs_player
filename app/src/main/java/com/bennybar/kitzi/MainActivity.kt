@@ -5,7 +5,16 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -33,14 +42,11 @@ import androidx.compose.material.icons.filled.LibraryBooks
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -219,7 +225,6 @@ private fun KitziNavBar(tabs: List<Tab>, selected: Tab, overlayOpen: Boolean, on
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun App() {
     var signedIn by remember {
@@ -301,12 +306,10 @@ private fun App() {
 
         Box(Modifier.fillMaxSize()) {
             CompositionLocalProvider(LocalMiniPlayerInset provides if (playerIsTabFull) 0.dp else barInset) {
-                // Screens cross-fade on change; the duration follows the animation-
-                // speed setting so transitions can be made smoother or snappier.
-                val animMs = (220 * UiPrefsState.animationScale).toInt().coerceAtLeast(1)
+                // Screens cross-fade on change — a quick, snappy transition.
                 androidx.compose.animation.Crossfade(
                     targetState = overlay to tab,
-                    animationSpec = androidx.compose.animation.core.tween(animMs),
+                    animationSpec = androidx.compose.animation.core.tween(120),
                     modifier = Modifier.fillMaxSize(),
                     label = "screen",
                 ) { (ov, tb) ->
@@ -359,25 +362,49 @@ private fun App() {
                 )
             }
 
-            // The expand-from-mini-player card: a full-height sheet with a rounded
-            // top that slides up, carrying the whole player. Swipe down / tap the
-            // scrim to collapse back to the mini-player.
-            if (playerCard) {
-                ModalBottomSheet(
-                    onDismissRequest = { playerCard = false },
-                    sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-                    dragHandle = null,
+            // The expand-from-mini-player card: a scrim fades in and a rounded-top
+            // card springs up from the bottom carrying the whole player — a smooth,
+            // controlled transition. Tap the scrim or press back to collapse.
+            AnimatedVisibility(
+                visible = playerCard,
+                enter = fadeIn(tween(180)),
+                exit = fadeOut(tween(180)),
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.45f))
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                        ) { playerCard = false }
+                )
+            }
+            AnimatedVisibility(
+                visible = playerCard,
+                enter = slideInVertically(
+                    animationSpec = spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow),
+                    initialOffsetY = { it },
+                ),
+                exit = slideOutVertically(animationSpec = tween(220), targetOffsetY = { it }),
+                modifier = Modifier.align(Alignment.BottomCenter),
+            ) {
+                Surface(
+                    color = MaterialTheme.colorScheme.surface,
                     shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    contentWindowInsets = { WindowInsets(0) },
+                    shadowElevation = 16.dp,
+                    modifier = Modifier.fillMaxSize().padding(top = insets.calculateTopPadding() + 8.dp),
                 ) {
                     PlayerScreen(
                         contentPadding = PaddingValues(
-                            top = 6.dp,
+                            top = 8.dp,
                             bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 6.dp,
                         ),
                     )
                 }
+            }
+            if (playerCard) {
+                androidx.activity.compose.BackHandler { playerCard = false }
             }
         }
     }

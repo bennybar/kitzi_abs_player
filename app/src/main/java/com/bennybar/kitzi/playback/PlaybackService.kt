@@ -81,7 +81,24 @@ class PlaybackService : MediaLibraryService() {
 
         controller.attach(player)
 
+        // Give the notification / lock screen / Samsung media pill the full
+        // audiobook control set: rewind and fast-forward as custom session
+        // commands, alongside the default previous-chapter / play-pause /
+        // next-chapter. (Player-command buttons get collapsed into prev/next by
+        // the default provider, so these are session commands we handle ourselves.)
+        val backSec = Services.prefs.getInt("ui_seek_backward_seconds", 30)
+        val fwdSec = Services.prefs.getInt("ui_seek_forward_seconds", 30)
+        val rewindButton = CommandButton.Builder(CommandButton.ICON_REWIND)
+            .setDisplayName("Rewind ${backSec}s")
+            .setSessionCommand(SessionCommand(CMD_REWIND, Bundle.EMPTY))
+            .build()
+        val forwardButton = CommandButton.Builder(CommandButton.ICON_FAST_FORWARD)
+            .setDisplayName("Forward ${fwdSec}s")
+            .setSessionCommand(SessionCommand(CMD_FORWARD, Bundle.EMPTY))
+            .build()
+
         session = MediaLibrarySession.Builder(this, BookCoordinatePlayer(player), LibraryCallback())
+            .setCustomLayout(ImmutableList.of(rewindButton, forwardButton))
             .build()
     }
 
@@ -141,6 +158,33 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private inner class LibraryCallback : MediaLibrarySession.Callback {
+
+        // Grant the two custom seek commands so their notification buttons are live.
+        override fun onConnect(
+            session: MediaSession,
+            controllerInfo: MediaSession.ControllerInfo,
+        ): MediaSession.ConnectionResult {
+            val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS.buildUpon()
+                .add(SessionCommand(CMD_REWIND, Bundle.EMPTY))
+                .add(SessionCommand(CMD_FORWARD, Bundle.EMPTY))
+                .build()
+            return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
+                .setAvailableSessionCommands(commands)
+                .build()
+        }
+
+        override fun onCustomCommand(
+            session: MediaSession,
+            controllerInfo: MediaSession.ControllerInfo,
+            customCommand: SessionCommand,
+            args: Bundle,
+        ): ListenableFuture<SessionResult> {
+            when (customCommand.customAction) {
+                CMD_REWIND -> controller.seekBackward()
+                CMD_FORWARD -> controller.seekForward()
+            }
+            return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+        }
 
         override fun onGetLibraryRoot(
             session: MediaLibrarySession,
@@ -284,6 +328,8 @@ class PlaybackService : MediaLibraryService() {
         .build()
 
     private companion object {
+        const val CMD_REWIND = "com.bennybar.kitzi.REWIND"
+        const val CMD_FORWARD = "com.bennybar.kitzi.FORWARD"
         const val ROOT = "kitzi_root"
         const val CONTINUE = "kitzi_continue"
         const val RECENT = "kitzi_recent"
