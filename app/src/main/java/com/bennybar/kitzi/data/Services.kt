@@ -68,7 +68,7 @@ object Services {
             downloads = DownloadsRepository(
                 app,
                 downloadsDao(),
-                DownloadPlanResolver(absApi, playbackApi),
+                DownloadPlanResolver(absApi, playbackApi, prefs),
                 downloadPaths,
                 prefs,
                 books,
@@ -84,6 +84,10 @@ object Services {
         CoroutineScope(Dispatchers.IO).launch {
             runCatching { downloads.adoptExistingDownloads() }
         }
+
+        // Local playback only engages for COMPLETE downloads; a partial download
+        // (interrupted mid-queue) must stream instead of playing 1-of-N files.
+        playback.isDownloadComplete = { itemId -> downloads.isDownloaded(itemId) }
 
         // "Pause cancels the sleep timer" (default on).
         playback.onPaused = {

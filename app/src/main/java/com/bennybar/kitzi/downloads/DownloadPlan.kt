@@ -50,6 +50,7 @@ data class PlannedTrack(
 class DownloadPlanResolver(
     private val api: AbsApi,
     private val playbackApi: PlaybackApi,
+    private val prefs: com.bennybar.kitzi.data.legacy.FlutterPrefs? = null,
 ) {
     fun resolve(itemId: String): List<PlannedTrack> {
         fromItemMedia(itemId).takeIf { it.isNotEmpty() }?.let { return it }
@@ -61,6 +62,19 @@ class DownloadPlanResolver(
     private fun fromItemMedia(itemId: String): List<PlannedTrack> {
         val item = runCatching { api.item(itemId) }.getOrNull() ?: return emptyList()
         val media = item["media"] as? JsonObject ?: return emptyList()
+
+        // The item carries the real chapter list — cache it now (same key/format as
+        // PlaybackController) so a downloaded book has proper chapters offline even
+        // if it was never streamed.
+        (media["chapters"] as? JsonArray)?.let { arr ->
+            val encoded = arr.mapNotNull { el ->
+                val c = el as? JsonObject ?: return@mapNotNull null
+                val start = c["start"].num() ?: return@mapNotNull null
+                val title = c["title"].str().orEmpty().replace(";", ",")
+                "$start|$title"
+            }.joinToString(";")
+            if (encoded.isNotEmpty()) prefs?.putString("chapters_$itemId", encoded)
+        }
 
         // audioFiles is the realistic hot path; tracks/files cover other versions.
         for (key in listOf("audioFiles", "tracks", "files")) {

@@ -216,12 +216,13 @@ fun SettingsScreen(onSignedOut: () -> Unit) {
             TogglePref("ui_resume_from_history_enabled", true, "Resume previous position button", "Show \"Resume previous play position\" under the cover")
             TogglePref("ui_sync_from_server_confirm", true, "Ask before resuming previous position", "Show a confirmation dialog before jumping")
             TogglePref("detailed_play_history_enabled", false, "Detailed listening history (local)", "Record play sessions for stats (top books/authors/narrators)")
+            var progressPrimary by remember { mutableStateOf(prefs.getString("ui_progress_primary") ?: "book") }
             DropdownRow(
                 icon = Icons.Default.FastForward,
                 title = "Primary progress display",
-                selectedLabel = if (prefs.getString("ui_progress_primary") == "chapter") "Current chapter" else "Full book",
+                selectedLabel = if (progressPrimary == "chapter") "Current chapter" else "Full book",
                 options = listOf("book" to "Full book", "chapter" to "Current chapter"),
-                onSelect = { prefs.putString("ui_progress_primary", it) },
+                onSelect = { progressPrimary = it; prefs.putString("ui_progress_primary", it) },
             )
             var backSec by remember { mutableStateOf(prefs.getInt("ui_seek_backward_seconds", 30)) }
             SliderRow(Icons.Default.Replay, "Seek backward duration", "$backSec seconds", backSec.toFloat(), 5f..60f, 11) {

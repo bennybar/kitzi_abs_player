@@ -255,16 +255,26 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
             }
 
             // --- progress slider with chapter ticks ---
-            val sliderValue = scrubbing ?: positionSec.toFloat()
+            // "Primary progress display": the slider can track the whole BOOK
+            // (default) or just the CURRENT CHAPTER (ui_progress_primary=chapter),
+            // where dragging seeks within the chapter.
+            val chapterMode = prefs.getString("ui_progress_primary") == "chapter" &&
+                chapter != null && chapter.durationSec > 0
+            val sliderMax = if (chapterMode) chapter!!.durationSec else total
+            val sliderPos = if (chapterMode) chapter!!.elapsedSec else positionSec
+            val sliderValue = scrubbing ?: sliderPos.toFloat()
             Box(Modifier.fillMaxWidth().padding(top = 16.dp)) {
                 Slider(
                     value = sliderValue,
                     onValueChange = { scrubbing = it },
                     onValueChangeFinished = {
-                        scrubbing?.let { controller.seekGlobal(it.toDouble(), reportNow = true) }
+                        scrubbing?.let {
+                            val target = if (chapterMode) chapter!!.startSec + it else it.toDouble()
+                            controller.seekGlobal(target.toDouble(), reportNow = true)
+                        }
                         scrubbing = null
                     },
-                    valueRange = 0f..(total.toFloat().coerceAtLeast(1f)),
+                    valueRange = 0f..(sliderMax.toFloat().coerceAtLeast(1f)),
                     colors = SliderDefaults.colors(
                         thumbColor = MaterialTheme.colorScheme.primary,
                         activeTrackColor = MaterialTheme.colorScheme.primary,
@@ -272,8 +282,9 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
                     ),
                     modifier = Modifier.fillMaxWidth(),
                 )
-                // Chapter ticks only when the setting is on (ui_progress_bar_chapterized).
-                if (chapterizedBar && np.chapters.size > 1 && total > 0) {
+                // Chapter ticks only in book mode (they're book-scale positions) and
+                // when the setting is on (ui_progress_bar_chapterized).
+                if (!chapterMode && chapterizedBar && np.chapters.size > 1 && total > 0) {
                     ChapterTicks(
                         chapters = np.chapters,
                         totalSec = total,
@@ -283,16 +294,16 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
                 }
             }
 
-            // position / -remaining
+            // position / -remaining (of the chapter in chapter mode, else the book)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(
-                    formatClock((scrubbing?.toDouble() ?: positionSec).toLong()),
+                    formatClock((scrubbing?.toDouble() ?: sliderPos).toLong()),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    "-${formatClock((total - (scrubbing?.toDouble() ?: positionSec)).coerceAtLeast(0.0).toLong())}",
+                    "-${formatClock((sliderMax - (scrubbing?.toDouble() ?: sliderPos)).coerceAtLeast(0.0).toLong())}",
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontWeight = FontWeight.SemiBold,

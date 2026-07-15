@@ -400,6 +400,18 @@ class BooksRepository(
         facts
     }
 
+    /** The book's chapter list from the server item metadata (empty offline / none). */
+    suspend fun chapters(itemId: String): List<com.bennybar.kitzi.playback.Chapter> = withContext(Dispatchers.IO) {
+        val item = runCatching { api.item(itemId) }.getOrNull() ?: return@withContext emptyList()
+        (item["media"].obj()?.get("chapters") as? kotlinx.serialization.json.JsonArray)
+            ?.mapNotNull { el ->
+                val c = el.obj() ?: return@mapNotNull null
+                val start = c["start"].num() ?: return@mapNotNull null
+                com.bennybar.kitzi.playback.Chapter(c["title"].str().orEmpty(), start)
+            }
+            .orEmpty()
+    }
+
     suspend fun profile(): ProfileInfo = withContext(Dispatchers.IO) {
         val me = runCatching { api.me() }.getOrNull()
         val stats = runCatching { api.listeningStats() }.getOrNull()

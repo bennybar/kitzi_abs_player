@@ -65,6 +65,14 @@ class PlaybackController(
     /** Fired when playback pauses; used to honour "pause cancels sleep timer". */
     var onPaused: (() -> Unit)? = null
 
+    /**
+     * Answers "is this book FULLY downloaded?" — wired in by Services (the
+     * downloads repository isn't a direct dependency). Local playback must only
+     * engage for complete downloads: a partial one (say 1 of 28 files) would
+     * otherwise play as if it were the whole book.
+     */
+    var isDownloadComplete: (suspend (String) -> Boolean)? = null
+
     /** When a pause happened, so smart-rewind can size the rewind by how long. */
     private var pausedAtMs: Long? = null
 
@@ -190,6 +198,8 @@ class PlaybackController(
      */
     suspend fun playItem(itemId: String, startPlaying: Boolean = true) {
         val local = localTracks(itemId)
+            .takeIf { it.isNotEmpty() && isDownloadComplete?.invoke(itemId) != false }
+            .orEmpty()
         val cached = books.getBook(itemId)
 
         val np: NowPlaying = if (local.isNotEmpty()) {
@@ -199,7 +209,16 @@ class PlaybackController(
                 author = cached?.author,
                 coverUrl = cached?.coverUrl,
                 tracks = local,
-                chapters = loadCachedChapters(itemId).ifEmpty { PlaybackMath.chaptersFromTracks(local) },
+                // Cached chapters first; else fetch the real list from the server
+                // (single-file books have no per-track chapters to fall back on);
+                // per-track boundaries only as the offline last resort.
+                chapters = loadCachedChapters(itemId)
+                    .ifEmpty {
+                        withContext(Dispatchers.IO) {
+                            runCatching { books.chapters(itemId) }.getOrDefault(emptyList())
+                        }.also { cacheChapters(itemId, it) }
+                    }
+                    .ifEmpty { PlaybackMath.chaptersFromTracks(local) },
                 serverDurationSec = cached?.durationMs?.let { it / 1000.0 },
                 isLocal = true,
             )
@@ -443,7 +462,14 @@ class PlaybackController(
                 t.copy(durationSec = durationMs / 1000.0)
             }
         }
-        if (changed) _nowPlaying.value = np.copy(tracks = hydrated)
+        if (changed) {
+            // Chapters for local books are derived from track durations, which were
+            // unknown when playItem ran (chaptersFromTracks returns empty then).
+            // Now that durations exist, rebuild — otherwise a downloaded book has
+            // no chapter ticks, no chapter row, and a dead Chapters sheet.
+            val chapters = np.chapters.ifEmpty { PlaybackMath.chaptersFromTracks(hydrated) }
+            _nowPlaying.value = np.copy(tracks = hydrated, chapters = chapters)
+        }
     }
 
     companion object {
