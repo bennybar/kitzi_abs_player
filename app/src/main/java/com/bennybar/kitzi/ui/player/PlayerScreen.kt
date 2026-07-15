@@ -439,7 +439,7 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
                 prefs.putBoolean("ui_progress_bar_chapterized", chapterizedBar)
             },
             onMarkFinished = {
-                scope.launch(Dispatchers.IO) { Services.playbackApi.markFinished(np.itemId) }
+                scope.launch { Services.books.markFinished(np.itemId) }
                 showMore = false
             },
             onDismiss = { showMore = false },

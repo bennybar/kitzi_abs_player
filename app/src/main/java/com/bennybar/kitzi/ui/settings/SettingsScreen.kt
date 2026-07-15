@@ -37,7 +37,6 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SortByAlpha
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Timer
-import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.AlertDialog
@@ -214,7 +213,6 @@ fun SettingsScreen(onSignedOut: () -> Unit) {
             TogglePref("pause_cancels_sleep_timer", true, "Pause to cancel timer", "Stop the sleep timer when pausing playback", Icons.Default.Bedtime)
             TogglePref("ui_dual_progress_enabled", true, "Book + chapter progress in player", "Show global book progress and chapter progress")
             TogglePref("ui_resume_from_history_enabled", true, "Resume previous position button", "Show \"Resume previous play position\" under the cover")
-            TogglePref("ui_sync_from_server_confirm", true, "Ask before resuming previous position", "Show a confirmation dialog before jumping")
             TogglePref("detailed_play_history_enabled", false, "Detailed listening history (local)", "Record play sessions for stats (top books/authors/narrators)")
             var progressPrimary by remember { mutableStateOf(prefs.getString("ui_progress_primary") ?: "book") }
             DropdownRow(
@@ -232,7 +230,6 @@ fun SettingsScreen(onSignedOut: () -> Unit) {
             SliderRow(Icons.Default.FastForward, "Seek forward duration", "$fwdSec seconds", fwdSec.toFloat(), 5f..60f, 11) {
                 fwdSec = it.roundToInt(); prefs.putInt("ui_seek_forward_seconds", fwdSec)
             }
-            TogglePref("bluetooth_auto_play", true, "Auto-play on Bluetooth connection", "Start playing when connected to car Bluetooth", Icons.Default.Bluetooth)
             HorizontalDivider()
         }
 

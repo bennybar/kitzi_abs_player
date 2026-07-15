@@ -24,7 +24,10 @@ class LibrarySyncWorker(
 
     override suspend fun doWork(): Result {
         Services.init(applicationContext)
-        if (Services.session.baseUrl == null || !Services.session.hasFreshAccessToken(0)) {
+        // hasValidSession refreshes a stale access token using the refresh token —
+        // gating on hasFreshAccessToken alone silently killed background sync a few
+        // hours after every launch, even with a perfectly valid session.
+        if (Services.session.baseUrl == null || !Services.auth.hasValidSession()) {
             return Result.success() // not signed in / no valid token: nothing to do
         }
         return runCatching {

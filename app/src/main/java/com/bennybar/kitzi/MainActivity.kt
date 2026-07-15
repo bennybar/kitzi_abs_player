@@ -51,6 +51,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -94,7 +95,9 @@ import com.bennybar.kitzi.ui.theme.KitziTheme
 import com.bennybar.kitzi.ui.theme.ThemeMode
 import com.bennybar.kitzi.ui.theme.ThemeState
 import com.google.common.util.concurrent.MoreExecutors
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
 
@@ -209,7 +212,9 @@ private fun KitziNavBar(tabs: List<Tab>, selected: Tab, overlayOpen: Boolean, on
                     Column(
                         Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(20.dp))
+                            // Fully-rounded to echo the capsule (circular) bar exterior,
+                            // rather than the squircle a fixed corner radius produced.
+                            .clip(RoundedCornerShape(percent = 50))
                             .clickable { onSelect(t) }
                             .background(
                                 if (active) MaterialTheme.colorScheme.secondaryContainer
@@ -236,8 +241,23 @@ private fun KitziNavBar(tabs: List<Tab>, selected: Tab, overlayOpen: Boolean, on
 
 @Composable
 private fun App() {
+    // Signed in if there's a base URL and EITHER a still-fresh access token or a
+    // refresh token to renew it with. Requiring a fresh access token alone kicked
+    // users to the login screen a few hours after launch — the access token's
+    // expiry is only a hint, and a valid refresh token means the session lives on.
     var signedIn by remember {
-        mutableStateOf(Services.auth.baseUrl != null && Services.session.hasFreshAccessToken(60))
+        mutableStateOf(
+            Services.auth.baseUrl != null &&
+                (Services.session.hasFreshAccessToken(60) || Services.session.refreshToken != null)
+        )
+    }
+    // When the access token is stale but we're still signed in, renew it in the
+    // background (off the main thread) so the first API calls carry a fresh token.
+    // We never force a logout here: an offline blip must not sign the user out.
+    LaunchedEffect(Unit) {
+        if (Services.auth.baseUrl != null && !Services.session.hasFreshAccessToken(60)) {
+            withContext(Dispatchers.IO) { runCatching { Services.auth.hasValidSession() } }
+        }
     }
     var tab by remember { mutableStateOf(Tab.BOOKS) }
     var overlay by remember { mutableStateOf<Overlay?>(null) }
@@ -285,6 +305,11 @@ private fun App() {
     // reserving a slot, so the page scrolls behind it and both can be translucent.
     // We measure its height so scroll screens (and the player) can pad clear of it.
     var barHeightPx by remember { mutableIntStateOf(0) }
+
+    // Retains each screen's transient UI state (crucially the library's scroll
+    // position) while it's swapped out for an overlay, so returning from a book's
+    // detail lands you back where you were instead of scrolled to the top.
+    val screenStateHolder = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
 
     Scaffold(
         // Fills behind the status-bar / camera cutout with the app surface, so that
@@ -334,6 +359,14 @@ private fun App() {
                     modifier = Modifier.fillMaxSize(),
                     label = "screen",
                 ) { (ov, tb) ->
+                    val screenKey: Any = when (ov) {
+                        is Overlay.BookDetail -> "book:${ov.id}"
+                        Overlay.Series -> "ov:series"
+                        Overlay.Stats -> "ov:stats"
+                        Overlay.Profile -> "ov:profile"
+                        null -> "tab:${tb.name}"
+                    }
+                    screenStateHolder.SaveableStateProvider(screenKey) {
                     Box(Modifier.fillMaxSize().padding(contentInsets)) {
                         when (ov) {
                             is Overlay.BookDetail -> BookDetailScreen(
@@ -363,6 +396,7 @@ private fun App() {
                                 Tab.SETTINGS -> SettingsScreen(onSignedOut = { signedIn = false })
                             }
                         }
+                    }
                     }
                 }
             }
@@ -455,8 +489,19 @@ private fun App() {
                     }
                 }
             }
-            if (playerCard) {
-                androidx.activity.compose.BackHandler { playerCard = false }
+            // Back navigates WITHIN the app instead of dropping straight to the
+            // launcher: collapse the player card, then close an overlay (book detail /
+            // series / stats / profile), then fall back to the Books tab. Only when
+            // we're already on Books with nothing stacked does the system get back
+            // (and exit the app).
+            androidx.activity.compose.BackHandler(
+                enabled = playerCard || overlay != null || tab != Tab.BOOKS,
+            ) {
+                when {
+                    playerCard -> playerCard = false
+                    overlay != null -> overlay = null
+                    tab != Tab.BOOKS -> tab = Tab.BOOKS
+                }
             }
         }
     }

@@ -585,6 +585,31 @@ class BooksRepository(
     }
 
     /**
+     * "Mark as Finished": tells the server, then writes the finished state to the
+     * local progress table so the UI updates at once — without this the network
+     * call ran on the caller's dispatcher and nothing local changed, so the book
+     * still showed as in-progress until the next full resync.
+     */
+    suspend fun markFinished(id: String): Boolean = withContext(Dispatchers.IO) {
+        val ok = Services.playbackApi.markFinished(id)
+        val existing = dao.progressFor(id)
+        val duration = existing?.durationSec ?: 0.0
+        dao.upsertProgress(
+            listOf(
+                MediaProgressEntity(
+                    itemId = id,
+                    progress = 1.0,
+                    isFinished = true,
+                    currentTimeSec = if (duration > 0) duration else existing?.currentTimeSec ?: 0.0,
+                    durationSec = duration,
+                    lastUpdate = System.currentTimeMillis(),
+                )
+            )
+        )
+        ok
+    }
+
+    /**
      * Progress for every book, so a list row can show its finished/in-progress mark.
      *
      * Wrapped in `flow { }` so the DAO is not touched until someone collects: the

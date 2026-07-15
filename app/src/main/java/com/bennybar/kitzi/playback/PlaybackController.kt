@@ -248,6 +248,10 @@ class PlaybackController(
         accrual.reset()
         lastSyncedSec = -1.0
 
+        // "Sync progress before play": pull the latest server progress first so
+        // resuming picks up where another device left off. Streamed books only —
+        // a downloaded book must start instantly and never wait on the network.
+        if (!np.isLocal) maybeSyncBeforePlay()
         val resumeSec = resumePosition(itemId)
         val tp = PlaybackMath.mapGlobalToTrack(resumeSec, np.tracks)
 
@@ -267,6 +271,10 @@ class PlaybackController(
                 .setTitle(np.title)
                 .setArtist(np.author)
                 .setArtworkUri(np.coverUrl?.let(Uri::parse))
+                // Tag the real playback items (not just browse items) as audiobooks so
+                // System UI — notably Samsung's Now Bar — classifies the session as a
+                // book rather than a generic track.
+                .setMediaType(MediaMetadata.MEDIA_TYPE_AUDIO_BOOK)
                 .setIsPlayable(true)
                 .build()
         )
@@ -340,6 +348,9 @@ class PlaybackController(
         }
 
         prefs.putDouble(progressKey(np.itemId), current)
+        // Stamp WHEN this local position was saved, so resume can tell a fresh
+        // offline position from a stale server one (see resumePosition).
+        prefs.putDouble(progressTsKey(np.itemId), System.currentTimeMillis().toDouble())
 
         val listened = accrual.snapshot()
         val total = totalDurationSec()
@@ -360,14 +371,38 @@ class PlaybackController(
         }
     }
 
-    /** Server progress wins when we have it; otherwise the locally-saved position. */
+    /**
+     * Picks the resume position. Server and local can each be the newer one: the
+     * server wins after listening on another device, but LOCAL wins after offline
+     * listening (the server row is then stale). Comparing WHEN each was written —
+     * local timestamp vs the server's lastUpdate — stops a stale server position
+     * from yanking the user backward over progress they made offline. If we only
+     * pre-play-sync'd the server just now (see [maybeSyncBeforePlay]) its row is
+     * authoritative; otherwise the freshest write wins.
+     */
     private suspend fun resumePosition(itemId: String): Double {
         val local = prefs.getDouble(progressKey(itemId), 0.0)
-        val server = books.progressFor(itemId)?.currentTimeSec ?: 0.0
-        return if (server > 0) server else local
+        val localTs = prefs.getDouble(progressTsKey(itemId), 0.0).toLong()
+        val serverEntity = books.progressFor(itemId)
+        val server = serverEntity?.currentTimeSec ?: 0.0
+        val serverTs = serverEntity?.lastUpdate ?: 0L
+
+        return when {
+            local <= 0.0 -> server
+            server <= 0.0 -> local
+            localTs >= serverTs -> local
+            else -> server
+        }
     }
 
     private fun progressKey(itemId: String) = "abs_progress:$itemId"
+    private fun progressTsKey(itemId: String) = "abs_progress_ts:$itemId"
+
+    /** Refreshes server-side progress into the local DB before resuming a book. */
+    private suspend fun maybeSyncBeforePlay() {
+        if (!prefs.getBoolean("sync_progress_before_play", true)) return
+        withContext(Dispatchers.IO) { runCatching { books.syncProgress() } }
+    }
 
     // Chapters are cached so a downloaded book has them offline.
     private fun cacheChapters(itemId: String, chapters: List<Chapter>) {
@@ -408,6 +443,17 @@ class PlaybackController(
                 applySmartRewindIfDue()
             } else {
                 accrual.onPlaybackStopped()
+
+                // isPlaying goes false for two very different reasons: the user (or
+                // audio focus) intentionally paused — playWhenReady is then false —
+                // or playback merely STALLED while buffering / re-preparing, where
+                // playWhenReady stays true because we still intend to play. Only the
+                // first is a real pause. Treating a rebuffer as a pause was closing
+                // the streaming session (killing playback), cancelling the sleep
+                // timer, and arming smart-rewind for a stall the user never caused.
+                val intentionalPause = !::player.isInitialized || !player.playWhenReady
+                if (!intentionalPause) return
+
                 pausedAtMs = android.os.SystemClock.elapsedRealtime()
                 onPaused?.invoke()
                 // Snapshot where we paused so the player's Play history can jump back.

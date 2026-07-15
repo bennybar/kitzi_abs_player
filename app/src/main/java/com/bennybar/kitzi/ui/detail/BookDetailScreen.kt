@@ -106,8 +106,12 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
                     b.let { Services.queue.addToBack(QueueEntry(it.id, it.title, it.author, it.coverUrl)) }
                 }) { Icon(Icons.AutoMirrored.Filled.PlaylistAdd, "Add to queue") }
                 TextButton(onClick = {
-                    // Marking finished is a progress write with isFinished set.
-                    scope.launch { Services.playbackApi.markFinished(itemId) }
+                    // Marking finished writes the finished state locally and on the
+                    // server (off the main thread), then refreshes the shown progress.
+                    scope.launch {
+                        Services.books.markFinished(itemId)
+                        progress = Services.books.progressFor(itemId)
+                    }
                 }) { Text("Mark as Finished") }
             },
         )

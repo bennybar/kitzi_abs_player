@@ -91,8 +91,14 @@ class TrackDownloadWorker(
                 }
 
                 // Only publish under the real name once the bytes are all there, so a
-                // half-written file can never be mistaken for a finished track.
-                partial.renameTo(target)
+                // half-written file can never be mistaken for a finished track. If the
+                // rename fails, the track is NOT complete — recording it as COMPLETE
+                // would leave a book that plays a missing file.
+                if (!partial.renameTo(target) || !target.exists() || target.length() <= 0) {
+                    partial.delete()
+                    dao.setStatus(itemId, trackIndex, DownloadStatus.FAILED)
+                    return@withContext if (runAttemptCount < MAX_ATTEMPTS) Result.retry() else Result.failure()
+                }
                 dao.setProgress(itemId, trackIndex, target.length(), target.length(), DownloadStatus.COMPLETE)
                 Result.success()
             }

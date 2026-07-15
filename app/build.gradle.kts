@@ -20,7 +20,9 @@ if (hasKeystore) {
 
 android {
     namespace = "com.bennybar.kitzi"
-    compileSdk = 35
+    // Media3 1.10.x requires compiling against API 36. targetSdk stays at 35 so we
+    // don't opt into new runtime behaviours in this drop-in update.
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.bennybar.kitzi"
@@ -29,8 +31,8 @@ android {
 
         // The Flutter app ships as 1.6.281+281. Play requires a strictly higher
         // versionCode for the Kotlin build to install as an update over it.
-        versionCode = 295
-        versionName = "1.6.295"
+        versionCode = 296
+        versionName = "1.6.296"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
