@@ -269,6 +269,12 @@ fun SettingsScreen(onSignedOut: () -> Unit) {
                 "Plain media session (pill test)",
                 "Diagnostic: expose the raw player so Samsung may show the Now Bar. Loses chapter-skip + book position on the lock screen. Exit and reopen the app after changing.",
             )
+            TogglePref(
+                "live_update_now_playing",
+                false,
+                "Now-playing Live Update (Samsung pill)",
+                "Experimental: posts a second, promotable \"now playing\" notification so Samsung's Now Bar pill can appear while using other apps. Adds an extra notification. Takes effect on the next play.",
+            )
             HorizontalDivider()
         }
 

@@ -65,6 +65,9 @@ class AbsApi(
      * [etag] is passed only when the caller wants a conditional request. Pull-to-
      * refresh must pass null — see BooksRepository.refresh.
      */
+    /** How to ask the server for a page: some ABS servers/proxies honour only one. */
+    enum class Paging { PAGE, OFFSET, SKIP }
+
     fun libraryItems(
         libraryId: String,
         page: Int,
@@ -72,9 +75,18 @@ class AbsApi(
         sort: String,
         desc: Boolean,
         etag: String? = null,
+        paging: Paging = Paging.PAGE,
     ): Page {
+        // `page` is 1-based; offset/skip are 0-based item counts. Some servers ignore
+        // `page` and return the first page every time — the caller falls back through
+        // the other two (see BooksRepository.syncAll), mirroring the Flutter app.
+        val pagingParam = when (paging) {
+            Paging.PAGE -> "page=$page"
+            Paging.OFFSET -> "offset=${(page - 1).coerceAtLeast(0) * limit}"
+            Paging.SKIP -> "skip=${(page - 1).coerceAtLeast(0) * limit}"
+        }
         val path = "/api/libraries/$libraryId/items" +
-            "?limit=$limit&page=$page&sort=$sort&desc=${if (desc) 1 else 0}"
+            "?limit=$limit&$pagingParam&sort=$sort&desc=${if (desc) 1 else 0}"
 
         val request = Request.Builder()
             .url(base() + path)

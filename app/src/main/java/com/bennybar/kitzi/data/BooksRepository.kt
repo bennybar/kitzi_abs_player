@@ -492,22 +492,40 @@ class BooksRepository(
         val seen = HashSet<String>()
         var fullSweep = false
 
-        while (page <= MAX_SYNC_PAGES) {
-            val (sortField, desc) = serverSort(BookSort.UPDATED_DESC)
-            val result = runCatching {
-                api.libraryItems(libraryId, page, pageSize, sortField, desc, etag = null)
-            }.getOrNull() ?: break
+        // Which paging parameter this server actually honours. We start with `page`
+        // and, the first time a page>1 comes back as only already-seen items (the
+        // server ignored `page`), switch to `offset` and then `skip` — the same
+        // three-way fallback the Flutter app used. Once one works we stick with it.
+        var paging = AbsApi.Paging.PAGE
+        val (sortField, desc) = serverSort(BookSort.UPDATED_DESC)
 
+        fun fetch(p: Int, mode: AbsApi.Paging) = runCatching {
+            api.libraryItems(libraryId, p, pageSize, sortField, desc, etag = null, paging = mode)
+        }.getOrNull()
+
+        while (page <= MAX_SYNC_PAGES) {
+            var result = fetch(page, paging) ?: break
             if (result.items.isEmpty()) { fullSweep = true; break }
 
-            // Paging progress is "did this page reveal item IDs we hadn't seen this
-            // run" — NOT "did any row change". A fully-cached page (0 rows changed)
-            // must still advance, or an earlier interrupted sync can never reach
-            // later pages. A page of only already-seen IDs means the server is
-            // repeating pages (ignoring `page`); stop there.
-            val newIds = result.items.count { it["id"].str()?.let(seen::add) ?: false }
+            fun freshCount(r: AbsApi.Page) = r.items.count { it["id"].str()?.let { id -> id !in seen } ?: false }
+            var fresh = freshCount(result)
+
+            // Server ignored `page` (a page>1 of only-seen items): try offset, then
+            // skip, and adopt whichever actually advances.
+            if (fresh == 0 && page > 1) {
+                for (alt in listOf(AbsApi.Paging.OFFSET, AbsApi.Paging.SKIP)) {
+                    val altResult = fetch(page, alt) ?: continue
+                    if (freshCount(altResult) > 0) {
+                        result = altResult; fresh = freshCount(altResult); paging = alt
+                        break
+                    }
+                }
+            }
+
+            // Commit: record ids as seen, then upsert.
+            result.items.forEach { it["id"].str()?.let(seen::add) }
             total += upsert(result.items)
-            if (newIds == 0) break
+            if (fresh == 0) break
 
             if (result.items.size < pageSize) { fullSweep = true; break }
             page++

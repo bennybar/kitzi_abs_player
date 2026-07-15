@@ -28,6 +28,7 @@ import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.guava.future
 import kotlinx.coroutines.launch
@@ -45,6 +46,7 @@ class PlaybackService : MediaLibraryService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private lateinit var session: MediaLibrarySession
     private lateinit var controller: PlaybackController
+    private lateinit var liveUpdate: NowPlayingLiveUpdate
 
     override fun onCreate() {
         super.onCreate()
@@ -122,6 +124,26 @@ class PlaybackService : MediaLibraryService() {
                 .setChannelName(com.bennybar.kitzi.R.string.app_name)
                 .build()
         )
+
+        // Optional promotable "now playing" notification for the Samsung Now Bar
+        // pill (see NowPlayingLiveUpdate). Driven here because only the service
+        // lives for the whole playback session. No-op unless the setting is on.
+        liveUpdate = NowPlayingLiveUpdate(this)
+        scope.launch {
+            controller.nowPlaying.collectLatest { np ->
+                if (np == null) { liveUpdate.clear(); return@collectLatest }
+                while (true) {
+                    if (Services.prefs.getBoolean("live_update_now_playing", false)) {
+                        val total = (controller.totalDurationSec() ?: 0.0).toInt()
+                        val pos = (controller.globalPositionSec() ?: 0.0).toInt()
+                        liveUpdate.update(np.title, controller.currentChapter()?.title ?: np.author, total, pos)
+                    } else {
+                        liveUpdate.clear()
+                    }
+                    kotlinx.coroutines.delay(15_000)
+                }
+            }
+        }
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo) = session
@@ -135,6 +157,7 @@ class PlaybackService : MediaLibraryService() {
     }
 
     override fun onDestroy() {
+        liveUpdate.clear()
         session.player.release()
         session.release()
         super.onDestroy()
