@@ -31,7 +31,10 @@ import kotlinx.serialization.json.JsonObject
 
 data class Library(val id: String, val name: String, val mediaType: String?)
 
-data class Author(val name: String, val bookCount: Int, val imageUrl: String?)
+data class Author(val name: String, val bookCount: Int, val imageUrl: String?, val description: String? = null)
+
+/** A series row for the browse list: name, book count, and up to three member cover URLs for the fanned deck. */
+data class SeriesRow(val name: String, val bookCount: Int, val coverUrls: List<String>)
 
 /** Position is the BOOK position, never the track position. */
 data class Bookmark(
@@ -162,7 +165,9 @@ class BooksRepository(
     suspend fun authorsWithImages(): List<Author> = withContext(Dispatchers.IO) {
         runCatching { syncAuthorMetadata() }
 
-        val ids = dao.allAuthors().associate { it.name to it.id }
+        val rows = dao.allAuthors()
+        val ids = rows.associate { it.name to it.id }
+        val descriptions = rows.associate { it.name to it.description }
         val base = session.baseUrl.orEmpty()
         val token = session.accessToken
 
@@ -174,6 +179,7 @@ class BooksRepository(
                 imageUrl = id?.let {
                     "$base/api/authors/$it/image" + if (!token.isNullOrEmpty()) "?token=$token" else ""
                 },
+                description = descriptions[name],
             )
         }
     }
@@ -203,6 +209,27 @@ class BooksRepository(
     /** `minBooks` = 1 shows every series (the ui_series_min_books setting). */
     suspend fun series(minBooks: Int = 1): List<Pair<String, Int>> = withContext(Dispatchers.IO) {
         dao.seriesWithCounts(minBooks).map { it.name to it.bookCount }
+    }
+
+    /**
+     * Series with up to three member cover URLs each, for the fanned-deck cards.
+     * One covers query, grouped in memory — no per-series book load, so the list
+     * paints immediately.
+     */
+    suspend fun seriesWithCovers(minBooks: Int = 1): List<SeriesRow> = withContext(Dispatchers.IO) {
+        val base = session.baseUrl.orEmpty()
+        val token = session.accessToken
+        val counts = dao.seriesWithCounts(minBooks)
+        val kept = counts.map { it.name }.toSet()
+        val covers = LinkedHashMap<String, MutableList<String>>()
+        for (row in dao.seriesCovers()) {
+            if (row.series !in kept) continue
+            val list = covers.getOrPut(row.series) { mutableListOf() }
+            if (list.size >= 3) continue
+            list += row.coverPath?.takeIf { java.io.File(it).exists() }?.let { "file://$it" }
+                ?: BookMapper.coverUrl(row.id, base, token)
+        }
+        counts.map { SeriesRow(it.name, it.bookCount, covers[it.name].orEmpty()) }
     }
 
     /**

@@ -96,7 +96,10 @@ fun SettingsScreen(onSignedOut: () -> Unit) {
 
     fun matches(vararg terms: String) = search.isBlank() || terms.any { it.contains(search, true) }
 
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+            .padding(bottom = com.bennybar.kitzi.LocalMiniPlayerInset.current),
+    ) {
         ScreenHeader(
             icon = Icons.Default.Settings,
             title = "Settings",

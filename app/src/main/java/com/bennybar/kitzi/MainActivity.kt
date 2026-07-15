@@ -5,12 +5,20 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -23,8 +31,6 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -32,17 +38,22 @@ import androidx.compose.material3.Text
 import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.bennybar.kitzi.data.Services
@@ -101,6 +112,12 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+/**
+ * How much bottom space the floating bottom bar (mini-player + nav) occupies over
+ * the content, so scrollable screens can pad their last items clear of it.
+ */
+val LocalMiniPlayerInset = androidx.compose.runtime.staticCompositionLocalOf { 0.dp }
+
 /** Every possible tab. Which ones actually show is decided by the settings. */
 private enum class Tab(val label: String, val icon: ImageVector) {
     BOOKS("Books", Icons.Default.LibraryBooks),
@@ -122,48 +139,66 @@ private sealed interface Overlay {
 }
 
 /**
- * The bottom navigation bar: the standard Material 3 NavigationBar, wrapped in a
- * surfaceContainerHigh surface with 28dp rounded top corners and a hairline top
- * border to match the Flutter app. NavigationBar handles the system-gesture inset
- * itself.
+ * A Samsung-style floating bottom navigation: a rounded capsule detached from the
+ * screen edges, floating over the page content with a soft shadow. The selected
+ * tab gets a filled pill behind its icon + label. Because the capsule floats, the
+ * region around it (and behind the mini-player above it) is transparent and shows
+ * the page, rather than a solid bar.
  */
 @Composable
 private fun KitziNavBar(tabs: List<Tab>, selected: Tab, overlayOpen: Boolean, onSelect: (Tab) -> Unit) {
-    val topShape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        shape = topShape,
-        // A soft top shadow so the rounded top reads as a raised sheet floating
-        // over the page, rather than a gap where the page shows through the corners.
-        shadowElevation = 10.dp,
-        modifier = Modifier
+    val shape = RoundedCornerShape(32.dp)
+    Box(
+        Modifier
             .fillMaxWidth()
-            .border(
-                width = 0.5.dp,
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
-                shape = topShape,
-            ),
+            .navigationBarsPadding()
+            .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
-        NavigationBar(
-            containerColor = Color.Transparent,
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceContainer,
+            shape = shape,
+            shadowElevation = 12.dp,
             tonalElevation = 0.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(
+                    width = 0.5.dp,
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                    shape = shape,
+                ),
         ) {
-            tabs.forEach { t ->
-                NavigationBarItem(
-                    selected = selected == t && !overlayOpen,
-                    onClick = { onSelect(t) },
-                    icon = { Icon(t.icon, null, modifier = Modifier.size(22.dp)) },
-                    label = {
-                        // A small fixed size that fits "Downloads"/"Settings" across
-                        // six or seven tabs without clipping.
+            Row(
+                Modifier.padding(horizontal = 6.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                tabs.forEach { t ->
+                    val active = selected == t && !overlayOpen
+                    val content = if (active) MaterialTheme.colorScheme.onSecondaryContainer
+                    else MaterialTheme.colorScheme.onSurfaceVariant
+                    Column(
+                        Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(20.dp))
+                            .clickable { onSelect(t) }
+                            .background(
+                                if (active) MaterialTheme.colorScheme.secondaryContainer
+                                else Color.Transparent,
+                            )
+                            .padding(vertical = 7.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Icon(t.icon, null, tint = content, modifier = Modifier.size(22.dp))
                         Text(
                             t.label,
                             fontSize = 10.sp,
                             lineHeight = 12.sp,
                             maxLines = 1,
+                            color = content,
+                            modifier = Modifier.padding(top = 3.dp),
                         )
-                    },
-                )
+                    }
+                }
             }
         }
     }
@@ -208,56 +243,86 @@ private fun App() {
         if (playerAsTab) { tab = Tab.PLAYER; overlay = null } else overlay = Overlay.Player
     }
 
+    val nowPlaying by Services.playback.nowPlaying.collectAsStateWithLifecycle()
+    val density = LocalDensity.current
+    val layoutDir = LocalLayoutDirection.current
+    // The floating bottom bar (mini-player + nav) overlays the content rather than
+    // reserving a slot, so the page scrolls behind it and both can be translucent.
+    // We measure its height so scroll screens (and the player) can pad clear of it.
+    var barHeightPx by remember { mutableIntStateOf(0) }
+
     Scaffold(
         // Fills behind the status-bar / camera cutout with the app surface, so that
         // strip is never a mismatched colour.
         containerColor = MaterialTheme.colorScheme.surface,
-        bottomBar = {
-            Column {
-                // Above the nav bar everywhere except the full player, which would
-                // otherwise show the same controls twice.
-                val onPlayer = (tab == Tab.PLAYER && overlay == null) || overlay == Overlay.Player
-                if (!onPlayer) {
-                    MiniPlayer(onExpand = openPlayer)
+    ) { insets ->
+        val openBook: (String) -> Unit = { overlay = Overlay.BookDetail(it) }
+        // The player draws its background (gradient or surface) edge to edge —
+        // behind the status bar / cutout — and pads its own content.
+        val onPlayer = (tab == Tab.PLAYER && overlay == null) || overlay == Overlay.Player
+        val miniVisible = nowPlaying != null && !onPlayer
+        val barInset = with(density) { barHeightPx.toDp() }
+        // Content clears the top system bar always; the bottom is handled by the
+        // per-screen bar inset (scroll screens) or the player's own contentPadding.
+        val contentInsets = if (onPlayer) PaddingValues() else PaddingValues(
+            start = insets.calculateStartPadding(layoutDir),
+            end = insets.calculateEndPadding(layoutDir),
+            top = insets.calculateTopPadding(),
+        )
+        val playerPadding = PaddingValues(
+            start = insets.calculateStartPadding(layoutDir),
+            end = insets.calculateEndPadding(layoutDir),
+            top = insets.calculateTopPadding(),
+            bottom = barInset,
+        )
+
+        Box(Modifier.fillMaxSize()) {
+            CompositionLocalProvider(LocalMiniPlayerInset provides if (onPlayer) 0.dp else barInset) {
+                Box(Modifier.fillMaxSize().padding(contentInsets)) {
+                    when (val current = overlay) {
+                        is Overlay.BookDetail -> BookDetailScreen(
+                            itemId = current.id,
+                            onPlay = openPlayer,
+                            onBack = { overlay = null },
+                        )
+
+                        Overlay.Series -> SeriesScreen(onOpenBook = openBook, onBack = { overlay = null })
+
+                        Overlay.Stats -> StatsScreen(onBack = { overlay = null })
+
+                        Overlay.Player -> PlayerScreen(contentPadding = playerPadding)
+
+                        null -> when (tab) {
+                            Tab.BOOKS -> LibraryScreen(
+                                onOpenBook = openBook,
+                                onOpenSeries = { overlay = Overlay.Series },
+                                onOpenStats = { overlay = Overlay.Stats },
+                            )
+                            Tab.SERIES -> SeriesScreen(onOpenBook = openBook, onBack = { tab = Tab.BOOKS })
+                            Tab.AUTHORS -> AuthorsScreen(onOpenBook = openBook)
+                            Tab.QUEUE -> QueueScreen(onOpenPlayer = openPlayer)
+                            Tab.PLAYER -> PlayerScreen(contentPadding = playerPadding)
+                            Tab.DOWNLOADS -> DownloadsScreen(onOpenBook = openBook)
+                            Tab.SETTINGS -> SettingsScreen(onSignedOut = { signedIn = false })
+                        }
+                    }
                 }
+            }
+
+            // The floating cluster: mini-player above the nav, both over content.
+            Column(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .onGloballyPositioned { barHeightPx = it.size.height },
+            ) {
+                if (miniVisible) MiniPlayer(onExpand = openPlayer)
                 KitziNavBar(
                     tabs = tabs,
                     selected = tab,
                     overlayOpen = overlay != null,
                     onSelect = { tab = it; overlay = null },
                 )
-            }
-        },
-    ) { insets ->
-        Box(Modifier.fillMaxSize().padding(insets)) {
-            val openBook: (String) -> Unit = { overlay = Overlay.BookDetail(it) }
-
-            when (val current = overlay) {
-                is Overlay.BookDetail -> BookDetailScreen(
-                    itemId = current.id,
-                    onPlay = openPlayer,
-                    onBack = { overlay = null },
-                )
-
-                Overlay.Series -> SeriesScreen(onOpenBook = openBook, onBack = { overlay = null })
-
-                Overlay.Stats -> StatsScreen(onBack = { overlay = null })
-
-                Overlay.Player -> PlayerScreen()
-
-                null -> when (tab) {
-                    Tab.BOOKS -> LibraryScreen(
-                        onOpenBook = openBook,
-                        onOpenSeries = { overlay = Overlay.Series },
-                        onOpenStats = { overlay = Overlay.Stats },
-                    )
-                    Tab.SERIES -> SeriesScreen(onOpenBook = openBook, onBack = { tab = Tab.BOOKS })
-                    Tab.AUTHORS -> AuthorsScreen(onOpenBook = openBook)
-                    Tab.QUEUE -> QueueScreen(onOpenPlayer = openPlayer)
-                    Tab.PLAYER -> PlayerScreen()
-                    Tab.DOWNLOADS -> DownloadsScreen(onOpenBook = openBook)
-                    Tab.SETTINGS -> SettingsScreen(onSignedOut = { signedIn = false })
-                }
             }
         }
     }

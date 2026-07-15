@@ -61,7 +61,8 @@ fun StatsScreen(onBack: () -> Unit = {}) {
     }
 
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)
+            .padding(bottom = com.bennybar.kitzi.LocalMiniPlayerInset.current),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         ScreenHeader(

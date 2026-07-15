@@ -107,25 +107,20 @@ fun DownloadsScreen(onOpenBook: (String) -> Unit) {
         }
 
         if (visible.isEmpty()) {
-            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(
-                    Icons.Default.Download,
-                    null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(56.dp),
-                )
-                Text(
-                    "No downloads",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(top = 12.dp),
-                )
-            }
+            com.bennybar.kitzi.ui.browse.BrowseEmptyState(
+                icon = Icons.Default.Download,
+                title = if (search.isNotBlank()) "No matches" else "No downloads yet",
+                message = if (search.isNotBlank()) "Try adjusting your search terms"
+                else "Books you download for offline listening appear here",
+            )
             return@Column
         }
 
         LazyColumn(
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                start = 16.dp, top = 16.dp, end = 16.dp,
+                bottom = 16.dp + com.bennybar.kitzi.LocalMiniPlayerInset.current,
+            ),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             items(visible, key = { it.itemId }) { d ->

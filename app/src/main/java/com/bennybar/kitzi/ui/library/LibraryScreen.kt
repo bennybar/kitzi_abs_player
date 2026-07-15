@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -30,6 +31,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.LibraryBooks
@@ -48,6 +50,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -92,6 +95,13 @@ fun LibraryScreen(
     val summary by vm.summary.collectAsStateWithLifecycle()
     val progressById by vm.progress.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
+
+    // The set of fully-downloaded items, for the row's download badge. Refreshed
+    // when the library refreshes.
+    var downloadedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    LaunchedEffect(refreshing, books.size) {
+        downloadedIds = com.bennybar.kitzi.data.Services.downloads.downloadedItemIds().toSet()
+    }
 
     var showSearch by remember { mutableStateOf(false) }
     var showFilter by remember { mutableStateOf(false) }
@@ -187,7 +197,10 @@ fun LibraryScreen(
                 LazyVerticalGrid(
                     state = gridState,
                     columns = GridCells.Adaptive(120.dp),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                        start = 16.dp, top = 16.dp, end = 16.dp,
+                        bottom = 16.dp + com.bennybar.kitzi.LocalMiniPlayerInset.current,
+                    ),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier.fillMaxSize(),
@@ -200,7 +213,9 @@ fun LibraryScreen(
             } else {
                 LazyColumn(
                     state = listState,
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 16.dp),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                        bottom = 16.dp + com.bennybar.kitzi.LocalMiniPlayerInset.current,
+                    ),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                     modifier = Modifier.fillMaxSize(),
                 ) {
@@ -210,6 +225,7 @@ fun LibraryScreen(
                             book,
                             Modifier.padding(horizontal = 16.dp),
                             progress = progressById[book.id],
+                            downloaded = book.id in downloadedIds,
                         ) { onOpenBook(book.id) }
                     }
                 }
@@ -427,12 +443,13 @@ private fun Shelf(books: List<Book>, onOpenBook: (String) -> Unit) {
     }
 }
 
-/** The default library row: cover, title, series (tinted), author, duration, state, chevron. */
+/** The default library row: cover (with a progress overlay), title, series (tinted), author, narrator, duration, state, chevron. */
 @Composable
 fun BookCard(
     book: Book,
     modifier: Modifier = Modifier,
     progress: MediaProgressEntity? = null,
+    downloaded: Boolean = false,
     onClick: () -> Unit,
 ) {
     Surface(
@@ -441,12 +458,33 @@ fun BookCard(
         modifier = modifier.fillMaxWidth().clickable(onClick = onClick),
     ) {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            AsyncImage(
-                model = book.coverUrl,
-                contentDescription = book.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.size(84.dp).clip(RoundedCornerShape(12.dp)),
-            )
+            Box(Modifier.size(84.dp).clip(RoundedCornerShape(12.dp))) {
+                AsyncImage(
+                    model = book.coverUrl,
+                    contentDescription = book.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                // A slim progress bar across the bottom of the cover for books in
+                // progress (not the finished ones, which read as a full bar of noise).
+                val frac = progress?.takeIf { it.isFinished != true }?.progress?.toFloat()
+                if (frac != null && frac > 0f) {
+                    Box(
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .height(5.dp)
+                            .background(Color.Black.copy(alpha = 0.35f)),
+                    ) {
+                        Box(
+                            Modifier
+                                .fillMaxHeight()
+                                .fillMaxWidth(frac.coerceIn(0f, 1f))
+                                .background(MaterialTheme.colorScheme.primary),
+                        )
+                    }
+                }
+            }
             Column(Modifier.weight(1f).padding(start = 14.dp)) {
                 Text(
                     book.title,
@@ -481,11 +519,17 @@ fun BookCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                book.durationMs?.let { ms ->
-                    Row(
-                        Modifier.padding(top = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
+                book.narrators.takeIf { it.isNotEmpty() }?.let {
+                    Text(
+                        "Narrated by ${it.joinToString(", ")}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    book.durationMs?.let { ms ->
                         Icon(
                             Icons.Default.Schedule,
                             null,
@@ -497,6 +541,15 @@ fun BookCard(
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(start = 6.dp),
+                        )
+                    }
+                    // A downloaded badge sits alongside the duration, as in Flutter.
+                    if (downloaded) {
+                        Icon(
+                            Icons.Default.DownloadDone,
+                            "Downloaded",
+                            tint = Color(0xFF4CAF50),
+                            modifier = Modifier.padding(start = 10.dp).size(16.dp),
                         )
                     }
                 }

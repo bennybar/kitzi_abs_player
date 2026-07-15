@@ -90,7 +90,10 @@ fun QueueScreen(onOpenPlayer: () -> Unit) {
         }
 
         LazyColumn(
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                start = 16.dp, top = 16.dp, end = 16.dp,
+                bottom = 16.dp + com.bennybar.kitzi.LocalMiniPlayerInset.current,
+            ),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             itemsIndexed(items, key = { _, e -> e.id }) { index, entry ->

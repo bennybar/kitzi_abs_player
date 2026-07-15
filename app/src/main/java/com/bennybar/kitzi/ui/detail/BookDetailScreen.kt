@@ -1,6 +1,8 @@
 package com.bennybar.kitzi.ui.detail
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,10 +15,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Business
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Storage
@@ -92,6 +98,9 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
                 IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
             },
             actions = {
+                IconButton(onClick = {
+                    b.let { Services.queue.addToBack(QueueEntry(it.id, it.title, it.author, it.coverUrl)) }
+                }) { Icon(Icons.AutoMirrored.Filled.PlaylistAdd, "Add to queue") }
                 TextButton(onClick = {
                     // Marking finished is a progress write with isFinished set.
                     scope.launch { Services.playbackApi.markFinished(itemId) }
@@ -100,7 +109,8 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
         )
 
         Column(
-            Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
+            Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)
+                .padding(bottom = com.bennybar.kitzi.LocalMiniPlayerInset.current),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Surface(
@@ -155,29 +165,29 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
                 }
             }
 
-            // Year / Publisher / Genres
+            // Year / Publisher / Genres, as icon-badged fact cards in a grid — the
+            // Year and Publisher share a row; Genres spans full width below.
             val facts = buildList {
-                b.publishYear?.let { add("Year" to it.toString()) }
-                b.publisher?.let { add("Publisher" to it) }
-                b.genres.takeIf { it.isNotEmpty() }?.let { add("Genres" to it.joinToString(", ")) }
+                b.publishYear?.let { add(Triple(Icons.Default.CalendarMonth, "Year", it.toString())) }
+                b.publisher?.let { add(Triple(Icons.Default.Business, "Publisher", it)) }
             }
-            if (facts.isNotEmpty()) {
+            val genres = b.genres.takeIf { it.isNotEmpty() }?.joinToString(", ")
+            if (facts.isNotEmpty() || genres != null) {
                 Surface(
                     color = MaterialTheme.colorScheme.surfaceContainer,
                     shape = RoundedCornerShape(20.dp),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        facts.forEach { (label, value) ->
-                            Column {
-                                Text(
-                                    label,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                Text(value, style = MaterialTheme.typography.bodyLarge)
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        if (facts.isNotEmpty()) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                facts.forEach { (icon, label, value) ->
+                                    FactCard(icon, label, value, Modifier.weight(1f))
+                                }
+                                if (facts.size == 1) Box(Modifier.weight(1f))
                             }
                         }
+                        genres?.let { FactCard(Icons.Default.LocalOffer, "Genres", it, Modifier.fillMaxWidth()) }
                     }
                 }
             }
@@ -283,6 +293,47 @@ private fun InfoChip(icon: androidx.compose.ui.graphics.vector.ImageVector, labe
         leadingIcon = { Icon(icon, null, Modifier.size(18.dp)) },
         label = { Text(label) },
     )
+}
+
+/** A fact tile: a tinted icon badge, a small label above its value. */
+@Composable
+private fun FactCard(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = RoundedCornerShape(16.dp),
+        modifier = modifier,
+    ) {
+        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier
+                    .size(38.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+            }
+            Column(Modifier.padding(start = 12.dp)) {
+                Text(
+                    label,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    value,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
 }
 
 @Composable

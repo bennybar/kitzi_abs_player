@@ -99,6 +99,20 @@ interface BooksDao {
     )
     suspend fun seriesWithCounts(minBooks: Int): List<AuthorCount>
 
+    /**
+     * The member covers for every series, ordered so the first row per series is
+     * the deck's hero. Kept minimal (id + coverPath) so the series list can paint
+     * its fanned covers without loading whole books.
+     */
+    @Query(
+        """
+        SELECT series AS series, id AS id, coverPath AS coverPath FROM books
+        WHERE series IS NOT NULL AND series != '' AND $AUDIOBOOK_PREDICATE
+        ORDER BY series COLLATE NOCASE ASC, seriesSequence IS NULL, seriesSequence ASC, title COLLATE NOCASE ASC
+        """
+    )
+    suspend fun seriesCovers(): List<SeriesCoverRow>
+
     /** Books the user has actually started, most recently touched first. */
     @Query(
         """
@@ -193,3 +207,5 @@ interface BooksDao {
 }
 
 data class AuthorCount(val name: String, val bookCount: Int)
+
+data class SeriesCoverRow(val series: String, val id: String, val coverPath: String?)

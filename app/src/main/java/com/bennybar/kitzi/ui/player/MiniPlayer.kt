@@ -2,6 +2,7 @@ package com.bennybar.kitzi.ui.player
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -36,6 +37,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -81,15 +83,21 @@ fun MiniPlayer(onExpand: () -> Unit) {
         Services.prefs.putBoolean("ui_mini_player_collapsed", value)
     }
 
-    // Theme-aware tinted surface: start from the theme's own container colour (so
-    // it's light in light mode, dark in dark mode) and wash it faintly with the
-    // cover's colour. Text stays onSurface, which contrasts in both themes.
+    // A clean floating "glass" pill: an opaque, subtly cover-tinted near-white
+    // (near-black in dark) with a soft top-to-bottom sheen. The Flutter app blurs
+    // the page through a translucent fill, but Compose can't blur cheaply and a
+    // translucent fill over the flat surface reads as muddy grey — so we stay
+    // opaque and lean on the tint + shadow + hairline edge for the float.
     val palette by rememberCoverPalette(np.coverUrl)
-    val base = MaterialTheme.colorScheme.surfaceContainerHigh
+    val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     val seed = palette?.primary ?: MaterialTheme.colorScheme.primary
-    val glassA = blend(seed, base, 0.16f)
-    val glassB = blend(seed, base, 0.06f)
-    val glass = Brush.linearGradient(listOf(glassA, glassB))
+    val base = if (dark) Color(0xFF17171F) else Color.White
+    // blend(over, under, f) weights f toward `over`, so keep the cover tint (seed)
+    // small and the base (near-white / near-black) dominant.
+    val glassA = blend(seed, base, if (dark) 0.20f else 0.12f)
+    val glassB = blend(seed, base, if (dark) 0.12f else 0.05f)
+    val glass = Brush.verticalGradient(listOf(glassA, glassB))
+    val glassBorder = if (dark) Color.White.copy(alpha = 0.10f) else Color.White.copy(alpha = 0.85f)
     val onGlass = MaterialTheme.colorScheme.onSurface
     val onGlassMuted = MaterialTheme.colorScheme.onSurfaceVariant
 
@@ -108,6 +116,7 @@ fun MiniPlayer(onExpand: () -> Unit) {
                     .shadow(12.dp, RoundedCornerShape(37.dp))
                     .clip(RoundedCornerShape(37.dp))
                     .background(glass)
+                    .border(0.8.dp, glassBorder, RoundedCornerShape(37.dp))
                     .clickable { setCollapsed(false) }
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -127,15 +136,19 @@ fun MiniPlayer(onExpand: () -> Unit) {
         return
     }
 
+    // The floating Aurora Glass pill: soft drop shadow so it hovers over the
+    // page, translucent tinted fill (page shows faintly through), bright hairline
+    // edge. Not opaque — matching the Flutter mini-player.
     Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
         Row(
             Modifier
                 .fillMaxWidth()
-                .shadow(14.dp, RoundedCornerShape(28.dp))
+                .shadow(10.dp, RoundedCornerShape(28.dp))
                 .clip(RoundedCornerShape(28.dp))
                 .background(glass)
+                .border(0.8.dp, glassBorder, RoundedCornerShape(28.dp))
                 .clickable(onClick = onExpand)
-                .padding(start = 13.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
+                .padding(start = 13.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             // Tap the cover to collapse to the orb.
@@ -184,11 +197,13 @@ fun MiniPlayer(onExpand: () -> Unit) {
 
 @Composable
 private fun RoundPlayButton(isPlaying: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val primary = MaterialTheme.colorScheme.primary
+    val grad = Brush.linearGradient(listOf(primary, blend(primary, Color.Black, 0.72f)))
     Box(
         modifier
             .size(46.dp)
             .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.primary)
+            .background(grad)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {

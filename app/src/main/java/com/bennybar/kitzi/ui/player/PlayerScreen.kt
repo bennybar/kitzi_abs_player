@@ -4,18 +4,15 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.BookmarkAdd
@@ -64,7 +61,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
-fun PlayerScreen() {
+fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValues = androidx.compose.foundation.layout.PaddingValues()) {
     val controller = Services.playback
     val nowPlaying by controller.nowPlaying.collectAsStateWithLifecycle()
 
@@ -125,8 +122,8 @@ fun PlayerScreen() {
         Modifier.background(
             Brush.verticalGradient(
                 colors = listOf(
-                    blend(palette!!.primary, surface, 0.22f),
-                    blend(palette!!.secondary, surface, 0.10f),
+                    blend(palette!!.primary, surface, 0.42f),
+                    blend(palette!!.secondary, surface, 0.22f),
                     surface,
                 ),
             )
@@ -137,17 +134,20 @@ fun PlayerScreen() {
 
     Box(Modifier.fillMaxSize().then(background)) {
         Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
+            // Pad for the system bars (the background above already fills behind them)
+            // then the player's own inset.
+            Modifier.fillMaxSize().padding(contentPadding).padding(horizontal = 20.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             // --- cover with overlay buttons ---
-            Box(
-                Modifier
-                    .widthIn(max = coverMax)
-                    .fillMaxWidth()
-                    .aspectRatio(1f)
-                    .padding(top = 8.dp),
+            // The cover takes the leftover space and shrinks to a square that fits,
+            // so the whole player fits one screen without scrolling on any height.
+            BoxWithConstraints(
+                Modifier.weight(1f).fillMaxWidth(),
+                contentAlignment = Alignment.Center,
             ) {
+                val side = minOf(maxWidth, maxHeight, coverMax)
+                Box(Modifier.size(side)) {
                 AsyncImage(
                     model = np.coverUrl,
                     contentDescription = np.title,
@@ -178,6 +178,7 @@ fun PlayerScreen() {
                     modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
                     onClick = { showChapters = false },
                 )
+                }
             }
 
             // --- metadata, centered ---
@@ -186,9 +187,9 @@ fun PlayerScreen() {
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.ExtraBold,
                 textAlign = TextAlign.Center,
-                maxLines = 3,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 20.dp),
+                modifier = Modifier.padding(top = 14.dp),
             )
             np.author?.let {
                 Text(
@@ -214,7 +215,7 @@ fun PlayerScreen() {
             if (total > 0) {
                 Row(
                     Modifier
-                        .padding(top = 12.dp)
+                        .padding(top = 8.dp)
                         .clip(RoundedCornerShape(20.dp))
                         .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                         .padding(horizontal = 14.dp, vertical = 8.dp),
@@ -236,7 +237,7 @@ fun PlayerScreen() {
 
             // --- progress slider with chapter ticks ---
             val sliderValue = scrubbing ?: positionSec.toFloat()
-            Box(Modifier.fillMaxWidth().padding(top = 24.dp)) {
+            Box(Modifier.fillMaxWidth().padding(top = 16.dp)) {
                 Slider(
                     value = sliderValue,
                     onValueChange = { scrubbing = it },
@@ -306,7 +307,7 @@ fun PlayerScreen() {
 
             // --- transport row ---
             Row(
-                Modifier.fillMaxWidth().padding(top = 20.dp),
+                Modifier.fillMaxWidth().padding(top = 14.dp),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -339,7 +340,7 @@ fun PlayerScreen() {
 
             // --- bottom action tiles ---
             Row(
-                Modifier.fillMaxWidth().padding(top = 20.dp),
+                Modifier.fillMaxWidth().padding(top = 14.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 ActionTile(Icons.AutoMirrored.Filled.List, "Chapters", Modifier.weight(1f), enabled = np.chapters.size > 1) { showChapters = true }
@@ -356,7 +357,7 @@ fun PlayerScreen() {
                 ActionTile(Icons.Default.MoreVert, "More", Modifier.weight(1f)) {}
             }
 
-            Box(Modifier.height(16.dp))
+            Box(Modifier.height(4.dp))
         }
     }
 
