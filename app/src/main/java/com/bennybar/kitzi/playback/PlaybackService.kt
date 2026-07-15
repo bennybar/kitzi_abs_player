@@ -12,6 +12,7 @@ import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.session.CommandButton
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
@@ -44,6 +45,40 @@ class PlaybackService : MediaLibraryService() {
     private lateinit var session: MediaLibrarySession
     private lateinit var controller: PlaybackController
     private lateinit var liveUpdate: NowPlayingLiveUpdate
+
+    // Notification / Samsung Now Bar buttons, ALL as explicit button preferences so
+    // they surface as custom actions (verified working via dumpsys) — the standard
+    // SKIP_TO_PREVIOUS/NEXT actions don't reach the platform session through our
+    // whole-book player wrapper. Slots place chapter-skip beside play/pause and the
+    // seconds-seek on the outer edges: [rewind][prev-ch][play][next-ch][forward].
+    private val prevChapterButton: CommandButton by lazy {
+        CommandButton.Builder(CommandButton.ICON_PREVIOUS)
+            .setDisplayName("Previous chapter")
+            .setPlayerCommand(Player.COMMAND_SEEK_TO_PREVIOUS)
+            .setSlots(CommandButton.SLOT_BACK)
+            .build()
+    }
+    private val rewindButton: CommandButton by lazy {
+        CommandButton.Builder(CommandButton.ICON_REWIND)
+            .setDisplayName("Rewind ${Services.prefs.getInt("ui_seek_backward_seconds", 30)}s")
+            .setPlayerCommand(Player.COMMAND_SEEK_BACK)
+            .setSlots(CommandButton.SLOT_BACK_SECONDARY, CommandButton.SLOT_OVERFLOW)
+            .build()
+    }
+    private val forwardButton: CommandButton by lazy {
+        CommandButton.Builder(CommandButton.ICON_FAST_FORWARD)
+            .setDisplayName("Forward ${Services.prefs.getInt("ui_seek_forward_seconds", 30)}s")
+            .setPlayerCommand(Player.COMMAND_SEEK_FORWARD)
+            .setSlots(CommandButton.SLOT_FORWARD_SECONDARY, CommandButton.SLOT_OVERFLOW)
+            .build()
+    }
+    private val nextChapterButton: CommandButton by lazy {
+        CommandButton.Builder(CommandButton.ICON_NEXT)
+            .setDisplayName("Next chapter")
+            .setPlayerCommand(Player.COMMAND_SEEK_TO_NEXT)
+            .setSlots(CommandButton.SLOT_FORWARD)
+            .build()
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -226,6 +261,25 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private inner class LibraryCallback : MediaLibrarySession.Callback {
+
+        // Attach the rewind/forward buttons for the surfaces that draw a media UI
+        // (notification, Now Bar, Android Auto) — the way Gramophone does it, which
+        // is what actually populates One UI's expanded Now Bar button row.
+        override fun onConnect(
+            session: MediaSession,
+            controllerInfo: MediaSession.ControllerInfo,
+        ): MediaSession.ConnectionResult {
+            val builder = MediaSession.ConnectionResult.AcceptedResultBuilder(session)
+            if (session.isMediaNotificationController(controllerInfo) ||
+                session.isAutoCompanionController(controllerInfo) ||
+                session.isAutomotiveController(controllerInfo)
+            ) {
+                builder.setMediaButtonPreferences(
+                    ImmutableList.of(prevChapterButton, rewindButton, forwardButton, nextChapterButton)
+                )
+            }
+            return builder.build()
+        }
 
         override fun onGetLibraryRoot(
             session: MediaLibrarySession,

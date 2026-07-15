@@ -346,11 +346,13 @@ private fun Toolbar(
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainer,
         shape = RoundedCornerShape(32.dp),
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        // Full width (like the pills above) with the icons spread evenly, instead of
+        // a content-sized pill hugging the left with empty space on the right.
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
     ) {
         Row(
-            Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
             CircleIconButton(Icons.Default.Search, "Search", onClick = onSearch)
