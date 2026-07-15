@@ -32,11 +32,12 @@ class AuthApi(
 
     fun login(baseUrl: String, username: String, password: String): Boolean {
         val base = SessionStore.normalizeBaseUrl(baseUrl)
-        session.baseUrl = base
 
         val body = json.encodeToString(mapOf("username" to username, "password" to password))
             .toRequestBody(JSON_MEDIA)
 
+        // The request URL is absolute, so we don't need to commit the base URL to
+        // the session to make this call — and we must not, until it succeeds.
         val request = Request.Builder()
             .url("$base/login")
             .headers(baseHeaders())
@@ -44,10 +45,20 @@ class AuthApi(
             .post(body)
             .build()
 
-        val tokens = client.newCall(request).execute().use { resp ->
-            if (!resp.isSuccessful) return false
-            parseTokens(resp.body?.string()) ?: return false
-        }
+        // runCatching so a DNS/TLS/offline failure returns false instead of throwing
+        // out of the login flow (which used to crash the sign-in screen).
+        val tokens = runCatching {
+            client.newCall(request).execute().use { resp ->
+                if (!resp.isSuccessful) return false
+                parseTokens(resp.body?.string())
+            }
+        }.getOrNull() ?: return false
+
+        // Commit URL + tokens together, only now that auth has succeeded. When the
+        // server actually changed, drop the previous server's tokens first so they
+        // can never end up paired with the new base URL.
+        if (base != session.baseUrl) session.clearTokens()
+        session.baseUrl = base
         storeTokens(tokens)
         return true
     }

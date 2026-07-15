@@ -36,9 +36,17 @@ class TrackDownloadWorker(
         val fileId = inputData.getString(KEY_FILE_ID) ?: return@withContext Result.failure()
         val filename = inputData.getString(KEY_FILENAME) ?: return@withContext Result.failure()
         val title = inputData.getString(KEY_TITLE).orEmpty()
+        // Which library this download was queued FOR (older queued work may lack it).
+        val libraryId = inputData.getString(KEY_LIBRARY_ID) ?: Services.currentLibraryId()
+
+        // If the user switched libraries while this was queued, don't write into the
+        // now-active library's database (only one library DB is open at a time —
+        // forcing this one open would evict the one the app is using). Defer until
+        // that library is active again.
+        if (libraryId != Services.currentLibraryId()) return@withContext Result.retry()
 
         val dao = Services.downloadsDao()
-        val dir = Services.downloadPaths.itemDir(itemId).apply { mkdirs() }
+        val dir = Services.downloadPaths.itemDir(itemId, libraryId).apply { mkdirs() }
         val target = File(dir, filename)
 
         if (target.exists() && target.length() > 0) {
@@ -139,5 +147,6 @@ class TrackDownloadWorker(
         const val KEY_FILE_ID = "fileId"
         const val KEY_FILENAME = "filename"
         const val KEY_TITLE = "title"
+        const val KEY_LIBRARY_ID = "libraryId"
     }
 }

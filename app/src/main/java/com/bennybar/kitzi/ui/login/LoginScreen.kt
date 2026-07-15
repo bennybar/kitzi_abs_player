@@ -15,6 +15,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -22,8 +23,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.bennybar.kitzi.data.Services
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -39,13 +44,60 @@ fun LoginScreen(onSignedIn: () -> Unit) {
     var ssoAvailable by remember { mutableStateOf(false) }
 
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    // SSO returns via OidcCallbackActivity, which parks the redirect URL and brings
+    // us back to the foreground. On resume, pick it up and complete the exchange.
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                val callbackUrl = OidcCallback.consume() ?: return@LifecycleEventObserver
+                busy = true
+                error = null
+                scope.launch {
+                    val ok = withContext(Dispatchers.IO) {
+                        runCatching { Services.auth.oidc.finish(server, callbackUrl) }.getOrDefault(false)
+                    }
+                    busy = false
+                    if (ok) onSignedIn() else error = "SSO sign in failed. Please try again."
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    fun startSso() {
+        if (server.isBlank()) return
+        busy = true
+        error = null
+        scope.launch {
+            val authorizeUrl = withContext(Dispatchers.IO) {
+                runCatching { Services.auth.oidc.begin(server) }.getOrNull()
+            }
+            busy = false
+            if (authorizeUrl == null) {
+                error = "Couldn't start SSO for this server."
+                return@launch
+            }
+            runCatching {
+                androidx.browser.customtabs.CustomTabsIntent.Builder().build()
+                    .launchUrl(context, android.net.Uri.parse(authorizeUrl))
+            }.onFailure { error = "Couldn't open the sign-in page." }
+        }
+    }
 
     fun signIn() {
         busy = true
         error = null
         scope.launch {
-            val ok = withContext(Dispatchers.IO) {
-                Services.auth.login(server, username.trim(), password)
+            val ok = try {
+                withContext(Dispatchers.IO) {
+                    Services.auth.login(server, username.trim(), password)
+                }
+            } catch (e: Exception) {
+                false
             }
             busy = false
             if (ok) onSignedIn() else error = "Sign in failed. Check the server and your credentials."
@@ -111,7 +163,8 @@ fun LoginScreen(onSignedIn: () -> Unit) {
 
                     if (ssoAvailable) {
                         OutlinedButton(
-                            onClick = { /* SSO: opens the IdP in a custom tab */ },
+                            onClick = { startSso() },
+                            enabled = server.isNotBlank(),
                             modifier = Modifier.fillMaxWidth(),
                         ) { Text("Sign in with SSO") }
                     }

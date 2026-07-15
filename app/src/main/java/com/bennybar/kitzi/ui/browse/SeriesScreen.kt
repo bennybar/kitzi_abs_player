@@ -15,14 +15,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Collections
 import androidx.compose.material.icons.filled.LibraryBooks
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SecondaryTabRow
 import androidx.compose.material3.Surface
@@ -95,9 +93,7 @@ fun SeriesScreen(onOpenBook: (String) -> Unit, onBack: () -> Unit) {
             icon = if (tab == SeriesTab.SERIES) Icons.Default.LibraryBooks else Icons.Default.Collections,
             title = if (tab == SeriesTab.SERIES) "Series" else "Collections",
             subtitle = "${groups.size} in library",
-            trailing = {
-                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
-            },
+            onBack = onBack,
         )
 
         SecondaryTabRow(selectedTabIndex = tab.ordinal) {
@@ -176,11 +172,29 @@ fun SeriesScreen(onOpenBook: (String) -> Unit, onBack: () -> Unit) {
                         }
 
                         if (expanded == group.name) {
-                            Column(
-                                Modifier.padding(top = 10.dp, start = 12.dp),
-                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                            // A recessed, indented panel so the member books read
+                            // clearly as the CONTENTS of the series above them, not as
+                            // more series rows: a darker ground, an inset, and a header.
+                            Surface(
+                                color = MaterialTheme.colorScheme.surfaceContainerLowest,
+                                shape = RoundedCornerShape(14.dp),
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                                ),
+                                modifier = Modifier.padding(top = 8.dp, start = 20.dp).fillMaxWidth(),
                             ) {
-                                books.forEach { book -> BookCard(book) { onOpenBook(book.id) } }
+                                Column(
+                                    Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                                ) {
+                                    Text(
+                                        "In this ${if (tab == SeriesTab.SERIES) "series" else "collection"}",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                    books.forEach { book -> BookCard(book) { onOpenBook(book.id) } }
+                                }
                             }
                         }
                     }

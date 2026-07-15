@@ -16,10 +16,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.BarChart
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -71,11 +68,7 @@ fun StatsScreen(onBack: () -> Unit = {}) {
         ScreenHeader(
             icon = Icons.Default.BarChart,
             title = "Listening",
-            trailing = {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
-                }
-            },
+            onBack = onBack,
         )
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {

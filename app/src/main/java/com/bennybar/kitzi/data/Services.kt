@@ -67,7 +67,11 @@ object Services {
             playback = PlaybackController(app, playbackApi, books, prefs, downloadPaths)
             downloads = DownloadsRepository(
                 app,
-                downloadsDao(),
+                // A PROVIDER, not a captured DAO: at construction (before login) this
+                // would resolve the default-library DB, which ensureLibrary then
+                // closes — leaving a DAO pointed at a dead database. Resolving per
+                // call always hits the live, current-library DB.
+                { downloadsDao() },
                 DownloadPlanResolver(absApi, playbackApi, prefs),
                 downloadPaths,
                 prefs,
@@ -114,10 +118,12 @@ object Services {
         }
     }
 
+    /** The id of the library currently in use, or the default before one is chosen. */
+    fun currentLibraryId(): String =
+        prefs.getString(FlutterPrefs.KEY_LIBRARY_ID)?.takeIf { it.isNotBlank() }
+            ?: DownloadPaths.DEFAULT_LIBRARY_ID
+
     /** The downloads table lives in the active library's database, like everything else. */
-    fun downloadsDao(): DownloadsDao {
-        val libraryId = prefs.getString(FlutterPrefs.KEY_LIBRARY_ID)
-            ?.takeIf { it.isNotBlank() } ?: DownloadPaths.DEFAULT_LIBRARY_ID
-        return KitziDatabase.forLibrary(appContext, libraryId).downloadsDao()
-    }
+    fun downloadsDao(): DownloadsDao =
+        KitziDatabase.forLibrary(appContext, currentLibraryId()).downloadsDao()
 }

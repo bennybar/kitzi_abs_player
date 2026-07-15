@@ -481,7 +481,8 @@ class BooksRepository(
     suspend fun syncAll(pageSize: Int = 100): Int = withContext(Dispatchers.IO) {
         var page = 1
         var total = 0
-        var emptyStreak = 0
+        val seen = HashSet<String>()
+        var fullSweep = false
 
         while (page <= MAX_SYNC_PAGES) {
             val (sortField, desc) = serverSort(BookSort.UPDATED_DESC)
@@ -489,24 +490,53 @@ class BooksRepository(
                 api.libraryItems(libraryId, page, pageSize, sortField, desc, etag = null)
             }.getOrNull() ?: break
 
-            if (result.items.isEmpty()) break
+            if (result.items.isEmpty()) { fullSweep = true; break }
 
-            val added = upsert(result.items)
-            total += added
+            // Paging progress is "did this page reveal item IDs we hadn't seen this
+            // run" — NOT "did any row change". A fully-cached page (0 rows changed)
+            // must still advance, or an earlier interrupted sync can never reach
+            // later pages. A page of only already-seen IDs means the server is
+            // repeating pages (ignoring `page`); stop there.
+            val newIds = result.items.count { it["id"].str()?.let(seen::add) ?: false }
+            total += upsert(result.items)
+            if (newIds == 0) break
 
-            // The server may ignore `page` and keep returning the same items; stop
-            // rather than loop forever.
-            if (added == 0) {
-                if (++emptyStreak >= 2) break
-            } else {
-                emptyStreak = 0
-            }
-
-            if (result.items.size < pageSize) break
+            if (result.items.size < pageSize) { fullSweep = true; break }
             page++
         }
-        Log.i(TAG, "syncAll: cached $total new books over ${page} page(s)")
+
+        // Only a complete, uninterrupted sweep makes `seen` an authoritative list of
+        // what still exists on the server — so only then may we prune. A network
+        // failure mid-sweep must never delete books.
+        if (fullSweep) pruneDeletedBooks(seen)
+
+        Log.i(TAG, "syncAll: cached $total new books over $page page(s)")
         total
+    }
+
+    /**
+     * Removes local books the server no longer lists — but keeps anything the user
+     * has downloaded, so a book deleted server-side stays playable offline until
+     * they remove the download themselves.
+     */
+    private suspend fun pruneDeletedBooks(serverIds: Set<String>) {
+        val downloaded = runCatching { Services.downloads.downloadedItemIds() }
+            .getOrDefault(emptyList()).toSet()
+        val stale = dao.allBookIds().filter { it !in serverIds && it !in downloaded }
+        stale.forEach { dao.deleteBook(it); dao.deleteProgress(it) }
+        if (stale.isNotEmpty()) Log.i(TAG, "pruneDeletedBooks: removed ${stale.size} book(s) gone from server")
+    }
+
+    /**
+     * "Clear deleted and broken items": a full reconciliation against the server —
+     * a complete library sweep (which prunes books deleted server-side) plus a
+     * progress refresh (which prunes reset/removed progress). This is what the
+     * settings action always claimed to do; it previously only refreshed page 1.
+     */
+    suspend fun reconcile(): Int = withContext(Dispatchers.IO) {
+        val cached = syncAll()
+        runCatching { syncProgress() }
+        cached
     }
 
     /** The server's own count for the library, which includes books not yet cached. */
@@ -577,6 +607,22 @@ class BooksRepository(
             )
         }
         if (entries.isNotEmpty()) dao.upsertProgress(entries)
+
+        // Progress the server no longer reports (reset on another device, or the
+        // book removed) should not linger locally. Room progress rows are only ever
+        // written from the server or Mark-Finished — never from offline listening
+        // (that lives in prefs and wins on resume by timestamp) — so pruning here
+        // can't lose un-pushed offline progress. Downloaded books are preserved so
+        // their shown progress doesn't vanish mid-offline-listen. Guard on a
+        // non-empty response so a transient empty /api/me can't wipe everything.
+        val serverIds = entries.map { it.itemId }.toSet()
+        if (serverIds.isNotEmpty()) {
+            val downloaded = runCatching { Services.downloads.downloadedItemIds() }
+                .getOrDefault(emptyList()).toSet()
+            dao.allProgressIds()
+                .filter { it !in serverIds && it !in downloaded }
+                .forEach { dao.deleteProgress(it) }
+        }
         entries.size
     }
 

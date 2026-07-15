@@ -263,6 +263,12 @@ fun SettingsScreen(onSignedOut: () -> Unit) {
                     com.bennybar.kitzi.data.SessionLogger.clearLogs(logCtx)
                 }
             }
+            TogglePref(
+                "debug_plain_media_session",
+                false,
+                "Plain media session (pill test)",
+                "Diagnostic: expose the raw player so Samsung may show the Now Bar. Loses chapter-skip + book position on the lock screen. Exit and reopen the app after changing.",
+            )
             HorizontalDivider()
         }
 
@@ -272,8 +278,13 @@ fun SettingsScreen(onSignedOut: () -> Unit) {
             dialog = SettingsDialog.Logout
         }
         ActionRow(Icons.Default.ExitToApp, "Exit App", "Stop playback and close the app") {
-            Services.playback.stop()
-            android.os.Process.killProcess(android.os.Process.myPid())
+            val activity = context as? android.app.Activity
+            scope.launch {
+                // Flush the final progress/close (bounded), THEN finish normally —
+                // killProcess() used to fire before those coroutines could run.
+                runCatching { kotlinx.coroutines.withTimeout(2500) { Services.playback.stopAndAwait() } }
+                activity?.finishAndRemoveTask()
+            }
         }
         Box(Modifier.size(24.dp))
     }
@@ -287,7 +298,7 @@ fun SettingsScreen(onSignedOut: () -> Unit) {
             "Clear deleted and broken items",
             "Check each cached book against the server and remove any that were deleted?",
         ) {
-            scope.launch { runCatching { Services.books.refresh() } }
+            scope.launch { runCatching { Services.books.reconcile() } }
             dialog = null
         }
         SettingsDialog.Resync -> ConfirmDialog(
@@ -299,7 +310,10 @@ fun SettingsScreen(onSignedOut: () -> Unit) {
         }
         SettingsDialog.Logout -> ConfirmDialog(
             "Log out?",
-            "This will remove all downloads, history, and cached data from this device.",
+            // Truthful copy: logout clears the saved session only. Downloads and
+            // cached books stay on the device (use \"Delete all downloads\" in
+            // Storage to remove those).
+            "This signs you out and clears your saved login. Your downloads and cached books stay on this device.",
         ) {
             scope.launch {
                 withContext(Dispatchers.IO) { Services.auth.logout() }
@@ -546,10 +560,9 @@ private fun StorageDialog(onDismiss: () -> Unit) {
                 Text("Downloads: ${com.bennybar.kitzi.ui.common.formatSize(totalBytes)}", style = MaterialTheme.typography.bodyLarge)
                 OutlinedButton(
                     onClick = {
-                        scope.launch(Dispatchers.IO) {
-                            Services.downloadPaths.libraryDir().deleteRecursively()
-                            Services.downloadsDao().deleteAll()
-                        }
+                        // Goes through the repository so active workers are cancelled
+                        // and awaited before files/rows are removed.
+                        scope.launch { Services.downloads.deleteAll() }
                         onDismiss()
                     },
                     modifier = Modifier.fillMaxWidth(),

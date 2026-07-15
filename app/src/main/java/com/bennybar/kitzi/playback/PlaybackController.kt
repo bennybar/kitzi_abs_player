@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -59,6 +60,23 @@ class PlaybackController(
     private var lastSyncedSec: Double = -1.0
     private var syncJob: kotlinx.coroutines.Job? = null
 
+    // Serialises book loads: two quick taps must not each open a server session
+    // and race to assign sessionId (leaking the loser). The generation counter
+    // lets a load that was superseded while queued bail out instead of loading a
+    // book the user has already moved past.
+    private val loadMutex = kotlinx.coroutines.sync.Mutex()
+    private var loadGeneration = 0
+
+    // Serialises progress reports and session close so they can't reorder or
+    // overtake one another — a "close" must not land before the final "sync", and
+    // two syncs must reach the server in the order they were taken.
+    private val syncMutex = kotlinx.coroutines.sync.Mutex()
+
+    // Completed once PlaybackService.onCreate has attached the ExoPlayer. A very
+    // fast Resume/Play tap can arrive before the service connection finishes; a
+    // load waits on this rather than touching an uninitialised `player`.
+    private val playerReady = kotlinx.coroutines.CompletableDeferred<Unit>()
+
     /** Fired when a book plays to its end: drives the queue and delete-on-finish. */
     var onBookFinished: ((String) -> Unit)? = null
 
@@ -83,6 +101,7 @@ class PlaybackController(
         this.player = player
         player.addListener(PlayerEvents())
         player.setPlaybackParameters(PlaybackParameters(savedSpeed()))
+        playerReady.complete(Unit)
     }
 
     // ---- book coordinates --------------------------------------------------
@@ -200,6 +219,25 @@ class PlaybackController(
      * offline fail with "No Internet Connection".
      */
     suspend fun playItem(itemId: String, startPlaying: Boolean = true) {
+        // Don't touch `player` until the service has attached it.
+        playerReady.await()
+        val myGen = ++loadGeneration
+        loadMutex.withLock {
+            // A newer tap arrived while this one waited for the lock — abandon it
+            // rather than load a book the user already moved past.
+            if (myGen != loadGeneration) return
+            // Close the previous streamed session before switching books so the
+            // server stops transcoding for the book we're leaving. Ordered against
+            // in-flight progress reports so a stale sync can't reopen it.
+            sessionId?.let { id ->
+                sessionId = null
+                withContext(Dispatchers.IO) { syncMutex.withLock { runCatching { api.closeSession(id) } } }
+            }
+            loadAndStart(itemId, startPlaying)
+        }
+    }
+
+    private suspend fun loadAndStart(itemId: String, startPlaying: Boolean) {
         val durations = localTrackDurations?.invoke(itemId).orEmpty()
         val local = localTracks(itemId, durations)
             .takeIf { it.isNotEmpty() && isDownloadComplete?.invoke(itemId) != false }
@@ -355,20 +393,34 @@ class PlaybackController(
         val listened = accrual.snapshot()
         val total = totalDurationSec()
         val paused = !player.isPlaying
+        // Capture the session id and item id HERE, on the caller's thread — reading
+        // `sessionId` inside the coroutine could pick up a value changed by a later
+        // load/stop and report against the wrong (or a closed) session.
+        val sid = sessionId
+        val itemId = np.itemId
 
         scope.launch(Dispatchers.IO) {
-            val ok = api.sync(
-                sessionId,
-                ProgressReport(np.itemId, current, total, finished, paused, listened),
-            )
-            // Only on success — otherwise the time rolls into the next attempt.
-            if (ok && listened != null) {
-                accrual.consume(listened)
-                // Record the confirmed listened interval for local stats.
-                com.bennybar.kitzi.data.PlayHistoryStore.record(np.itemId, listened)
+            // Serialised so reports reach the server in the order they were taken
+            // and a close can't slip in between.
+            syncMutex.withLock {
+                val ok = api.sync(
+                    sid,
+                    ProgressReport(itemId, current, total, finished, paused, listened),
+                )
+                // Only on success — otherwise the time rolls into the next attempt.
+                if (ok && listened != null) {
+                    accrual.consume(listened)
+                    // Record the confirmed listened interval for local stats.
+                    com.bennybar.kitzi.data.PlayHistoryStore.record(itemId, listened)
+                }
+                if (ok) lastSyncedSec = current
             }
-            if (ok) lastSyncedSec = current
         }
+    }
+
+    /** Closes a server session, ordered behind any in-flight progress report. */
+    private fun closeSessionOrdered(sid: String) {
+        scope.launch(Dispatchers.IO) { syncMutex.withLock { runCatching { api.closeSession(sid) } } }
     }
 
     /**
@@ -423,10 +475,27 @@ class PlaybackController(
     private fun chaptersKey(itemId: String) = "chapters_$itemId"
 
     fun stop() {
+        syncNow(finished = false)          // captures the current session id first
+        sessionId?.let { id -> sessionId = null; closeSessionOrdered(id) }
+        syncJob?.cancel()
+        player.stop()
+        _nowPlaying.value = null
+    }
+
+    /**
+     * Like [stop], but SUSPENDS until the final progress report and session close
+     * have actually gone out — so "Exit App" doesn't quit before the last sync
+     * lands. Acquiring the sync mutex here drains the queued report first.
+     */
+    suspend fun stopAndAwait() {
+        if (!::player.isInitialized) return
         syncNow(finished = false)
-        sessionId?.let { id -> scope.launch(Dispatchers.IO) { api.closeSession(id) } }
+        val sid = sessionId
         sessionId = null
         syncJob?.cancel()
+        withContext(Dispatchers.IO) {
+            syncMutex.withLock { sid?.let { runCatching { api.closeSession(it) } } }
+        }
         player.stop()
         _nowPlaying.value = null
     }
@@ -466,10 +535,7 @@ class PlaybackController(
                 syncNow()
                 // A session is closed on pause and reopened on resume — that is what
                 // stops the server transcoding for a paused client.
-                sessionId?.let { id ->
-                    scope.launch(Dispatchers.IO) { api.closeSession(id) }
-                    sessionId = null
-                }
+                sessionId?.let { id -> sessionId = null; closeSessionOrdered(id) }
             }
         }
 
@@ -489,10 +555,7 @@ class PlaybackController(
             if (state == Player.STATE_ENDED) {
                 val finishedId = _nowPlaying.value?.itemId
                 syncNow(finished = true)
-                sessionId?.let { id ->
-                    scope.launch(Dispatchers.IO) { api.closeSession(id) }
-                    sessionId = null
-                }
+                sessionId?.let { id -> sessionId = null; closeSessionOrdered(id) }
                 finishedId?.let { onBookFinished?.invoke(it) }
             }
         }

@@ -99,9 +99,19 @@ class PlaybackService : MediaLibraryService() {
             .setSlots(CommandButton.SLOT_FORWARD)
             .build()
 
-        session = MediaLibrarySession.Builder(this, BookCoordinatePlayer(player), LibraryCallback())
-            .setMediaButtonPreferences(ImmutableList.of(rewindButton, forwardButton))
-            .build()
+        // DIAGNOSTIC (Samsung Now Bar): when enabled, expose the RAW ExoPlayer to the
+        // session with no custom button preferences, to test whether the whole-book
+        // wrapper (per-track timeline reporting book position/duration) is why One UI
+        // withholds the media pill. Off by default — turning it on trades away
+        // book-coordinate lock-screen position and chapter-skip until turned off.
+        val plainSession = Services.prefs.getBoolean("debug_plain_media_session", false)
+        session = if (plainSession) {
+            MediaLibrarySession.Builder(this, player, LibraryCallback()).build()
+        } else {
+            MediaLibrarySession.Builder(this, BookCoordinatePlayer(player), LibraryCallback())
+                .setMediaButtonPreferences(ImmutableList.of(rewindButton, forwardButton))
+                .build()
+        }
 
         // Post the playback notification on the app's own audio channel (the one
         // the Flutter app used and users may have configured), instead of Media3's

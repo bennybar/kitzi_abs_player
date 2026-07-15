@@ -13,8 +13,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
@@ -40,12 +42,21 @@ fun ScreenHeader(
     icon: ImageVector,
     title: String,
     subtitle: String? = null,
+    onBack: (() -> Unit)? = null,
     trailing: @Composable (() -> Unit)? = null,
 ) {
     Row(
-        Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
+        Modifier.fillMaxWidth().padding(
+            // A back button carries its own touch padding, so pull the start in.
+            start = if (onBack != null) 4.dp else 20.dp,
+            end = 12.dp, top = 8.dp, bottom = 8.dp,
+        ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // Back sits on the LEFT, where a back affordance belongs.
+        onBack?.let {
+            IconButton(onClick = it) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
+        }
         Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(26.dp))
         Column(Modifier.padding(start = 12.dp).weight(1f)) {
             Text(

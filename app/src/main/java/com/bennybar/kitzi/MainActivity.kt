@@ -101,6 +101,11 @@ import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
 
+    // Retained so the controller (and the service binding it holds) is released in
+    // onDestroy instead of being leaked — the future was previously dropped on the
+    // floor, leaving a dangling controller for the lifetime of the process.
+    private var controllerFuture: com.google.common.util.concurrent.ListenableFuture<MediaController>? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
@@ -122,8 +127,9 @@ class MainActivity : ComponentActivity() {
         // Binding to the session starts the service, so playback, the notification
         // and the app all share one player.
         val token = SessionToken(this, ComponentName(this, PlaybackService::class.java))
-        MediaController.Builder(this, token).buildAsync()
-            .addListener({ /* the session owns the player */ }, MoreExecutors.directExecutor())
+        controllerFuture = MediaController.Builder(this, token).buildAsync().also { future ->
+            future.addListener({ /* the session owns the player */ }, MoreExecutors.directExecutor())
+        }
 
         setContent {
             val mode by ThemeState.mode
@@ -143,6 +149,12 @@ class MainActivity : ComponentActivity() {
                 KitziTheme(darkTheme = dark) { App() }
             }
         }
+    }
+
+    override fun onDestroy() {
+        controllerFuture?.let { MediaController.releaseFuture(it) }
+        controllerFuture = null
+        super.onDestroy()
     }
 }
 

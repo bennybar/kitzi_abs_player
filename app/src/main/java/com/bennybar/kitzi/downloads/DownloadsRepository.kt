@@ -33,12 +33,16 @@ data class ItemDownload(
 
 class DownloadsRepository(
     private val context: Context,
-    private val dao: DownloadsDao,
+    private val daoProvider: () -> DownloadsDao,
     private val planner: DownloadPlanResolver,
     private val paths: DownloadPaths,
     private val prefs: FlutterPrefs,
     private val books: BooksRepository,
 ) {
+    // Resolved per access so it always points at the CURRENT library's database,
+    // never a stale one captured before a library was chosen or switched.
+    private val dao: DownloadsDao get() = daoProvider()
+
     private val workManager get() = WorkManager.getInstance(context)
 
     var wifiOnly: Boolean
@@ -61,7 +65,10 @@ class DownloadsRepository(
         val plan = planner.resolve(itemId)
         if (plan.isEmpty()) return@withContext
 
-        val dir = paths.itemDir(itemId)
+        // Bind this download to the library active NOW, so a worker that runs after
+        // the user switches libraries still writes files and rows to the right one.
+        val libraryId = currentLib()
+        val dir = paths.itemDir(itemId, libraryId)
         val title = books.getBook(itemId)?.title.orEmpty()
 
         // Record the plan (durations included) before any bytes move, so the book's
@@ -91,7 +98,7 @@ class DownloadsRepository(
             OneTimeWorkRequestBuilder<TrackDownloadWorker>()
                 .setConstraints(constraints())
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
-                .addTag(tagFor(itemId))
+                .addTag(tagFor(itemId, libraryId))
                 .setInputData(
                     Data.Builder()
                         .putString(TrackDownloadWorker.KEY_ITEM_ID, itemId)
@@ -99,6 +106,7 @@ class DownloadsRepository(
                         .putString(TrackDownloadWorker.KEY_FILE_ID, t.fileId)
                         .putString(TrackDownloadWorker.KEY_FILENAME, t.filename)
                         .putString(TrackDownloadWorker.KEY_TITLE, title)
+                        .putString(TrackDownloadWorker.KEY_LIBRARY_ID, libraryId)
                         .build()
                 )
                 .build()
@@ -133,6 +141,17 @@ class DownloadsRepository(
         dao.deleteItem(itemId)
     }
 
+    /**
+     * Removes every download. Cancels in-flight work FIRST and waits for the
+     * cancellation to be applied, so a running track worker can't finish and
+     * re-create files or rows immediately after the wipe.
+     */
+    suspend fun deleteAll() = withContext(Dispatchers.IO) {
+        runCatching { workManager.cancelUniqueWork(QUEUE).result.get() }
+        paths.libraryDir().deleteRecursively()
+        dao.deleteAll()
+    }
+
     fun watch(itemId: String): Flow<ItemDownload> =
         dao.watchTracksFor(itemId).map { rows -> aggregate(itemId, rows) }
 
@@ -142,7 +161,26 @@ class DownloadsRepository(
         }
 
     suspend fun downloadedItemIds(): List<String> = withContext(Dispatchers.IO) {
-        dao.itemIds().filter { id -> aggregate(id, dao.tracksFor(id)).isComplete }
+        dao.itemIds().filter { id ->
+            val tracks = dao.tracksFor(id)
+            aggregate(id, tracks).isComplete && allTrackFilesPresent(id, tracks)
+        }
+    }
+
+    /**
+     * The DB says every track is COMPLETE — but a file can vanish underneath us
+     * (deleted by a file manager, cleared by the OS, or an interrupted Flutter
+     * download adopted as "done"). Confirm each track's bytes are actually on disk
+     * before we let a book play locally; otherwise it plays only the files that
+     * survive and can hit "finished" early.
+     */
+    private fun allTrackFilesPresent(itemId: String, tracks: List<DownloadEntity>): Boolean {
+        if (tracks.isEmpty()) return false
+        val dir = paths.itemDir(itemId)
+        return tracks.all { t ->
+            val f = java.io.File(dir, t.filename)
+            f.exists() && f.length() > 0
+        }
     }
 
     /**
@@ -197,7 +235,8 @@ class DownloadsRepository(
     }
 
     suspend fun isDownloaded(itemId: String): Boolean = withContext(Dispatchers.IO) {
-        aggregate(itemId, dao.tracksFor(itemId)).isComplete
+        val tracks = dao.tracksFor(itemId)
+        aggregate(itemId, tracks).isComplete && allTrackFilesPresent(itemId, tracks)
     }
 
     /** Track durations captured at download time — this is what keeps progress sync alive offline. */
@@ -239,7 +278,12 @@ class DownloadsRepository(
         )
     }
 
-    private fun tagFor(itemId: String) = "book:$itemId"
+    private fun currentLib(): String =
+        books.libraryId.takeIf { it.isNotBlank() } ?: DownloadPaths.DEFAULT_LIBRARY_ID
+
+    // The tag carries the library so cancel/delete only touch the intended
+    // library's work, never a same-item-id download in another library.
+    private fun tagFor(itemId: String, libraryId: String = currentLib()) = "book:$libraryId:$itemId"
 
     private companion object {
         /** ONE queue for the whole app — the platform queue is the queue. */
