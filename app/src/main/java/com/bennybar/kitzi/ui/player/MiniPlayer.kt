@@ -81,12 +81,17 @@ fun MiniPlayer(onExpand: () -> Unit) {
         Services.prefs.putBoolean("ui_mini_player_collapsed", value)
     }
 
+    // Theme-aware tinted surface: start from the theme's own container colour (so
+    // it's light in light mode, dark in dark mode) and wash it faintly with the
+    // cover's colour. Text stays onSurface, which contrasts in both themes.
     val palette by rememberCoverPalette(np.coverUrl)
-    val base = Color(0xFF14141C)
+    val base = MaterialTheme.colorScheme.surfaceContainerHigh
     val seed = palette?.primary ?: MaterialTheme.colorScheme.primary
-    val glassA = blend(seed, base, 0.22f).copy(alpha = 0.94f)
-    val glassB = blend(seed, base, 0.10f).copy(alpha = 0.94f)
+    val glassA = blend(seed, base, 0.16f)
+    val glassB = blend(seed, base, 0.06f)
     val glass = Brush.linearGradient(listOf(glassA, glassB))
+    val onGlass = MaterialTheme.colorScheme.onSurface
+    val onGlassMuted = MaterialTheme.colorScheme.onSurfaceVariant
 
     val togglePlay = {
         val p = controller.player
@@ -148,6 +153,7 @@ fun MiniPlayer(onExpand: () -> Unit) {
                     np.title,
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold,
+                    color = onGlass,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -155,19 +161,21 @@ fun MiniPlayer(onExpand: () -> Unit) {
                     fraction = fraction,
                     seed = np.title.hashCode(),
                     played = MaterialTheme.colorScheme.primary,
-                    rest = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.22f),
+                    rest = onGlassMuted.copy(alpha = 0.35f),
                     modifier = Modifier.fillMaxWidth().height(20.dp).padding(top = 2.dp),
                 )
             }
             Icon(
                 Icons.Default.Replay30,
                 "Rewind",
+                tint = onGlass,
                 modifier = Modifier.size(26.dp).clip(CircleShape).clickable { controller.seekBackward() },
             )
             RoundPlayButton(isPlaying, Modifier.padding(horizontal = 6.dp), togglePlay)
             Icon(
                 Icons.Default.Forward30,
                 "Forward",
+                tint = onGlass,
                 modifier = Modifier.size(26.dp).clip(CircleShape).clickable { controller.seekForward() },
             )
         }

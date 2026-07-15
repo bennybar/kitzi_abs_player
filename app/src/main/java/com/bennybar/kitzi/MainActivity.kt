@@ -12,9 +12,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
+import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.LibraryBooks
 import androidx.compose.material.icons.filled.Person
@@ -40,9 +42,11 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.bennybar.kitzi.data.Services
+import com.bennybar.kitzi.ui.UiPrefsState
 import com.bennybar.kitzi.playback.PlaybackService
 import com.bennybar.kitzi.ui.browse.AuthorsScreen
 import com.bennybar.kitzi.ui.browse.SeriesScreen
@@ -68,6 +72,7 @@ class MainActivity : ComponentActivity() {
 
         Services.init(this)
         ThemeState.load(Services.prefs)
+        com.bennybar.kitzi.ui.UiPrefsState.load(Services.prefs)
 
         // Binding to the session starts the service, so playback, the notification
         // and the app all share one player.
@@ -96,9 +101,10 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-/** The same six tabs the Flutter app has. Series and Stats live inside Books. */
+/** Every possible tab. Which ones actually show is decided by the settings. */
 private enum class Tab(val label: String, val icon: ImageVector) {
     BOOKS("Books", Icons.Default.LibraryBooks),
+    SERIES("Series", Icons.Default.Bookmarks),
     AUTHORS("Authors", Icons.Default.Person),
     QUEUE("Queue", Icons.AutoMirrored.Filled.QueueMusic),
     PLAYER("Player", Icons.Default.PlayArrow),
@@ -111,6 +117,8 @@ private sealed interface Overlay {
     data class BookDetail(val id: String) : Overlay
     data object Series : Overlay
     data object Stats : Overlay
+    /** The full player shown as an overlay when it isn't a bottom tab. */
+    data object Player : Overlay
 }
 
 /**
@@ -120,11 +128,14 @@ private sealed interface Overlay {
  * itself.
  */
 @Composable
-private fun KitziNavBar(selected: Tab, overlayOpen: Boolean, onSelect: (Tab) -> Unit) {
+private fun KitziNavBar(tabs: List<Tab>, selected: Tab, overlayOpen: Boolean, onSelect: (Tab) -> Unit) {
     val topShape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         shape = topShape,
+        // A soft top shadow so the rounded top reads as a raised sheet floating
+        // over the page, rather than a gap where the page shows through the corners.
+        shadowElevation = 10.dp,
         modifier = Modifier
             .fillMaxWidth()
             .border(
@@ -137,17 +148,19 @@ private fun KitziNavBar(selected: Tab, overlayOpen: Boolean, onSelect: (Tab) -> 
             containerColor = Color.Transparent,
             tonalElevation = 0.dp,
         ) {
-            Tab.entries.forEach { t ->
+            tabs.forEach { t ->
                 NavigationBarItem(
                     selected = selected == t && !overlayOpen,
                     onClick = { onSelect(t) },
-                    icon = { Icon(t.icon, null) },
+                    icon = { Icon(t.icon, null, modifier = Modifier.size(22.dp)) },
                     label = {
+                        // A small fixed size that fits "Downloads"/"Settings" across
+                        // six or seven tabs without clipping.
                         Text(
                             t.label,
-                            style = MaterialTheme.typography.labelSmall,
+                            fontSize = 10.sp,
+                            lineHeight = 12.sp,
                             maxLines = 1,
-                            softWrap = false,
                         )
                     },
                 )
@@ -173,6 +186,28 @@ private fun App() {
         return
     }
 
+    // The visible tabs follow the Appearance settings, live.
+    val showAuthors by UiPrefsState.showAuthorsTab
+    val showSeries by UiPrefsState.showSeriesTab
+    val playerAsTab by UiPrefsState.fullPlayerAsTab
+    val tabs = remember(showAuthors, showSeries, playerAsTab) {
+        buildList {
+            add(Tab.BOOKS)
+            if (showSeries) add(Tab.SERIES)
+            if (showAuthors) add(Tab.AUTHORS)
+            add(Tab.QUEUE)
+            if (playerAsTab) add(Tab.PLAYER)
+            add(Tab.DOWNLOADS)
+            add(Tab.SETTINGS)
+        }
+    }
+    // If the current tab was just hidden, fall back to Books.
+    if (tab !in tabs) tab = Tab.BOOKS
+
+    val openPlayer = {
+        if (playerAsTab) { tab = Tab.PLAYER; overlay = null } else overlay = Overlay.Player
+    }
+
     Scaffold(
         // Fills behind the status-bar / camera cutout with the app surface, so that
         // strip is never a mismatched colour.
@@ -181,10 +216,12 @@ private fun App() {
             Column {
                 // Above the nav bar everywhere except the full player, which would
                 // otherwise show the same controls twice.
-                if (tab != Tab.PLAYER) {
-                    MiniPlayer(onExpand = { tab = Tab.PLAYER; overlay = null })
+                val onPlayer = (tab == Tab.PLAYER && overlay == null) || overlay == Overlay.Player
+                if (!onPlayer) {
+                    MiniPlayer(onExpand = openPlayer)
                 }
                 KitziNavBar(
+                    tabs = tabs,
                     selected = tab,
                     overlayOpen = overlay != null,
                     onSelect = { tab = it; overlay = null },
@@ -198,7 +235,7 @@ private fun App() {
             when (val current = overlay) {
                 is Overlay.BookDetail -> BookDetailScreen(
                     itemId = current.id,
-                    onPlay = { tab = Tab.PLAYER; overlay = null },
+                    onPlay = openPlayer,
                     onBack = { overlay = null },
                 )
 
@@ -206,14 +243,17 @@ private fun App() {
 
                 Overlay.Stats -> StatsScreen(onBack = { overlay = null })
 
+                Overlay.Player -> PlayerScreen()
+
                 null -> when (tab) {
                     Tab.BOOKS -> LibraryScreen(
                         onOpenBook = openBook,
                         onOpenSeries = { overlay = Overlay.Series },
                         onOpenStats = { overlay = Overlay.Stats },
                     )
+                    Tab.SERIES -> SeriesScreen(onOpenBook = openBook, onBack = { tab = Tab.BOOKS })
                     Tab.AUTHORS -> AuthorsScreen(onOpenBook = openBook)
-                    Tab.QUEUE -> QueueScreen(onOpenPlayer = { tab = Tab.PLAYER })
+                    Tab.QUEUE -> QueueScreen(onOpenPlayer = openPlayer)
                     Tab.PLAYER -> PlayerScreen()
                     Tab.DOWNLOADS -> DownloadsScreen(onOpenBook = openBook)
                     Tab.SETTINGS -> SettingsScreen(onSignedOut = { signedIn = false })

@@ -114,11 +114,14 @@ fun rememberCoverPalette(coverUrl: String?): State<CoverPalette?> {
                 )
                 val bitmap: Bitmap = result.drawable?.toBitmapOrNull() ?: return@runCatching null
                 val palette = Palette.from(bitmap).generate()
-                val primary = palette.vibrantSwatch?.rgb
+                // Prefer muted/dominant swatches over vibrant: vibrant colours make
+                // a harsh, high-contrast gradient. These give a calm background wash.
+                val primary = palette.darkMutedSwatch?.rgb
+                    ?: palette.mutedSwatch?.rgb
                     ?: palette.dominantSwatch?.rgb
                     ?: return@runCatching null
                 val secondary = palette.mutedSwatch?.rgb
-                    ?: palette.darkVibrantSwatch?.rgb
+                    ?: palette.dominantSwatch?.rgb
                     ?: primary
                 CoverPalette(Color(primary), Color(secondary)).also { paletteCache[coverUrl] = it }
             }.getOrNull()

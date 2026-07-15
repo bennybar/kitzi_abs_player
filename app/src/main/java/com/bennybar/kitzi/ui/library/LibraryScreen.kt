@@ -455,9 +455,12 @@ fun BookCard(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                // The series line is tinted and sits above the author, as in the
-                // Flutter list.
-                book.series?.let { series ->
+                // The series line is tinted and sits above the author. Hidden when
+                // it merely repeats the author, if that setting is on.
+                val hideDupeSeries = com.bennybar.kitzi.ui.UiPrefsState.hideSeriesWhenSameAsAuthor.value
+                book.series
+                    ?.takeUnless { hideDupeSeries && it.equals(book.author, ignoreCase = true) }
+                    ?.let { series ->
                     val sequence = book.seriesSequence
                         ?.let { s -> if (s % 1.0 == 0.0) " #${s.toInt()}" else " #$s" }
                         .orEmpty()

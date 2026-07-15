@@ -62,6 +62,12 @@ class PlaybackController(
     /** Fired when a book plays to its end: drives the queue and delete-on-finish. */
     var onBookFinished: ((String) -> Unit)? = null
 
+    /** Fired when playback pauses; used to honour "pause cancels sleep timer". */
+    var onPaused: (() -> Unit)? = null
+
+    /** When a pause happened, so smart-rewind can size the rewind by how long. */
+    private var pausedAtMs: Long? = null
+
     fun attach(player: ExoPlayer) {
         this.player = player
         player.addListener(PlayerEvents())
@@ -116,6 +122,25 @@ class PlaybackController(
 
     fun seekForward() = nudge(prefs.getInt(KEY_SEEK_FORWARD, 30).toDouble())
     fun seekBackward() = nudge(-prefs.getInt(KEY_SEEK_BACKWARD, 30).toDouble())
+
+    /**
+     * "Smart rewind": on resuming after a pause, step back by an amount sized to
+     * how long the pause was, so you re-hear a little context. Consumed once.
+     */
+    private fun applySmartRewindIfDue() {
+        val pausedAt = pausedAtMs ?: return
+        pausedAtMs = null
+        if (!prefs.getBoolean(KEY_SMART_REWIND, false)) return
+
+        val elapsedSec = (android.os.SystemClock.elapsedRealtime() - pausedAt) / 1000.0
+        val rewind = when {
+            elapsedSec < 10 -> 3.0
+            elapsedSec <= 30 -> 5.0
+            elapsedSec >= 120 -> 30.0
+            else -> 0.0
+        }
+        if (rewind > 0) nudge(-rewind)
+    }
 
     /**
      * Chapter skip. REWRITE.md is explicit: skipToNext/Previous must move by
@@ -345,8 +370,11 @@ class PlaybackController(
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             if (isPlaying) {
                 accrual.onPlaybackStarted()
+                applySmartRewindIfDue()
             } else {
                 accrual.onPlaybackStopped()
+                pausedAtMs = android.os.SystemClock.elapsedRealtime()
+                onPaused?.invoke()
                 syncNow()
                 // A session is closed on pause and reopened on resume — that is what
                 // stops the server transcoding for a paused client.
@@ -413,6 +441,7 @@ class PlaybackController(
 
         private const val KEY_SEEK_FORWARD = "ui_seek_forward_seconds"
         private const val KEY_SEEK_BACKWARD = "ui_seek_backward_seconds"
+        private const val KEY_SMART_REWIND = "smart_rewind_enabled"
         private const val KEY_SPEED = "playback_speed"
         const val KEY_LAST_ITEM = "playback_last_item_id"
 

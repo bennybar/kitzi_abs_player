@@ -117,20 +117,22 @@ fun PlayerScreen() {
     val total = controller.totalDurationSec() ?: 0.0
     val chapter = controller.currentChapter()
 
+    // A gentle top-to-bottom wash of the cover's colour that settles back into the
+    // theme surface. Kept subtle (low blend, ends in the surface, not pure black)
+    // so text and controls — all onSurface — stay readable in both light and dark.
+    val surface = MaterialTheme.colorScheme.surface
     val background: Modifier = if (gradientEnabled && palette != null) {
         Modifier.background(
-            Brush.linearGradient(
+            Brush.verticalGradient(
                 colors = listOf(
-                    blend(palette!!.primary, MaterialTheme.colorScheme.surface, 0.20f),
-                    blend(palette!!.secondary, MaterialTheme.colorScheme.surfaceContainerHighest, 0.14f),
-                    Color.Black,
+                    blend(palette!!.primary, surface, 0.22f),
+                    blend(palette!!.secondary, surface, 0.10f),
+                    surface,
                 ),
-                start = Offset.Zero,
-                end = Offset.Infinite,
             )
         )
     } else {
-        Modifier.background(MaterialTheme.colorScheme.surface)
+        Modifier.background(surface)
     }
 
     Box(Modifier.fillMaxSize().then(background)) {
@@ -161,13 +163,15 @@ fun PlayerScreen() {
                         scope.launch(Dispatchers.IO) { Services.playbackApi.addBookmark(np.itemId, pos, label) }
                     },
                 )
-                CoverButton(
-                    icon = Icons.Default.History,
-                    label = "Last position",
-                    iconColor = Color(0xFF7EE08A),
-                    modifier = Modifier.align(Alignment.BottomStart).padding(12.dp),
-                    onClick = { /* resume-from-history is a stored journal position */ },
-                )
+                if (com.bennybar.kitzi.ui.UiPrefsState.resumeFromHistory.value) {
+                    CoverButton(
+                        icon = Icons.Default.History,
+                        label = "Last position",
+                        iconColor = Color(0xFF7EE08A),
+                        modifier = Modifier.align(Alignment.BottomStart).padding(12.dp),
+                        onClick = { /* resume-from-history is a stored journal position */ },
+                    )
+                }
                 CoverButton(
                     icon = Icons.Default.Info,
                     label = "More info",
@@ -275,8 +279,8 @@ fun PlayerScreen() {
                 )
             }
 
-            // chapter descriptor + chapter time
-            chapter?.let { c ->
+            // chapter descriptor + chapter time (the "book + chapter progress" setting)
+            chapter?.takeIf { com.bennybar.kitzi.ui.UiPrefsState.dualProgress.value }?.let { c ->
                 Row(
                     Modifier.fillMaxWidth().padding(top = 8.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,

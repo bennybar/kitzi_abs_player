@@ -23,8 +23,11 @@ object ThemeState {
     /** Light-mode surface tint level 0..4 (ui_surface_tint_level). 2 = medium. */
     val surfaceTintLevel = mutableIntStateOf(2)
 
-    /** The multiplier applied to text sizes; the Flutter base is 0.987 at 100%. */
-    val fontScale: Float get() = 0.987f * (fontScalePercent.intValue / 100f)
+    /**
+     * The multiplier applied to text sizes. The base is set so that 100% renders
+     * at what used to read as ~90% — the previous base (0.987) was a touch large.
+     */
+    val fontScale: Float get() = 0.888f * (fontScalePercent.intValue / 100f)
 
     fun load(prefs: FlutterPrefs) {
         mode.value = when (prefs.getString(KEY_MODE)) {

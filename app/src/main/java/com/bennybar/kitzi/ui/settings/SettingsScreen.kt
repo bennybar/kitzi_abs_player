@@ -67,6 +67,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.bennybar.kitzi.data.Library
 import com.bennybar.kitzi.data.Services
+import com.bennybar.kitzi.ui.UiPrefsState
 import com.bennybar.kitzi.ui.common.KitziSearchField
 import com.bennybar.kitzi.ui.common.ScreenHeader
 import com.bennybar.kitzi.ui.theme.ThemeMode
@@ -309,7 +310,11 @@ private fun Section(title: String) {
     )
 }
 
-/** A toggle bound directly to a boolean pref. */
+/**
+ * A toggle bound to a boolean pref. Keys that change the live UI (nav tabs,
+ * player affordances, list rows) are routed through UiPrefsState so the rest of
+ * the app updates immediately; the rest just persist.
+ */
 @Composable
 private fun TogglePref(
     key: String,
@@ -322,7 +327,8 @@ private fun TogglePref(
     var checked by remember { mutableStateOf(Services.prefs.getBoolean(key, default)) }
     ToggleRow(icon, title, subtitle, checked, indent) {
         checked = it
-        Services.prefs.putBoolean(key, it)
+        if (key in UiPrefsState.ownedKeys) UiPrefsState.set(Services.prefs, key, it)
+        else Services.prefs.putBoolean(key, it)
     }
 }
 

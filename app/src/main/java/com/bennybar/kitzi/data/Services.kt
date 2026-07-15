@@ -85,6 +85,11 @@ object Services {
             runCatching { downloads.adoptExistingDownloads() }
         }
 
+        // "Pause cancels the sleep timer" (default on).
+        playback.onPaused = {
+            if (prefs.getBoolean("pause_cancels_sleep_timer", true)) sleepTimer.cancel()
+        }
+
         // When a book finishes: advance the queue, and honour delete-on-finish.
         // Both are wired here rather than in the player so they work even when the
         // book completes with no UI attached (in the car, or with the screen off).
