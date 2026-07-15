@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Compose draws the UI; this only styles the window before first frame and
+         behind the system bars. The app defaults to dark and its surface is a
+         near-black 0B0C11, so the window background matches that exactly rather
+         than pure black — otherwise the status-bar/cutout strip reads as a
+         slightly different shade than the app. -->
+    <style name="Theme.Kitzi" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/kitzi_surface</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

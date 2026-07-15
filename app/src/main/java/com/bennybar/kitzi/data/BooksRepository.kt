@@ -1,0 +1,439 @@
+package com.bennybar.kitzi.data
+
+import android.content.Context
+import android.util.Log
+import com.bennybar.kitzi.data.db.AuthorEntity
+import com.bennybar.kitzi.data.db.BookSort
+import com.bennybar.kitzi.data.db.BooksDao
+import com.bennybar.kitzi.data.db.KitziDatabase
+import com.bennybar.kitzi.data.db.LibraryFilter
+import com.bennybar.kitzi.data.db.MediaProgressEntity
+import com.bennybar.kitzi.data.legacy.FlutterPrefs
+import com.bennybar.kitzi.data.model.Book
+import com.bennybar.kitzi.data.model.BookMapper
+import com.bennybar.kitzi.data.model.bool
+import com.bennybar.kitzi.data.model.int
+import com.bennybar.kitzi.data.model.num
+import com.bennybar.kitzi.data.model.obj
+import com.bennybar.kitzi.data.model.str
+import com.bennybar.kitzi.data.model.toBook
+import com.bennybar.kitzi.data.model.toEntity
+import com.bennybar.kitzi.data.net.AbsApi
+import com.bennybar.kitzi.data.net.SessionStore
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+
+data class Library(val id: String, val name: String, val mediaType: String?)
+
+data class Author(val name: String, val bookCount: Int, val imageUrl: String?)
+
+/** Position is the BOOK position, never the track position. */
+data class Bookmark(
+    val itemId: String,
+    val timeSec: Double,
+    val title: String,
+    val createdAt: Long,
+)
+
+data class ListeningStats(
+    val totalSec: Double,
+    /** "yyyy-MM-dd" -> seconds listened that day. */
+    val perDaySec: Map<String, Double>,
+    val itemsFinished: Int,
+)
+
+/**
+ * The library: server sync into Room, and every read served from Room.
+ */
+class BooksRepository(
+    private val context: Context,
+    private val api: AbsApi,
+    private val session: SessionStore,
+    private val prefs: FlutterPrefs,
+) {
+    private val etagPrefs =
+        context.getSharedPreferences("kitzi_etags", Context.MODE_PRIVATE)
+
+    private lateinit var db: KitziDatabase
+    private val dao: BooksDao get() = db.booksDao()
+
+    var libraryId: String = ""
+        private set
+
+    // ---- library selection -------------------------------------------------
+
+    /** Picks the active library, preferring the stored one (books_repository.dart:100). */
+    suspend fun ensureLibrary(): String = withContext(Dispatchers.IO) {
+        prefs.getString(FlutterPrefs.KEY_LIBRARY_ID)?.takeIf { it.isNotBlank() }?.let {
+            open(it)
+            return@withContext it
+        }
+
+        val libs = listLibraries()
+        check(libs.isNotEmpty()) { "server returned no libraries" }
+        // First library that actually holds books; podcast/ebook libraries are not the default.
+        val chosen = libs.firstOrNull { it.mediaType?.contains("book", ignoreCase = true) == true }
+            ?: libs.first()
+
+        prefs.putString(FlutterPrefs.KEY_LIBRARY_ID, chosen.id)
+        open(chosen.id)
+        chosen.id
+    }
+
+    suspend fun listLibraries(): List<Library> = withContext(Dispatchers.IO) {
+        api.libraries().mapNotNull { j ->
+            val id = j["id"].str() ?: j["_id"].str() ?: return@mapNotNull null
+            Library(
+                id = id,
+                name = j["name"].str() ?: j["title"].str() ?: id,
+                mediaType = j["mediaType"].str() ?: j["type"].str(),
+            )
+        }
+    }
+
+    /**
+     * Switching library re-points the DB and drops every cached ETag. Without
+     * this, one library's conditional requests get answered against another's
+     * cache (books_repository.dart:557).
+     */
+    suspend fun switchLibrary(id: String) = withContext(Dispatchers.IO) {
+        prefs.putString(FlutterPrefs.KEY_LIBRARY_ID, id)
+        etagPrefs.edit().clear().apply()
+        open(id)
+    }
+
+    private fun open(id: String) {
+        libraryId = id
+        db = KitziDatabase.forLibrary(context, id)
+    }
+
+    // ---- reads (always from Room) ------------------------------------------
+
+    /**
+     * Sort, filter, search and paging happen in SQL. Never re-sort or re-filter
+     * the returned list — that is the "app feels broken" bug in REWRITE.md §2.
+     */
+    fun pagedBooks(
+        sort: BookSort,
+        filter: LibraryFilter,
+        search: String?,
+        limit: Int,
+        offset: Int,
+    ): Flow<List<Book>> {
+        val query = BooksDao.libraryQuery(sort, filter, search, limit, offset)
+        val base = session.baseUrl.orEmpty()
+        val token = session.accessToken
+        return dao.pagedBooksRaw(query).map { rows -> rows.map { it.toBook(base, token) } }
+    }
+
+    suspend fun countBooks(filter: LibraryFilter, search: String?): Int = withContext(Dispatchers.IO) {
+        dao.countBooksRaw(BooksDao.libraryQuery(BookSort.NAME_ASC, filter, search, 0, 0, countOnly = true))
+    }
+
+    suspend fun getBook(id: String): Book? = withContext(Dispatchers.IO) {
+        dao.getBook(id)?.toBook(session.baseUrl.orEmpty(), session.accessToken)
+    }
+
+    suspend fun booksInSeries(series: String): List<Book> = withContext(Dispatchers.IO) {
+        dao.booksInSeries(series).map { it.toBook(session.baseUrl.orEmpty(), session.accessToken) }
+    }
+
+    suspend fun booksByAuthor(author: String): List<Book> = withContext(Dispatchers.IO) {
+        dao.booksByAuthor(author).map { it.toBook(session.baseUrl.orEmpty(), session.accessToken) }
+    }
+
+    suspend fun authors(): List<Pair<String, Int>> = withContext(Dispatchers.IO) {
+        dao.authorsWithCounts().map { it.name to it.bookCount }
+    }
+
+    /**
+     * Authors with their portraits.
+     *
+     * The author list itself is derived from the books table (ABS has no "list my
+     * authors" endpoint), but the portrait needs the author's id, which only the
+     * library's author endpoint knows. Those ids are cached in the authors table.
+     */
+    suspend fun authorsWithImages(): List<Author> = withContext(Dispatchers.IO) {
+        runCatching { syncAuthorMetadata() }
+
+        val ids = dao.allAuthors().associate { it.name to it.id }
+        val base = session.baseUrl.orEmpty()
+        val token = session.accessToken
+
+        dao.authorsWithCounts().map { (name, count) ->
+            val id = ids[name]
+            Author(
+                name = name,
+                bookCount = count,
+                imageUrl = id?.let {
+                    "$base/api/authors/$it/image" + if (!token.isNullOrEmpty()) "?token=$token" else ""
+                },
+            )
+        }
+    }
+
+    /** Refreshed at most daily; the portraits rarely change. */
+    private suspend fun syncAuthorMetadata() {
+        val last = prefs.getDouble(KEY_AUTHORS_SYNCED, 0.0).toLong()
+        if (System.currentTimeMillis() - last < 24 * 3600 * 1000L) return
+
+        val fetched = runCatching { api.authors(libraryId) }.getOrNull() ?: return
+        val rows = fetched.mapNotNull { j ->
+            val name = j["name"].str() ?: return@mapNotNull null
+            AuthorEntity(
+                name = name,
+                id = j["id"].str() ?: j["_id"].str(),
+                description = j["description"].str() ?: j["desc"].str(),
+                updatedAt = j["updatedAt"].num()?.toLong(),
+                lastSyncedAt = System.currentTimeMillis(),
+            )
+        }
+        if (rows.isNotEmpty()) {
+            dao.upsertAuthors(rows)
+            prefs.putDouble(KEY_AUTHORS_SYNCED, System.currentTimeMillis().toDouble())
+        }
+    }
+
+    /** `minBooks` = 1 shows every series (the ui_series_min_books setting). */
+    suspend fun series(minBooks: Int = 1): List<Pair<String, Int>> = withContext(Dispatchers.IO) {
+        dao.seriesWithCounts(minBooks).map { it.name to it.bookCount }
+    }
+
+    /**
+     * Collections have no server endpoint — they are a client-side grouping over
+     * the `collection` field parsed out of each book's metadata.
+     */
+    suspend fun collections(): Map<String, List<Book>> = withContext(Dispatchers.IO) {
+        val base = session.baseUrl.orEmpty()
+        val token = session.accessToken
+        dao.booksInAnyCollection()
+            .map { it.toBook(base, token) }
+            .groupBy { it.collection!! }
+            .mapValues { (_, books) ->
+                // Explicit sequence first, then title — same rule as series.
+                books.sortedWith(
+                    compareBy(nullsLast()) { it.collectionSequence }
+                ).sortedWith(
+                    compareBy<Book> { it.collectionSequence ?: Double.MAX_VALUE }.thenBy { it.title.lowercase() }
+                )
+            }
+            .toSortedMap()
+    }
+
+    suspend fun continueListening(limit: Int = 20): List<Book> = withContext(Dispatchers.IO) {
+        dao.continueListening(limit).map { it.toBook(session.baseUrl.orEmpty(), session.accessToken) }
+    }
+
+    suspend fun recentlyAdded(limit: Int = 20): List<Book> = withContext(Dispatchers.IO) {
+        dao.recentlyAdded(limit).map { it.toBook(session.baseUrl.orEmpty(), session.accessToken) }
+    }
+
+    /** Bookmarks live on `/api/me`; there is no per-item endpoint. */
+    suspend fun bookmarks(itemId: String): List<Bookmark> = withContext(Dispatchers.IO) {
+        val me = runCatching { api.me() }.getOrNull() ?: return@withContext emptyList()
+        (me["bookmarks"] as? JsonArray).orEmpty().mapNotNull { el ->
+            val b = el.obj() ?: return@mapNotNull null
+            if (b["libraryItemId"].str() != itemId) return@mapNotNull null
+            Bookmark(
+                itemId = itemId,
+                timeSec = b["time"].num() ?: return@mapNotNull null,
+                title = b["title"].str() ?: "Bookmark",
+                createdAt = b["createdAt"].num()?.toLong() ?: 0L,
+            )
+        }.sortedBy { it.timeSec }
+    }
+
+    /** `GET /api/me/listening-stats` — total seconds listened, and per-day totals. */
+    suspend fun listeningStats(): ListeningStats? = withContext(Dispatchers.IO) {
+        val json = runCatching { api.listeningStats() }.getOrNull() ?: return@withContext null
+        val perDay = (json["days"] as? JsonObject)?.mapValues { (_, v) -> v.num() ?: 0.0 }.orEmpty()
+        ListeningStats(
+            totalSec = json["totalTime"].num() ?: 0.0,
+            perDaySec = perDay,
+            itemsFinished = (json["items"] as? JsonObject)?.size ?: 0,
+        )
+    }
+
+    suspend fun isEmpty(): Boolean = withContext(Dispatchers.IO) { dao.count() == 0 }
+
+    // ---- server sync -------------------------------------------------------
+
+    /**
+     * Pulls a page into Room.
+     *
+     * [force] means user-initiated (pull-to-refresh): it sends NO If-None-Match
+     * at all, and refetches unconditionally if a 304 somehow comes back anyway.
+     * The bug this guards is real and was shipped once: a conditional request
+     * answered 304 was served from the local DB, so newly added books never
+     * appeared no matter how many times the user pulled.
+     */
+    suspend fun fetchPage(
+        page: Int,
+        limit: Int = 50,
+        sort: BookSort = BookSort.UPDATED_DESC,
+        force: Boolean = false,
+    ): Int = withContext(Dispatchers.IO) {
+        val (sortField, desc) = serverSort(sort)
+        // The ETag is per (library, sort, page) — sharing one key across pages lets a
+        // page-2 ETag be replayed onto a page-1 request and yield a bogus 304.
+        val etagKey = "etag_${libraryId}_${sortField}_${desc}_$page"
+        val etag = if (force) null else etagPrefs.getString(etagKey, null)
+
+        var result = api.libraryItems(libraryId, page, limit, sortField, desc, etag)
+
+        if (result.notModified) {
+            val cached = dao.countBooksRaw(
+                BooksDao.libraryQuery(sort, LibraryFilter.ALL, null, 0, 0, countOnly = true)
+            )
+            // A 304 is only trustworthy if we actually have the rows it refers to.
+            if (cached > 0) return@withContext 0
+            result = api.libraryItems(libraryId, page, limit, sortField, desc, etag = null)
+        }
+
+        result.etag?.let { etagPrefs.edit().putString(etagKey, it).apply() }
+        upsert(result.items)
+    }
+
+    /** User-initiated refresh. Always unconditional. */
+    suspend fun refresh(sort: BookSort = BookSort.UPDATED_DESC): Int =
+        fetchPage(page = 1, limit = 50, sort = sort, force = true)
+
+    /**
+     * Pulls the whole library into Room, a page at a time.
+     *
+     * The cache has to hold everything, not just the first page: sort, filter and
+     * search all run as SQL over the cache, so a partially-cached library would
+     * sort and filter only the part that happened to be loaded — the exact bug
+     * REWRITE.md warns about. It also means the library works offline.
+     */
+    suspend fun syncAll(pageSize: Int = 100): Int = withContext(Dispatchers.IO) {
+        var page = 1
+        var total = 0
+        var emptyStreak = 0
+
+        while (page <= MAX_SYNC_PAGES) {
+            val (sortField, desc) = serverSort(BookSort.UPDATED_DESC)
+            val result = runCatching {
+                api.libraryItems(libraryId, page, pageSize, sortField, desc, etag = null)
+            }.getOrNull() ?: break
+
+            if (result.items.isEmpty()) break
+
+            val added = upsert(result.items)
+            total += added
+
+            // The server may ignore `page` and keep returning the same items; stop
+            // rather than loop forever.
+            if (added == 0) {
+                if (++emptyStreak >= 2) break
+            } else {
+                emptyStreak = 0
+            }
+
+            if (result.items.size < pageSize) break
+            page++
+        }
+        Log.i(TAG, "syncAll: cached $total new books over ${page} page(s)")
+        total
+    }
+
+    /** The server's own count for the library, which includes books not yet cached. */
+    suspend fun serverBookCount(): Int? = withContext(Dispatchers.IO) {
+        runCatching { api.libraryStats(libraryId)?.get("totalItems").int() }.getOrNull()
+    }
+
+    private suspend fun upsert(items: List<JsonObject>): Int {
+        val base = session.baseUrl.orEmpty()
+        val token = session.accessToken
+        val books = items
+            .mapNotNull { BookMapper.fromLibraryItem(it, base, token) }
+            // Ebooks and podcasts never enter the library cache.
+            .filter { it.isAudioBook }
+
+        if (books.isEmpty()) return 0
+
+        // Don't overwrite a newer local row with a staler server one.
+        val fresh = books.filter { book ->
+            val existing = dao.updatedAtOf(book.id)
+            existing == null || book.updatedAt == null || book.updatedAt > existing
+        }
+        if (fresh.isNotEmpty()) dao.upsertBooks(fresh.map { it.toEntity() })
+        return fresh.size
+    }
+
+    suspend fun searchServer(query: String): List<Book> = withContext(Dispatchers.IO) {
+        val base = session.baseUrl.orEmpty()
+        val token = session.accessToken
+        val found = api.search(libraryId, query).mapNotNull { BookMapper.fromLibraryItem(it, base, token) }
+            .filter { it.isAudioBook }
+        if (found.isNotEmpty()) dao.upsertBooks(found.map { it.toEntity() })
+        found
+    }
+
+    /**
+     * Progress for every book, from a single `GET /api/me`. Stored so the library
+     * filters can run in SQL instead of being applied to a loaded page.
+     */
+    suspend fun syncProgress(): Int = withContext(Dispatchers.IO) {
+        val me = runCatching { api.me() }.getOrNull() ?: return@withContext 0
+        val entries = (me["mediaProgress"] as? JsonArray).orEmpty().mapNotNull { el ->
+            val m = el.obj() ?: return@mapNotNull null
+            val itemId = m["libraryItemId"].str() ?: m["id"].str() ?: return@mapNotNull null
+
+            val duration = m["duration"].num() ?: 0.0
+            val currentTime = m["currentTime"].num() ?: 0.0
+            // ABS sometimes reports progress as 0 while currentTime is set; derive it.
+            val reported = m["progress"].num() ?: 0.0
+            val progress = when {
+                reported > 0 -> reported
+                duration > 0 -> currentTime / duration
+                else -> 0.0
+            }.coerceIn(0.0, 1.0).let { if (it.isNaN()) 0.0 else it }
+
+            MediaProgressEntity(
+                itemId = itemId,
+                progress = progress,
+                isFinished = m["isFinished"].bool() == true,
+                currentTimeSec = currentTime,
+                durationSec = duration,
+                lastUpdate = m["lastUpdate"].num()?.toLong() ?: System.currentTimeMillis(),
+            )
+        }
+        if (entries.isNotEmpty()) dao.upsertProgress(entries)
+        entries.size
+    }
+
+    suspend fun progressFor(id: String): MediaProgressEntity? = withContext(Dispatchers.IO) {
+        dao.progressFor(id)
+    }
+
+    /**
+     * Progress for every book, so a list row can show its finished/in-progress mark.
+     *
+     * Wrapped in `flow { }` so the DAO is not touched until someone collects: the
+     * database is opened by ensureLibrary(), which runs after the ViewModel is
+     * constructed, and touching `dao` eagerly crashes the ViewModel's init.
+     */
+    fun watchProgress(): Flow<Map<String, MediaProgressEntity>> = flow {
+        emitAll(dao.watchAllProgress().map { rows -> rows.associateBy { it.itemId } })
+    }
+
+    private fun serverSort(sort: BookSort): Pair<String, Boolean> = when (sort) {
+        BookSort.NAME_ASC -> "media.metadata.title" to false
+        BookSort.ADDED_DESC -> "addedAt" to true
+        BookSort.UPDATED_DESC -> "updatedAt" to true
+    }
+
+    private companion object {
+        const val TAG = "BooksRepository"
+        /** A backstop against a server that pages forever. 100 * 200 = 20k books. */
+        const val MAX_SYNC_PAGES = 200
+        const val KEY_AUTHORS_SYNCED = "authors_last_synced"
+    }
+}

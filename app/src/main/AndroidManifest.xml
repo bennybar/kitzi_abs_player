@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Network + wake locks -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- Foreground services for playback & downloads -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <!-- Android 13+ runtime notification permission -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application
+        android:name=".KitziApplication"
+        android:label="@string/app_name"
+        android:icon="@mipmap/launcher_icon"
+        android:roundIcon="@mipmap/launcher_icon"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:enableOnBackInvokedCallback="true"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Kitzi">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.Kitzi">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- WorkManager declares this service with no foregroundServiceType, so a
+             download worker calling setForeground(dataSync) is rejected at runtime.
+             Merge the type onto its declaration. -->
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync"
+            tools:node="merge" />
+
+        <!-- Playback, lock screen, media buttons and Android Auto. -->
+        <service
+            android:name=".playback.PlaybackService"
+            android:exported="true"
+            android:foregroundServiceType="mediaPlayback">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaLibraryService" />
+                <action android:name="android.media.browse.MediaBrowserService" />
+                <category android:name="android.media.intent.category.CAR_MEDIA" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <meta-data
+                android:name="android.media.browse.SEARCH_SUPPORTED"
+                android:value="true" />
+        </service>
+
+        <!-- OIDC / SSO redirect capture. The audiobookshelf:// scheme is unchanged
+             from the Flutter app so IdP redirect-URI allowlists keep working. -->
+        <activity
+            android:name=".ui.login.OidcCallbackActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:taskAffinity=""
+            android:noHistory="true"
+            android:theme="@android:style/Theme.NoDisplay">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="audiobookshelf" />
+            </intent-filter>
+        </activity>
+
+        <!-- Required by Android Auto to detect this as a media app -->
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc" />
+
+    </application>
+
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="http" />
+        </intent>
+    </queries>
+</manifest>

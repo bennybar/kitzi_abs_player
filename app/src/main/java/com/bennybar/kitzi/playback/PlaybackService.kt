@@ -1,0 +1,286 @@
+package com.bennybar.kitzi.playback
+
+import android.content.Intent
+import android.os.Bundle
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
+import androidx.media3.common.ForwardingPlayer
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
+import androidx.media3.common.Player
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.okhttp.OkHttpDataSource
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.session.CommandButton
+import androidx.media3.session.LibraryResult
+import androidx.media3.session.MediaLibraryService
+import androidx.media3.session.MediaSession
+import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionResult
+import com.bennybar.kitzi.data.Services
+import com.bennybar.kitzi.data.db.BookSort
+import com.bennybar.kitzi.data.db.LibraryFilter
+import com.bennybar.kitzi.data.model.Book
+import com.google.common.collect.ImmutableList
+import com.google.common.util.concurrent.Futures
+import com.google.common.util.concurrent.ListenableFuture
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.guava.future
+import kotlinx.coroutines.launch
+
+/**
+ * The media session: lock screen, notification, hardware buttons and Android Auto.
+ *
+ * The player exposed to the session is wrapped so that everything outside the app
+ * sees BOOK coordinates, not track-local ones — otherwise the Auto seekbar and
+ * the lock screen would show "12 minutes" for a 14-hour book, and skip would move
+ * by file instead of by chapter.
+ */
+class PlaybackService : MediaLibraryService() {
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private lateinit var session: MediaLibrarySession
+    private lateinit var controller: PlaybackController
+
+    override fun onCreate() {
+        super.onCreate()
+        Services.init(this)
+        controller = Services.playback
+
+        val httpFactory = OkHttpDataSource.Factory(Services.httpClient)
+        val player = ExoPlayer.Builder(this)
+            .setMediaSourceFactory(
+                DefaultMediaSourceFactory(DefaultDataSource.Factory(this, httpFactory))
+            )
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setContentType(C.AUDIO_CONTENT_TYPE_SPEECH)
+                    .setUsage(C.USAGE_MEDIA)
+                    .build(),
+                /* handleAudioFocus = */ true,
+            )
+            .setHandleAudioBecomingNoisy(true)
+            .setSeekForwardIncrementMs(
+                Services.prefs.getInt("ui_seek_forward_seconds", 30) * 1000L
+            )
+            .setSeekBackIncrementMs(
+                Services.prefs.getInt("ui_seek_backward_seconds", 30) * 1000L
+            )
+            .build()
+
+        controller.attach(player)
+
+        session = MediaLibrarySession.Builder(this, BookCoordinatePlayer(player), LibraryCallback())
+            .build()
+    }
+
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo) = session
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        // Swiping the app away should not kill playback mid-chapter, but a paused
+        // player has nothing to keep the service alive for.
+        if (!session.player.playWhenReady || session.player.mediaItemCount == 0) {
+            stopSelf()
+        }
+    }
+
+    override fun onDestroy() {
+        session.player.release()
+        session.release()
+        super.onDestroy()
+    }
+
+    /**
+     * Presents the whole book to the outside world.
+     *
+     * Chapter skip is the point: REWRITE.md is explicit that skipToNext /
+     * skipToPrevious must move by CHAPTER. Mapping them to a +/-30s nudge means a
+     * driver cannot change chapter, which is the single most-used control in a car.
+     * Seeking stays on fastForward / rewind, where it belongs.
+     */
+    private inner class BookCoordinatePlayer(player: Player) : ForwardingPlayer(player) {
+
+        override fun getCurrentPosition(): Long =
+            controller.globalPositionSec()?.let { (it * 1000).toLong() } ?: super.getCurrentPosition()
+
+        override fun getDuration(): Long =
+            controller.totalDurationSec()?.let { (it * 1000).toLong() } ?: super.getDuration()
+
+        override fun getContentPosition(): Long = currentPosition
+
+        override fun getContentDuration(): Long = duration
+
+        override fun seekTo(positionMs: Long) = controller.seekGlobal(positionMs / 1000.0)
+
+        override fun seekToNext() = controller.nextChapter()
+
+        override fun seekToPrevious() = controller.previousChapter()
+
+        override fun seekToNextMediaItem() = controller.nextChapter()
+
+        override fun seekToPreviousMediaItem() = controller.previousChapter()
+
+        override fun hasNextMediaItem(): Boolean = true
+
+        override fun hasPreviousMediaItem(): Boolean = true
+
+        override fun seekForward() = controller.seekForward()
+
+        override fun seekBack() = controller.seekBackward()
+    }
+
+    private inner class LibraryCallback : MediaLibrarySession.Callback {
+
+        override fun onGetLibraryRoot(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            params: LibraryParams?,
+        ): ListenableFuture<LibraryResult<MediaItem>> =
+            Futures.immediateFuture(
+                LibraryResult.ofItem(browsableItem(ROOT, "Kitzi"), params)
+            )
+
+        /**
+         * The browse tree needs a real root — a single flat list of every book is
+         * unusable in a car.
+         */
+        override fun onGetChildren(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            parentId: String,
+            page: Int,
+            pageSize: Int,
+            params: LibraryParams?,
+        ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> = scope.future {
+            val children: List<MediaItem> = when (parentId) {
+                ROOT -> listOf(
+                    browsableItem(CONTINUE, "Continue listening"),
+                    browsableItem(RECENT, "Recently added"),
+                    browsableItem(DOWNLOADED, "Downloaded"),
+                    browsableItem(ALL, "All books"),
+                )
+
+                CONTINUE -> booksToItems(
+                    Services.books.pagedBooks(
+                        BookSort.UPDATED_DESC, LibraryFilter.IN_PROGRESS, null, pageSize, page * pageSize,
+                    ).first()
+                )
+
+                RECENT -> booksToItems(
+                    Services.books.pagedBooks(
+                        BookSort.ADDED_DESC, LibraryFilter.ALL, null, pageSize, page * pageSize,
+                    ).first()
+                )
+
+                DOWNLOADED -> booksToItems(
+                    Services.downloadPaths.downloadedItemIds().mapNotNull { Services.books.getBook(it) }
+                )
+
+                ALL -> booksToItems(
+                    Services.books.pagedBooks(
+                        BookSort.NAME_ASC, LibraryFilter.ALL, null, pageSize, page * pageSize,
+                    ).first()
+                )
+
+                else -> emptyList()
+            }
+            LibraryResult.ofItemList(ImmutableList.copyOf(children), params)
+        }
+
+        override fun onGetItem(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            mediaId: String,
+        ): ListenableFuture<LibraryResult<MediaItem>> = scope.future {
+            val book = Services.books.getBook(mediaId)
+                ?: return@future LibraryResult.ofError<MediaItem>(LibraryResult.RESULT_ERROR_BAD_VALUE)
+            LibraryResult.ofItem(book.toMediaItem(), null)
+        }
+
+        /**
+         * Auto/lock-screen asks us to play a media id. Load the book ourselves
+         * rather than letting the session set the item directly — only the
+         * controller knows how to resolve local files and book coordinates.
+         */
+        override fun onSetMediaItems(
+            mediaSession: MediaSession,
+            browser: MediaSession.ControllerInfo,
+            mediaItems: MutableList<MediaItem>,
+            startIndex: Int,
+            startPositionMs: Long,
+        ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+            val itemId = mediaItems.firstOrNull()?.mediaId?.substringBefore('#')
+            if (!itemId.isNullOrEmpty()) {
+                scope.launch { controller.playItem(itemId) }
+            }
+            // The controller populates the playlist itself.
+            return Futures.immediateFuture(
+                MediaSession.MediaItemsWithStartPosition(emptyList(), startIndex, startPositionMs)
+            )
+        }
+
+        override fun onSearch(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            query: String,
+            params: LibraryParams?,
+        ): ListenableFuture<LibraryResult<Void>> = scope.future {
+            session.notifySearchResultChanged(browser, query, searchHits(query).size, params)
+            LibraryResult.ofVoid()
+        }
+
+        override fun onGetSearchResult(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            query: String,
+            page: Int,
+            pageSize: Int,
+            params: LibraryParams?,
+        ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> = scope.future {
+            LibraryResult.ofItemList(ImmutableList.copyOf(booksToItems(searchHits(query))), params)
+        }
+
+        private suspend fun searchHits(query: String): List<Book> =
+            Services.books.pagedBooks(BookSort.NAME_ASC, LibraryFilter.ALL, query, 50, 0).first()
+    }
+
+    private fun booksToItems(books: List<Book>) = books.map { it.toMediaItem() }
+
+    private fun Book.toMediaItem(): MediaItem = MediaItem.Builder()
+        .setMediaId(id)
+        .setMediaMetadata(
+            MediaMetadata.Builder()
+                .setTitle(title)
+                .setArtist(author)
+                .setArtworkUri(coverUrl.let(android.net.Uri::parse))
+                .setIsBrowsable(false)
+                .setIsPlayable(true)
+                .setMediaType(MediaMetadata.MEDIA_TYPE_AUDIO_BOOK)
+                .build()
+        )
+        .build()
+
+    private fun browsableItem(id: String, title: String): MediaItem = MediaItem.Builder()
+        .setMediaId(id)
+        .setMediaMetadata(
+            MediaMetadata.Builder()
+                .setTitle(title)
+                .setIsBrowsable(true)
+                .setIsPlayable(false)
+                .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_AUDIO_BOOKS)
+                .build()
+        )
+        .build()
+
+    private companion object {
+        const val ROOT = "kitzi_root"
+        const val CONTINUE = "kitzi_continue"
+        const val RECENT = "kitzi_recent"
+        const val DOWNLOADED = "kitzi_downloaded"
+        const val ALL = "kitzi_all"
+    }
+}

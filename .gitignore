@@ -1,78 +1,44 @@
-# Miscellaneous
+# Built application files
+*.apk
+*.aar
+*.ap_
+*.aab
+
+# Files for the ART/Dalvik VM
+*.dex
+
+# Java class files
 *.class
-IMPROVEMENTS.md
-*google-services.json
-*.log
-*.pyc
-*.swp
-.DS_Store
-.atom/
-.build/
-.buildlog/
-.history
-.svn/
-.swiftpm/
-migrate_working_dir/
 
-# IntelliJ related
+# Generated files
+bin/
+gen/
+out/
+release/
+
+# Gradle files
+.gradle/
+build/
+
+# Local configuration file (sdk path, etc)
+local.properties
+
+# Android Studio / IntelliJ
 *.iml
-*.ipr
-*.iws
 .idea/
+captures/
+.externalNativeBuild/
+.cxx/
+*.hprof
 
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
-#.vscode/
-
-# Flutter/Dart/Pub related
-**/doc/api/
-**/ios/Flutter/.last_build_id
-.dart_tool/
-.flutter-plugins
-.flutter-plugins-dependencies
-.pub-cache/
-.pub/
-/build/
-
-# Symbolication related
-app.*.symbols
-
-# Obfuscation related
-app.*.map.json
-
-# Android Studio will place build artifacts here
-/android/app/debug
-/android/app/profile
-/android/app/release
-
-# Additional build artifacts
-/android/build/
-/ios/build/
-/build/
-*.iml
-kitzi.iml
-
-# IDE files
-.idea/
-.vscode/
+# Kotlin
+.kotlin/
 
 # OS files
 .DS_Store
-Thumbs.db
 
-# Flutter generated
-.flutter-plugins
-.flutter-plugins-dependencies
-
-# Generated files
-*.g.dart
-*.freezed.dart
-*.mocks.dart
-
-# Android signing files (keep out of open source repo)
-android/key.properties
-android/*.jks
-android/*.keystore
+# Signing material — the existing Play upload key. Never commit.
+key.properties
+upload-keystore.jks
 *.jks
 *.keystore

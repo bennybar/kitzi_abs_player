@@ -1,0 +1,425 @@
+package com.bennybar.kitzi.playback
+
+import android.content.Context
+import android.net.Uri
+import android.util.Log
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
+import androidx.media3.common.PlaybackParameters
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import com.bennybar.kitzi.data.BooksRepository
+import com.bennybar.kitzi.data.legacy.DownloadPaths
+import com.bennybar.kitzi.data.legacy.FlutterPrefs
+import com.bennybar.kitzi.data.net.PlaybackApi
+import com.bennybar.kitzi.data.net.ProgressReport
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+
+data class NowPlaying(
+    val itemId: String,
+    val title: String,
+    val author: String?,
+    val coverUrl: String?,
+    val tracks: List<Track>,
+    val chapters: List<Chapter>,
+    val serverDurationSec: Double?,
+    val isLocal: Boolean,
+)
+
+/**
+ * Owns the player and all book-coordinate state. One instance, shared by the UI
+ * and the media service, so the notification and the app can never disagree.
+ */
+class PlaybackController(
+    private val context: Context,
+    private val api: PlaybackApi,
+    private val books: BooksRepository,
+    private val prefs: FlutterPrefs,
+    private val downloads: DownloadPaths,
+) {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val accrual = ListeningAccrual()
+
+    lateinit var player: ExoPlayer
+        private set
+
+    private val _nowPlaying = MutableStateFlow<NowPlaying?>(null)
+    val nowPlaying: StateFlow<NowPlaying?> = _nowPlaying.asStateFlow()
+
+    private var sessionId: String? = null
+    private var lastSyncedSec: Double = -1.0
+    private var syncJob: kotlinx.coroutines.Job? = null
+
+    /** Fired when a book plays to its end: drives the queue and delete-on-finish. */
+    var onBookFinished: ((String) -> Unit)? = null
+
+    fun attach(player: ExoPlayer) {
+        this.player = player
+        player.addListener(PlayerEvents())
+        player.setPlaybackParameters(PlaybackParameters(savedSpeed()))
+    }
+
+    // ---- book coordinates --------------------------------------------------
+
+    private fun tracks(): List<Track> = _nowPlaying.value?.tracks.orEmpty()
+
+    /** Where we are in the BOOK, or null when it cannot be known (see PlaybackMath). */
+    fun globalPositionSec(): Double? {
+        if (!::player.isInitialized) return null
+        val np = _nowPlaying.value ?: return null
+        return PlaybackMath.computeGlobal(
+            player.currentMediaItemIndex,
+            player.currentPosition / 1000.0,
+            np.tracks,
+        )
+    }
+
+    fun totalDurationSec(): Double? {
+        val np = _nowPlaying.value ?: return null
+        return PlaybackMath.totalDuration(np.tracks, np.serverDurationSec)
+    }
+
+    fun currentChapter(): ChapterMetrics? {
+        val pos = globalPositionSec() ?: return null
+        val np = _nowPlaying.value ?: return null
+        return PlaybackMath.currentChapter(pos, np.chapters, totalDurationSec())
+    }
+
+    /**
+     * The only seek that matters. With the whole book as one ExoPlayer playlist
+     * this is a single atomic call — no source reload, no sleep, no play-state
+     * juggling.
+     */
+    fun seekGlobal(globalSec: Double, reportNow: Boolean = true) {
+        val np = _nowPlaying.value ?: return
+        val total = totalDurationSec() ?: Double.MAX_VALUE
+        val target = globalSec.coerceIn(0.0, total)
+        val tp = PlaybackMath.mapGlobalToTrack(target, np.tracks)
+
+        player.seekTo(tp.trackIndex, (tp.offsetSec * 1000).toLong())
+        if (reportNow) syncNow()
+    }
+
+    fun nudge(seconds: Double) {
+        val pos = globalPositionSec() ?: return
+        seekGlobal(pos + seconds)
+    }
+
+    fun seekForward() = nudge(prefs.getInt(KEY_SEEK_FORWARD, 30).toDouble())
+    fun seekBackward() = nudge(-prefs.getInt(KEY_SEEK_BACKWARD, 30).toDouble())
+
+    /**
+     * Chapter skip. REWRITE.md is explicit: skipToNext/Previous must move by
+     * CHAPTER — mapping them to a 30s nudge means a driver cannot change chapter.
+     * Falls back to track skip only when the book genuinely has no chapters.
+     */
+    fun nextChapter() {
+        val pos = globalPositionSec()
+        val np = _nowPlaying.value
+        val next = if (pos != null && np != null) {
+            PlaybackMath.nextChapterStart(pos, np.chapters, totalDurationSec())
+        } else null
+
+        if (next != null) seekGlobal(next) else if (player.hasNextMediaItem()) player.seekToNextMediaItem()
+    }
+
+    fun previousChapter() {
+        val pos = globalPositionSec()
+        val np = _nowPlaying.value
+        val prev = if (pos != null && np != null) {
+            PlaybackMath.previousChapterStart(pos, np.chapters, totalDurationSec())
+        } else null
+
+        if (prev != null) seekGlobal(prev) else if (player.hasPreviousMediaItem()) player.seekToPreviousMediaItem()
+    }
+
+    fun setSpeed(speed: Double) {
+        val allowed = SPEEDS.minByOrNull { kotlin.math.abs(it - speed) } ?: 1.0
+        player.setPlaybackParameters(PlaybackParameters(allowed.toFloat()))
+        prefs.putDouble(KEY_SPEED, allowed)
+    }
+
+    private fun savedSpeed(): Float {
+        val saved = prefs.getDouble(KEY_SPEED, 1.0)
+        return (if (saved in SPEEDS) saved else 1.0).toFloat()
+    }
+
+    // ---- loading -----------------------------------------------------------
+
+    /**
+     * Starts a book.
+     *
+     * Downloaded books are resolved entirely from disk and never touch the
+     * network — no session open, no metadata fetch, no connectivity preflight.
+     * A server round-trip here is what made tapping a downloaded book while
+     * offline fail with "No Internet Connection".
+     */
+    suspend fun playItem(itemId: String, startPlaying: Boolean = true) {
+        val local = localTracks(itemId)
+        val cached = books.getBook(itemId)
+
+        val np: NowPlaying = if (local.isNotEmpty()) {
+            NowPlaying(
+                itemId = itemId,
+                title = cached?.title ?: "",
+                author = cached?.author,
+                coverUrl = cached?.coverUrl,
+                tracks = local,
+                chapters = loadCachedChapters(itemId).ifEmpty { PlaybackMath.chaptersFromTracks(local) },
+                serverDurationSec = cached?.durationMs?.let { it / 1000.0 },
+                isLocal = true,
+            )
+        } else {
+            val session = withContext(Dispatchers.IO) { api.openSession(itemId) } ?: return
+            sessionId = session.sessionId
+            cacheChapters(itemId, session.chapters)
+            NowPlaying(
+                itemId = itemId,
+                title = cached?.title ?: "",
+                author = cached?.author,
+                coverUrl = cached?.coverUrl,
+                tracks = session.tracks,
+                chapters = session.chapters.ifEmpty { PlaybackMath.chaptersFromTracks(session.tracks) },
+                serverDurationSec = session.durationSec ?: cached?.durationMs?.let { it / 1000.0 },
+                isLocal = false,
+            )
+        }
+
+        _nowPlaying.value = np
+        // Remembered so the player can offer "Resume last book" on a cold start.
+        prefs.putString(KEY_LAST_ITEM, itemId)
+        accrual.reset()
+        lastSyncedSec = -1.0
+
+        val resumeSec = resumePosition(itemId)
+        val tp = PlaybackMath.mapGlobalToTrack(resumeSec, np.tracks)
+
+        player.setMediaItems(np.tracks.map { it.toMediaItem(np) }, tp.trackIndex, (tp.offsetSec * 1000).toLong())
+        player.prepare()
+        if (startPlaying) player.play()
+
+        startSyncLoop()
+    }
+
+    private fun Track.toMediaItem(np: NowPlaying): MediaItem = MediaItem.Builder()
+        .setUri(if (isLocal) Uri.fromFile(File(url)) else Uri.parse(url))
+        .setMediaId("${np.itemId}#$index")
+        .setMimeType(mimeType)
+        .setMediaMetadata(
+            MediaMetadata.Builder()
+                .setTitle(np.title)
+                .setArtist(np.author)
+                .setArtworkUri(np.coverUrl?.let(Uri::parse))
+                .setIsPlayable(true)
+                .build()
+        )
+        .build()
+
+    /**
+     * Downloaded files for a book, in the layout the Flutter app wrote them:
+     * ordered by filename (track_000, track_001, ...), which is why the download
+     * side must keep zero-padding the index.
+     */
+    private fun localTracks(itemId: String): List<Track> {
+        val dir = downloads.itemDir(itemId)
+        if (!dir.isDirectory) return emptyList()
+
+        return dir.listFiles().orEmpty()
+            .filter { it.isFile && it.length() > 0 }
+            .sortedBy { it.name }
+            .mapIndexed { i, f ->
+                Track(
+                    index = i,
+                    url = f.absolutePath,
+                    mimeType = mimeFor(f.extension),
+                    // Hydrated by the player once prepared; see onTracksChanged.
+                    durationSec = null,
+                    isLocal = true,
+                )
+            }
+    }
+
+    private fun mimeFor(ext: String) = when (ext.lowercase()) {
+        "mp3" -> "audio/mpeg"
+        "m4a", "m4b", "aac", "mp4" -> "audio/mp4"
+        "flac" -> "audio/flac"
+        "ogg", "oga" -> "audio/ogg"
+        "opus" -> "audio/opus"
+        else -> "audio/mpeg"
+    }
+
+    // ---- progress ----------------------------------------------------------
+
+    private fun startSyncLoop() {
+        syncJob?.cancel()
+        syncJob = scope.launch {
+            while (true) {
+                delay(PING_MS)
+                if (player.isPlaying) syncNow()
+            }
+        }
+    }
+
+    /**
+     * Reports progress. Persists locally FIRST so an offline session still keeps
+     * the user's place, then tries the network.
+     */
+    fun syncNow(finished: Boolean = false) {
+        val np = _nowPlaying.value ?: return
+        val pos = globalPositionSec()
+
+        // Unknown book position: reporting the track-local value would overwrite
+        // the server's correct progress with a much smaller number. Say nothing.
+        val current = pos ?: run {
+            if (player.currentMediaItemIndex == 0) player.currentPosition / 1000.0 else return
+        }
+
+        prefs.putDouble(progressKey(np.itemId), current)
+
+        val listened = accrual.snapshot()
+        val total = totalDurationSec()
+        val paused = !player.isPlaying
+
+        scope.launch(Dispatchers.IO) {
+            val ok = api.sync(
+                sessionId,
+                ProgressReport(np.itemId, current, total, finished, paused, listened),
+            )
+            // Only on success — otherwise the time rolls into the next attempt.
+            if (ok && listened != null) accrual.consume(listened)
+            if (ok) lastSyncedSec = current
+        }
+    }
+
+    /** Server progress wins when we have it; otherwise the locally-saved position. */
+    private suspend fun resumePosition(itemId: String): Double {
+        val local = prefs.getDouble(progressKey(itemId), 0.0)
+        val server = books.progressFor(itemId)?.currentTimeSec ?: 0.0
+        return if (server > 0) server else local
+    }
+
+    private fun progressKey(itemId: String) = "abs_progress:$itemId"
+
+    // Chapters are cached so a downloaded book has them offline.
+    private fun cacheChapters(itemId: String, chapters: List<Chapter>) {
+        if (chapters.isEmpty()) return
+        val encoded = chapters.joinToString(";") { "${it.startSec}|${it.title.replace(";", ",")}" }
+        prefs.putString(chaptersKey(itemId), encoded)
+    }
+
+    private fun loadCachedChapters(itemId: String): List<Chapter> =
+        prefs.getString(chaptersKey(itemId))
+            ?.split(";")
+            ?.mapNotNull { entry ->
+                val start = entry.substringBefore('|').toDoubleOrNull() ?: return@mapNotNull null
+                Chapter(entry.substringAfter('|'), start)
+            }
+            .orEmpty()
+
+    private fun chaptersKey(itemId: String) = "chapters_$itemId"
+
+    fun stop() {
+        syncNow(finished = false)
+        sessionId?.let { id -> scope.launch(Dispatchers.IO) { api.closeSession(id) } }
+        sessionId = null
+        syncJob?.cancel()
+        player.stop()
+        _nowPlaying.value = null
+    }
+
+    private inner class PlayerEvents : Player.Listener {
+
+        /**
+         * isPlaying (not playWhenReady): it is false while buffering or after an
+         * audio-focus loss, so those don't get billed as listening time.
+         */
+        override fun onIsPlayingChanged(isPlaying: Boolean) {
+            if (isPlaying) {
+                accrual.onPlaybackStarted()
+            } else {
+                accrual.onPlaybackStopped()
+                syncNow()
+                // A session is closed on pause and reopened on resume — that is what
+                // stops the server transcoding for a paused client.
+                sessionId?.let { id ->
+                    scope.launch(Dispatchers.IO) { api.closeSession(id) }
+                    sessionId = null
+                }
+            }
+        }
+
+        /**
+         * Local files arrive with unknown durations; the player learns them as it
+         * prepares each item. Without folding them back in, the book position is
+         * unknowable past track 0 and progress sync silently stops.
+         */
+        override fun onEvents(player: Player, events: Player.Events) {
+            if (!events.contains(Player.EVENT_TIMELINE_CHANGED) &&
+                !events.contains(Player.EVENT_TRACKS_CHANGED)
+            ) return
+            hydrateDurations()
+        }
+
+        override fun onPlaybackStateChanged(state: Int) {
+            if (state == Player.STATE_ENDED) {
+                val finishedId = _nowPlaying.value?.itemId
+                syncNow(finished = true)
+                sessionId?.let { id ->
+                    scope.launch(Dispatchers.IO) { api.closeSession(id) }
+                    sessionId = null
+                }
+                finishedId?.let { onBookFinished?.invoke(it) }
+            }
+        }
+
+        override fun onMediaItemTransition(item: MediaItem?, reason: Int) = syncNow()
+    }
+
+    private fun hydrateDurations() {
+        val np = _nowPlaying.value ?: return
+        if (np.tracks.all { it.durationSec != null }) return
+
+        val timeline = player.currentTimeline
+        if (timeline.windowCount != np.tracks.size) return
+
+        val window = androidx.media3.common.Timeline.Window()
+        var changed = false
+        val hydrated = np.tracks.mapIndexed { i, t ->
+            if (t.durationSec != null) return@mapIndexed t
+            timeline.getWindow(i, window)
+            val durationMs = window.durationUs / 1000
+            if (durationMs <= 0 || window.durationUs == androidx.media3.common.C.TIME_UNSET) {
+                t
+            } else {
+                changed = true
+                t.copy(durationSec = durationMs / 1000.0)
+            }
+        }
+        if (changed) _nowPlaying.value = np.copy(tracks = hydrated)
+    }
+
+    companion object {
+        private const val TAG = "PlaybackController"
+        private const val PING_MS = 26_000L
+
+        private const val KEY_SEEK_FORWARD = "ui_seek_forward_seconds"
+        private const val KEY_SEEK_BACKWARD = "ui_seek_backward_seconds"
+        private const val KEY_SPEED = "playback_speed"
+        const val KEY_LAST_ITEM = "playback_last_item_id"
+
+        /** The exact set the Flutter app allows; anything else is snapped to the nearest. */
+        val SPEEDS = listOf(
+            0.75, 0.80, 0.85, 0.90, 0.95, 1.00, 1.05, 1.10,
+            1.15, 1.20, 1.30, 1.40, 1.50, 1.75, 2.00,
+        )
+    }
+}

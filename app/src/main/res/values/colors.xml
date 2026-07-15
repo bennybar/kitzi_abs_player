@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The dark scheme's surface (see Theme.kt KitziDarkColors.surface). Used as
+         the window background so the status-bar/cutout strip matches the app. -->
+    <color name="kitzi_surface">#FF0B0C11</color>
+</resources>
