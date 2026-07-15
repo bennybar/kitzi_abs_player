@@ -73,6 +73,9 @@ class PlaybackController(
      */
     var isDownloadComplete: (suspend (String) -> Boolean)? = null
 
+    /** Per-track durations captured at download time (trackIndex -> seconds). */
+    var localTrackDurations: (suspend (String) -> Map<Int, Double>)? = null
+
     /** When a pause happened, so smart-rewind can size the rewind by how long. */
     private var pausedAtMs: Long? = null
 
@@ -197,7 +200,8 @@ class PlaybackController(
      * offline fail with "No Internet Connection".
      */
     suspend fun playItem(itemId: String, startPlaying: Boolean = true) {
-        val local = localTracks(itemId)
+        val durations = localTrackDurations?.invoke(itemId).orEmpty()
+        val local = localTracks(itemId, durations)
             .takeIf { it.isNotEmpty() && isDownloadComplete?.invoke(itemId) != false }
             .orEmpty()
         val cached = books.getBook(itemId)
@@ -273,20 +277,24 @@ class PlaybackController(
      * ordered by filename (track_000, track_001, ...), which is why the download
      * side must keep zero-padding the index.
      */
-    private fun localTracks(itemId: String): List<Track> {
+    private fun localTracks(itemId: String, durations: Map<Int, Double>): List<Track> {
         val dir = downloads.itemDir(itemId)
         if (!dir.isDirectory) return emptyList()
 
         return dir.listFiles().orEmpty()
-            .filter { it.isFile && it.length() > 0 }
+            .filter { it.isFile && it.length() > 0 && !it.name.endsWith(".part") }
             .sortedBy { it.name }
             .mapIndexed { i, f ->
+                // `track_007.m4a` -> 7 (the download DB's track index), used to seed
+                // the duration captured at download time. Without this seed a
+                // multi-track book's total is understated until every track hydrates,
+                // and progress can be reported as ~100% while still in track 1.
+                val fileIdx = f.nameWithoutExtension.substringAfterLast('_').toIntOrNull()
                 Track(
                     index = i,
                     url = f.absolutePath,
                     mimeType = mimeFor(f.extension),
-                    // Hydrated by the player once prepared; see onTracksChanged.
-                    durationSec = null,
+                    durationSec = fileIdx?.let { durations[it] },
                     isLocal = true,
                 )
             }
@@ -331,6 +339,7 @@ class PlaybackController(
 
         val listened = accrual.snapshot()
         val total = totalDurationSec()
+        android.util.Log.i("KITZISYNC", "item=${np.itemId} cur=$current total=$total serverDur=${np.serverDurationSec} trackDurs=${np.tracks.map { it.durationSec }} finished=$finished")
         val paused = !player.isPlaying
 
         scope.launch(Dispatchers.IO) {

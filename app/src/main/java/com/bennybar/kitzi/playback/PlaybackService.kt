@@ -102,6 +102,16 @@ class PlaybackService : MediaLibraryService() {
         session = MediaLibrarySession.Builder(this, BookCoordinatePlayer(player), LibraryCallback())
             .setMediaButtonPreferences(ImmutableList.of(rewindButton, forwardButton))
             .build()
+
+        // Post the playback notification on the app's own audio channel (the one
+        // the Flutter app used and users may have configured), instead of Media3's
+        // default_channel_id.
+        setMediaNotificationProvider(
+            androidx.media3.session.DefaultMediaNotificationProvider.Builder(this)
+                .setChannelId(com.bennybar.kitzi.KitziApplication.AUDIO_CHANNEL_ID)
+                .setChannelName(com.bennybar.kitzi.R.string.app_name)
+                .build()
+        )
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo) = session

@@ -114,9 +114,12 @@ object PlaybackMath {
     fun totalDuration(tracks: List<Track>, serverDurationSec: Double?): Double? {
         val allKnown = tracks.isNotEmpty() && tracks.all { (it.durationSec ?: 0.0) > 0 }
         if (allKnown) return tracks.sumOf { it.durationSec!! }
-        serverDurationSec?.takeIf { it > 0 }?.let { return it }
-        val partial = tracks.mapNotNull { it.durationSec }.filter { it > 0 }.sum()
-        return partial.takeIf { it > 0 }
+        // Deliberately NO partial-sum fallback: while a multi-track book is still
+        // hydrating, the sum of only the KNOWN tracks understates the total, and
+        // reporting current/understated-total as progress marks a book ~100% done
+        // in chapter 1. Fall back to the whole-book server duration, else report
+        // nothing (the caller then omits progress rather than corrupting it).
+        return serverDurationSec?.takeIf { it > 0 }
     }
 
     /**

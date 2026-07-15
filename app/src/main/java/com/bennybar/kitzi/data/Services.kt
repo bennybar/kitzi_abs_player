@@ -88,6 +88,9 @@ object Services {
         // Local playback only engages for COMPLETE downloads; a partial download
         // (interrupted mid-queue) must stream instead of playing 1-of-N files.
         playback.isDownloadComplete = { itemId -> downloads.isDownloaded(itemId) }
+        // Seed local tracks with the durations captured at download time, so a
+        // downloaded book's total is correct immediately (no understated progress).
+        playback.localTrackDurations = { itemId -> downloads.trackDurations(itemId) }
 
         // "Pause cancels the sleep timer" (default on).
         playback.onPaused = {

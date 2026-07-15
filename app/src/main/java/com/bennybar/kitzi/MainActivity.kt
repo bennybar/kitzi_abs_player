@@ -55,6 +55,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -62,6 +63,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
@@ -295,6 +298,18 @@ private fun App() {
         // The mini-player hides while the full player is showing, as a tab or card.
         val onPlayer = playerIsTabFull || playerCard
         val miniVisible = nowPlaying != null && !onPlayer
+
+        // Keep the status-bar icons legible: the player card's dark scrim (and the
+        // tab player's cover gradient) sit behind the status bar, so use light icons
+        // there; otherwise follow the theme. Without this, light-theme dark icons
+        // vanish against the scrim and the bar "goes black".
+        val view = LocalView.current
+        val darkTheme = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+        SideEffect {
+            val window = (view.context as android.app.Activity).window
+            androidx.core.view.WindowCompat.getInsetsController(window, view)
+                .isAppearanceLightStatusBars = if (onPlayer) false else !darkTheme
+        }
         val barInset = with(density) { barHeightPx.toDp() }
         // Content clears the top system bar always; the bottom is handled by the
         // per-screen bar inset (scroll screens) or the player's own contentPadding.
