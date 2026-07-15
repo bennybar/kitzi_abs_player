@@ -2,6 +2,9 @@
 
 A native Android player for [Audiobookshelf](https://www.audiobookshelf.org/). Point it at your own ABS server, sign in, and listen — streaming or offline.
 
+[![Get it on Google Play](https://img.shields.io/badge/Google%20Play-Install-34A853?style=for-the-badge&logo=google-play&logoColor=white)](https://play.google.com/store/apps/details?id=com.bennybar.kitzi&hl=en_US)
+[![Latest release](https://img.shields.io/badge/Latest%20release-Download%20APK-2088FF?style=for-the-badge&logo=github&logoColor=white)](https://github.com/bennybar/kitzi_abs_player/releases/latest)
+
 Kitzi started life as a Flutter app and was rebuilt from the ground up in Kotlin and Jetpack Compose. It installs as a drop-in update over the old build: same account, same downloads, same listening progress.
 
 This is an unofficial client and isn't affiliated with the Audiobookshelf project.
@@ -32,7 +35,9 @@ This is an unofficial client and isn't affiliated with the Audiobookshelf projec
 
 ## Install
 
-Grab the latest `app-release.apk` from the [Releases](../../releases) page and install it. You'll need to allow installs from your browser or file manager the first time.
+Install it from [Google Play](https://play.google.com/store/apps/details?id=com.bennybar.kitzi&hl=en_US), or grab the latest `app-release.apk` from the [Releases](https://github.com/bennybar/kitzi_abs_player/releases/latest) page and install it directly (you'll need to allow installs from your browser or file manager the first time).
+
+For the sideloaded route, the easiest way to stay up to date is [Obtainium](https://github.com/ImranR98/Obtainium): add this repo as a source and it will watch the Releases page and install new versions as they land, no store required.
 
 If you're coming from the older Flutter version, just install over it — your login, downloads, and progress carry across.
 
