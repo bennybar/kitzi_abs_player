@@ -16,8 +16,6 @@ import androidx.media3.session.CommandButton
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
-import androidx.media3.session.SessionCommand
-import androidx.media3.session.SessionResult
 import com.bennybar.kitzi.data.Services
 import com.bennybar.kitzi.data.db.BookSort
 import com.bennybar.kitzi.data.db.LibraryFilter
@@ -83,22 +81,36 @@ class PlaybackService : MediaLibraryService() {
 
         controller.attach(player)
 
-        // Rewind / fast-forward as custom commands declared through Media3 1.6+
-        // MEDIA BUTTON PREFERENCES — the API that replaced setCustomLayout because
-        // custom layouts rendered in wrong/jumbled order on system media controls
-        // (androidx/media#1317). Preferences carry slot placement (back / forward
-        // of play-pause), which One UI and the platform notification honour.
+        // Notification / lock-screen / Samsung Now Bar buttons.
+        //
+        // These use STANDARD player commands, not custom session commands: One UI's
+        // Now Bar pill (and the platform media controls) only render standard
+        // commands, so the previous custom rewind/forward were invisible on the pill.
+        // BookCoordinatePlayer maps each to the right book action — seekBack/Forward
+        // to the configured seconds, seekToPrevious/Next to chapter skips. Slots put
+        // seek either side of play/pause (compact/pill view) and chapter skip further
+        // out (expanded view).
         val backSec = Services.prefs.getInt("ui_seek_backward_seconds", 30)
         val fwdSec = Services.prefs.getInt("ui_seek_forward_seconds", 30)
+        val prevChapterButton = CommandButton.Builder(CommandButton.ICON_PREVIOUS)
+            .setDisplayName("Previous chapter")
+            .setPlayerCommand(Player.COMMAND_SEEK_TO_PREVIOUS)
+            .setSlots(CommandButton.SLOT_BACK_SECONDARY)
+            .build()
         val rewindButton = CommandButton.Builder(CommandButton.ICON_REWIND)
             .setDisplayName("Rewind ${backSec}s")
-            .setSessionCommand(SessionCommand(CMD_REWIND, Bundle.EMPTY))
+            .setPlayerCommand(Player.COMMAND_SEEK_BACK)
             .setSlots(CommandButton.SLOT_BACK)
             .build()
         val forwardButton = CommandButton.Builder(CommandButton.ICON_FAST_FORWARD)
             .setDisplayName("Forward ${fwdSec}s")
-            .setSessionCommand(SessionCommand(CMD_FORWARD, Bundle.EMPTY))
+            .setPlayerCommand(Player.COMMAND_SEEK_FORWARD)
             .setSlots(CommandButton.SLOT_FORWARD)
+            .build()
+        val nextChapterButton = CommandButton.Builder(CommandButton.ICON_NEXT)
+            .setDisplayName("Next chapter")
+            .setPlayerCommand(Player.COMMAND_SEEK_TO_NEXT)
+            .setSlots(CommandButton.SLOT_FORWARD_SECONDARY)
             .build()
 
         // DIAGNOSTIC (Samsung Now Bar): when enabled, expose the RAW ExoPlayer to the
@@ -125,7 +137,9 @@ class PlaybackService : MediaLibraryService() {
         } else {
             MediaLibrarySession.Builder(this, BookCoordinatePlayer(player), LibraryCallback())
                 .setSessionActivity(sessionActivity)
-                .setMediaButtonPreferences(ImmutableList.of(rewindButton, forwardButton))
+                .setMediaButtonPreferences(
+                    ImmutableList.of(prevChapterButton, rewindButton, forwardButton, nextChapterButton)
+                )
                 .build()
         }
 
@@ -214,36 +228,25 @@ class PlaybackService : MediaLibraryService() {
         override fun seekForward() = controller.seekForward()
 
         override fun seekBack() = controller.seekBackward()
+
+        // Advertise chapter-skip and seek as always available, even for a single-file
+        // book whose raw ExoPlayer timeline has one window (which would otherwise not
+        // offer prev/next) — the notification/pill buttons are only enabled for
+        // commands the player reports here.
+        override fun getAvailableCommands(): Player.Commands =
+            super.getAvailableCommands().buildUpon()
+                .addAll(
+                    Player.COMMAND_SEEK_TO_PREVIOUS,
+                    Player.COMMAND_SEEK_TO_NEXT,
+                    Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM,
+                    Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM,
+                    Player.COMMAND_SEEK_BACK,
+                    Player.COMMAND_SEEK_FORWARD,
+                )
+                .build()
     }
 
     private inner class LibraryCallback : MediaLibrarySession.Callback {
-
-        // Grant the two custom seek commands so their buttons are live everywhere.
-        override fun onConnect(
-            session: MediaSession,
-            controllerInfo: MediaSession.ControllerInfo,
-        ): MediaSession.ConnectionResult {
-            val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS.buildUpon()
-                .add(SessionCommand(CMD_REWIND, Bundle.EMPTY))
-                .add(SessionCommand(CMD_FORWARD, Bundle.EMPTY))
-                .build()
-            return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
-                .setAvailableSessionCommands(commands)
-                .build()
-        }
-
-        override fun onCustomCommand(
-            session: MediaSession,
-            controllerInfo: MediaSession.ControllerInfo,
-            customCommand: SessionCommand,
-            args: Bundle,
-        ): ListenableFuture<SessionResult> {
-            when (customCommand.customAction) {
-                CMD_REWIND -> controller.seekBackward()
-                CMD_FORWARD -> controller.seekForward()
-            }
-            return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
-        }
 
         override fun onGetLibraryRoot(
             session: MediaLibrarySession,
@@ -408,8 +411,6 @@ class PlaybackService : MediaLibraryService() {
             putInt(androidx.media3.session.MediaConstants.EXTRAS_KEY_CONTENT_STYLE_PLAYABLE, 2)
         }
 
-        const val CMD_REWIND = "com.bennybar.kitzi.REWIND"
-        const val CMD_FORWARD = "com.bennybar.kitzi.FORWARD"
         const val ROOT = "kitzi_root"
         const val CONTINUE = "kitzi_continue"
         const val RECENT = "kitzi_recent"
