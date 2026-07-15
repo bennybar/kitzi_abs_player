@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -33,6 +34,7 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -216,48 +218,40 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
 
             ProgressCard(progress)
 
-            // Year / Publisher / Genres, as icon-badged fact cards in a grid — the
-            // Year and Publisher share a row; Genres spans full width below.
-            val facts = buildList {
-                b.publishYear?.let { add(Triple(Icons.Default.CalendarMonth, "Year", it.toString())) }
-                b.publisher?.let { add(Triple(Icons.Default.Business, "Publisher", it)) }
-            }
-            val genres = b.genres.takeIf { it.isNotEmpty() }?.joinToString(", ")
-            if (facts.isNotEmpty() || genres != null) {
-                Surface(
-                    color = MaterialTheme.colorScheme.surfaceContainer,
-                    shape = RoundedCornerShape(20.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        if (facts.isNotEmpty()) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                facts.forEach { (icon, label, value) ->
-                                    FactCard(icon, label, value, Modifier.weight(1f))
-                                }
-                                if (facts.size == 1) Box(Modifier.weight(1f))
-                            }
-                        }
-                        genres?.let { FactCard(Icons.Default.LocalOffer, "Genres", it, Modifier.fillMaxWidth()) }
-                    }
-                }
-            }
-
-            // Full "extra information" (language, ISBN, file type, bitrate, …).
+            // One light "details" card: aligned label/value rows (no uneven
+            // two-column tiles that stretched when a value wrapped) plus the
+            // "More info" entry — lighter, and balanced whatever the value length.
             Surface(
                 color = MaterialTheme.colorScheme.surfaceContainer,
                 shape = RoundedCornerShape(20.dp),
-                modifier = Modifier.fillMaxWidth().clickable { showInfo = true },
+                modifier = Modifier.fillMaxWidth(),
             ) {
-                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Info, null, tint = MaterialTheme.colorScheme.primary)
-                    Text(
-                        "More info",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.weight(1f).padding(start = 14.dp),
+                Column(Modifier.padding(vertical = 4.dp)) {
+                    b.publishYear?.let { DetailRow(Icons.Default.CalendarMonth, "Year", it.toString()) }
+                    b.publisher?.let { DetailRow(Icons.Default.Business, "Publisher", it) }
+                    b.genres.takeIf { it.isNotEmpty() }?.let {
+                        DetailRow(Icons.Default.LocalOffer, "Genres", it.joinToString(", "))
+                    }
+                    HorizontalDivider(
+                        Modifier.padding(start = 50.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
                     )
-                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    // "More info": language, ISBN, file type, bitrate, …
+                    Row(
+                        Modifier.fillMaxWidth().clickable { showInfo = true }
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Default.Info, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                        Text(
+                            "More info",
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.weight(1f).padding(start = 14.dp),
+                        )
+                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             }
 
@@ -334,44 +328,30 @@ private fun InfoChip(icon: androidx.compose.ui.graphics.vector.ImageVector, labe
     )
 }
 
-/** A fact tile: a tinted icon badge, a small label above its value. */
+/** A light metadata row: a small tinted icon, a muted label column, then the value. */
 @Composable
-private fun FactCard(
+private fun DetailRow(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
     value: String,
-    modifier: Modifier = Modifier,
 ) {
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        shape = RoundedCornerShape(16.dp),
-        modifier = modifier,
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 13.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier
-                    .size(38.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-            }
-            Column(Modifier.padding(start = 12.dp)) {
-                Text(
-                    label,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    value,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
+        Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 14.dp).width(84.dp),
+        )
+        Text(
+            value,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.weight(1f).padding(start = 8.dp),
+        )
     }
 }
 

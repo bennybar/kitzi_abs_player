@@ -109,7 +109,7 @@ fun MiniPlayer(onExpand: () -> Unit) {
     if (collapsed) {
         // Left-aligned orb: circular cover with a progress ring + a round play button.
         Row(
-            Modifier.padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 4.dp),
+            Modifier.padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 2.dp),
         ) {
             Row(
                 Modifier
@@ -139,7 +139,7 @@ fun MiniPlayer(onExpand: () -> Unit) {
     // The floating Aurora Glass pill: soft drop shadow so it hovers over the
     // page, translucent tinted fill (page shows faintly through), bright hairline
     // edge. Not opaque — matching the Flutter mini-player.
-    Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
+    Box(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 2.dp)) {
         Row(
             Modifier
                 .fillMaxWidth()

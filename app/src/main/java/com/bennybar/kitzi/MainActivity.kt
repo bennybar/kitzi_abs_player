@@ -197,7 +197,8 @@ private fun KitziNavBar(tabs: List<Tab>, selected: Tab, overlayOpen: Boolean, on
         Modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            // top pulled in (was 8) to tighten the gap to the mini-player above.
+            .padding(start = 12.dp, end = 12.dp, top = 5.dp, bottom = 8.dp),
     ) {
         Surface(
             color = MaterialTheme.colorScheme.surfaceContainer,

@@ -12,7 +12,6 @@ import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import androidx.media3.session.CommandButton
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
@@ -81,43 +80,17 @@ class PlaybackService : MediaLibraryService() {
 
         controller.attach(player)
 
-        // Notification / lock-screen / Samsung Now Bar buttons.
-        //
-        // These use STANDARD player commands, not custom session commands: One UI's
-        // Now Bar pill (and the platform media controls) only render standard
-        // commands, so the previous custom rewind/forward were invisible on the pill.
-        // BookCoordinatePlayer maps each to the right book action — seekBack/Forward
-        // to the configured seconds, seekToPrevious/Next to chapter skips. Slots put
-        // seek either side of play/pause (compact/pill view) and chapter skip further
-        // out (expanded view).
-        val backSec = Services.prefs.getInt("ui_seek_backward_seconds", 30)
-        val fwdSec = Services.prefs.getInt("ui_seek_forward_seconds", 30)
-        val prevChapterButton = CommandButton.Builder(CommandButton.ICON_PREVIOUS)
-            .setDisplayName("Previous chapter")
-            .setPlayerCommand(Player.COMMAND_SEEK_TO_PREVIOUS)
-            .setSlots(CommandButton.SLOT_BACK_SECONDARY)
-            .build()
-        val rewindButton = CommandButton.Builder(CommandButton.ICON_REWIND)
-            .setDisplayName("Rewind ${backSec}s")
-            .setPlayerCommand(Player.COMMAND_SEEK_BACK)
-            .setSlots(CommandButton.SLOT_BACK)
-            .build()
-        val forwardButton = CommandButton.Builder(CommandButton.ICON_FAST_FORWARD)
-            .setDisplayName("Forward ${fwdSec}s")
-            .setPlayerCommand(Player.COMMAND_SEEK_FORWARD)
-            .setSlots(CommandButton.SLOT_FORWARD)
-            .build()
-        val nextChapterButton = CommandButton.Builder(CommandButton.ICON_NEXT)
-            .setDisplayName("Next chapter")
-            .setPlayerCommand(Player.COMMAND_SEEK_TO_NEXT)
-            .setSlots(CommandButton.SLOT_FORWARD_SECONDARY)
-            .build()
+        // Notification / lock-screen / Samsung Now Bar buttons come from STANDARD
+        // player commands only (no custom setMediaButtonPreferences): One UI's Now
+        // Bar renders the platform session's standard actions, and custom actions
+        // were ignored. BookCoordinatePlayer.getAvailableCommands advertises
+        // seekToPrevious/Next (chapter skip) and seekBack/Forward (the configured
+        // seconds), which Media3 exposes as SKIP_TO_PREVIOUS/NEXT + REWIND/FAST_FORWARD
+        // for the pill to draw — the same standard-command approach Gramophone uses.
 
-        // DIAGNOSTIC (Samsung Now Bar): when enabled, expose the RAW ExoPlayer to the
-        // session with no custom button preferences, to test whether the whole-book
-        // wrapper (per-track timeline reporting book position/duration) is why One UI
-        // withholds the media pill. Off by default — turning it on trades away
-        // book-coordinate lock-screen position and chapter-skip until turned off.
+        // debug_plain_media_session (diagnostic): expose the RAW ExoPlayer with no
+        // book-coordinate wrapper. Off by default.
+
         // The activity that opens when the media notification / lock screen / Samsung
         // Now Bar pill is tapped. BOTH the working Flutter app (audio_service) and
         // other working Media3 apps (e.g. Gramophone) set this; we didn't — and a
@@ -129,17 +102,23 @@ class PlaybackService : MediaLibraryService() {
                 .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
             android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT,
         )
+        // Caches the cover art Media3 paints on the notification / lock screen / Now
+        // Bar so it isn't re-decoded on every chapter/track change (adopted from
+        // Gramophone). Cover URLs carry their auth token in the query string, so the
+        // default HTTP data source is enough.
+        val bitmapLoader = androidx.media3.session.CacheBitmapLoader(
+            androidx.media3.datasource.DataSourceBitmapLoader(this)
+        )
         val plainSession = Services.prefs.getBoolean("debug_plain_media_session", false)
         session = if (plainSession) {
             MediaLibrarySession.Builder(this, player, LibraryCallback())
                 .setSessionActivity(sessionActivity)
+                .setBitmapLoader(bitmapLoader)
                 .build()
         } else {
             MediaLibrarySession.Builder(this, BookCoordinatePlayer(player), LibraryCallback())
                 .setSessionActivity(sessionActivity)
-                .setMediaButtonPreferences(
-                    ImmutableList.of(prevChapterButton, rewindButton, forwardButton, nextChapterButton)
-                )
+                .setBitmapLoader(bitmapLoader)
                 .build()
         }
 
