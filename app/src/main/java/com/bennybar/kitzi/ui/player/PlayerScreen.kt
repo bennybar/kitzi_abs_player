@@ -68,6 +68,7 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
 
     var positionSec by remember { mutableStateOf(0.0) }
     var isPlaying by remember { mutableStateOf(false) }
+    var speed by remember { mutableStateOf(1.0) }
     var scrubbing by remember { mutableStateOf<Float?>(null) }
     var showSleep by remember { mutableStateOf(false) }
     var showChapters by remember { mutableStateOf(false) }
@@ -82,6 +83,8 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
         while (true) {
             positionSec = controller.globalPositionSec() ?: 0.0
             isPlaying = runCatching { controller.player.isPlaying }.getOrDefault(false)
+            speed = runCatching { controller.player.playbackParameters.speed.toDouble() }
+                .getOrDefault(1.0).coerceAtLeast(0.1)
             delay(400)
         }
     }
@@ -292,8 +295,11 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontWeight = FontWeight.SemiBold,
                 )
+                // Remaining is WALL-CLOCK time to finish at the current speed, so a
+                // faster speed shows less time left.
+                val remainingContent = (sliderMax - (scrubbing?.toDouble() ?: sliderPos)).coerceAtLeast(0.0)
                 Text(
-                    "-${formatClock((sliderMax - (scrubbing?.toDouble() ?: sliderPos)).coerceAtLeast(0.0).toLong())}",
+                    "-${formatClock((remainingContent / speed).toLong())}",
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontWeight = FontWeight.SemiBold,

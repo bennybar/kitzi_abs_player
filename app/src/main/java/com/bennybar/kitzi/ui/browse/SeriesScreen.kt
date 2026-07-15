@@ -29,6 +29,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -67,6 +68,9 @@ fun SeriesScreen(onOpenBook: (String) -> Unit, onBack: () -> Unit) {
     var expanded by remember { mutableStateOf<String?>(null) }
     var books by remember { mutableStateOf<List<Book>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
+    // Progress for every book, so expanded series members show the finished /
+    // in-progress check the same way the library list does.
+    val progressById by Services.books.watchProgress().collectAsStateWithLifecycle(emptyMap())
 
     val minBooks = Services.prefs.getInt("ui_series_min_books", 1)
     LaunchedEffect(Unit) {
@@ -193,7 +197,9 @@ fun SeriesScreen(onOpenBook: (String) -> Unit, onBack: () -> Unit) {
                                         color = MaterialTheme.colorScheme.primary,
                                         fontWeight = FontWeight.SemiBold,
                                     )
-                                    books.forEach { book -> BookCard(book) { onOpenBook(book.id) } }
+                                    books.forEach { book ->
+                                        BookCard(book, progress = progressById[book.id]) { onOpenBook(book.id) }
+                                    }
                                 }
                             }
                         }
