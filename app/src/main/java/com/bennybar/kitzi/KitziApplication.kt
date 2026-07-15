@@ -4,12 +4,18 @@ import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import com.bennybar.kitzi.data.Analytics
 
 class KitziApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
         createAudioNotificationChannel()
+        // Anonymous daily-active-user ping, as the Flutter app does on startup.
+        Analytics.init(this)
+        Analytics.logAppOpen()
+        // Periodic background library refresh (~3h).
+        com.bennybar.kitzi.data.sync.LibrarySyncWorker.schedule(this)
     }
 
     /**

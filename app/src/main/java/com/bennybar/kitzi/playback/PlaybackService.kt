@@ -52,9 +52,16 @@ class PlaybackService : MediaLibraryService() {
         controller = Services.playback
 
         val httpFactory = OkHttpDataSource.Factory(Services.httpClient)
+        // Streamed (non-downloaded) audio is served through an LRU disk cache so
+        // re-seeking or replaying doesn't re-download bytes. Local file playback
+        // bypasses it. Size = the streaming_cache_max_bytes_mb setting.
+        val cacheFactory = androidx.media3.datasource.cache.CacheDataSource.Factory()
+            .setCache(StreamCache.get(this, Services.prefs))
+            .setUpstreamDataSourceFactory(DefaultDataSource.Factory(this, httpFactory))
+            .setFlags(androidx.media3.datasource.cache.CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
         val player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(
-                DefaultMediaSourceFactory(DefaultDataSource.Factory(this, httpFactory))
+                DefaultMediaSourceFactory(cacheFactory)
             )
             .setAudioAttributes(
                 AudioAttributes.Builder()

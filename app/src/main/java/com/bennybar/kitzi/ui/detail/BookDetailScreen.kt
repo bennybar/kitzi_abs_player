@@ -148,6 +148,14 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
                                     modifier = Modifier.padding(top = 6.dp),
                                 )
                             }
+                            com.bennybar.kitzi.ui.common.AudibleStars(
+                                itemId = b.id,
+                                title = b.title,
+                                author = b.author,
+                                narrator = b.narrators.firstOrNull(),
+                                durationMs = b.durationMs,
+                                modifier = Modifier.padding(top = 8.dp),
+                            )
                         }
                     }
 

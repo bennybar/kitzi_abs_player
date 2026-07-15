@@ -16,8 +16,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -30,11 +33,14 @@ import androidx.compose.material.icons.filled.LibraryBooks
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -85,6 +91,16 @@ class MainActivity : ComponentActivity() {
         ThemeState.load(Services.prefs)
         com.bennybar.kitzi.ui.UiPrefsState.load(Services.prefs)
 
+        // Android 13+ needs a runtime grant before ANY notification is posted —
+        // without it the Media3 playback notification never appears, so there are
+        // no lock-screen / media-pill controls. Ask on first launch.
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 100)
+        }
+
         // Binding to the session starts the service, so playback, the notification
         // and the app all share one player.
         val token = SessionToken(this, ComponentName(this, PlaybackService::class.java))
@@ -134,8 +150,7 @@ private sealed interface Overlay {
     data class BookDetail(val id: String) : Overlay
     data object Series : Overlay
     data object Stats : Overlay
-    /** The full player shown as an overlay when it isn't a bottom tab. */
-    data object Player : Overlay
+    data object Profile : Overlay
 }
 
 /**
@@ -204,6 +219,7 @@ private fun KitziNavBar(tabs: List<Tab>, selected: Tab, overlayOpen: Boolean, on
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun App() {
     var signedIn by remember {
@@ -239,8 +255,13 @@ private fun App() {
     // If the current tab was just hidden, fall back to Books.
     if (tab !in tabs) tab = Tab.BOOKS
 
+    // When the player isn't a bottom tab it opens as a card that slides up from
+    // the mini-player (a full-height bottom sheet), matching the Flutter app.
+    var playerCard by remember { mutableStateOf(false) }
+    if (playerAsTab) playerCard = false
+
     val openPlayer = {
-        if (playerAsTab) { tab = Tab.PLAYER; overlay = null } else overlay = Overlay.Player
+        if (playerAsTab) { tab = Tab.PLAYER; overlay = null } else playerCard = true
     }
 
     val nowPlaying by Services.playback.nowPlaying.collectAsStateWithLifecycle()
@@ -257,14 +278,16 @@ private fun App() {
         containerColor = MaterialTheme.colorScheme.surface,
     ) { insets ->
         val openBook: (String) -> Unit = { overlay = Overlay.BookDetail(it) }
-        // The player draws its background (gradient or surface) edge to edge —
+        // The tab player draws its background (gradient or surface) edge to edge —
         // behind the status bar / cutout — and pads its own content.
-        val onPlayer = (tab == Tab.PLAYER && overlay == null) || overlay == Overlay.Player
+        val playerIsTabFull = tab == Tab.PLAYER && overlay == null
+        // The mini-player hides while the full player is showing, as a tab or card.
+        val onPlayer = playerIsTabFull || playerCard
         val miniVisible = nowPlaying != null && !onPlayer
         val barInset = with(density) { barHeightPx.toDp() }
         // Content clears the top system bar always; the bottom is handled by the
         // per-screen bar inset (scroll screens) or the player's own contentPadding.
-        val contentInsets = if (onPlayer) PaddingValues() else PaddingValues(
+        val contentInsets = if (playerIsTabFull) PaddingValues() else PaddingValues(
             start = insets.calculateStartPadding(layoutDir),
             end = insets.calculateEndPadding(layoutDir),
             top = insets.calculateTopPadding(),
@@ -277,33 +300,44 @@ private fun App() {
         )
 
         Box(Modifier.fillMaxSize()) {
-            CompositionLocalProvider(LocalMiniPlayerInset provides if (onPlayer) 0.dp else barInset) {
-                Box(Modifier.fillMaxSize().padding(contentInsets)) {
-                    when (val current = overlay) {
-                        is Overlay.BookDetail -> BookDetailScreen(
-                            itemId = current.id,
-                            onPlay = openPlayer,
-                            onBack = { overlay = null },
-                        )
-
-                        Overlay.Series -> SeriesScreen(onOpenBook = openBook, onBack = { overlay = null })
-
-                        Overlay.Stats -> StatsScreen(onBack = { overlay = null })
-
-                        Overlay.Player -> PlayerScreen(contentPadding = playerPadding)
-
-                        null -> when (tab) {
-                            Tab.BOOKS -> LibraryScreen(
-                                onOpenBook = openBook,
-                                onOpenSeries = { overlay = Overlay.Series },
-                                onOpenStats = { overlay = Overlay.Stats },
+            CompositionLocalProvider(LocalMiniPlayerInset provides if (playerIsTabFull) 0.dp else barInset) {
+                // Screens cross-fade on change; the duration follows the animation-
+                // speed setting so transitions can be made smoother or snappier.
+                val animMs = (220 * UiPrefsState.animationScale).toInt().coerceAtLeast(1)
+                androidx.compose.animation.Crossfade(
+                    targetState = overlay to tab,
+                    animationSpec = androidx.compose.animation.core.tween(animMs),
+                    modifier = Modifier.fillMaxSize(),
+                    label = "screen",
+                ) { (ov, tb) ->
+                    Box(Modifier.fillMaxSize().padding(contentInsets)) {
+                        when (ov) {
+                            is Overlay.BookDetail -> BookDetailScreen(
+                                itemId = ov.id,
+                                onPlay = openPlayer,
+                                onBack = { overlay = null },
                             )
-                            Tab.SERIES -> SeriesScreen(onOpenBook = openBook, onBack = { tab = Tab.BOOKS })
-                            Tab.AUTHORS -> AuthorsScreen(onOpenBook = openBook)
-                            Tab.QUEUE -> QueueScreen(onOpenPlayer = openPlayer)
-                            Tab.PLAYER -> PlayerScreen(contentPadding = playerPadding)
-                            Tab.DOWNLOADS -> DownloadsScreen(onOpenBook = openBook)
-                            Tab.SETTINGS -> SettingsScreen(onSignedOut = { signedIn = false })
+
+                            Overlay.Series -> SeriesScreen(onOpenBook = openBook, onBack = { overlay = null })
+
+                            Overlay.Stats -> StatsScreen(onBack = { overlay = null })
+
+                            Overlay.Profile -> com.bennybar.kitzi.ui.profile.ProfileScreen(onBack = { overlay = null })
+
+                            null -> when (tb) {
+                                Tab.BOOKS -> LibraryScreen(
+                                    onOpenBook = openBook,
+                                    onOpenSeries = { overlay = Overlay.Series },
+                                    onOpenStats = { overlay = Overlay.Stats },
+                                    onOpenProfile = { overlay = Overlay.Profile },
+                                )
+                                Tab.SERIES -> SeriesScreen(onOpenBook = openBook, onBack = { tab = Tab.BOOKS })
+                                Tab.AUTHORS -> AuthorsScreen(onOpenBook = openBook)
+                                Tab.QUEUE -> QueueScreen(onOpenPlayer = openPlayer)
+                                Tab.PLAYER -> PlayerScreen(contentPadding = playerPadding)
+                                Tab.DOWNLOADS -> DownloadsScreen(onOpenBook = openBook)
+                                Tab.SETTINGS -> SettingsScreen(onSignedOut = { signedIn = false })
+                            }
                         }
                     }
                 }
@@ -323,6 +357,27 @@ private fun App() {
                     overlayOpen = overlay != null,
                     onSelect = { tab = it; overlay = null },
                 )
+            }
+
+            // The expand-from-mini-player card: a full-height sheet with a rounded
+            // top that slides up, carrying the whole player. Swipe down / tap the
+            // scrim to collapse back to the mini-player.
+            if (playerCard) {
+                ModalBottomSheet(
+                    onDismissRequest = { playerCard = false },
+                    sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+                    dragHandle = null,
+                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    contentWindowInsets = { WindowInsets(0) },
+                ) {
+                    PlayerScreen(
+                        contentPadding = PaddingValues(
+                            top = 6.dp,
+                            bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 6.dp,
+                        ),
+                    )
+                }
             }
         }
     }

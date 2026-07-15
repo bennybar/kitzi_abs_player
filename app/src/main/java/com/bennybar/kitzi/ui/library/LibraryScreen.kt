@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.LibraryBooks
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.MonitorHeart
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
@@ -64,6 +65,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
@@ -84,6 +86,7 @@ fun LibraryScreen(
     onOpenBook: (String) -> Unit,
     onOpenSeries: () -> Unit,
     onOpenStats: () -> Unit,
+    onOpenProfile: () -> Unit = {},
     vm: LibraryViewModel = viewModel(),
 ) {
     val books by vm.items.collectAsStateWithLifecycle()
@@ -101,6 +104,13 @@ fun LibraryScreen(
     var downloadedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     LaunchedEffect(refreshing, books.size) {
         downloadedIds = com.bennybar.kitzi.data.Services.downloads.downloadedItemIds().toSet()
+    }
+
+    // "Books tab alphabetical order" forces A–Z sort so the letter rail's jumps are
+    // meaningful.
+    val booksAlpha = com.bennybar.kitzi.ui.UiPrefsState.letterScrollBooksAlpha.value
+    LaunchedEffect(booksAlpha) {
+        if (booksAlpha && query.sort != BookSort.NAME_ASC) vm.setSort(BookSort.NAME_ASC)
     }
 
     var showSearch by remember { mutableStateOf(false) }
@@ -149,6 +159,7 @@ fun LibraryScreen(
                         onSearch = { showSearch = !showSearch },
                         onToggleLayout = vm::toggleGrid,
                         onStats = onOpenStats,
+                        onProfile = onOpenProfile,
                         onFilter = { showFilter = !showFilter },
                         onSort = { showSort = !showSort },
                     )
@@ -211,22 +222,40 @@ fun LibraryScreen(
                     }
                 }
             } else {
-                LazyColumn(
-                    state = listState,
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                        bottom = 16.dp + com.bennybar.kitzi.LocalMiniPlayerInset.current,
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.fillMaxSize(),
-                ) {
-                    item(key = "header") { Header() }
-                    items(books, key = { "b_${it.id}" }) { book ->
-                        BookCard(
-                            book,
-                            Modifier.padding(horizontal = 16.dp),
-                            progress = progressById[book.id],
-                            downloaded = book.id in downloadedIds,
-                        ) { onOpenBook(book.id) }
+                Box(Modifier.fillMaxSize()) {
+                    LazyColumn(
+                        state = listState,
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                            bottom = 16.dp + com.bennybar.kitzi.LocalMiniPlayerInset.current,
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.fillMaxSize(),
+                    ) {
+                        item(key = "header") { Header() }
+                        items(books, key = { "b_${it.id}" }) { book ->
+                            BookCard(
+                                book,
+                                Modifier.padding(horizontal = 16.dp),
+                                progress = progressById[book.id],
+                                downloaded = book.id in downloadedIds,
+                            ) { onOpenBook(book.id) }
+                        }
+                    }
+                    // A–Z fast-scroll rail (the ui_letter_scroll_enabled setting).
+                    if (com.bennybar.kitzi.ui.UiPrefsState.letterScrollEnabled.value && books.isNotEmpty() && showHeader) {
+                        val anchors = remember(books) {
+                            LinkedHashMap<Char, Int>().apply {
+                                books.forEachIndexed { i, b ->
+                                    val c = b.title.firstOrNull { it.isLetter() }?.uppercaseChar() ?: '#'
+                                    putIfAbsent(c, i)
+                                }
+                            }
+                        }
+                        LetterRail(
+                            letters = anchors.keys.sorted(),
+                            onLetter = { c -> anchors[c]?.let { scope.launch { listState.scrollToItem(it + 1) } } },
+                            modifier = Modifier.align(Alignment.CenterEnd).padding(end = 2.dp),
+                        )
                     }
                 }
             }
@@ -241,6 +270,35 @@ private fun LibraryFilter.label() = when (this) {
     LibraryFilter.FINISHED -> "Finished"
 }
 
+/** A slim right-edge A–Z rail; tapping a letter jumps the list to its first book. */
+@Composable
+private fun LetterRail(letters: List<Char>, onLetter: (Char) -> Unit, modifier: Modifier = Modifier) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.85f),
+        shape = RoundedCornerShape(12.dp),
+        modifier = modifier,
+    ) {
+        Column(
+            Modifier.width(22.dp).padding(vertical = 6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(1.dp),
+        ) {
+            letters.forEach { c ->
+                Text(
+                    c.toString(),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .clickable { onLetter(c) }
+                        .padding(horizontal = 4.dp, vertical = 1.dp),
+                )
+            }
+        }
+    }
+}
+
 /** The pill of circular icon buttons that fronts the library. */
 @Composable
 private fun Toolbar(
@@ -248,17 +306,18 @@ private fun Toolbar(
     onSearch: () -> Unit,
     onToggleLayout: () -> Unit,
     onStats: () -> Unit,
+    onProfile: () -> Unit,
     onFilter: () -> Unit,
     onSort: () -> Unit,
 ) {
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainer,
         shape = RoundedCornerShape(32.dp),
-        modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
     ) {
         Row(
-            Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             CircleIconButton(Icons.Default.Search, "Search", onClick = onSearch)
@@ -268,6 +327,7 @@ private fun Toolbar(
                 onClick = onToggleLayout,
             )
             CircleIconButton(Icons.Default.BarChart, "Stats", onClick = onStats)
+            CircleIconButton(Icons.Default.Person, "Profile", onClick = onProfile)
             CircleIconButton(Icons.Default.FilterList, "Filter", onClick = onFilter)
             CircleIconButton(Icons.Default.SwapVert, "Sort", onClick = onSort)
         }

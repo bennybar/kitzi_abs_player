@@ -51,6 +51,28 @@ data class ListeningStats(
     val itemsFinished: Int,
 )
 
+/** A "top" list entry: a label, total listened seconds, and an optional cover. */
+data class TopEntry(val label: String, val listenedSec: Double, val coverUrl: String?)
+
+/** The signed-in user + server summary for the profile screen. */
+data class ProfileInfo(
+    val username: String?,
+    val serverUrl: String?,
+    val libraryCount: Int,
+    val totalListenedSec: Double,
+    val finished: Int,
+)
+
+/** Local detailed stats derived from [PlayHistoryStore]. */
+data class DetailedStats(
+    val topBooks: List<TopEntry>,
+    val topAuthors: List<TopEntry>,
+    val topNarrators: List<TopEntry>,
+    val currentStreakDays: Int,
+    val daysListened: Int,
+    val totalSec: Double,
+)
+
 /**
  * The library: server sync into Room, and every read served from Room.
  */
@@ -284,6 +306,61 @@ class BooksRepository(
             totalSec = json["totalTime"].num() ?: 0.0,
             perDaySec = perDay,
             itemsFinished = (json["items"] as? JsonObject)?.size ?: 0,
+        )
+    }
+
+    /**
+     * Aggregates the local play-history into top books / authors / narrators and a
+     * listening streak. Books are resolved from the library table at read time.
+     */
+    suspend fun detailedStats(): DetailedStats = withContext(Dispatchers.IO) {
+        val sessions = PlayHistoryStore.sessions()
+        val base = session.baseUrl.orEmpty()
+        val token = session.accessToken
+        val books = sessions.map { it.itemId }.toSet()
+            .associateWith { dao.getBook(it)?.toBook(base, token) }
+
+        val bookTotals = LinkedHashMap<String, Double>()
+        val authorTotals = HashMap<String, Double>()
+        val narratorTotals = HashMap<String, Double>()
+        var total = 0.0
+        sessions.forEach { s ->
+            total += s.listenedSec
+            bookTotals.merge(s.itemId, s.listenedSec, Double::plus)
+            val b = books[s.itemId] ?: return@forEach
+            b.author?.let { authorTotals.merge(it, s.listenedSec, Double::plus) }
+            b.narrators.firstOrNull()?.let { narratorTotals.merge(it, s.listenedSec, Double::plus) }
+        }
+
+        val topBooks = bookTotals.entries.sortedByDescending { it.value }.take(5)
+            .mapNotNull { (id, sec) -> books[id]?.let { TopEntry(it.title, sec, it.coverUrl) } }
+        val topAuthors = authorTotals.entries.sortedByDescending { it.value }.take(5)
+            .map { TopEntry(it.key, it.value, null) }
+        val topNarrators = narratorTotals.entries.sortedByDescending { it.value }.take(5)
+            .map { TopEntry(it.key, it.value, null) }
+
+        val days = sessions.map {
+            java.time.Instant.ofEpochMilli(it.atMs).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+        }.toSet()
+        var streak = 0
+        var d = java.time.LocalDate.now()
+        if (d !in days) d = d.minusDays(1) // grace: an unfinished today doesn't break yesterday's streak
+        while (d in days) { streak++; d = d.minusDays(1) }
+
+        DetailedStats(topBooks, topAuthors, topNarrators, streak, days.size, total)
+    }
+
+    suspend fun profile(): ProfileInfo = withContext(Dispatchers.IO) {
+        val me = runCatching { api.me() }.getOrNull()
+        val stats = runCatching { api.listeningStats() }.getOrNull()
+        ProfileInfo(
+            username = me?.get("username").str(),
+            serverUrl = session.baseUrl,
+            libraryCount = dao.countBooksRaw(
+                BooksDao.libraryQuery(BookSort.NAME_ASC, LibraryFilter.ALL, null, 0, 0, countOnly = true)
+            ),
+            totalListenedSec = stats?.get("totalTime").num() ?: 0.0,
+            finished = (stats?.get("items") as? JsonObject)?.size ?: 0,
         )
     }
 

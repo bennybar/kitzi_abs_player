@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Animation
 import androidx.compose.material.icons.filled.SortByAlpha
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Timer
@@ -145,7 +146,7 @@ fun SettingsScreen(onSignedOut: () -> Unit) {
         }
 
         // ---------- Appearance ----------
-        if (matches("appearance", "theme", "dark", "series", "author", "player", "font", "tint", "letter")) {
+        if (matches("appearance", "theme", "dark", "series", "author", "player", "font", "tint", "letter", "animation")) {
             Section("Appearance")
             TogglePref("ui_show_series_tab", false, "Show Series tab", "Enable the Series view")
             TogglePref("ui_author_view_enabled", true, "Authors tab", "Show a dedicated Authors tab in the main navigation")
@@ -178,6 +179,15 @@ fun SettingsScreen(onSignedOut: () -> Unit) {
                 selectedLabel = TINT_LABELS[tint],
                 options = TINT_LABELS.mapIndexed { i, l -> i.toString() to l },
                 onSelect = { ThemeState.setSurfaceTint(it.toInt(), prefs) },
+            )
+            // Screen-transition speed: smoother (slower) vs snappier (faster).
+            val animSpeed by com.bennybar.kitzi.ui.UiPrefsState.animationSpeed
+            DropdownRow(
+                icon = Icons.Default.Animation,
+                title = "Animation speed",
+                selectedLabel = animSpeed.replaceFirstChar { it.uppercase() },
+                options = listOf("fast" to "Fast", "normal" to "Normal", "smooth" to "Smooth"),
+                onSelect = { com.bennybar.kitzi.ui.UiPrefsState.setAnimationSpeed(prefs, it) },
             )
             HorizontalDivider()
         }
@@ -247,7 +257,24 @@ fun SettingsScreen(onSignedOut: () -> Unit) {
         // ---------- Debug & logging ----------
         if (matches("debug", "logging", "log")) {
             Section("Debug & logging")
-            TogglePref("logging_session_active", false, "Logging session", "Log everything to file for up to 15 minutes", Icons.Default.BugReport)
+            val logCtx = androidx.compose.ui.platform.LocalContext.current
+            var logging by remember { mutableStateOf(com.bennybar.kitzi.data.SessionLogger.isRunning) }
+            ToggleRow(
+                Icons.Default.BugReport,
+                "Logging session",
+                "Capture logs to a file for up to 15 minutes",
+                logging,
+            ) {
+                logging = it
+                Services.prefs.putBoolean("logging_session_active", it)
+                if (it) com.bennybar.kitzi.data.SessionLogger.start(logCtx)
+                else com.bennybar.kitzi.data.SessionLogger.stop()
+            }
+            if (com.bennybar.kitzi.data.SessionLogger.logFiles(logCtx).isNotEmpty()) {
+                ActionRow(Icons.Default.History, "Clear session logs", "Delete captured log files") {
+                    com.bennybar.kitzi.data.SessionLogger.clearLogs(logCtx)
+                }
+            }
             HorizontalDivider()
         }
 

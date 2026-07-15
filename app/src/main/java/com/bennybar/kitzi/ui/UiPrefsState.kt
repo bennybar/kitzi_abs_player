@@ -22,6 +22,15 @@ object UiPrefsState {
     val hideSeriesWhenSameAsAuthor = mutableStateOf(true)
     val letterScrollEnabled = mutableStateOf(false)
     val letterScrollBooksAlpha = mutableStateOf(false)
+    /** Screen-transition duration multiplier: "fast"=0.6, "normal"=1, "smooth"=1.8. */
+    val animationSpeed = mutableStateOf("normal")
+
+    val animationScale: Float
+        get() = when (animationSpeed.value) {
+            "fast" -> 0.55f
+            "smooth" -> 1.8f
+            else -> 1f
+        }
 
     fun load(prefs: FlutterPrefs) {
         showAuthorsTab.value = prefs.getBoolean(K_AUTHORS, true)
@@ -32,6 +41,12 @@ object UiPrefsState {
         hideSeriesWhenSameAsAuthor.value = prefs.getBoolean(K_HIDE_SERIES, true)
         letterScrollEnabled.value = prefs.getBoolean(K_LETTER, false)
         letterScrollBooksAlpha.value = prefs.getBoolean(K_LETTER_ALPHA, false)
+        animationSpeed.value = prefs.getString(K_ANIM_SPEED) ?: "normal"
+    }
+
+    fun setAnimationSpeed(prefs: FlutterPrefs, value: String) {
+        prefs.putString(K_ANIM_SPEED, value)
+        animationSpeed.value = value
     }
 
     /** Called by the Settings toggles: updates both the live state and the pref. */
@@ -63,4 +78,5 @@ object UiPrefsState {
     const val K_HIDE_SERIES = "ui_hide_series_when_same_as_author"
     const val K_LETTER = "ui_letter_scroll_enabled"
     const val K_LETTER_ALPHA = "ui_letter_scroll_books_alpha"
+    const val K_ANIM_SPEED = "ui_animation_speed"
 }

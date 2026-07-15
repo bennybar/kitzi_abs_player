@@ -7,16 +7,21 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.FastForward
+import androidx.compose.material.icons.filled.Gradient
+import androidx.compose.material.icons.filled.Segment
 import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Forward30
 import androidx.compose.material.icons.filled.Forward5
@@ -27,6 +32,7 @@ import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.Replay30
 import androidx.compose.material.icons.filled.Replay5
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -48,6 +54,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -56,7 +63,10 @@ import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmapOrNull
 import androidx.palette.graphics.Palette
 import coil.ImageLoader
+import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.bennybar.kitzi.data.Services
+import com.bennybar.kitzi.data.model.Book
 import com.bennybar.kitzi.playback.Chapter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -346,6 +356,119 @@ fun SpeedSheet(current: Float, onPick: (Float) -> Unit, onDismiss: () -> Unit) {
                 }
             }
         }
+    }
+}
+
+/** "More info" — the book's metadata, opened from the player cover. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PlayerInfoSheet(itemId: String, onDismiss: () -> Unit) {
+    val book by produceState<Book?>(null, itemId) { value = Services.books.getBook(itemId) }
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        val b = book
+        if (b == null) {
+            Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+            return@ModalBottomSheet
+        }
+        LazyColumn(
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+            contentPadding = PaddingValues(bottom = 32.dp),
+        ) {
+            item {
+                Row(verticalAlignment = Alignment.Top) {
+                    AsyncImage(
+                        model = b.coverUrl,
+                        contentDescription = b.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.size(width = 92.dp, height = 138.dp).clip(RoundedCornerShape(12.dp)),
+                    )
+                    Column(Modifier.weight(1f).padding(start = 16.dp)) {
+                        Text(b.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        b.author?.let {
+                            Text(
+                                it,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 4.dp),
+                            )
+                        }
+                        b.narrators.takeIf { it.isNotEmpty() }?.let {
+                            Text(
+                                "Narrated by ${it.joinToString(", ")}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 6.dp),
+                            )
+                        }
+                    }
+                }
+                val facts = buildList {
+                    b.publishYear?.let { add("Year" to it.toString()) }
+                    b.publisher?.let { add("Publisher" to it) }
+                    b.genres.takeIf { it.isNotEmpty() }?.let { add("Genres" to it.joinToString(", ")) }
+                }
+                facts.forEach { (k, v) ->
+                    Row(Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                        Text(
+                            k,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.width(84.dp),
+                        )
+                        Text(v, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                    }
+                }
+                b.description?.takeIf { it.isNotBlank() }?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 16.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** The player "More" menu: mark finished, and the two player display toggles. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PlayerMoreSheet(
+    gradientEnabled: Boolean,
+    chapterized: Boolean,
+    onToggleGradient: () -> Unit,
+    onToggleChapterized: () -> Unit,
+    onMarkFinished: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
+            MoreRow(Icons.Default.CheckCircle, "Mark as finished", onMarkFinished)
+            MoreRow(
+                Icons.Default.Gradient,
+                if (gradientEnabled) "Disable gradient background" else "Enable gradient background",
+                onToggleGradient,
+            )
+            MoreRow(
+                Icons.Default.Segment,
+                if (chapterized) "Chapter indicators: On" else "Chapter indicators: Off",
+                onToggleChapterized,
+            )
+        }
+    }
+}
+
+@Composable
+private fun MoreRow(icon: ImageVector, label: String, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 20.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, null, tint = MaterialTheme.colorScheme.primary)
+        Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(start = 16.dp))
     }
 }
 

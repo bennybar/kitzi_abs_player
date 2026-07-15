@@ -320,7 +320,11 @@ class PlaybackController(
                 ProgressReport(np.itemId, current, total, finished, paused, listened),
             )
             // Only on success — otherwise the time rolls into the next attempt.
-            if (ok && listened != null) accrual.consume(listened)
+            if (ok && listened != null) {
+                accrual.consume(listened)
+                // Record the confirmed listened interval for local stats.
+                com.bennybar.kitzi.data.PlayHistoryStore.record(np.itemId, listened)
+            }
             if (ok) lastSyncedSec = current
         }
     }

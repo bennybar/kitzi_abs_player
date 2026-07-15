@@ -71,6 +71,8 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
     var showSleep by remember { mutableStateOf(false) }
     var showChapters by remember { mutableStateOf(false) }
     var showSpeed by remember { mutableStateOf(false) }
+    var showInfo by remember { mutableStateOf(false) }
+    var showMore by remember { mutableStateOf(false) }
     val sleep by Services.sleepTimer.mode.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
 
@@ -93,8 +95,9 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
 
     // Player-affecting settings, read live so the screen reflects them.
     val prefs = Services.prefs
-    val gradientEnabled = prefs.getBoolean("ui_player_gradient_background", true)
-    val chapterizedBar = prefs.getBoolean("ui_progress_bar_chapterized", true)
+    // Held as state so the "More" menu can toggle them and the player updates live.
+    var gradientEnabled by remember { mutableStateOf(prefs.getBoolean("ui_player_gradient_background", true)) }
+    var chapterizedBar by remember { mutableStateOf(prefs.getBoolean("ui_progress_bar_chapterized", true)) }
     val seekForwardSec = prefs.getInt("ui_seek_forward_seconds", 30)
     val seekBackwardSec = prefs.getInt("ui_seek_backward_seconds", 30)
     val coverMax = when (prefs.getString("ui_player_cover_size")) {
@@ -169,14 +172,21 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
                         label = "Last position",
                         iconColor = Color(0xFF7EE08A),
                         modifier = Modifier.align(Alignment.BottomStart).padding(12.dp),
-                        onClick = { /* resume-from-history is a stored journal position */ },
+                        // Jump back to the last saved listening position (useful after
+                        // scrubbing around).
+                        onClick = {
+                            scope.launch {
+                                Services.books.progressFor(np.itemId)?.currentTimeSec
+                                    ?.let { controller.seekGlobal(it, reportNow = true) }
+                            }
+                        },
                     )
                 }
                 CoverButton(
                     icon = Icons.Default.Info,
                     label = "More info",
                     modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
-                    onClick = { showChapters = false },
+                    onClick = { showInfo = true },
                 )
                 }
             }
@@ -210,6 +220,14 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
                     modifier = Modifier.padding(top = 3.dp),
                 )
             }
+            com.bennybar.kitzi.ui.common.AudibleStars(
+                itemId = np.itemId,
+                title = np.title,
+                author = np.author,
+                narrator = narrator,
+                durationMs = (controller.totalDurationSec()?.let { (it * 1000).toLong() }),
+                modifier = Modifier.padding(top = 8.dp),
+            )
 
             // clock pill with the whole-book length
             if (total > 0) {
@@ -354,7 +372,7 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
                     highlighted = sleep !is SleepMode.Off,
                 ) { showSleep = true }
                 ActionTile(Icons.Default.Speed, "Speed", Modifier.weight(1f)) { showSpeed = true }
-                ActionTile(Icons.Default.MoreVert, "More", Modifier.weight(1f)) {}
+                ActionTile(Icons.Default.MoreVert, "More", Modifier.weight(1f)) { showMore = true }
             }
 
             Box(Modifier.height(4.dp))
@@ -382,6 +400,28 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
             currentIndex = chapter?.index ?: -1,
             onPick = { controller.seekGlobal(it.startSec); showChapters = false },
             onDismiss = { showChapters = false },
+        )
+    }
+    if (showInfo) {
+        PlayerInfoSheet(itemId = np.itemId, onDismiss = { showInfo = false })
+    }
+    if (showMore) {
+        PlayerMoreSheet(
+            gradientEnabled = gradientEnabled,
+            chapterized = chapterizedBar,
+            onToggleGradient = {
+                gradientEnabled = !gradientEnabled
+                prefs.putBoolean("ui_player_gradient_background", gradientEnabled)
+            },
+            onToggleChapterized = {
+                chapterizedBar = !chapterizedBar
+                prefs.putBoolean("ui_progress_bar_chapterized", chapterizedBar)
+            },
+            onMarkFinished = {
+                scope.launch(Dispatchers.IO) { Services.playbackApi.markFinished(np.itemId) }
+                showMore = false
+            },
+            onDismiss = { showMore = false },
         )
     }
 }

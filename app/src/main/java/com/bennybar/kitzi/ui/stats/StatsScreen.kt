@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -41,10 +42,12 @@ import kotlin.math.roundToInt
 @Composable
 fun StatsScreen(onBack: () -> Unit = {}) {
     var stats by remember { mutableStateOf<ListeningStats?>(null) }
+    var detailed by remember { mutableStateOf<com.bennybar.kitzi.data.DetailedStats?>(null) }
     var loaded by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         stats = Services.books.listeningStats()
+        detailed = Services.books.detailedStats()
         loaded = true
     }
 
@@ -78,6 +81,9 @@ fun StatsScreen(onBack: () -> Unit = {}) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             StatTile("Total", humanDuration(s.totalSec), Modifier.weight(1f))
             StatTile("Finished", "${s.itemsFinished}", Modifier.weight(1f))
+            detailed?.let {
+                StatTile("Streak", if (it.currentStreakDays == 1) "1 day" else "${it.currentStreakDays} days", Modifier.weight(1f))
+            }
         }
 
         if (s.perDaySec.isNotEmpty()) {
@@ -85,7 +91,64 @@ fun StatsScreen(onBack: () -> Unit = {}) {
             DailyBars(s.perDaySec)
         }
 
-        YearWrapped(s)
+        val d = detailed
+        if (d != null && d.topBooks.isEmpty() && !com.bennybar.kitzi.data.PlayHistoryStore.enabled()) {
+            Card(Modifier.fillMaxWidth()) {
+                Text(
+                    "Enable \"Detailed listening history\" in Settings to see your top books, authors and narrators.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(16.dp),
+                )
+            }
+        }
+        d?.takeIf { it.topBooks.isNotEmpty() }?.let { TopList("Top books", it.topBooks, showCovers = true) }
+        d?.takeIf { it.topAuthors.isNotEmpty() }?.let { TopList("Top authors", it.topAuthors, showCovers = false) }
+        d?.takeIf { it.topNarrators.isNotEmpty() }?.let { TopList("Top narrators", it.topNarrators, showCovers = false) }
+
+        YearWrapped(s, detailed)
+    }
+}
+
+@Composable
+private fun TopList(title: String, entries: List<com.bennybar.kitzi.data.TopEntry>, showCovers: Boolean) {
+    Text(title, style = MaterialTheme.typography.titleMedium)
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(vertical = 6.dp)) {
+            entries.forEachIndexed { i, e ->
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "${i + 1}",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.width(24.dp),
+                    )
+                    if (showCovers && e.coverUrl != null) {
+                        coil.compose.AsyncImage(
+                            model = e.coverUrl,
+                            contentDescription = null,
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                            modifier = Modifier.size(40.dp).clip(RoundedCornerShape(8.dp)),
+                        )
+                    }
+                    Text(
+                        e.label,
+                        style = MaterialTheme.typography.bodyLarge,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
+                    )
+                    Text(
+                        humanDuration(e.listenedSec),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -141,7 +204,7 @@ private fun DailyBars(perDay: Map<String, Double>) {
 }
 
 @Composable
-private fun YearWrapped(s: ListeningStats) {
+private fun YearWrapped(s: ListeningStats, detailed: com.bennybar.kitzi.data.DetailedStats?) {
     val hours = (s.totalSec / 3600).roundToInt()
     val busiest = s.perDaySec.maxByOrNull { it.value }
 
@@ -150,6 +213,15 @@ private fun YearWrapped(s: ListeningStats) {
             Text("Year Wrapped", style = MaterialTheme.typography.titleLarge)
             Text("You listened for about $hours hours.", style = MaterialTheme.typography.bodyLarge)
             Text("You finished ${s.itemsFinished} books.", style = MaterialTheme.typography.bodyLarge)
+            detailed?.takeIf { it.daysListened > 0 }?.let {
+                Text("You listened on ${it.daysListened} different days.", style = MaterialTheme.typography.bodyLarge)
+                if (it.currentStreakDays > 1) {
+                    Text("You're on a ${it.currentStreakDays}-day streak.", style = MaterialTheme.typography.bodyLarge)
+                }
+            }
+            detailed?.topBooks?.firstOrNull()?.let {
+                Text("Your top book was “${it.label}”.", style = MaterialTheme.typography.bodyLarge)
+            }
             busiest?.let {
                 Text(
                     "Your biggest day was ${it.key} — ${humanDuration(it.value)}.",
