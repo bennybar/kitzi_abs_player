@@ -85,6 +85,12 @@
             android:name="com.google.android.gms.car.application"
             android:resource="@xml/automotive_app_desc" />
 
+        <!-- Opt in to Samsung One UI Live Notifications / Now Bar, so the active
+             playback surfaces as the status-bar media pill and lock-screen chip. -->
+        <meta-data
+            android:name="com.samsung.android.support.ongoing_activity"
+            android:value="true" />
+
     </application>
 
     <queries>

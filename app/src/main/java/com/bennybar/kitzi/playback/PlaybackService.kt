@@ -131,10 +131,11 @@ class PlaybackService : MediaLibraryService() {
                 .setDisplayName("Next chapter")
                 .build()
             // customLayout is [rewind, forward] from the session. Read left-to-right
-            // as: previous chapter, rewind, play/pause, fast-forward, next chapter.
+            // as: rewind, previous chapter, play/pause, next chapter, fast-forward —
+            // the same symmetric layout established podcast players use.
             val rewind = customLayout.getOrNull(0)
             val forward = customLayout.getOrNull(1)
-            return ImmutableList.copyOf(listOfNotNull(prev, rewind, playPause, forward, next))
+            return ImmutableList.copyOf(listOfNotNull(rewind, prev, playPause, next, forward))
         }
     }
 
