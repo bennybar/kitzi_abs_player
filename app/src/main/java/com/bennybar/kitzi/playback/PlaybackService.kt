@@ -100,6 +100,42 @@ class PlaybackService : MediaLibraryService() {
         session = MediaLibrarySession.Builder(this, BookCoordinatePlayer(player), LibraryCallback())
             .setCustomLayout(ImmutableList.of(rewindButton, forwardButton))
             .build()
+
+        // Own the notification button order so it reads left-to-right as a proper
+        // audiobook remote — rewind, previous chapter, play/pause, next chapter,
+        // fast-forward — instead of the jumbled default.
+        setMediaNotificationProvider(KitziNotificationProvider())
+    }
+
+    @androidx.media3.common.util.UnstableApi
+    private inner class KitziNotificationProvider :
+        androidx.media3.session.DefaultMediaNotificationProvider(this@PlaybackService) {
+        override fun getMediaButtons(
+            mediaSession: MediaSession,
+            playerCommands: Player.Commands,
+            customLayout: ImmutableList<CommandButton>,
+            showPauseButton: Boolean,
+        ): ImmutableList<CommandButton> {
+            val playPause = CommandButton.Builder(
+                if (showPauseButton) CommandButton.ICON_PAUSE else CommandButton.ICON_PLAY
+            )
+                .setPlayerCommand(Player.COMMAND_PLAY_PAUSE)
+                .setDisplayName(if (showPauseButton) "Pause" else "Play")
+                .build()
+            val prev = CommandButton.Builder(CommandButton.ICON_PREVIOUS)
+                .setPlayerCommand(Player.COMMAND_SEEK_TO_PREVIOUS)
+                .setDisplayName("Previous chapter")
+                .build()
+            val next = CommandButton.Builder(CommandButton.ICON_NEXT)
+                .setPlayerCommand(Player.COMMAND_SEEK_TO_NEXT)
+                .setDisplayName("Next chapter")
+                .build()
+            // customLayout is [rewind, forward] from the session. Read left-to-right
+            // as: previous chapter, rewind, play/pause, fast-forward, next chapter.
+            val rewind = customLayout.getOrNull(0)
+            val forward = customLayout.getOrNull(1)
+            return ImmutableList.copyOf(listOfNotNull(prev, rewind, playPause, forward, next))
+        }
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo) = session
