@@ -82,6 +82,7 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
     var showMore by remember { mutableStateOf(false) }
     var showHistory by remember { mutableStateOf(false) }
     var showCancelDownload by remember { mutableStateOf(false) }
+    var showDeleteDownload by remember { mutableStateOf(false) }
     val sleep by Services.sleepTimer.mode.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
 
@@ -389,7 +390,9 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
                     downloading -> ActionTile(Icons.Default.Downloading, "Cancel download", Modifier.weight(1f), highlighted = true) {
                         showCancelDownload = true
                     }
-                    dl?.isComplete == true -> ActionTile(Icons.Default.DownloadDone, "Downloaded", Modifier.weight(1f), highlighted = true) {}
+                    dl?.isComplete == true -> ActionTile(Icons.Default.DownloadDone, "Downloaded", Modifier.weight(1f), highlighted = true) {
+                        showDeleteDownload = true
+                    }
                     else -> ActionTile(Icons.Default.Download, "Download", Modifier.weight(1f)) {
                         scope.launch { Services.downloads.download(np.itemId) }
                     }
@@ -421,6 +424,23 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
             },
             dismissButton = {
                 TextButton(onClick = { showCancelDownload = false }) { Text("Keep downloading") }
+            },
+        )
+    }
+
+    if (showDeleteDownload) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDownload = false },
+            title = { Text("Remove download?") },
+            text = { Text("Delete this book's downloaded files from your device? You can download it again anytime.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDeleteDownload = false
+                    scope.launch { Services.downloads.delete(np.itemId) }
+                }) { Text("Remove download") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDownload = false }) { Text("Keep") }
             },
         )
     }
