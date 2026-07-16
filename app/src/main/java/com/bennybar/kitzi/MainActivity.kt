@@ -278,7 +278,13 @@ private fun KitziNavBar(tabs: List<Tab>, selected: Tab, overlayOpen: Boolean, on
                         Modifier
                             .weight(1f)
                             .clip(RoundedCornerShape(percent = 50))
-                            .clickable { onSelect(t) }
+                            // No ripple: the sliding capsule already signals selection,
+                            // and the press flash showed under the finger when a swipe
+                            // began.
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                            ) { onSelect(t) }
                             .padding(vertical = 7.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
