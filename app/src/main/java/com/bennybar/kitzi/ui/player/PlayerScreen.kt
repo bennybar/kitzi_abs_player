@@ -447,16 +447,19 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
 
     if (showSleep) {
         SleepTimerSheet(
+            current = sleep,
+            // Stay open after starting/cancelling so the running status is visible;
+            // the user dismisses the sheet themselves (swipe down / tap outside).
             onDismiss = { showSleep = false },
-            onDuration = { Services.sleepTimer.startDuration(it); showSleep = false },
-            onEndOfChapter = { Services.sleepTimer.startEndOfChapter(); showSleep = false },
-            onCancel = { Services.sleepTimer.cancel(); showSleep = false },
+            onDuration = { Services.sleepTimer.startDuration(it) },
+            onEndOfChapter = { Services.sleepTimer.startEndOfChapter() },
+            onCancel = { Services.sleepTimer.cancel() },
         )
     }
     if (showSpeed) {
         SpeedSheet(
-            current = runCatching { controller.player.playbackParameters.speed }.getOrDefault(1f),
-            onPick = { controller.setSpeed(it.toDouble()); showSpeed = false },
+            current = speed.toFloat(),
+            onChange = { controller.setSpeed(it.toDouble()) },
             onDismiss = { showSpeed = false },
         )
     }

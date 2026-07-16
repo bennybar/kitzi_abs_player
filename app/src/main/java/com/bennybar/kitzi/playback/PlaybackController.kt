@@ -198,15 +198,15 @@ class PlaybackController(
     }
 
     fun setSpeed(speed: Double) {
-        val allowed = SPEEDS.minByOrNull { kotlin.math.abs(it - speed) } ?: 1.0
-        player.setPlaybackParameters(PlaybackParameters(allowed.toFloat()))
-        prefs.putDouble(KEY_SPEED, allowed)
+        // Free 0.05 steps across the allowed range (driven by the speed slider),
+        // rather than snapping to a fixed preset set.
+        val v = kotlin.math.round(speed.coerceIn(MIN_SPEED, MAX_SPEED) * 20) / 20.0
+        player.setPlaybackParameters(PlaybackParameters(v.toFloat()))
+        prefs.putDouble(KEY_SPEED, v)
     }
 
-    private fun savedSpeed(): Float {
-        val saved = prefs.getDouble(KEY_SPEED, 1.0)
-        return (if (saved in SPEEDS) saved else 1.0).toFloat()
-    }
+    private fun savedSpeed(): Float =
+        prefs.getDouble(KEY_SPEED, 1.0).coerceIn(MIN_SPEED, MAX_SPEED).toFloat()
 
     // ---- loading -----------------------------------------------------------
 
@@ -603,10 +603,8 @@ class PlaybackController(
         private const val KEY_SPEED = "playback_speed"
         const val KEY_LAST_ITEM = "playback_last_item_id"
 
-        /** The exact set the Flutter app allows; anything else is snapped to the nearest. */
-        val SPEEDS = listOf(
-            0.75, 0.80, 0.85, 0.90, 0.95, 1.00, 1.05, 1.10,
-            1.15, 1.20, 1.30, 1.40, 1.50, 1.75, 2.00,
-        )
+        /** Playback-speed range the slider scrubs over, in 0.05 steps. */
+        const val MIN_SPEED = 0.5
+        const val MAX_SPEED = 3.0
     }
 }

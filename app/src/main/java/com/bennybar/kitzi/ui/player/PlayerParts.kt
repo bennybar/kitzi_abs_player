@@ -50,9 +50,11 @@ import androidx.compose.material.icons.filled.Replay30
 import androidx.compose.material.icons.filled.Replay5
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -65,6 +67,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import kotlin.math.roundToInt
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -311,42 +315,134 @@ fun NothingPlaying(onResume: () -> Unit) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SleepTimerSheet(
+    current: com.bennybar.kitzi.playback.SleepMode,
     onDismiss: () -> Unit,
     onDuration: (Int) -> Unit,
     onEndOfChapter: () -> Unit,
     onCancel: () -> Unit,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Sleep timer", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(5, 10, 15, 30, 45, 60).forEach { minutes ->
-                    FilterChip(selected = false, onClick = { onDuration(minutes) }, label = { Text("${minutes}m") })
-                }
+        // Seed the scroller from a running duration timer, else a sensible default.
+        val seed = (current as? com.bennybar.kitzi.playback.SleepMode.Duration)
+            ?.let { (it.remainingSec / 60).toInt().coerceIn(5, 120) } ?: 15
+        var minutes by remember { mutableStateOf(seed.toFloat()) }
+        // Once the user moves the scroller, the primary button becomes "Start timer"
+        // again so they can restart at the new duration; otherwise a running timer
+        // shows "Cancel timer" in its place.
+        var userMoved by remember { mutableStateOf(false) }
+
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Sleep timer", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "${minutes.roundToInt()} min",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                )
             }
-            FilterChip(selected = false, onClick = onEndOfChapter, label = { Text("End of chapter") })
-            TextButton(onClick = onCancel) { Text("Cancel timer") }
+
+            // Live status when a timer is already running.
+            when (val c = current) {
+                is com.bennybar.kitzi.playback.SleepMode.Duration ->
+                    Text(
+                        "Running — ${c.remainingSec / 60}m ${c.remainingSec % 60}s left",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                is com.bennybar.kitzi.playback.SleepMode.EndOfChapter ->
+                    Text(
+                        "Running — stops at end of chapter",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                com.bennybar.kitzi.playback.SleepMode.Off -> {}
+            }
+
+            Slider(
+                value = minutes,
+                onValueChange = { minutes = it; userMoved = true },
+                valueRange = 5f..120f,
+                steps = (120 - 5) / 5 - 1,   // 5-minute increments
+            )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("5 min", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("2 hr", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+
+            // A running, untouched timer turns the primary button into Cancel; moving
+            // the scroller (or no timer) makes it Start again.
+            if (current !is com.bennybar.kitzi.playback.SleepMode.Off && !userMoved) {
+                Button(
+                    onClick = onCancel,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                    ),
+                ) { Text("Cancel timer") }
+            } else {
+                Button(
+                    onClick = { onDuration(minutes.roundToInt()); userMoved = false },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Start timer") }
+            }
+            FilterChip(
+                selected = current is com.bennybar.kitzi.playback.SleepMode.EndOfChapter,
+                onClick = { onEndOfChapter(); userMoved = false },
+                label = { Text("End of chapter") },
+            )
         }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SpeedSheet(current: Float, onPick: (Float) -> Unit, onDismiss: () -> Unit) {
+fun SpeedSheet(current: Float, onChange: (Float) -> Unit, onDismiss: () -> Unit) {
+    val min = com.bennybar.kitzi.playback.PlaybackController.MIN_SPEED.toFloat()
+    val max = com.bennybar.kitzi.playback.PlaybackController.MAX_SPEED.toFloat()
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Playback speed", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-            com.bennybar.kitzi.playback.PlaybackController.SPEEDS.chunked(5).forEach { row ->
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    row.forEach { speed ->
-                        FilterChip(
-                            selected = kotlin.math.abs(current - speed) < 0.001,
-                            onClick = { onPick(speed.toFloat()) },
-                            label = { Text("${speed}x") },
-                        )
-                    }
-                }
+        var value by remember { mutableStateOf(current.coerceIn(min, max)) }
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Playback speed", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                Text(
+                    String.format(java.util.Locale.US, "%.2fx", value),
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                )
             }
+            Slider(
+                value = value,
+                onValueChange = { value = it; onChange(it) },
+                valueRange = min..max,
+                steps = (((max - min) / 0.05f).roundToInt() - 1),   // 0.05 increments
+            )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("${min}x", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("${max}x", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            // Snap back to normal speed without dragging the slider there.
+            TextButton(
+                onClick = { value = 1f; onChange(1f) },
+                enabled = kotlin.math.abs(value - 1f) > 0.001f,
+                modifier = Modifier.align(Alignment.End),
+            ) { Text("Reset to 1×") }
         }
     }
 }
