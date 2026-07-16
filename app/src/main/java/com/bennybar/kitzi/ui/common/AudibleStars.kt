@@ -1,9 +1,15 @@
 package com.bennybar.kitzi.ui.common
 
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
@@ -55,7 +61,27 @@ fun AudibleStars(
 
     val amber = Color(0xFFF6A609)
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
-    Row(modifier, horizontalArrangement = Arrangement.spacedBy(1.dp), verticalAlignment = Alignment.CenterVertically) {
+
+    // Tapping the rating opens the book's Audible page (or a search for it) in the
+    // browser — toggleable in Settings, on by default.
+    val context = LocalContext.current
+    val linkMod = if (com.bennybar.kitzi.ui.UiPrefsState.audibleLink.value) {
+        val url = r.asin?.let { "https://www.audible.com/pd/$it" }
+            ?: ("https://www.audible.com/search?keywords=" +
+                Uri.encode(listOfNotNull(title, author).joinToString(" ")))
+        Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .clickable {
+                runCatching {
+                    context.startActivity(
+                        Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    )
+                }
+            }
+    } else Modifier
+
+    Row(modifier.then(linkMod), horizontalArrangement = Arrangement.spacedBy(1.dp), verticalAlignment = Alignment.CenterVertically) {
         val full = floor(r.rating).toInt()
         val frac = r.rating - full
         val fullCount = if (frac >= 0.75) full + 1 else full

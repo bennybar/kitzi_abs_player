@@ -144,7 +144,7 @@ fun SettingsScreen(onSignedOut: () -> Unit) {
         }
 
         // ---------- Appearance ----------
-        if (matches("appearance", "theme", "dark", "series", "author", "player", "font", "tint", "letter")) {
+        if (matches("appearance", "theme", "dark", "series", "author", "player", "font", "tint", "letter", "audible", "rating")) {
             Section("Appearance")
             TogglePref("ui_show_series_tab", false, "Show Series tab", "Enable the Series view")
             TogglePref("ui_author_view_enabled", true, "Authors tab", "Show a dedicated Authors tab in the main navigation")
@@ -152,6 +152,7 @@ fun SettingsScreen(onSignedOut: () -> Unit) {
             TogglePref("ui_hide_series_when_same_as_author", true, "Hide duplicate series names", "Hide series name in books list when it matches the author name")
             TogglePref("ui_player_gradient_background", true, "Gradient background in player", "Apply a gradient surface to the full screen player", Icons.Default.Gradient)
             TogglePref("ui_player_scrolling_single_line_title", false, "Single-line scrolling player title", "Show one title line that continuously scrolls left in full player")
+            TogglePref("ui_audible_link_enabled", true, "Tap ratings to open Audible", "Open the book's Audible page in your browser when you tap its star rating")
             TogglePref("ui_letter_scroll_enabled", false, "Add Letter Scrolling", "Show an alphabetical scrollbar in long lists", Icons.Default.SortByAlpha)
             TogglePref("ui_letter_scroll_books_alpha", false, "Books tab alphabetical order", "Required for letter scrolling in the Books tab", indent = true)
 

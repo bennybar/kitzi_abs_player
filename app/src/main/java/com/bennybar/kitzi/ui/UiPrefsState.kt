@@ -22,6 +22,7 @@ object UiPrefsState {
     val hideSeriesWhenSameAsAuthor = mutableStateOf(true)
     val letterScrollEnabled = mutableStateOf(false)
     val letterScrollBooksAlpha = mutableStateOf(false)
+    val audibleLink = mutableStateOf(true)
 
     fun load(prefs: FlutterPrefs) {
         showAuthorsTab.value = prefs.getBoolean(K_AUTHORS, true)
@@ -32,6 +33,7 @@ object UiPrefsState {
         hideSeriesWhenSameAsAuthor.value = prefs.getBoolean(K_HIDE_SERIES, true)
         letterScrollEnabled.value = prefs.getBoolean(K_LETTER, false)
         letterScrollBooksAlpha.value = prefs.getBoolean(K_LETTER_ALPHA, false)
+        audibleLink.value = prefs.getBoolean(K_AUDIBLE_LINK, true)
     }
 
     /** Called by the Settings toggles: updates both the live state and the pref. */
@@ -46,13 +48,14 @@ object UiPrefsState {
             K_HIDE_SERIES -> hideSeriesWhenSameAsAuthor.value = value
             K_LETTER -> letterScrollEnabled.value = value
             K_LETTER_ALPHA -> letterScrollBooksAlpha.value = value
+            K_AUDIBLE_LINK -> audibleLink.value = value
         }
     }
 
     /** The keys this holder owns, so Settings can route them here. */
     val ownedKeys = setOf(
         K_AUTHORS, K_SERIES, K_FULL_PLAYER, K_RESUME_HISTORY,
-        K_DUAL_PROGRESS, K_HIDE_SERIES, K_LETTER, K_LETTER_ALPHA,
+        K_DUAL_PROGRESS, K_HIDE_SERIES, K_LETTER, K_LETTER_ALPHA, K_AUDIBLE_LINK,
     )
 
     const val K_AUTHORS = "ui_author_view_enabled"
@@ -63,4 +66,5 @@ object UiPrefsState {
     const val K_HIDE_SERIES = "ui_hide_series_when_same_as_author"
     const val K_LETTER = "ui_letter_scroll_enabled"
     const val K_LETTER_ALPHA = "ui_letter_scroll_books_alpha"
+    const val K_AUDIBLE_LINK = "ui_audible_link_enabled"
 }
