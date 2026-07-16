@@ -284,6 +284,17 @@ private fun App() {
         return
     }
 
+    // On a cold start with nothing loaded, bring the last book into the
+    // mini-player — paused at its saved position — so resuming is a single tap.
+    // Best-effort: a book that no longer exists or won't load just leaves the
+    // mini-player hidden. startPlaying = false so it never auto-plays.
+    LaunchedEffect(Unit) {
+        if (Services.playback.nowPlaying.value == null) {
+            Services.prefs.getString(com.bennybar.kitzi.playback.PlaybackController.KEY_LAST_ITEM)
+                ?.let { id -> runCatching { Services.playback.playItem(id, startPlaying = false) } }
+        }
+    }
+
     // The visible tabs follow the Appearance settings, live.
     val showAuthors by UiPrefsState.showAuthorsTab
     val showSeries by UiPrefsState.showSeriesTab
