@@ -50,6 +50,11 @@
             android:foregroundServiceType="dataSync"
             tools:node="merge" />
 
+        <!-- The "Cancel" action on the download notification. -->
+        <receiver
+            android:name=".downloads.DownloadActionReceiver"
+            android:exported="false" />
+
         <!-- Playback, lock screen, media buttons and Android Auto. -->
         <service
             android:name=".playback.PlaybackService"

@@ -17,6 +17,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.DownloadDone
+import androidx.compose.material.icons.filled.Downloading
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
@@ -27,12 +29,14 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -55,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.bennybar.kitzi.data.Services
+import com.bennybar.kitzi.data.db.DownloadStatus
 import com.bennybar.kitzi.playback.PlaybackController.Companion.KEY_LAST_ITEM
 import com.bennybar.kitzi.playback.SleepMode
 import kotlinx.coroutines.Dispatchers
@@ -76,6 +81,7 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
     var showInfo by remember { mutableStateOf(false) }
     var showMore by remember { mutableStateOf(false) }
     var showHistory by remember { mutableStateOf(false) }
+    var showCancelDownload by remember { mutableStateOf(false) }
     val sleep by Services.sleepTimer.mode.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
 
@@ -96,6 +102,12 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
             }
         })
         return
+    }
+
+    // The download state for the book being played, so the Download tile can turn
+    // into a live indicator and a cancel control.
+    val downloadState by produceState<com.bennybar.kitzi.downloads.ItemDownload?>(null, np.itemId) {
+        Services.downloads.watch(np.itemId).collect { value = it }
     }
 
     // Player-affecting settings, read live so the screen reflects them.
@@ -370,8 +382,17 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 ActionTile(Icons.AutoMirrored.Filled.List, "Chapters", Modifier.weight(1f), enabled = np.chapters.size > 1) { showChapters = true }
-                ActionTile(Icons.Default.Download, "Download", Modifier.weight(1f)) {
-                    scope.launch { Services.downloads.download(np.itemId) }
+                val dl = downloadState
+                val downloading = dl != null && !dl.isComplete &&
+                    (dl.status == DownloadStatus.RUNNING || dl.status == DownloadStatus.QUEUED)
+                when {
+                    downloading -> ActionTile(Icons.Default.Downloading, "Cancel download", Modifier.weight(1f), highlighted = true) {
+                        showCancelDownload = true
+                    }
+                    dl?.isComplete == true -> ActionTile(Icons.Default.DownloadDone, "Downloaded", Modifier.weight(1f), highlighted = true) {}
+                    else -> ActionTile(Icons.Default.Download, "Download", Modifier.weight(1f)) {
+                        scope.launch { Services.downloads.download(np.itemId) }
+                    }
                 }
                 ActionTile(
                     Icons.Default.NightsStay,
@@ -385,6 +406,23 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
 
             Box(Modifier.height(4.dp))
         }
+    }
+
+    if (showCancelDownload) {
+        AlertDialog(
+            onDismissRequest = { showCancelDownload = false },
+            title = { Text("Cancel download?") },
+            text = { Text("Stop downloading this book? Tracks already downloaded are kept.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showCancelDownload = false
+                    scope.launch { Services.downloads.cancel(np.itemId) }
+                }) { Text("Cancel download") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCancelDownload = false }) { Text("Keep downloading") }
+            },
+        )
     }
 
     if (showSleep) {

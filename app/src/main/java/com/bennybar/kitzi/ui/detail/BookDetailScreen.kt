@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Business
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.LocalOffer
@@ -31,6 +32,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -78,6 +80,7 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
     var progress by remember { mutableStateOf<MediaProgressEntity?>(null) }
     var bookmarks by remember { mutableStateOf<List<Bookmark>>(emptyList()) }
     var showInfo by remember { mutableStateOf(false) }
+    var showCancelConfirm by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(itemId) {
@@ -197,16 +200,24 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
                         modifier = Modifier.padding(start = 6.dp),
                     )
                 }
-                if (d?.isComplete == true) {
-                    OutlinedButton(
+                val downloading = d != null && !d.isComplete &&
+                    (d.status == DownloadStatus.RUNNING || d.status == DownloadStatus.QUEUED)
+                when {
+                    d?.isComplete == true -> OutlinedButton(
                         onClick = { scope.launch { Services.downloads.delete(itemId) } },
                         modifier = Modifier.weight(1f),
                     ) {
                         Icon(Icons.Default.Delete, null)
                         Text("Remove", modifier = Modifier.padding(start = 6.dp))
                     }
-                } else {
-                    OutlinedButton(
+                    downloading -> OutlinedButton(
+                        onClick = { showCancelConfirm = true },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Icon(Icons.Default.Close, null)
+                        Text("Cancel", modifier = Modifier.padding(start = 6.dp))
+                    }
+                    else -> OutlinedButton(
                         onClick = { scope.launch { Services.downloads.download(itemId) } },
                         modifier = Modifier.weight(1f),
                     ) {
@@ -316,6 +327,23 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
 
     if (showInfo) {
         com.bennybar.kitzi.ui.player.PlayerInfoSheet(itemId = itemId, onDismiss = { showInfo = false })
+    }
+
+    if (showCancelConfirm) {
+        AlertDialog(
+            onDismissRequest = { showCancelConfirm = false },
+            title = { Text("Cancel download?") },
+            text = { Text("Stop downloading this book? Tracks already downloaded are kept.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showCancelConfirm = false
+                    scope.launch { Services.downloads.cancel(itemId) }
+                }) { Text("Cancel download") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCancelConfirm = false }) { Text("Keep downloading") }
+            },
+        )
     }
 }
 

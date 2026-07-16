@@ -31,8 +31,8 @@ android {
 
         // The Flutter app ships as 1.6.281+281. Play requires a strictly higher
         // versionCode for the Kotlin build to install as an update over it.
-        versionCode = 312
-        versionName = "2.0.312"
+        versionCode = 313
+        versionName = "2.0.313"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
