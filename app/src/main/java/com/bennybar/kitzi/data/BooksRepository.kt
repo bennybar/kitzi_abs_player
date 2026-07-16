@@ -420,9 +420,8 @@ class BooksRepository(
         ProfileInfo(
             username = me?.get("username").str(),
             serverUrl = session.baseUrl,
-            libraryCount = dao.countBooksRaw(
-                BooksDao.libraryQuery(BookSort.NAME_ASC, LibraryFilter.ALL, null, 0, 0, countOnly = true)
-            ),
+            // The same count the home screen shows: local audiobooks, one query.
+            libraryCount = countBooks(LibraryFilter.ALL, null),
             totalListenedSec = stats?.get("totalTime").num() ?: 0.0,
             finished = (stats?.get("items") as? JsonObject)?.size ?: 0,
         )
@@ -563,11 +562,6 @@ class BooksRepository(
         val cached = syncAll()
         runCatching { syncProgress() }
         cached
-    }
-
-    /** The server's own count for the library, which includes books not yet cached. */
-    suspend fun serverBookCount(): Int? = withContext(Dispatchers.IO) {
-        runCatching { api.libraryStats(libraryId)?.get("totalItems").int() }.getOrNull()
     }
 
     private suspend fun upsert(items: List<JsonObject>): Int {

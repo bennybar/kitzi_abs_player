@@ -1,6 +1,6 @@
 PRIVACY POLICY
 
-Last updated: [Date]
+Last updated: July 16, 2026
 
 INTRODUCTION
 
@@ -53,12 +53,12 @@ You have the right to:
 
 THIRD-PARTY SERVICES
 
-The App may integrate with third-party services for:
+The App connects only to the Audiobookshelf server you configure, for:
 - Authentication and user management
 - Content delivery and streaming
-- Analytics and crash reporting
 
-These services have their own privacy policies, and we encourage you to review them.
+The App does not use any third-party analytics, advertising, or crash-reporting
+services, and does not send your data to anyone other than your own server.
 
 DATA RETENTION
 
@@ -75,7 +75,6 @@ We may update this Privacy Policy from time to time. We will notify you of any c
 CONTACT US
 
 If you have any questions about this Privacy Policy, please contact us at:
-- Email: [Your contact email]
-- Address: [Your business address]
+- Email: bennybar@gmail.com
 
 By using our App, you agree to the collection and use of information in accordance with this Privacy Policy.

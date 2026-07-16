@@ -69,7 +69,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.bennybar.kitzi.data.db.BookSort
@@ -107,6 +110,22 @@ fun LibraryScreen(
     var downloadedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     LaunchedEffect(refreshing, books.size) {
         downloadedIds = com.bennybar.kitzi.data.Services.downloads.downloadedItemIds().toSet()
+    }
+
+    // Keep the library fresh while the user is looking at it: re-check the server
+    // the moment the screen resumes (app-open, or coming back from another screen)
+    // and every couple of minutes it stays open. Both are cheap conditional
+    // requests. repeatOnLifecycle cancels the loop when the app is backgrounded and
+    // re-runs the immediate check when it returns.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            vm.refreshNewestQuietly()
+            while (true) {
+                kotlinx.coroutines.delay(2 * 60 * 1000L)
+                vm.refreshNewestQuietly()
+            }
+        }
     }
 
     // "Books tab alphabetical order" forces A–Z sort so the letter rail's jumps are

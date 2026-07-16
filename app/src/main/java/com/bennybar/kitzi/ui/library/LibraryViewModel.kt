@@ -96,9 +96,9 @@ class LibraryViewModel : ViewModel() {
             todaySec = stats?.perDaySec?.get(today()) ?: 0.0,
             streakDays = stats?.perDaySec?.let(::streakFrom) ?: 0,
             inProgress = continueListening.value.size,
-            // The server's count, so the tile is right even before the whole
-            // library has finished caching.
-            libraryCount = books.serverBookCount() ?: books.countBooks(LibraryFilter.ALL, null),
+            // The locally-cached count, matching the Profile screen's number
+            // (the server total can include non-audiobook items).
+            libraryCount = books.countBooks(LibraryFilter.ALL, null),
         )
     }
 
@@ -118,6 +118,21 @@ class LibraryViewModel : ViewModel() {
     }
 
     /**
+     * Pulls the newest server additions into the cache and repaints the shelves.
+     * Fetches page 1 by "date added" so a book added on the server since the last
+     * sync appears — on the recently-added shelf, and (because the list is SQL
+     * over the cache) in the main list under whatever sort is active.
+     */
+    private suspend fun syncNewest(force: Boolean) {
+        runCatching { books.fetchPage(page = 1, sort = BookSort.ADDED_DESC, force = force) }
+            .onFailure { Log.w(TAG, "recent sync failed", it) }
+        runCatching { books.syncProgress() }
+            .onFailure { Log.w(TAG, "progress sync failed", it) }
+        runCatching { loadShelves() }
+            .onFailure { Log.w(TAG, "shelves failed", it) }
+    }
+
+    /**
      * Pull-to-refresh. Deliberately forced: a conditional request answered 304
      * used to be served from the local DB, so newly added books never appeared no
      * matter how many times the user pulled.
@@ -126,12 +141,26 @@ class LibraryViewModel : ViewModel() {
         if (refreshing.value) return
         refreshing.value = true
         viewModelScope.launch {
-            runCatching {
-                books.refresh(query.value.sort)
-                books.syncProgress()
-                loadShelves()
-            }
+            syncNewest(force = true)
             refreshing.value = false
+        }
+    }
+
+    private var quietSyncing = false
+
+    /**
+     * A quiet refresh (no pull spinner) for when the screen resumes and on a
+     * periodic tick while it's open. Conditional, so an unchanged library answers
+     * 304 and costs nothing; only a real change transfers a page. WorkManager's
+     * periodic sync is hours apart and doesn't help someone who just added a book
+     * on the server and switched back to the app.
+     */
+    fun refreshNewestQuietly() {
+        if (quietSyncing || refreshing.value) return
+        quietSyncing = true
+        viewModelScope.launch {
+            syncNewest(force = false)
+            quietSyncing = false
         }
     }
 

@@ -213,7 +213,7 @@ fun SettingsScreen(onSignedOut: () -> Unit) {
             TogglePref("pause_cancels_sleep_timer", true, "Pause to cancel timer", "Stop the sleep timer when pausing playback", Icons.Default.Bedtime)
             TogglePref("ui_dual_progress_enabled", true, "Book + chapter progress in player", "Show global book progress and chapter progress")
             TogglePref("ui_resume_from_history_enabled", true, "Resume previous position button", "Show \"Resume previous play position\" under the cover")
-            TogglePref("detailed_play_history_enabled", false, "Detailed listening history (local)", "Record play sessions for stats (top books/authors/narrators)")
+            TogglePref("detailed_play_history_enabled", false, "Detailed listening history (local)", "Record new play sessions for stats (top books/authors/narrators). Starts from now — past listening isn't backfilled.")
             var progressPrimary by remember { mutableStateOf(prefs.getString("ui_progress_primary") ?: "book") }
             DropdownRow(
                 icon = Icons.Default.FastForward,

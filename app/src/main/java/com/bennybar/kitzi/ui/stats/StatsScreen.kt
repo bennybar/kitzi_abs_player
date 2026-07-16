@@ -85,10 +85,13 @@ fun StatsScreen(onBack: () -> Unit = {}) {
         }
 
         val d = detailed
-        if (d != null && d.topBooks.isEmpty() && !com.bennybar.kitzi.data.PlayHistoryStore.enabled()) {
+        if (d != null && d.topBooks.isEmpty()) {
             Card(Modifier.fillMaxWidth()) {
                 Text(
-                    "Enable \"Detailed listening history\" in Settings to see your top books, authors and narrators.",
+                    if (com.bennybar.kitzi.data.PlayHistoryStore.enabled())
+                        "No detailed history yet — keep listening and your top books, authors and narrators will show up here."
+                    else
+                        "Enable \"Detailed listening history\" in Settings to see your top books, authors and narrators.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(16.dp),
@@ -158,8 +161,17 @@ private fun StatTile(label: String, value: String, modifier: Modifier = Modifier
 /** A plain bar chart — no chart library, and none is warranted for 14 bars. */
 @Composable
 private fun DailyBars(perDay: Map<String, Double>) {
-    val days = perDay.entries.sortedBy { it.key }.takeLast(14)
-    val max = days.maxOfOrNull { it.value }?.takeIf { it > 0 } ?: 1.0
+    // Always the last 14 calendar days ending today, each mapped to its seconds
+    // (zero if absent). Laying the row out only from days that have data made a
+    // single day of listening fill the whole width at full height — a solid block,
+    // not a chart. A fixed window shows sparse data as short bars among empty days.
+    val fmt = java.time.format.DateTimeFormatter.ISO_LOCAL_DATE
+    val today = java.time.LocalDate.now()
+    val days = (13 downTo 0).map { offset ->
+        val date = today.minusDays(offset.toLong())
+        date to (perDay[date.format(fmt)] ?: 0.0)
+    }
+    val max = days.maxOfOrNull { it.second }?.takeIf { it > 0 } ?: 1.0
 
     // The bar height is given in dp rather than as a fraction of the column: at
     // 100% a fractional height consumes the whole column and shoves the date label
@@ -171,7 +183,7 @@ private fun DailyBars(perDay: Map<String, Double>) {
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.Bottom,
     ) {
-        days.forEach { (day, seconds) ->
+        days.forEach { (date, seconds) ->
             Column(
                 Modifier.weight(1f),
                 verticalArrangement = Arrangement.Bottom,
@@ -180,13 +192,14 @@ private fun DailyBars(perDay: Map<String, Double>) {
                 Box(
                     Modifier
                         .fillMaxWidth()
-                        // A day with any listening at all gets a visible sliver.
-                        .height(maxBarHeight * (seconds / max).toFloat().coerceIn(0.02f, 1f))
+                        // A day with any listening gets a visible sliver; a day with
+                        // none gets no bar at all, just its date label.
+                        .height(if (seconds <= 0) 0.dp else maxBarHeight * (seconds / max).toFloat().coerceIn(0.04f, 1f))
                         .clip(RoundedCornerShape(4.dp))
                         .background(MaterialTheme.colorScheme.primary),
                 )
                 Text(
-                    day.takeLast(2),
+                    date.dayOfMonth.toString(),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp),
@@ -205,9 +218,9 @@ private fun YearWrapped(s: ListeningStats, detailed: com.bennybar.kitzi.data.Det
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Year Wrapped", style = MaterialTheme.typography.titleLarge)
             Text("You listened for about $hours hours.", style = MaterialTheme.typography.bodyLarge)
-            Text("You finished ${s.itemsFinished} books.", style = MaterialTheme.typography.bodyLarge)
+            Text("You finished ${s.itemsFinished} ${if (s.itemsFinished == 1) "book" else "books"}.", style = MaterialTheme.typography.bodyLarge)
             detailed?.takeIf { it.daysListened > 0 }?.let {
-                Text("You listened on ${it.daysListened} different days.", style = MaterialTheme.typography.bodyLarge)
+                Text("You listened on ${it.daysListened} different ${if (it.daysListened == 1) "day" else "days"}.", style = MaterialTheme.typography.bodyLarge)
                 if (it.currentStreakDays > 1) {
                     Text("You're on a ${it.currentStreakDays}-day streak.", style = MaterialTheme.typography.bodyLarge)
                 }
@@ -229,5 +242,10 @@ private fun humanDuration(seconds: Double): String {
     val total = seconds.roundToInt()
     val h = total / 3600
     val m = (total % 3600) / 60
-    return if (h > 0) "${h}h ${m}m" else "${m}m"
+    return when {
+        h > 0 -> "${h}h ${m}m"
+        m > 0 -> "${m}m"
+        total > 0 -> "<1m"
+        else -> "0m"
+    }
 }
