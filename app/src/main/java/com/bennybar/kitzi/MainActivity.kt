@@ -8,8 +8,10 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -63,6 +65,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalView
@@ -74,6 +80,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.roundToInt
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
@@ -213,8 +220,53 @@ private fun KitziNavBar(tabs: List<Tab>, selected: Tab, overlayOpen: Boolean, on
                     shape = shape,
                 ),
         ) {
+            val n = tabs.size
+            val spacingPx = with(LocalDensity.current) { 2.dp.toPx() }
+            val selIdx = tabs.indexOf(selected).coerceIn(0, (n - 1).coerceAtLeast(0))
+            // While dragging, this holds the finger's fractional tab position so the
+            // highlight follows it; null the rest of the time (tap-driven).
+            var dragIdx by remember { mutableStateOf<Float?>(null) }
+            val targetIdx = dragIdx ?: selIdx.toFloat()
+            // A spring, not a tween: the highlight overshoots a touch and settles,
+            // which is what gives the glide its liquid feel rather than a slide.
+            val animIdx by animateFloatAsState(
+                targetValue = targetIdx,
+                animationSpec = spring(dampingRatio = 0.72f, stiffness = 430f),
+                label = "navPill",
+            )
+            val pillColor = MaterialTheme.colorScheme.secondaryContainer
+
             Row(
-                Modifier.padding(horizontal = 6.dp, vertical = 8.dp),
+                Modifier
+                    .padding(horizontal = 6.dp, vertical = 8.dp)
+                    .fillMaxWidth()
+                    // The sliding highlight, painted behind the tabs at the row's own
+                    // height. drawBehind (not a laid-out Box) so it can't affect the
+                    // bar's size. Hidden while an overlay covers the tabs.
+                    .drawBehind {
+                        if (overlayOpen || n == 0) return@drawBehind
+                        val slotW = (size.width - spacingPx * (n - 1)) / n
+                        drawRoundRect(
+                            color = pillColor,
+                            topLeft = Offset((slotW + spacingPx) * animIdx, 0f),
+                            size = Size(slotW, size.height),
+                            cornerRadius = CornerRadius(size.height / 2f),
+                        )
+                    }
+                    .pointerInput(tabs) {
+                        val slotW = (size.width - spacingPx * (n - 1)) / n
+                        val step = slotW + spacingPx
+                        fun idxAt(x: Float) = ((x - slotW / 2f) / step).coerceIn(0f, (n - 1).toFloat())
+                        detectHorizontalDragGestures(
+                            onDragStart = { dragIdx = idxAt(it.x) },
+                            onHorizontalDrag = { change, _ -> dragIdx = idxAt(change.position.x) },
+                            onDragEnd = {
+                                dragIdx?.let { onSelect(tabs[it.roundToInt().coerceIn(0, n - 1)]) }
+                                dragIdx = null
+                            },
+                            onDragCancel = { dragIdx = null },
+                        )
+                    },
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -225,14 +277,8 @@ private fun KitziNavBar(tabs: List<Tab>, selected: Tab, overlayOpen: Boolean, on
                     Column(
                         Modifier
                             .weight(1f)
-                            // Fully-rounded to echo the capsule (circular) bar exterior,
-                            // rather than the squircle a fixed corner radius produced.
                             .clip(RoundedCornerShape(percent = 50))
                             .clickable { onSelect(t) }
-                            .background(
-                                if (active) MaterialTheme.colorScheme.secondaryContainer
-                                else Color.Transparent,
-                            )
                             .padding(vertical = 7.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
