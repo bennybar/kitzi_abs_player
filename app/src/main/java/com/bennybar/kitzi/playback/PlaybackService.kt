@@ -49,34 +49,34 @@ class PlaybackService : MediaLibraryService() {
     // Notification / Samsung Now Bar buttons, ALL as explicit button preferences so
     // they surface as custom actions (verified working via dumpsys) — the standard
     // SKIP_TO_PREVIOUS/NEXT actions don't reach the platform session through our
-    // whole-book player wrapper. Slots place chapter-skip beside play/pause and the
-    // seconds-seek on the outer edges: [rewind][prev-ch][play][next-ch][forward].
-    private val prevChapterButton: CommandButton by lazy {
-        CommandButton.Builder(CommandButton.ICON_PREVIOUS)
-            .setDisplayName("Previous chapter")
-            .setPlayerCommand(Player.COMMAND_SEEK_TO_PREVIOUS)
-            .setSlots(CommandButton.SLOT_BACK)
-            .build()
-    }
+    // whole-book player wrapper. Slots put the SECONDS-SEEK beside play/pause and the
+    // chapter-skip on the outer edges: [prev-ch][rewind][play][forward][next-ch].
     private val rewindButton: CommandButton by lazy {
         CommandButton.Builder(CommandButton.ICON_REWIND)
             .setDisplayName("Rewind ${Services.prefs.getInt("ui_seek_backward_seconds", 30)}s")
             .setPlayerCommand(Player.COMMAND_SEEK_BACK)
-            .setSlots(CommandButton.SLOT_BACK_SECONDARY, CommandButton.SLOT_OVERFLOW)
+            .setSlots(CommandButton.SLOT_BACK)
             .build()
     }
     private val forwardButton: CommandButton by lazy {
         CommandButton.Builder(CommandButton.ICON_FAST_FORWARD)
             .setDisplayName("Forward ${Services.prefs.getInt("ui_seek_forward_seconds", 30)}s")
             .setPlayerCommand(Player.COMMAND_SEEK_FORWARD)
-            .setSlots(CommandButton.SLOT_FORWARD_SECONDARY, CommandButton.SLOT_OVERFLOW)
+            .setSlots(CommandButton.SLOT_FORWARD)
+            .build()
+    }
+    private val prevChapterButton: CommandButton by lazy {
+        CommandButton.Builder(CommandButton.ICON_PREVIOUS)
+            .setDisplayName("Previous chapter")
+            .setPlayerCommand(Player.COMMAND_SEEK_TO_PREVIOUS)
+            .setSlots(CommandButton.SLOT_BACK_SECONDARY, CommandButton.SLOT_OVERFLOW)
             .build()
     }
     private val nextChapterButton: CommandButton by lazy {
         CommandButton.Builder(CommandButton.ICON_NEXT)
             .setDisplayName("Next chapter")
             .setPlayerCommand(Player.COMMAND_SEEK_TO_NEXT)
-            .setSlots(CommandButton.SLOT_FORWARD)
+            .setSlots(CommandButton.SLOT_FORWARD_SECONDARY, CommandButton.SLOT_OVERFLOW)
             .build()
     }
 
@@ -279,6 +279,33 @@ class PlaybackService : MediaLibraryService() {
                 )
             }
             return builder.build()
+        }
+
+        // Hardware / car media keys: route skip-next/prev (and fast-forward/rewind)
+        // to the configured seconds-seek, not chapter skip or Media3's default
+        // "jump to the start of the book". The on-screen OUTER buttons still do
+        // chapter skip — they trigger commands directly, not through key events.
+        override fun onMediaButtonEvent(
+            session: MediaSession,
+            controllerInfo: MediaSession.ControllerInfo,
+            intent: Intent,
+        ): Boolean {
+            val keyEvent = androidx.core.content.IntentCompat.getParcelableExtra(
+                intent, Intent.EXTRA_KEY_EVENT, android.view.KeyEvent::class.java,
+            )
+            if (keyEvent?.action == android.view.KeyEvent.ACTION_DOWN && keyEvent.repeatCount == 0) {
+                when (keyEvent.keyCode) {
+                    android.view.KeyEvent.KEYCODE_MEDIA_NEXT,
+                    android.view.KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
+                        controller.seekForward(); return true
+                    }
+                    android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS,
+                    android.view.KeyEvent.KEYCODE_MEDIA_REWIND -> {
+                        controller.seekBackward(); return true
+                    }
+                }
+            }
+            return super.onMediaButtonEvent(session, controllerInfo, intent)
         }
 
         override fun onGetLibraryRoot(
