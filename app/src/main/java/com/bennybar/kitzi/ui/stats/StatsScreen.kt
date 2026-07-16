@@ -18,6 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -50,12 +51,23 @@ fun StatsScreen(onBack: () -> Unit = {}) {
 
     val s = stats
     if (s == null) {
-        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center) {
-            Text(
-                if (loaded) "Stats unavailable" else "Loading…",
-                Modifier.fillMaxWidth(),
-                style = MaterialTheme.typography.bodyLarge,
-            )
+        Column(
+            Modifier.fillMaxSize().padding(16.dp)
+                .padding(bottom = com.bennybar.kitzi.LocalMiniPlayerInset.current),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            ScreenHeader(icon = Icons.Default.BarChart, title = "Listening", onBack = onBack)
+            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                if (loaded) {
+                    Text(
+                        "Stats unavailable",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    CircularProgressIndicator()
+                }
+            }
         }
         return
     }

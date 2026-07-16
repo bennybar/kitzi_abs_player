@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.LibraryBooks
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -44,6 +45,20 @@ import com.bennybar.kitzi.ui.common.formatHm
 fun ProfileScreen(onBack: () -> Unit) {
     var info by remember { mutableStateOf<ProfileInfo?>(null) }
     LaunchedEffect(Unit) { info = Services.books.profile() }
+
+    if (info == null) {
+        Column(
+            Modifier.fillMaxSize().padding(16.dp)
+                .padding(bottom = com.bennybar.kitzi.LocalMiniPlayerInset.current),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            ScreenHeader(icon = Icons.Default.Person, title = "Profile", onBack = onBack)
+            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+        }
+        return
+    }
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)
