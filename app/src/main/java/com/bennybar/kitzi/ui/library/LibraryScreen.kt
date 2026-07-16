@@ -151,6 +151,9 @@ fun LibraryScreen(
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
+            // Centre the round control against the taller text pills — Top alignment
+            // left it riding high.
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             SegmentedPill(
                 icon = Icons.Default.MonitorHeart,

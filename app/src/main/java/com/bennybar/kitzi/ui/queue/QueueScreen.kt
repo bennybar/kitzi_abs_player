@@ -53,7 +53,9 @@ fun QueueScreen(onOpenPlayer: () -> Unit) {
         ScreenHeader(
             icon = Icons.AutoMirrored.Filled.QueueMusic,
             title = "Queue",
-            subtitle = if (items.isEmpty()) "Nothing queued" else "${items.size} up next",
+            // No subtitle when empty — the centered empty state below already says
+            // "Nothing queued", and repeating it in the header read as a stutter.
+            subtitle = if (items.isEmpty()) null else "${items.size} up next",
             trailing = {
                 if (items.isNotEmpty()) {
                     TextButton(onClick = { queue.clear() }) { Text("Clear") }
