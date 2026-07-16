@@ -234,6 +234,13 @@ private fun KitziNavBar(tabs: List<Tab>, selected: Tab, overlayOpen: Boolean, on
                 animationSpec = spring(dampingRatio = 0.72f, stiffness = 430f),
                 label = "navPill",
             )
+            // A subtle lift while dragging so the pill reads as "picked up", settling
+            // back on release. Same spring as the glide; one property, no shadow.
+            val pillScale by animateFloatAsState(
+                targetValue = if (dragIdx != null) 1.06f else 1f,
+                animationSpec = spring(dampingRatio = 0.72f, stiffness = 430f),
+                label = "navPillScale",
+            )
             val pillColor = MaterialTheme.colorScheme.secondaryContainer
 
             Row(
@@ -246,11 +253,15 @@ private fun KitziNavBar(tabs: List<Tab>, selected: Tab, overlayOpen: Boolean, on
                     .drawBehind {
                         if (overlayOpen || n == 0) return@drawBehind
                         val slotW = (size.width - spacingPx * (n - 1)) / n
+                        val w = slotW * pillScale
+                        val h = size.height * pillScale
+                        // Grow from the slot's centre so the lift is symmetric.
+                        val centerX = (slotW + spacingPx) * animIdx + slotW / 2f
                         drawRoundRect(
                             color = pillColor,
-                            topLeft = Offset((slotW + spacingPx) * animIdx, 0f),
-                            size = Size(slotW, size.height),
-                            cornerRadius = CornerRadius(size.height / 2f),
+                            topLeft = Offset(centerX - w / 2f, (size.height - h) / 2f),
+                            size = Size(w, h),
+                            cornerRadius = CornerRadius(h / 2f),
                         )
                     }
                     .pointerInput(tabs) {
