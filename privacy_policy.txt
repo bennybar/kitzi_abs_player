@@ -53,12 +53,14 @@ You have the right to:
 
 THIRD-PARTY SERVICES
 
-The App connects only to the Audiobookshelf server you configure, for:
+The App connects to the Audiobookshelf server you configure, for:
 - Authentication and user management
 - Content delivery and streaming
 
-The App does not use any third-party analytics, advertising, or crash-reporting
-services, and does not send your data to anyone other than your own server.
+The App also sends anonymous usage analytics (for example, that the app was
+opened) to Aptabase, a privacy-friendly analytics service. These events carry no
+account information, no user id, and no device fingerprint. The App uses no
+advertising and no crash-reporting services.
 
 DATA RETENTION
 

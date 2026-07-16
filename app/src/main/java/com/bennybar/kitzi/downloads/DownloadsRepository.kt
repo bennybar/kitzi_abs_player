@@ -94,29 +94,26 @@ class DownloadsRepository(
         val missing = plan.filter { !java.io.File(dir, it.filename).let { f -> f.exists() && f.length() > 0 } }
         if (missing.isEmpty()) return@withContext
 
-        val requests = missing.map { t ->
-            OneTimeWorkRequestBuilder<TrackDownloadWorker>()
-                .setConstraints(constraints())
-                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
-                .addTag(tagFor(itemId, libraryId))
-                .setInputData(
-                    Data.Builder()
-                        .putString(TrackDownloadWorker.KEY_ITEM_ID, itemId)
-                        .putInt(TrackDownloadWorker.KEY_TRACK_INDEX, t.index)
-                        .putString(TrackDownloadWorker.KEY_FILE_ID, t.fileId)
-                        .putString(TrackDownloadWorker.KEY_FILENAME, t.filename)
-                        .putString(TrackDownloadWorker.KEY_TITLE, title)
-                        .putString(TrackDownloadWorker.KEY_LIBRARY_ID, libraryId)
-                        .build()
-                )
-                .build()
-        }
+        // One worker for the whole book (it reads the track plan from the DB rows
+        // just written above). A single worker means a single foreground service and
+        // therefore one stable progress notification for the entire download.
+        val request = OneTimeWorkRequestBuilder<BookDownloadWorker>()
+            .setConstraints(constraints())
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
+            .addTag(tagFor(itemId, libraryId))
+            .setInputData(
+                Data.Builder()
+                    .putString(BookDownloadWorker.KEY_ITEM_ID, itemId)
+                    .putString(BookDownloadWorker.KEY_TITLE, title)
+                    .putString(BookDownloadWorker.KEY_LIBRARY_ID, libraryId)
+                    .build()
+            )
+            .build()
 
-        // APPEND_OR_REPLACE, not APPEND: a chain whose tail previously failed or was
-        // cancelled would otherwise poison every future enqueue.
-        workManager.beginUniqueWork(QUEUE, ExistingWorkPolicy.APPEND_OR_REPLACE, requests.first())
-            .let { start -> requests.drop(1).fold(start) { chain, req -> chain.then(req) } }
-            .enqueue()
+        // APPEND_OR_REPLACE, not APPEND: a queue whose tail previously failed or was
+        // cancelled would otherwise poison every future enqueue. Books still run one
+        // after another on the single unique queue — the platform queue is the queue.
+        workManager.enqueueUniqueWork(QUEUE, ExistingWorkPolicy.APPEND_OR_REPLACE, request)
     }
 
     private fun constraints() = Constraints.Builder()
