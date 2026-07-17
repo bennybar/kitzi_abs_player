@@ -175,14 +175,19 @@ class PlaybackService : MediaLibraryService() {
             controller.nowPlaying.collectLatest { np ->
                 if (np == null) { liveUpdate.clear(); return@collectLatest }
                 while (true) {
-                    if (Services.prefs.getBoolean("live_update_now_playing", false)) {
+                    val enabled = Services.prefs.getBoolean("live_update_now_playing", false)
+                    val playing = runCatching { controller.player.isPlaying }.getOrDefault(false)
+                    if (enabled && playing) {
                         val total = (controller.totalDurationSec() ?: 0.0).toInt()
                         val pos = (controller.globalPositionSec() ?: 0.0).toInt()
                         liveUpdate.update(np.title, controller.currentChapter()?.title ?: np.author, total, pos)
+                        kotlinx.coroutines.delay(15_000)
                     } else {
+                        // Nothing to refresh while paused or with the feature off
+                        // (the default) — idle slowly instead of waking every 15s.
                         liveUpdate.clear()
+                        kotlinx.coroutines.delay(if (enabled) 15_000 else 60_000)
                     }
-                    kotlinx.coroutines.delay(15_000)
                 }
             }
         }

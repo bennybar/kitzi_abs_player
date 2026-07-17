@@ -296,8 +296,9 @@ class PlaybackController(
         player.setMediaItems(np.tracks.map { it.toMediaItem(np) }, tp.trackIndex, (tp.offsetSec * 1000).toLong())
         player.prepare()
         if (startPlaying) player.play()
-
-        startSyncLoop()
+        // The progress-sync loop is started/stopped by onIsPlayingChanged, not here,
+        // so a loaded-but-paused book (e.g. the auto-loaded last book on launch)
+        // doesn't wake every 26s doing nothing.
     }
 
     private fun Track.toMediaItem(np: NowPlaying): MediaItem = MediaItem.Builder()
@@ -510,6 +511,7 @@ class PlaybackController(
             if (isPlaying) {
                 accrual.onPlaybackStarted()
                 applySmartRewindIfDue()
+                startSyncLoop()
             } else {
                 accrual.onPlaybackStopped()
 
@@ -523,6 +525,8 @@ class PlaybackController(
                 val intentionalPause = !::player.isInitialized || !player.playWhenReady
                 if (!intentionalPause) return
 
+                // Stop waking every 26s while paused; a final sync happens below.
+                syncJob?.cancel()
                 pausedAtMs = android.os.SystemClock.elapsedRealtime()
                 onPaused?.invoke()
                 // Snapshot where we paused so the player's Play history can jump back.

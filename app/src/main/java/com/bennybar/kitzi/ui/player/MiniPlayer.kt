@@ -43,7 +43,10 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import coil.compose.AsyncImage
 import com.bennybar.kitzi.data.Services
 import kotlin.math.abs
@@ -68,13 +71,18 @@ fun MiniPlayer(onExpand: () -> Unit) {
     var fraction by remember { mutableStateOf(0f) }
     var collapsed by remember { mutableStateOf(Services.prefs.getBoolean("ui_mini_player_collapsed", false)) }
 
-    LaunchedEffect(np.itemId) {
-        while (true) {
-            isPlaying = runCatching { controller.player.isPlaying }.getOrDefault(false)
-            val pos = controller.globalPositionSec() ?: 0.0
-            val total = controller.totalDurationSec() ?: 0.0
-            fraction = if (total > 0) (pos / total).toFloat().coerceIn(0f, 1f) else 0f
-            delay(700)
+    // Only poll while the app is actually on-screen (repeatOnLifecycle stops it in
+    // the background), and slow the cadence when paused since the position is static.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(np.itemId, lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            while (true) {
+                isPlaying = runCatching { controller.player.isPlaying }.getOrDefault(false)
+                val pos = controller.globalPositionSec() ?: 0.0
+                val total = controller.totalDurationSec() ?: 0.0
+                fraction = if (total > 0) (pos / total).toFloat().coerceIn(0f, 1f) else 0f
+                delay(if (isPlaying) 700 else 2000)
+            }
         }
     }
 

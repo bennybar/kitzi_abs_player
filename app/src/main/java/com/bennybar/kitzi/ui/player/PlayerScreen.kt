@@ -56,7 +56,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import coil.compose.AsyncImage
 import com.bennybar.kitzi.data.Services
 import com.bennybar.kitzi.data.db.DownloadStatus
@@ -86,13 +89,17 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
     val sleep by Services.sleepTimer.mode.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(nowPlaying?.itemId) {
-        while (true) {
-            positionSec = controller.globalPositionSec() ?: 0.0
-            isPlaying = runCatching { controller.player.isPlaying }.getOrDefault(false)
-            speed = runCatching { controller.player.playbackParameters.speed.toDouble() }
-                .getOrDefault(1.0).coerceAtLeast(0.1)
-            delay(400)
+    // Poll only while on-screen (stops in the background) and back off when paused.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(nowPlaying?.itemId, lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            while (true) {
+                positionSec = controller.globalPositionSec() ?: 0.0
+                isPlaying = runCatching { controller.player.isPlaying }.getOrDefault(false)
+                speed = runCatching { controller.player.playbackParameters.speed.toDouble() }
+                    .getOrDefault(1.0).coerceAtLeast(0.1)
+                delay(if (isPlaying) 400 else 1000)
+            }
         }
     }
 
