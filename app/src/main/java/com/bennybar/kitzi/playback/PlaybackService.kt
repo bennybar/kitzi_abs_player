@@ -220,6 +220,11 @@ class PlaybackService : MediaLibraryService() {
      */
     private inner class BookCoordinatePlayer(player: Player) : ForwardingPlayer(player) {
 
+        // External play commands (notification, lock screen, Android Auto, Bluetooth)
+        // go through the same resume-or-reload path as the in-app buttons, so a
+        // just-auto-loaded or errored book reloads fresh instead of no-op playing.
+        override fun play() = controller.resume()
+
         override fun getCurrentPosition(): Long =
             controller.globalPositionSec()?.let { (it * 1000).toLong() } ?: super.getCurrentPosition()
 

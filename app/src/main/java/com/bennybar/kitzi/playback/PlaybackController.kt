@@ -59,6 +59,11 @@ class PlaybackController(
     private var sessionId: String? = null
     private var lastSyncedSec: Double = -1.0
     private var syncJob: kotlinx.coroutines.Job? = null
+    // A book that was loaded paused (the auto-loaded last book on startup) hasn't
+    // opened a live streaming session for THIS play; its first play reloads from
+    // scratch so it can't get stuck on a failed startup prepare or a stale session,
+    // and so sync-before-play runs at play time rather than at load time.
+    private var needsFreshLoad = false
 
     // Serialises book loads: two quick taps must not each open a server session
     // and race to assign sessionId (leaking the loser). The generation counter
@@ -218,6 +223,44 @@ class PlaybackController(
      * A server round-trip here is what made tapping a downloaded book while
      * offline fail with "No Internet Connection".
      */
+    /**
+     * The play/pause toggle behind the mini-player and full-player buttons.
+     *
+     * Resuming isn't always a plain play(): an auto-loaded book (loaded paused on
+     * startup) hasn't opened a streaming session for this play, and a book can be
+     * left in an error/idle state if its prepare failed or a streaming session went
+     * stale during a long pause — in those cases play() is a silent no-op. So when
+     * the player isn't in a ready-to-resume state we reload the book from scratch
+     * (fresh session + sync-before-play); otherwise we just resume.
+     */
+    fun playPause() {
+        if (!::player.isInitialized) return
+        if (player.isPlaying) player.pause() else resume()
+    }
+
+    /**
+     * Resume playback, reloading the book from scratch when the player isn't in a
+     * ready-to-resume state (an auto-loaded book with no session for this play, an
+     * error, or an idle player) so play is never a silent no-op. Shared by the
+     * in-app buttons (via playPause) and the media session's play command (via
+     * BookCoordinatePlayer) so notification / lock-screen / Android Auto / Bluetooth
+     * all recover too.
+     */
+    fun resume() {
+        if (!::player.isInitialized) return
+        val itemId = _nowPlaying.value?.itemId ?: return
+        val notResumable = needsFreshLoad ||
+            player.playerError != null ||
+            player.playbackState == Player.STATE_IDLE ||
+            player.mediaItemCount == 0
+        if (notResumable) {
+            needsFreshLoad = false
+            scope.launch { runCatching { playItem(itemId, startPlaying = true) } }
+        } else {
+            player.play()
+        }
+    }
+
     suspend fun playItem(itemId: String, startPlaying: Boolean = true) {
         // Don't touch `player` until the service has attached it.
         playerReady.await()
@@ -296,6 +339,8 @@ class PlaybackController(
         player.setMediaItems(np.tracks.map { it.toMediaItem(np) }, tp.trackIndex, (tp.offsetSec * 1000).toLong())
         player.prepare()
         if (startPlaying) player.play()
+        // Loaded-but-not-playing (auto-load) → the first play reloads it fresh.
+        needsFreshLoad = !startPlaying
         // The progress-sync loop is started/stopped by onIsPlayingChanged, not here,
         // so a loaded-but-paused book (e.g. the auto-loaded last book on launch)
         // doesn't wake every 26s doing nothing.
@@ -509,6 +554,7 @@ class PlaybackController(
          */
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             if (isPlaying) {
+                needsFreshLoad = false
                 accrual.onPlaybackStarted()
                 applySmartRewindIfDue()
                 startSyncLoop()

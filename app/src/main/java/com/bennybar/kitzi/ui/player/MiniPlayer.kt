@@ -109,10 +109,7 @@ fun MiniPlayer(onExpand: () -> Unit) {
     val onGlass = MaterialTheme.colorScheme.onSurface
     val onGlassMuted = MaterialTheme.colorScheme.onSurfaceVariant
 
-    val togglePlay = {
-        val p = controller.player
-        if (p.isPlaying) p.pause() else p.play()
-    }
+    val togglePlay = { controller.playPause() }
 
     if (collapsed) {
         // Left-aligned orb: circular cover with a progress ring + a round play button.

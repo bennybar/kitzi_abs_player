@@ -367,10 +367,7 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
                         .size(76.dp)
                         .clip(RoundedCornerShape(24.dp))
                         .background(MaterialTheme.colorScheme.primary)
-                        .clickable {
-                            val p = controller.player
-                            if (p.isPlaying) p.pause() else p.play()
-                        },
+                        .clickable { controller.playPause() },
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
