@@ -449,7 +449,10 @@ class BooksRepository(
         val (sortField, desc) = serverSort(sort)
         // The ETag is per (library, sort, page) — sharing one key across pages lets a
         // page-2 ETag be replayed onto a page-1 request and yield a bogus 304.
-        val etagKey = "etag_${libraryId}_${sortField}_${desc}_$page"
+        // v2: page numbering was off by one before, so ETags cached under the old key
+        // describe a different page's contents — replaying them would 304 away the
+        // newest items this fix exists to fetch.
+        val etagKey = "etag2_${libraryId}_${sortField}_${desc}_$page"
         val etag = if (force) null else etagPrefs.getString(etagKey, null)
 
         var result = api.libraryItems(libraryId, page, limit, sortField, desc, etag)

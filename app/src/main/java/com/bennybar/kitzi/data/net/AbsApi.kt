@@ -77,13 +77,17 @@ class AbsApi(
         etag: String? = null,
         paging: Paging = Paging.PAGE,
     ): Page {
-        // `page` is 1-based; offset/skip are 0-based item counts. Some servers ignore
-        // `page` and return the first page every time — the caller falls back through
-        // the other two (see BooksRepository.syncAll), mirroring the Flutter app.
+        // Callers pass a 1-based `page`. ABS's own `page` query parameter is 0-BASED,
+        // so it has to be converted — sending it raw asked for the second page as if
+        // it were the first, permanently hiding the newest `limit` items (which is
+        // why newly added books never showed up). offset/skip are 0-based item counts.
+        // Some servers ignore `page` and return the first page every time — the caller
+        // falls back through the other two (see BooksRepository.syncAll).
+        val zeroBased = (page - 1).coerceAtLeast(0)
         val pagingParam = when (paging) {
-            Paging.PAGE -> "page=$page"
-            Paging.OFFSET -> "offset=${(page - 1).coerceAtLeast(0) * limit}"
-            Paging.SKIP -> "skip=${(page - 1).coerceAtLeast(0) * limit}"
+            Paging.PAGE -> "page=$zeroBased"
+            Paging.OFFSET -> "offset=${zeroBased * limit}"
+            Paging.SKIP -> "skip=${zeroBased * limit}"
         }
         val path = "/api/libraries/$libraryId/items" +
             "?limit=$limit&$pagingParam&sort=$sort&desc=${if (desc) 1 else 0}"
