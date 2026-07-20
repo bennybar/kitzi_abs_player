@@ -20,19 +20,25 @@ if (hasKeystore) {
 
 android {
     namespace = "com.bennybar.kitzi"
-    // Media3 1.10.x requires compiling against API 36. targetSdk stays at 35 so we
-    // don't opt into new runtime behaviours in this drop-in update.
+    // Media3 1.10.x requires compiling against API 36, and Play requires app updates
+    // to target 36 from 31 August 2026 — so compile and target now match.
+    //
+    // The API 36 behaviours this opts into were checked against an Android 16 device:
+    // edge-to-edge is already enabled explicitly (enableEdgeToEdge + inset padding),
+    // predictive back is already opted in via enableOnBackInvokedCallback, no
+    // activity pins its orientation or aspect ratio, and both bundled native
+    // libraries are 16KB-page aligned.
     compileSdk = 36
 
     defaultConfig {
         applicationId = "com.bennybar.kitzi"
         minSdk = 28
-        targetSdk = 35
+        targetSdk = 36
 
         // The Flutter app ships as 1.6.281+281. Play requires a strictly higher
         // versionCode for the Kotlin build to install as an update over it.
-        versionCode = 329
-        versionName = "2.0.329"
+        versionCode = 330
+        versionName = "2.0.330"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
