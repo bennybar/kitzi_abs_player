@@ -101,6 +101,7 @@ class DownloadsRepository(
             .setConstraints(constraints())
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
             .addTag(tagFor(itemId, libraryId))
+            .addTag(TAG_ALL)
             .setInputData(
                 Data.Builder()
                     .putString(BookDownloadWorker.KEY_ITEM_ID, itemId)
@@ -110,10 +111,13 @@ class DownloadsRepository(
             )
             .build()
 
-        // APPEND_OR_REPLACE, not APPEND: a queue whose tail previously failed or was
-        // cancelled would otherwise poison every future enqueue. Books still run one
-        // after another on the single unique queue — the platform queue is the queue.
-        workManager.enqueueUniqueWork(QUEUE, ExistingWorkPolicy.APPEND_OR_REPLACE, request)
+        // One unique work item PER BOOK, not one appended chain for all of them.
+        // Chaining made books dependents of each other, and WorkManager cancels the
+        // dependents of any work that fails or is cancelled — so a single bad file,
+        // or the user cancelling one download, silently killed every book queued
+        // behind it. Books are independent, so they are modelled that way; it also
+        // stops an inactive-library book from parking at the head of a shared queue.
+        workManager.enqueueUniqueWork(queueFor(itemId), ExistingWorkPolicy.REPLACE, request)
     }
 
     private fun constraints() = Constraints.Builder()
@@ -144,7 +148,8 @@ class DownloadsRepository(
      * re-create files or rows immediately after the wipe.
      */
     suspend fun deleteAll() = withContext(Dispatchers.IO) {
-        runCatching { workManager.cancelUniqueWork(QUEUE).result.get() }
+        // Every book is its own unique work now, so cancel by the shared tag.
+        runCatching { workManager.cancelAllWorkByTag(TAG_ALL).result.get() }
         paths.libraryDir().deleteRecursively()
         dao.deleteAll()
     }
@@ -282,9 +287,14 @@ class DownloadsRepository(
     // library's work, never a same-item-id download in another library.
     private fun tagFor(itemId: String, libraryId: String = currentLib()) = "book:$libraryId:$itemId"
 
+    /** Unique work name per book, so books never become each other's dependents. */
+    private fun queueFor(itemId: String, libraryId: String = currentLib()) =
+        "kitzi-download:$libraryId:$itemId"
+
     private companion object {
         /** ONE queue for the whole app — the platform queue is the queue. */
-        const val QUEUE = "kitzi-downloads"
+        /** Tag on every download worker, so "delete all" can cancel them in one call. */
+        const val TAG_ALL = "kitzi-downloads"
         const val KEY_WIFI_ONLY = "downloads_wifi_only"
         const val KEY_AUTO_DELETE = "downloads_auto_delete_on_finish"
     }

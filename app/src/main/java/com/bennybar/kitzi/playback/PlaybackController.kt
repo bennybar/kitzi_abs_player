@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 
 data class NowPlaying(
@@ -269,6 +270,16 @@ class PlaybackController(
             // A newer tap arrived while this one waited for the lock — abandon it
             // rather than load a book the user already moved past.
             if (myGen != loadGeneration) return
+            // Flush the OUTGOING book first: loadAndStart resets the accrual and the
+            // last-sync marker, so without this the final position and up to a whole
+            // sync interval of listening time are silently discarded on every switch.
+            // Awaited so it lands before the session it belongs to is closed.
+            // Bounded: the local position is already persisted synchronously inside
+            // the payload build, so this wait only buys the server report landing
+            // before the session closes. Offline it must not stall the switch.
+            if (_nowPlaying.value != null) {
+                runCatching { withTimeoutOrNull(3_000) { syncNowAwaiting() } }
+            }
             // Close the previous streamed session before switching books so the
             // server stops transcoding for the book we're leaving. Ordered against
             // in-flight progress reports so a stale sync can't reopen it.
@@ -294,15 +305,11 @@ class PlaybackController(
                 author = cached?.author,
                 coverUrl = cached?.coverUrl,
                 tracks = local,
-                // Cached chapters first; else fetch the real list from the server
-                // (single-file books have no per-track chapters to fall back on);
-                // per-track boundaries only as the offline last resort.
+                // A DOWNLOADED book must start without touching the network: use the
+                // cached chapters, else per-track boundaries immediately. The real
+                // list is fetched in the background afterwards (see below) — awaiting
+                // it here made offline playback hang on a network timeout.
                 chapters = loadCachedChapters(itemId)
-                    .ifEmpty {
-                        withContext(Dispatchers.IO) {
-                            runCatching { books.chapters(itemId) }.getOrDefault(emptyList())
-                        }.also { cacheChapters(itemId, it) }
-                    }
                     .ifEmpty { PlaybackMath.chaptersFromTracks(local) },
                 serverDurationSec = cached?.durationMs?.let { it / 1000.0 },
                 isLocal = true,
@@ -341,6 +348,23 @@ class PlaybackController(
         if (startPlaying) player.play()
         // Loaded-but-not-playing (auto-load) → the first play reloads it fresh.
         needsFreshLoad = !startPlaying
+
+        // A downloaded book with no cached chapters is playing on track-derived
+        // boundaries right now; fetch the real list off the critical path and swap it
+        // in if it arrives. Offline this simply fails and the fallback stands.
+        if (np.isLocal && loadCachedChapters(itemId).isEmpty()) {
+            scope.launch {
+                val real = withContext(Dispatchers.IO) {
+                    runCatching { books.chapters(itemId) }.getOrDefault(emptyList())
+                }
+                if (real.isNotEmpty()) {
+                    cacheChapters(itemId, real)
+                    _nowPlaying.value?.takeIf { it.itemId == itemId }?.let {
+                        _nowPlaying.value = it.copy(chapters = real)
+                    }
+                }
+            }
+        }
         // The progress-sync loop is started/stopped by onIsPlayingChanged, not here,
         // so a loaded-but-paused book (e.g. the auto-loaded last book on launch)
         // doesn't wake every 26s doing nothing.
@@ -418,7 +442,23 @@ class PlaybackController(
      * the user's place, then tries the network.
      */
     fun syncNow(finished: Boolean = false) {
-        val np = _nowPlaying.value ?: return
+        val payload = buildSyncPayload(finished) ?: return
+        scope.launch(Dispatchers.IO) { performSync(payload) }
+    }
+
+    /**
+     * Like [syncNow] but waits for the report to be sent. Used before tearing a book
+     * down (book switch), where fire-and-forget would race the session close and the
+     * accrual reset and lose the final position / listened interval.
+     */
+    private suspend fun syncNowAwaiting(finished: Boolean = false) {
+        val payload = buildSyncPayload(finished) ?: return
+        withContext(Dispatchers.IO) { performSync(payload) }
+    }
+
+    /** Everything that must be read on the caller's thread, at call time. */
+    private fun buildSyncPayload(finished: Boolean): SyncPayload? {
+        val np = _nowPlaying.value ?: return null
         val pos = globalPositionSec()
 
         // Unknown book position: reporting the track-local value would overwrite
@@ -428,7 +468,7 @@ class PlaybackController(
         val current = pos ?: when {
             finished -> totalDurationSec() ?: (player.currentPosition / 1000.0)
             player.currentMediaItemIndex == 0 -> player.currentPosition / 1000.0
-            else -> return
+            else -> return null
         }
 
         prefs.putDouble(progressKey(np.itemId), current)
@@ -436,33 +476,50 @@ class PlaybackController(
         // offline position from a stale server one (see resumePosition).
         prefs.putDouble(progressTsKey(np.itemId), System.currentTimeMillis().toDouble())
 
-        val listened = accrual.snapshot()
-        val total = totalDurationSec()
-        val paused = !player.isPlaying
-        // Capture the session id and item id HERE, on the caller's thread — reading
-        // `sessionId` inside the coroutine could pick up a value changed by a later
-        // load/stop and report against the wrong (or a closed) session.
-        val sid = sessionId
-        val itemId = np.itemId
+        // The session id and item id are captured HERE, on the caller's thread —
+        // reading `sessionId` inside the coroutine could pick up a value changed by a
+        // later load/stop and report against the wrong (or a closed) session.
+        return SyncPayload(
+            itemId = np.itemId,
+            sessionId = sessionId,
+            current = current,
+            total = totalDurationSec(),
+            finished = finished,
+            paused = !player.isPlaying,
+        )
+    }
 
-        scope.launch(Dispatchers.IO) {
-            // Serialised so reports reach the server in the order they were taken
-            // and a close can't slip in between.
-            syncMutex.withLock {
-                val ok = api.sync(
-                    sid,
-                    ProgressReport(itemId, current, total, finished, paused, listened),
-                )
-                // Only on success — otherwise the time rolls into the next attempt.
-                if (ok && listened != null) {
-                    accrual.consume(listened)
-                    // Record the confirmed listened interval for local stats.
-                    com.bennybar.kitzi.data.PlayHistoryStore.record(itemId, listened)
-                }
-                if (ok) lastSyncedSec = current
+    /**
+     * The listened interval is snapshotted INSIDE the mutex, together with the send
+     * and the consume. Snapshotting outside let two overlapping syncs capture the
+     * same pending interval and report it twice — inflating listening stats — since
+     * snapshot() only reads the pending total, it doesn't reserve it.
+     */
+    private suspend fun performSync(p: SyncPayload) {
+        syncMutex.withLock {
+            val listened = accrual.snapshot()
+            val ok = api.sync(
+                p.sessionId,
+                ProgressReport(p.itemId, p.current, p.total, p.finished, p.paused, listened),
+            )
+            // Only on success — otherwise the time rolls into the next attempt.
+            if (ok && listened != null) {
+                accrual.consume(listened)
+                // Record the confirmed listened interval for local stats.
+                com.bennybar.kitzi.data.PlayHistoryStore.record(p.itemId, listened)
             }
+            if (ok) lastSyncedSec = p.current
         }
     }
+
+    private data class SyncPayload(
+        val itemId: String,
+        val sessionId: String?,
+        val current: Double,
+        val total: Double?,
+        val finished: Boolean,
+        val paused: Boolean,
+    )
 
     /** Closes a server session, ordered behind any in-flight progress report. */
     private fun closeSessionOrdered(sid: String) {

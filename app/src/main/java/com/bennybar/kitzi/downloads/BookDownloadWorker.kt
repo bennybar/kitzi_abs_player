@@ -203,19 +203,23 @@ class BookDownloadWorker(
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Cancel", cancelPending)
             .build()
 
+        // Per-book id: books download independently now, so a shared id would let
+        // two concurrent downloads overwrite each other's progress notification.
+        val notificationId = NOTIFICATION_ID_BASE + (itemId.hashCode().mod(1000))
+
         return if (android.os.Build.VERSION.SDK_INT >= 29) {
             ForegroundInfo(
-                NOTIFICATION_ID, notification,
+                notificationId, notification,
                 android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
             )
         } else {
-            ForegroundInfo(NOTIFICATION_ID, notification)
+            ForegroundInfo(notificationId, notification)
         }
     }
 
     companion object {
         private const val TAG = "BookDownloadWorker"
-        private const val NOTIFICATION_ID = 4242
+        private const val NOTIFICATION_ID_BASE = 4242
         private const val PROGRESS_EVERY = 512 * 1024L
         private const val MAX_ATTEMPTS = 3
 

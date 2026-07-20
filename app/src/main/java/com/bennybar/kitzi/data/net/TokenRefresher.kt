@@ -27,6 +27,17 @@ class TokenRefresher(
         authApi.refresh()
     }
 
+    /**
+     * Single-flight refresh regardless of the assumed expiry, for callers that have
+     * already decided the token needs renewing (session validation). Going straight
+     * to AuthApi.refresh() from outside could rotate the refresh token concurrently
+     * with a refresh in here and invalidate both — the stampede this class prevents.
+     */
+    fun refreshNow(): Boolean = synchronized(lock) {
+        if (session.hasFreshAccessToken()) return true
+        authApi.refresh()
+    }
+
     /** Proactive refresh when the access token is at/near its assumed expiry. */
     fun ensureFresh() {
         if (session.accessExpiry == null || session.hasFreshAccessToken()) return

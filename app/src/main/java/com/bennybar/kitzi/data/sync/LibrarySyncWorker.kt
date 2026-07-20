@@ -31,6 +31,10 @@ class LibrarySyncWorker(
             return Result.success() // not signed in / no valid token: nothing to do
         }
         return runCatching {
+            // WorkManager can wake a cold process where nothing has opened a library
+            // yet; BooksRepository.db is lateinit, so going straight to fetchPage
+            // threw and this periodic sync never actually ran.
+            Services.books.ensureLibrary()
             Services.books.fetchPage(1, 50, BookSort.UPDATED_DESC)
             Services.books.fetchPage(2, 50, BookSort.UPDATED_DESC)
             Result.success()

@@ -26,7 +26,10 @@ class AuthRepository(
         if (session.baseUrl == null) return false
         if (session.hasFreshAccessToken(leewaySeconds = 300)) return true
 
-        if (authApi.refresh()) return true
+        // Through the single-flight refresher, not AuthApi directly: this runs from
+        // startup and the background worker, and a concurrent interceptor refresh
+        // would rotate the same refresh token twice and log the user out.
+        if (refresher.refreshNow()) return true
 
         // Refresh failed — offline, or no refresh token. Degrade gracefully on a
         // still-valid access token rather than forcing a logout on a blip.

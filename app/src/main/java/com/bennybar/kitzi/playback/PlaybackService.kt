@@ -26,6 +26,7 @@ import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.guava.future
@@ -204,6 +205,10 @@ class PlaybackService : MediaLibraryService() {
     }
 
     override fun onDestroy() {
+        // Cancel FIRST: the live-update loop polls the player forever, so leaving it
+        // running kept the destroyed service referenced and let it probe a released
+        // player and repost notifications after teardown.
+        scope.cancel()
         liveUpdate.clear()
         session.player.release()
         session.release()
