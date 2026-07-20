@@ -388,11 +388,20 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
 
 @Composable
 private fun InfoChip(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String) {
-    AssistChip(
-        onClick = {},
-        leadingIcon = { Icon(icon, null, Modifier.size(18.dp)) },
-        label = { Text(label) },
-    )
+    // A non-interactive badge, not AssistChip(onClick = {}): these are facts, and
+    // a chip announced them to accessibility services as buttons that do nothing.
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+        shape = RoundedCornerShape(8.dp),
+    ) {
+        Row(
+            Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(icon, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(label, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(start = 8.dp))
+        }
+    }
 }
 
 /** A light metadata row: a small tinted icon, a muted label column, then the value. */

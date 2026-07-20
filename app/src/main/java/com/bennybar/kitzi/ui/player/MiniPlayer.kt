@@ -187,14 +187,28 @@ fun MiniPlayer(onExpand: () -> Unit) {
                 Icons.Default.Replay30,
                 "Rewind",
                 tint = onGlass,
-                modifier = Modifier.size(26.dp).clip(CircleShape).clickable { controller.seekBackward() },
+                modifier = Modifier
+                    // 48dp touch target with the icon still drawn at 26dp:
+                    // the tappable area was the icon itself, about half the
+                    // minimum, on controls used one-handed and in the car.
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .clickable { controller.seekBackward() }
+                    .padding(11.dp),
             )
             RoundPlayButton(isPlaying, Modifier.padding(horizontal = 6.dp), togglePlay)
             Icon(
                 Icons.Default.Forward30,
                 "Forward",
                 tint = onGlass,
-                modifier = Modifier.size(26.dp).clip(CircleShape).clickable { controller.seekForward() },
+                modifier = Modifier
+                    // 48dp touch target with the icon still drawn at 26dp:
+                    // the tappable area was the icon itself, about half the
+                    // minimum, on controls used one-handed and in the car.
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .clickable { controller.seekForward() }
+                    .padding(11.dp),
             )
         }
     }

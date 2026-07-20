@@ -44,6 +44,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -77,7 +78,7 @@ import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
 @Composable
-fun SettingsScreen(onSignedOut: () -> Unit) {
+fun SettingsScreen(onSignedOut: () -> Unit, onOpenProfile: () -> Unit = {}) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val prefs = Services.prefs
@@ -102,7 +103,11 @@ fun SettingsScreen(onSignedOut: () -> Unit) {
         ScreenHeader(
             icon = Icons.Default.Settings,
             title = "Settings",
-            trailing = { Icon(Icons.Default.Person, "Profile") },
+            // Was a bare Icon: it looked tappable, announced itself as "Profile"
+            // to TalkBack, and did nothing at all.
+            trailing = {
+                IconButton(onClick = onOpenProfile) { Icon(Icons.Default.Person, "Profile") }
+            },
         )
         KitziSearchField(search, { search = it }, "Search settings", Modifier.padding(bottom = 12.dp))
 

@@ -19,6 +19,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -72,6 +73,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
@@ -290,12 +292,16 @@ private fun KitziNavBar(tabs: List<Tab>, selected: Tab, overlayOpen: Boolean, on
                         Modifier
                             .weight(1f)
                             .clip(RoundedCornerShape(percent = 50))
-                            // No ripple: the sliding capsule already signals selection,
-                            // and the press flash showed under the finger when a swipe
-                            // began.
-                            .clickable(
+                            // selectable, not clickable: it carries the Tab role and the
+                            // selected state, so TalkBack says "Books, selected, tab"
+                            // rather than just "Books". No ripple — the sliding capsule
+                            // is the visual signal, and the press flash showed under the
+                            // finger when a swipe began.
+                            .selectable(
+                                selected = active,
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null,
+                                role = Role.Tab,
                             ) { onSelect(t) }
                             .padding(vertical = 7.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -481,7 +487,10 @@ private fun App() {
                                 Tab.QUEUE -> QueueScreen(onOpenPlayer = openPlayer)
                                 Tab.PLAYER -> PlayerScreen(contentPadding = playerPadding)
                                 Tab.DOWNLOADS -> DownloadsScreen(onOpenBook = openBook)
-                                Tab.SETTINGS -> SettingsScreen(onSignedOut = { signedIn = false })
+                                Tab.SETTINGS -> SettingsScreen(
+                                    onSignedOut = { signedIn = false },
+                                    onOpenProfile = { overlay = Overlay.Profile },
+                                )
                             }
                         }
                     }
