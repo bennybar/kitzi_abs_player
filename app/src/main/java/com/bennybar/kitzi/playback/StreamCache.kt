@@ -15,6 +15,7 @@ import java.io.File
  *
  * SimpleCache must be a singleton per directory per process, so it lives here.
  */
+@androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 object StreamCache {
     @Volatile private var instance: SimpleCache? = null
 

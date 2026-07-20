@@ -169,6 +169,12 @@ class BooksRepository(
         dao.getBook(id)?.toBook(session.baseUrl.orEmpty(), session.accessToken)
     }
 
+    /** One query for many books — the Downloads list would otherwise do N of them. */
+    suspend fun getBooks(ids: Collection<String>): List<Book> = withContext(Dispatchers.IO) {
+        if (ids.isEmpty()) return@withContext emptyList()
+        dao.getBooks(ids.toList()).map { it.toBook(session.baseUrl.orEmpty(), session.accessToken) }
+    }
+
     suspend fun booksInSeries(series: String): List<Book> = withContext(Dispatchers.IO) {
         dao.booksInSeries(series).map { it.toBook(session.baseUrl.orEmpty(), session.accessToken) }
     }

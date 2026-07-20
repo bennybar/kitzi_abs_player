@@ -40,6 +40,7 @@ import kotlinx.coroutines.launch
  * the lock screen would show "12 minutes" for a 14-hour book, and skip would move
  * by file instead of by chapter.
  */
+@androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 class PlaybackService : MediaLibraryService() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)

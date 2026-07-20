@@ -17,12 +17,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -57,13 +59,27 @@ fun DownloadsScreen(onOpenBook: (String) -> Unit) {
     var bytes by remember { mutableStateOf(0L) }
     var search by remember { mutableStateOf("") }
     var filter by remember { mutableStateOf(DownloadFilter.ALL) }
+    // The trash icon used to delete gigabytes on a single tap with no undo, while
+    // the same action from the player and book detail already asks first.
+    var pendingDelete by remember { mutableStateOf<ItemDownload?>(null) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
+        // watchAll() re-emits on every byte-progress update (roughly every 512 KB
+        // during a download). Doing a per-book metadata read and a full disk walk on
+        // each emission made the list crawl while anything was downloading, so both
+        // are now keyed to what actually changed: metadata is fetched in ONE query
+        // and only when the set of items changes, and the disk total is recomputed
+        // on the same trigger rather than continuously.
+        var knownIds = emptySet<String>()
         Services.downloads.watchAll().collect { list ->
             downloads = list
-            books = list.mapNotNull { d -> Services.books.getBook(d.itemId)?.let { d.itemId to it } }.toMap()
-            bytes = Services.downloads.totalBytes()
+            val ids = list.map { it.itemId }.toSet()
+            if (ids != knownIds) {
+                knownIds = ids
+                books = Services.books.getBooks(ids).associateBy { it.id }
+                bytes = Services.downloads.totalBytes()
+            }
         }
     }
 
@@ -180,12 +196,34 @@ fun DownloadsScreen(onOpenBook: (String) -> Unit) {
                                 )
                             }
                         }
-                        IconButton(onClick = { scope.launch { Services.downloads.delete(d.itemId) } }) {
+                        IconButton(onClick = { pendingDelete = d }) {
                             Icon(Icons.Default.Delete, "Delete download")
                         }
                     }
                 }
             }
         }
+    }
+
+    pendingDelete?.let { target ->
+        val title = books[target.itemId]?.title ?: "this book"
+        val running = !target.isComplete
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text(if (running) "Cancel download?" else "Remove download?") },
+            text = {
+                Text(
+                    if (running) "Stop downloading \u201c$title\u201d and discard what's downloaded so far?"
+                    else "Delete the downloaded files for \u201c$title\u201d? You can download it again anytime."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingDelete = null
+                    scope.launch { Services.downloads.delete(target.itemId) }
+                }) { Text(if (running) "Cancel download" else "Remove download") }
+            },
+            dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("Keep") } },
+        )
     }
 }

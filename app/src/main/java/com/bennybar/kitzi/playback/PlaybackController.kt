@@ -41,6 +41,7 @@ data class NowPlaying(
  * Owns the player and all book-coordinate state. One instance, shared by the UI
  * and the media service, so the notification and the app can never disagree.
  */
+@androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 class PlaybackController(
     private val context: Context,
     private val api: PlaybackApi,

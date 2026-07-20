@@ -147,11 +147,12 @@ class MainActivity : ComponentActivity() {
             }
 
             // Apply the user's font-scale setting app-wide, as the Flutter app does
-            // by scaling the MediaQuery textScaler.
-            val fontScale = ThemeState.fontScale
+            // by scaling the MediaQuery textScaler — MULTIPLIED by the system scale,
+            // not in place of it. Replacing it threw away the device's Large/Huge
+            // text accessibility setting entirely.
             val density = LocalDensity.current
             CompositionLocalProvider(
-                LocalDensity provides Density(density.density, fontScale)
+                LocalDensity provides Density(density.density, density.fontScale * ThemeState.fontScale)
             ) {
                 KitziTheme(darkTheme = dark) { App() }
             }

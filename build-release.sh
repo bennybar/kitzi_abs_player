@@ -40,6 +40,17 @@ VERSION="$(grep -E 'versionName *=' app/build.gradle.kts | head -1 | sed -E 's/.
 CODE="$(grep -E 'versionCode *=' app/build.gradle.kts | head -1 | sed -E 's/[^0-9]//g')"
 STAMP="v${VERSION}-${CODE}"
 
+# Gate the release on the checks BEFORE producing an artifact — assembling first
+# meant a release could be cut while unit tests or lint were failing. Set
+# SKIP_CHECKS=1 to bypass deliberately (e.g. reproducing an old build).
+if [ "${SKIP_CHECKS:-0}" != "1" ]; then
+  echo "Running checks: testDebugUnitTest lintDebug"
+  ./gradlew --no-daemon testDebugUnitTest lintDebug || {
+    echo "Checks failed — refusing to build a release. Re-run with SKIP_CHECKS=1 to override." >&2
+    exit 1
+  }
+fi
+
 TASKS=(assembleRelease)
 $WANT_AAB && TASKS+=(bundleRelease)
 

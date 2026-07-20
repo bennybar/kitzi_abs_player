@@ -159,7 +159,7 @@ fun SettingsScreen(onSignedOut: () -> Unit) {
         }
 
         // ---------- Appearance ----------
-        if (matches("appearance", "theme", "dark", "series", "author", "player", "font", "tint", "letter", "audible", "rating")) {
+        if (matches("appearance", "theme", "dark", "series", "author", "player", "font", "letter", "audible", "rating")) {
             Section("Appearance")
             TogglePref("ui_show_series_tab", false, "Show Series tab", "Enable the Series view")
             TogglePref("ui_author_view_enabled", true, "Authors tab", "Show a dedicated Authors tab in the main navigation")
@@ -185,15 +185,6 @@ fun SettingsScreen(onSignedOut: () -> Unit) {
             SliderRow(Icons.Default.FormatSize, "Font size", "$fontPct%", fontPct.toFloat(), 80f..120f, 8) {
                 ThemeState.setFontScale(it.roundToInt(), prefs)
             }
-            // Surface tint dropdown.
-            val tint by ThemeState.surfaceTintLevel
-            DropdownRow(
-                icon = Icons.Default.Palette,
-                title = "Surface tint (Light mode)",
-                selectedLabel = TINT_LABELS[tint],
-                options = TINT_LABELS.mapIndexed { i, l -> i.toString() to l },
-                onSelect = { ThemeState.setSurfaceTint(it.toInt(), prefs) },
-            )
             HorizontalDivider()
         }
 
@@ -349,7 +340,6 @@ fun SettingsScreen(onSignedOut: () -> Unit) {
 
 private enum class SettingsDialog { Headers, Backup, Storage, CleanupLog, Cleanup, Resync, Logout }
 
-private val TINT_LABELS = listOf("Pure White", "Light Tint", "Medium Tint", "Strong Tint", "Very Strong Tint")
 
 // ---------- row framework ----------
 

@@ -35,6 +35,13 @@ object SettingsBackup {
         "downloads_wifi_only",
         "downloads_auto_delete_on_finish",
         "smart_rewind_enabled",
+        "ui_dual_progress_enabled",
+        "ui_resume_from_history_enabled",
+        "ui_audible_link_enabled",
+        "pause_cancels_sleep_timer",
+        "sync_progress_before_play",
+        "live_update_now_playing",
+        "detailed_play_history_enabled",
     )
 
     private val intKeys = listOf(
@@ -42,8 +49,8 @@ object SettingsBackup {
         "ui_series_min_books",
         "ui_seek_backward_seconds",
         "ui_seek_forward_seconds",
-        "ui_surface_tint_level",
         "ui_font_scale_percent_v2",
+        "downloads_streaming_cache_mb",
     )
 
     private val stringKeys = listOf(
