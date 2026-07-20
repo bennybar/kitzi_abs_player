@@ -262,14 +262,21 @@ class PlaybackController(
         }
     }
 
-    suspend fun playItem(itemId: String, startPlaying: Boolean = true) {
+    /**
+     * Loads (and optionally starts) a book. Returns false when the book could not be
+     * loaded — a streaming session the server refused, or a load superseded by a
+     * newer tap. Callers that navigate on the user's behalf must check this: opening
+     * the player after a failed load strands the user on whatever was loaded before,
+     * which since the last book auto-loads at startup is a different book entirely.
+     */
+    suspend fun playItem(itemId: String, startPlaying: Boolean = true): Boolean {
         // Don't touch `player` until the service has attached it.
         playerReady.await()
         val myGen = ++loadGeneration
         loadMutex.withLock {
             // A newer tap arrived while this one waited for the lock — abandon it
             // rather than load a book the user already moved past.
-            if (myGen != loadGeneration) return
+            if (myGen != loadGeneration) return false
             // Flush the OUTGOING book first: loadAndStart resets the accrual and the
             // last-sync marker, so without this the final position and up to a whole
             // sync interval of listening time are silently discarded on every switch.
@@ -287,11 +294,12 @@ class PlaybackController(
                 sessionId = null
                 withContext(Dispatchers.IO) { syncMutex.withLock { runCatching { api.closeSession(id) } } }
             }
-            loadAndStart(itemId, startPlaying)
+            return loadAndStart(itemId, startPlaying)
         }
     }
 
-    private suspend fun loadAndStart(itemId: String, startPlaying: Boolean) {
+    /** Returns false when the book could not be loaded (no session, nothing to play). */
+    private suspend fun loadAndStart(itemId: String, startPlaying: Boolean): Boolean {
         val durations = localTrackDurations?.invoke(itemId).orEmpty()
         val local = localTracks(itemId, durations)
             .takeIf { it.isNotEmpty() && isDownloadComplete?.invoke(itemId) != false }
@@ -315,7 +323,7 @@ class PlaybackController(
                 isLocal = true,
             )
         } else {
-            val session = withContext(Dispatchers.IO) { api.openSession(itemId) } ?: return
+            val session = withContext(Dispatchers.IO) { api.openSession(itemId) } ?: return false
             sessionId = session.sessionId
             cacheChapters(itemId, session.chapters)
             NowPlaying(
@@ -368,6 +376,7 @@ class PlaybackController(
         // The progress-sync loop is started/stopped by onIsPlayingChanged, not here,
         // so a loaded-but-paused book (e.g. the auto-loaded last book on launch)
         // doesn't wake every 26s doing nothing.
+        return true
     }
 
     private fun Track.toMediaItem(np: NowPlaying): MediaItem = MediaItem.Builder()

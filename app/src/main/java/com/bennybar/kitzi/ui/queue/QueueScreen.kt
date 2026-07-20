@@ -138,10 +138,15 @@ fun QueueScreen(onOpenPlayer: () -> Unit) {
                             enabled = index < items.lastIndex,
                         ) { Icon(Icons.Default.ArrowDownward, "Move down") }
                         IconButton(onClick = {
-                            queue.remove(entry.id)
                             scope.launch {
-                                Services.playback.playItem(entry.id)
-                                onOpenPlayer()
+                                // Consume the queue entry and navigate only if the book
+                                // actually loaded: doing it first meant a failed play
+                                // silently dropped it from the queue AND opened the
+                                // player on whatever was loaded before.
+                                if (Services.playback.playItem(entry.id)) {
+                                    queue.remove(entry.id)
+                                    onOpenPlayer()
+                                }
                             }
                         }) { Icon(Icons.Default.PlayArrow, "Play now") }
                         IconButton(onClick = { queue.remove(entry.id) }) {

@@ -81,10 +81,16 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
     var bookmarks by remember { mutableStateOf<List<Bookmark>>(emptyList()) }
     var showInfo by remember { mutableStateOf(false) }
     var showCancelConfirm by remember { mutableStateOf(false) }
+    var playFailed by remember { mutableStateOf(false) }
+    var notFound by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(itemId) {
-        book = Services.books.getBook(itemId)
+        val loaded = Services.books.getBook(itemId)
+        book = loaded
+        // Distinguish "still loading" from "this book isn't there", so a missing book
+        // shows an explanation and a way out instead of an endless spinner.
+        notFound = loaded == null
         progress = Services.books.progressFor(itemId)
         bookmarks = runCatching { Services.books.bookmarks(itemId) }.getOrDefault(emptyList())
     }
@@ -94,8 +100,24 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
 
     val b = book
     if (b == null) {
-        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-            CircularProgressIndicator()
+        Column(
+            Modifier.fillMaxSize().padding(32.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            if (notFound) {
+                Text("Book unavailable", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "It may have been removed from the server, or it hasn't finished syncing yet.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+                TextButton(onClick = onBack, modifier = Modifier.padding(top = 8.dp)) { Text("Go back") }
+            } else {
+                CircularProgressIndicator()
+            }
         }
         return
     }
@@ -191,7 +213,15 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
             val d = download
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Button(
-                    onClick = { scope.launch { Services.playback.playItem(itemId); onPlay() } },
+                    // Only navigate once the book actually loaded: opening the player
+                    // after a failed load leaves the user staring at whatever was
+                    // loaded before — since startup auto-loads the last book, that is
+                    // a different book, which reads as "it played the wrong thing".
+                    onClick = {
+                        scope.launch {
+                            if (Services.playback.playItem(itemId)) onPlay() else playFailed = true
+                        }
+                    },
                     modifier = Modifier.weight(1f),
                 ) {
                     Icon(Icons.Default.PlayArrow, null)
@@ -327,6 +357,15 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
 
     if (showInfo) {
         com.bennybar.kitzi.ui.player.PlayerInfoSheet(itemId = itemId, onDismiss = { showInfo = false })
+    }
+
+    if (playFailed) {
+        AlertDialog(
+            onDismissRequest = { playFailed = false },
+            title = { Text("Couldn't start this book") },
+            text = { Text("The server didn't return a playable stream. Check your connection and try again — downloaded books always play offline.") },
+            confirmButton = { TextButton(onClick = { playFailed = false }) { Text("OK") } },
+        )
     }
 
     if (showCancelConfirm) {

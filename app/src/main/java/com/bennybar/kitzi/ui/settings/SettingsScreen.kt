@@ -117,7 +117,22 @@ fun SettingsScreen(onSignedOut: () -> Unit) {
                     options = libraries.map { it.id to it.name },
                     onSelect = { id ->
                         currentLibrary = id
-                        scope.launch { Services.books.switchLibrary(id) }
+                        scope.launch {
+                            // A book from the OLD library must not keep playing across
+                            // the switch: progress writes resolve the DAO lazily, so
+                            // they would land in the NEW library's database. Stopping
+                            // first also flushes a final sync for the outgoing book.
+                            Services.playback.stopAndAwait()
+                            Services.books.switchLibrary(id)
+                            // switchLibrary CLOSES the previous database, but every
+                            // screen still holds Room flows bound to it — they would
+                            // keep serving the old library's rows until an app
+                            // restart. Rebuilding the UI rebinds them all at once;
+                            // switching libraries is a rare, deliberate action where a
+                            // brief reload beats keying every flow and ViewModel by
+                            // library id.
+                            (context as? android.app.Activity)?.recreate()
+                        }
                     },
                 )
             }
