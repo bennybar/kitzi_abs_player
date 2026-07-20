@@ -112,9 +112,13 @@ object Services {
                     runCatching { downloads.delete(finishedId) }
                 }
             }
-            queue.popNext(finishedId)?.let { next ->
+            queue.peekNext(finishedId)?.let { next ->
                 CoroutineScope(Dispatchers.Main).launch {
-                    runCatching { playback.playItem(next.id) }
+                    // Only drop it from the queue once it actually started. A book the
+                    // server refused used to be removed anyway, so playback stopped
+                    // and the entry was gone with no way to retry it.
+                    val started = runCatching { playback.playItem(next.id) }.getOrDefault(false)
+                    if (started) queue.consume(next.id)
                 }
             }
         }

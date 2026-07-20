@@ -15,6 +15,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -31,6 +32,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.bennybar.kitzi.data.Services
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -104,13 +106,16 @@ fun LoginScreen(onSignedIn: () -> Unit) {
         }
     }
 
-    // Offer SSO only when the server actually advertises it.
-    fun probeServer() {
-        if (server.isBlank()) return
-        scope.launch {
-            ssoAvailable = withContext(Dispatchers.IO) {
-                runCatching { Services.auth.serverAuthMethods(server).contains("openid") }.getOrDefault(false)
-            }
+    // Offer SSO only when the server actually advertises it — probed whenever the
+    // typed URL settles. It used to be probed only from the Sign in button, which
+    // requires a username and tries a password login at the same time, so someone
+    // whose server is SSO-only had no way to make the SSO button appear at all.
+    LaunchedEffect(server) {
+        ssoAvailable = false
+        if (server.isBlank()) return@LaunchedEffect
+        delay(600)   // don't probe on every keystroke
+        ssoAvailable = withContext(Dispatchers.IO) {
+            runCatching { Services.auth.serverAuthMethods(server).contains("openid") }.getOrDefault(false)
         }
     }
 
@@ -156,7 +161,7 @@ fun LoginScreen(onSignedIn: () -> Unit) {
                     }
                 } else {
                     Button(
-                        onClick = { probeServer(); signIn() },
+                        onClick = { signIn() },
                         enabled = server.isNotBlank() && username.isNotBlank(),
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text("Sign in") }

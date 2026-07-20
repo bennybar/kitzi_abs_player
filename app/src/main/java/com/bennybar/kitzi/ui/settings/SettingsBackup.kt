@@ -6,6 +6,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
@@ -50,7 +51,13 @@ object SettingsBackup {
         "ui_seek_backward_seconds",
         "ui_seek_forward_seconds",
         "ui_font_scale_percent_v2",
-        "downloads_streaming_cache_mb",
+        "streaming_cache_max_bytes_mb",
+    )
+
+    // Playback speed is the one setting stored as a double; it was simply absent
+    // from the backup, so a restored device silently reverted to 1.0x.
+    private val doubleKeys = listOf(
+        "playback_speed",
     )
 
     private val stringKeys = listOf(
@@ -65,6 +72,7 @@ object SettingsBackup {
         buildJsonObject {
             booleanKeys.forEach { if (prefs.contains(it)) put(it, prefs.getBoolean(it, false)) }
             intKeys.forEach { if (prefs.contains(it)) put(it, prefs.getInt(it, 0)) }
+            doubleKeys.forEach { if (prefs.contains(it)) put(it, prefs.getDouble(it, 0.0)) }
             stringKeys.forEach { prefs.getString(it)?.let { v -> put(it, v) } }
         },
     )
@@ -78,6 +86,11 @@ object SettingsBackup {
             when (key) {
                 in booleanKeys -> primitive.booleanOrNull?.let { prefs.putBoolean(key, it) }
                 in intKeys -> primitive.intOrNull?.let { prefs.putInt(key, it) }
+                // Range-checked: an out-of-range speed from a hand-edited file would
+                // otherwise be written straight through and stick at an unusable rate.
+                in doubleKeys -> primitive.doubleOrNull
+                    ?.takeIf { it in 0.5..3.0 }
+                    ?.let { prefs.putDouble(key, it) }
                 in stringKeys -> prefs.putString(key, primitive.content)
                 // Anything else in the file is ignored rather than blindly written.
             }

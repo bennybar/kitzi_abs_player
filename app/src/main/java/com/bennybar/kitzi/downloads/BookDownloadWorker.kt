@@ -62,7 +62,7 @@ class BookDownloadWorker(
 
         // Tracks already on disk (a resumed or re-queued book) count as done up front.
         var done = tracks.count { File(dir, it.filename).let { f -> f.exists() && f.length() > 0 } }
-        runCatching { setForeground(foregroundInfo(itemId, title, done, total, 0.0)) }
+        runCatchingForeground { setForeground(foregroundInfo(itemId, title, done, total, 0.0)) }
 
         var transientFailure = false
 
@@ -76,7 +76,7 @@ class BookDownloadWorker(
             }
 
             dao.setStatus(itemId, t.trackIndex, DownloadStatus.RUNNING)
-            runCatching { setForeground(foregroundInfo(itemId, title, done, total, 0.0)) }
+            runCatchingForeground { setForeground(foregroundInfo(itemId, title, done, total, 0.0)) }
 
             when (fetchTrack(itemId, t.fileId, dir, t.filename, dao, t.trackIndex, title, done, total)) {
                 Outcome.OK -> done++
@@ -147,7 +147,7 @@ class BookDownloadWorker(
                                 lastNotify = written
                                 dao.setProgress(itemId, trackIndex, written, len, DownloadStatus.RUNNING)
                                 val frac = if (len > 0) written.toDouble() / len else 0.0
-                                runCatching { setForeground(foregroundInfo(itemId, title, done, total, frac)) }
+                                runCatchingForeground { setForeground(foregroundInfo(itemId, title, done, total, frac)) }
                             }
                         }
                     }
@@ -227,4 +227,16 @@ class BookDownloadWorker(
         const val KEY_TITLE = "title"
         const val KEY_LIBRARY_ID = "libraryId"
     }
+
+    /**
+     * setForeground legitimately fails when the system won't let a backgrounded app
+     * promote a service (Android 12+), and the download must carry on regardless —
+     * so this stays non-fatal. It is logged rather than silently dropped, because a
+     * worker whose reliability design assumes foreground execution losing that
+     * quietly is exactly the sort of thing that is impossible to diagnose later.
+     */
+    private inline fun runCatchingForeground(block: () -> Unit) {
+        runCatching(block).onFailure { Log.w(TAG, "setForeground rejected; continuing in background", it) }
+    }
+
 }

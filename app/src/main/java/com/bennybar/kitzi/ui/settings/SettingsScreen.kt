@@ -207,9 +207,12 @@ fun SettingsScreen(onSignedOut: () -> Unit, onOpenProfile: () -> Unit = {}) {
             }
             SliderRow(
                 Icons.Default.Storage, "Streaming cache",
-                "Max ${prefs.getInt("streaming_cache_max_bytes_mb", 512)} MB",
+                // "after restart" is the honest label: SimpleCache and its LRU evictor
+                // are built once per process, so moving this slider does nothing to the
+                // live cache. The range matches StreamCache's own clamp (200–2048).
+                "Max ${prefs.getInt("streaming_cache_max_bytes_mb", 512)} MB · applies after restart",
                 prefs.getInt("streaming_cache_max_bytes_mb", 512).toFloat(),
-                200f..2000f, 36,
+                200f..2048f, 36,
             ) { prefs.putInt("streaming_cache_max_bytes_mb", it.roundToInt()) }
             ActionRow(Icons.Default.Storage, "Storage", "See download + streaming cache usage, and clean per book") {
                 dialog = SettingsDialog.Storage

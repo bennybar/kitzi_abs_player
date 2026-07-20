@@ -53,14 +53,20 @@ class PlayQueue(private val prefs: FlutterPrefs) {
         mutable
     }
 
-    /** Pops the next book, dropping the one that just finished if it is queued. */
-    fun popNext(finishedId: String?): QueueEntry? {
+    /**
+     * The next book to play, dropping the one that just finished if it is queued.
+     * Does NOT remove the returned entry — call [consume] once it has actually
+     * started. Removing it up front meant a book that failed to load vanished from
+     * the queue and playback just ended, with nothing to retry.
+     */
+    fun peekNext(finishedId: String?): QueueEntry? {
         val list = _items.value.filterNot { it.id == finishedId }
-        val next = list.firstOrNull()
-        _items.value = list.drop(1)
-        save()
-        return next
+        if (list.size != _items.value.size) { _items.value = list; save() }
+        return list.firstOrNull()
     }
+
+    /** Removes an entry that has started playing. */
+    fun consume(id: String) = update { list -> list.filterNot { it.id == id } }
 
     private fun update(block: (List<QueueEntry>) -> List<QueueEntry>) {
         _items.value = block(_items.value)
