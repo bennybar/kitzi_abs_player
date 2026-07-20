@@ -84,6 +84,7 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
     var showInfo by remember { mutableStateOf(false) }
     var showMore by remember { mutableStateOf(false) }
     var showHistory by remember { mutableStateOf(false) }
+    var confirmFinished by remember { mutableStateOf(false) }
     var showCancelDownload by remember { mutableStateOf(false) }
     var showDeleteDownload by remember { mutableStateOf(false) }
     val sleep by Services.sleepTimer.mode.collectAsStateWithLifecycle()
@@ -478,6 +479,24 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
     if (showInfo) {
         PlayerInfoSheet(itemId = np.itemId, onDismiss = { showInfo = false })
     }
+    if (confirmFinished) {
+        AlertDialog(
+            onDismissRequest = { confirmFinished = false },
+            title = { Text("Mark as finished?") },
+            // Marking finished stops the book — the progress reports from a still-
+            // playing player would otherwise overwrite the finished state moments
+            // later. Say so, since the book is playing right now.
+            text = { Text("This marks the book finished here and on the server, and stops playback.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmFinished = false
+                    scope.launch { Services.books.markFinished(np.itemId) }
+                }) { Text("Mark finished") }
+            },
+            dismissButton = { TextButton(onClick = { confirmFinished = false }) { Text("Cancel") } },
+        )
+    }
+
     if (showHistory) {
         PlayHistorySheet(
             itemId = np.itemId,
@@ -500,8 +519,8 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
                 prefs.putBoolean("ui_progress_bar_chapterized", chapterizedBar)
             },
             onMarkFinished = {
-                scope.launch { Services.books.markFinished(np.itemId) }
                 showMore = false
+                confirmFinished = true
             },
             onDismiss = { showMore = false },
         )

@@ -162,12 +162,19 @@ class PlaybackApi(
     }
 
     /** Marks a book finished without playing it (the "Mark as Finished" action). */
-    fun markFinished(itemId: String): Boolean = patchProgress(
+    /**
+     * Marking finished must state a position CONSISTENT with being finished: the
+     * end of the book, with duration so the server computes progress = 1. Sending
+     * `currentTime = 0` alongside `isFinished = true` is a contradiction, and the
+     * server resolved it by recomputing progress from the position and dropping the
+     * finished flag — the mark appeared to work locally and was gone on next sync.
+     */
+    fun setFinished(itemId: String, finished: Boolean, durationSec: Double?): Boolean = patchProgress(
         ProgressReport(
             itemId = itemId,
-            currentTimeSec = 0.0,
-            totalSec = null,
-            isFinished = true,
+            currentTimeSec = if (finished) durationSec ?: 0.0 else 0.0,
+            totalSec = durationSec,
+            isFinished = finished,
             isPaused = true,
             timeListenedSec = null,
         )

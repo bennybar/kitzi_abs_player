@@ -59,6 +59,12 @@ class PlaybackController(
     val nowPlaying: StateFlow<NowPlaying?> = _nowPlaying.asStateFlow()
 
     private var sessionId: String? = null
+
+    // Set while stop()/stopAndAwait() tear a book down. player.stop() makes
+    // isPlaying go false, and the listener treats that as a user pause: it fired one
+    // more fire-and-forget progress report, with isFinished=false, that landed AFTER
+    // the teardown finished. That is what reverted "Mark as Finished" on the server.
+    @Volatile private var tearingDown = false
     private var lastSyncedSec: Double = -1.0
     private var syncJob: kotlinx.coroutines.Job? = null
     // A book that was loaded paused (the auto-loaded last book on startup) hasn't
@@ -250,11 +256,18 @@ class PlaybackController(
      */
     fun resume() {
         if (!::player.isInitialized) return
-        val itemId = _nowPlaying.value?.itemId ?: return
+        val np = _nowPlaying.value ?: return
+        val itemId = np.itemId
         val notResumable = needsFreshLoad ||
             player.playerError != null ||
             player.playbackState == Player.STATE_IDLE ||
-            player.mediaItemCount == 0
+            player.mediaItemCount == 0 ||
+            // Pausing a STREAMED book closes its server session (that's what stops
+            // the transcode). Nothing reopened it, so resuming reused track URLs the
+            // session owned: fine for a direct-played file, but a transcoded book's
+            // URLs are session-scoped and 404 once it's gone — play looked like it
+            // did nothing. A downloaded book has no session and is unaffected.
+            (!np.isLocal && sessionId == null)
         if (notResumable) {
             needsFreshLoad = false
             scope.launch { runCatching { playItem(itemId, startPlaying = true) } }
@@ -285,48 +298,81 @@ class PlaybackController(
             // Bounded: the local position is already persisted synchronously inside
             // the payload build, so this wait only buys the server report landing
             // before the session closes. Offline it must not stall the switch.
+            // Resolve the INCOMING book — including opening its server session —
+            // before tearing anything down. Doing it the other way round meant a
+            // server that refused the new session left the old book playing against
+            // a session that had already been closed: audio that dies at the next
+            // track, and progress reported for a book the user isn't on.
+            val staged = resolve(itemId) ?: return false
+            if (myGen != loadGeneration) {
+                // Superseded while we were resolving. Give back the session we just
+                // opened rather than leaking a transcode on the server.
+                staged.sessionId?.let { id ->
+                    withContext(Dispatchers.IO) { runCatching { api.closeSession(id) } }
+                }
+                return false
+            }
+
+            // Only now flush the OUTGOING book: loadAndStart resets the accrual and
+            // the last-sync marker, so without this the final position and up to a
+            // whole sync interval of listening time are silently discarded on every
+            // switch. Awaited so it lands before the session it belongs to is closed.
+            // Bounded: the local position is already persisted synchronously inside
+            // the payload build, so this wait only buys the server report landing
+            // before the session closes. Offline it must not stall the switch.
             if (_nowPlaying.value != null) {
                 runCatching { withTimeoutOrNull(3_000) { syncNowAwaiting() } }
             }
-            // Close the previous streamed session before switching books so the
-            // server stops transcoding for the book we're leaving. Ordered against
-            // in-flight progress reports so a stale sync can't reopen it.
+            // Close the previous streamed session so the server stops transcoding for
+            // the book we're leaving. Ordered against in-flight progress reports so a
+            // stale sync can't reopen it.
             sessionId?.let { id ->
                 sessionId = null
                 withContext(Dispatchers.IO) { syncMutex.withLock { runCatching { api.closeSession(id) } } }
             }
-            return loadAndStart(itemId, startPlaying)
+            sessionId = staged.sessionId
+            loadAndStart(staged.nowPlaying, startPlaying)
+            return true
         }
     }
 
-    /** Returns false when the book could not be loaded (no session, nothing to play). */
-    private suspend fun loadAndStart(itemId: String, startPlaying: Boolean): Boolean {
+    /**
+     * Builds the NowPlaying for a book, opening a server session when it isn't
+     * downloaded. Returns null when the book can't be played — no session and no
+     * local files. Touches no player or controller state, so a failure here leaves
+     * whatever is currently playing exactly as it was.
+     */
+    private suspend fun resolve(itemId: String): Staged? {
         val durations = localTrackDurations?.invoke(itemId).orEmpty()
         val local = localTracks(itemId, durations)
             .takeIf { it.isNotEmpty() && isDownloadComplete?.invoke(itemId) != false }
             .orEmpty()
         val cached = books.getBook(itemId)
 
-        val np: NowPlaying = if (local.isNotEmpty()) {
-            NowPlaying(
-                itemId = itemId,
-                title = cached?.title ?: "",
-                author = cached?.author,
-                coverUrl = cached?.coverUrl,
-                tracks = local,
-                // A DOWNLOADED book must start without touching the network: use the
-                // cached chapters, else per-track boundaries immediately. The real
-                // list is fetched in the background afterwards (see below) — awaiting
-                // it here made offline playback hang on a network timeout.
-                chapters = loadCachedChapters(itemId)
-                    .ifEmpty { PlaybackMath.chaptersFromTracks(local) },
-                serverDurationSec = cached?.durationMs?.let { it / 1000.0 },
-                isLocal = true,
+        if (local.isNotEmpty()) {
+            return Staged(
+                NowPlaying(
+                    itemId = itemId,
+                    title = cached?.title ?: "",
+                    author = cached?.author,
+                    coverUrl = cached?.coverUrl,
+                    tracks = local,
+                    // A DOWNLOADED book must start without touching the network: use
+                    // the cached chapters, else per-track boundaries immediately. The
+                    // real list is fetched in the background afterwards (see below) —
+                    // awaiting it here made offline playback hang on a network timeout.
+                    chapters = loadCachedChapters(itemId)
+                        .ifEmpty { PlaybackMath.chaptersFromTracks(local) },
+                    serverDurationSec = cached?.durationMs?.let { it / 1000.0 },
+                    isLocal = true,
+                ),
+                sessionId = null,
             )
-        } else {
-            val session = withContext(Dispatchers.IO) { api.openSession(itemId) } ?: return false
-            sessionId = session.sessionId
-            cacheChapters(itemId, session.chapters)
+        }
+
+        val session = withContext(Dispatchers.IO) { api.openSession(itemId) } ?: return null
+        cacheChapters(itemId, session.chapters)
+        return Staged(
             NowPlaying(
                 itemId = itemId,
                 title = cached?.title ?: "",
@@ -336,9 +382,16 @@ class PlaybackController(
                 chapters = session.chapters.ifEmpty { PlaybackMath.chaptersFromTracks(session.tracks) },
                 serverDurationSec = session.durationSec ?: cached?.durationMs?.let { it / 1000.0 },
                 isLocal = false,
-            )
-        }
+            ),
+            sessionId = session.sessionId,
+        )
+    }
 
+    /** A book resolved and ready to commit, with the session it owns (null if local). */
+    private data class Staged(val nowPlaying: NowPlaying, val sessionId: String?)
+
+    private suspend fun loadAndStart(np: NowPlaying, startPlaying: Boolean) {
+        val itemId = np.itemId
         _nowPlaying.value = np
         // Remembered so the player can offer "Resume last book" on a cold start.
         prefs.putString(KEY_LAST_ITEM, itemId)
@@ -377,7 +430,6 @@ class PlaybackController(
         // The progress-sync loop is started/stopped by onIsPlayingChanged, not here,
         // so a loaded-but-paused book (e.g. the auto-loaded last book on launch)
         // doesn't wake every 26s doing nothing.
-        return true
     }
 
     private fun Track.toMediaItem(np: NowPlaying): MediaItem = MediaItem.Builder()
@@ -588,11 +640,13 @@ class PlaybackController(
     private fun chaptersKey(itemId: String) = "chapters_$itemId"
 
     fun stop() {
+        tearingDown = true
         syncNow(finished = false)          // captures the current session id first
         sessionId?.let { id -> sessionId = null; closeSessionOrdered(id) }
         syncJob?.cancel()
         player.stop()
         _nowPlaying.value = null
+        tearingDown = false
     }
 
     /**
@@ -602,15 +656,22 @@ class PlaybackController(
      */
     suspend fun stopAndAwait() {
         if (!::player.isInitialized) return
-        syncNow(finished = false)
+        tearingDown = true
         val sid = sessionId
         sessionId = null
         syncJob?.cancel()
+        // Awaited, not fire-and-forget. syncNow() launches into scope and only the
+        // mutex ordered it against the close below — nothing guaranteed the launched
+        // report won the lock first. That let a stale report land AFTER whatever ran
+        // next, which is how "Mark as Finished" on the playing book was reverted by
+        // its own final isFinished=false sync moments later.
+        runCatching { syncNowAwaiting(finished = false) }
         withContext(Dispatchers.IO) {
             syncMutex.withLock { sid?.let { runCatching { api.closeSession(it) } } }
         }
         player.stop()
         _nowPlaying.value = null
+        tearingDown = false
     }
 
     private inner class PlayerEvents : Player.Listener {
@@ -637,6 +698,9 @@ class PlaybackController(
                 // timer, and arming smart-rewind for a stall the user never caused.
                 val intentionalPause = !::player.isInitialized || !player.playWhenReady
                 if (!intentionalPause) return
+                // A teardown already sent its final report and closed the session;
+                // anything from here would race whatever the caller does next.
+                if (tearingDown) return
 
                 // Stop waking every 26s while paused; a final sync happens below.
                 syncJob?.cancel()

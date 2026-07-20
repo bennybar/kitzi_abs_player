@@ -665,23 +665,56 @@ class BooksRepository(
      * call ran on the caller's dispatcher and nothing local changed, so the book
      * still showed as in-progress until the next full resync.
      */
-    suspend fun markFinished(id: String): Boolean = withContext(Dispatchers.IO) {
-        val ok = Services.playbackApi.markFinished(id)
+    suspend fun markFinished(id: String): Boolean = setFinished(id, true)
+
+    /** The undo for [markFinished] — the only way back once a book is marked. */
+    suspend fun markUnfinished(id: String): Boolean = setFinished(id, false)
+
+    private suspend fun setFinished(id: String, finished: Boolean): Boolean {
+        // Stop the book first if it's the one playing. The player reports its own
+        // position every ~26s and on pause, and that report carries isFinished=false
+        // — so marking the CURRENT book finished used to be silently undone by its
+        // own playback a few seconds later.
+        //
+        // Deliberately OUTSIDE the IO context below: ExoPlayer must be touched from
+        // the thread it was built on, and stopAndAwait ends in player.stop(). Called
+        // on a Dispatchers.IO coroutine it throws, and the book just kept playing.
+        if (Services.playback.nowPlaying.value?.itemId == id) {
+            runCatching { Services.playback.stopAndAwait() }
+        }
+        return withContext(Dispatchers.IO) { writeFinished(id, finished) }
+    }
+
+    private suspend fun writeFinished(id: String, finished: Boolean): Boolean {
+        // The book's duration, needed so "finished" is reported as a position at the
+        // end rather than at zero. The progress row may not carry it yet (a book
+        // never opened), so fall back to the library metadata.
         val existing = dao.progressFor(id)
-        val duration = existing?.durationSec ?: 0.0
+        val duration = existing?.durationSec?.takeIf { it > 0 }
+            ?: dao.getBook(id)?.durationMs?.let { it / 1000.0 }
+            ?: 0.0
+
+        // The server is the source of truth here. Writing the local row regardless
+        // of the result made a failed call look like it had worked, until the next
+        // full resync quietly reverted it.
+        if (!Services.playbackApi.setFinished(id, finished, duration.takeIf { it > 0 })) return false
         dao.upsertProgress(
             listOf(
                 MediaProgressEntity(
                     itemId = id,
-                    progress = 1.0,
-                    isFinished = true,
-                    currentTimeSec = if (duration > 0) duration else existing?.currentTimeSec ?: 0.0,
+                    progress = if (finished) 1.0 else 0.0,
+                    isFinished = finished,
+                    currentTimeSec = when {
+                        !finished -> 0.0
+                        duration > 0 -> duration
+                        else -> existing?.currentTimeSec ?: 0.0
+                    },
                     durationSec = duration,
                     lastUpdate = System.currentTimeMillis(),
                 )
             )
         )
-        ok
+        return true
     }
 
     /**

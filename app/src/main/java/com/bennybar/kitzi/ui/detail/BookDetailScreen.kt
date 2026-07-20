@@ -81,6 +81,8 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
     var bookmarks by remember { mutableStateOf<List<Bookmark>>(emptyList()) }
     var showInfo by remember { mutableStateOf(false) }
     var showCancelConfirm by remember { mutableStateOf(false) }
+    var confirmFinished by remember { mutableStateOf(false) }
+    var finishedFailed by remember { mutableStateOf(false) }
     var playFailed by remember { mutableStateOf(false) }
     var notFound by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -122,6 +124,46 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
         return
     }
 
+    if (confirmFinished) {
+        val isFinished = progress?.isFinished == true
+        AlertDialog(
+            onDismissRequest = { confirmFinished = false },
+            title = { Text(if (isFinished) "Mark as unfinished?" else "Mark as finished?") },
+            text = {
+                Text(
+                    if (isFinished) {
+                        "This clears the finished mark and resets your position to the start, here and on the server."
+                    } else {
+                        // Both consequences are worth stating: it is not undoable by
+                        // simply pressing play, and it stops the book you're hearing.
+                        "This marks the book finished here and on the server. If it's playing, playback stops."
+                    }
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmFinished = false
+                    scope.launch {
+                        val ok = if (isFinished) Services.books.markUnfinished(itemId)
+                                 else Services.books.markFinished(itemId)
+                        if (!ok) finishedFailed = true
+                        progress = Services.books.progressFor(itemId)
+                    }
+                }) { Text(if (isFinished) "Mark unfinished" else "Mark finished") }
+            },
+            dismissButton = { TextButton(onClick = { confirmFinished = false }) { Text("Cancel") } },
+        )
+    }
+
+    if (finishedFailed) {
+        AlertDialog(
+            onDismissRequest = { finishedFailed = false },
+            title = { Text("Couldn't update the server") },
+            text = { Text("Nothing was changed. Check your connection and try again.") },
+            confirmButton = { TextButton(onClick = { finishedFailed = false }) { Text("OK") } },
+        )
+    }
+
     Column(Modifier.fillMaxSize()) {
         TopAppBar(
             title = { Text("Book Details", fontWeight = FontWeight.SemiBold) },
@@ -132,14 +174,10 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
                 IconButton(onClick = {
                     b.let { Services.queue.addToBack(QueueEntry(it.id, it.title, it.author, it.coverUrl)) }
                 }) { Icon(Icons.AutoMirrored.Filled.PlaylistAdd, "Add to queue") }
-                TextButton(onClick = {
-                    // Marking finished writes the finished state locally and on the
-                    // server (off the main thread), then refreshes the shown progress.
-                    scope.launch {
-                        Services.books.markFinished(itemId)
-                        progress = Services.books.progressFor(itemId)
-                    }
-                }) { Text("Mark as Finished") }
+                val isFinished = progress?.isFinished == true
+                TextButton(onClick = { confirmFinished = true }) {
+                    Text(if (isFinished) "Mark as Unfinished" else "Mark as Finished")
+                }
             },
         )
 
