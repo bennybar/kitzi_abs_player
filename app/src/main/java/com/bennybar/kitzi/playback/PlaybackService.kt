@@ -27,7 +27,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.guava.future
 import kotlinx.coroutines.launch
@@ -46,7 +45,6 @@ class PlaybackService : MediaLibraryService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private lateinit var session: MediaLibrarySession
     private lateinit var controller: PlaybackController
-    private lateinit var liveUpdate: NowPlayingLiveUpdate
 
     // Notification / Samsung Now Bar buttons, ALL as explicit button preferences so
     // they surface as custom actions (verified working via dumpsys) — the standard
@@ -125,9 +123,6 @@ class PlaybackService : MediaLibraryService() {
         // seconds), which Media3 exposes as SKIP_TO_PREVIOUS/NEXT + REWIND/FAST_FORWARD
         // for the pill to draw — the same standard-command approach Gramophone uses.
 
-        // debug_plain_media_session (diagnostic): expose the RAW ExoPlayer with no
-        // book-coordinate wrapper. Off by default.
-
         // The activity that opens when the media notification / lock screen / Samsung
         // Now Bar pill is tapped. BOTH the working Flutter app (audio_service) and
         // other working Media3 apps (e.g. Gramophone) set this; we didn't — and a
@@ -146,18 +141,10 @@ class PlaybackService : MediaLibraryService() {
         val bitmapLoader = androidx.media3.session.CacheBitmapLoader(
             androidx.media3.datasource.DataSourceBitmapLoader(this)
         )
-        val plainSession = Services.prefs.getBoolean("debug_plain_media_session", false)
-        session = if (plainSession) {
-            MediaLibrarySession.Builder(this, player, LibraryCallback())
-                .setSessionActivity(sessionActivity)
-                .setBitmapLoader(bitmapLoader)
-                .build()
-        } else {
-            MediaLibrarySession.Builder(this, BookCoordinatePlayer(player), LibraryCallback())
-                .setSessionActivity(sessionActivity)
-                .setBitmapLoader(bitmapLoader)
-                .build()
-        }
+        session = MediaLibrarySession.Builder(this, BookCoordinatePlayer(player), LibraryCallback())
+            .setSessionActivity(sessionActivity)
+            .setBitmapLoader(bitmapLoader)
+            .build()
 
         // Post the playback notification on the app's own audio channel (the one
         // the Flutter app used and users may have configured), instead of Media3's
@@ -169,30 +156,6 @@ class PlaybackService : MediaLibraryService() {
                 .build()
         )
 
-        // Optional promotable "now playing" notification for the Samsung Now Bar
-        // pill (see NowPlayingLiveUpdate). Driven here because only the service
-        // lives for the whole playback session. No-op unless the setting is on.
-        liveUpdate = NowPlayingLiveUpdate(this)
-        scope.launch {
-            controller.nowPlaying.collectLatest { np ->
-                if (np == null) { liveUpdate.clear(); return@collectLatest }
-                while (true) {
-                    val enabled = Services.prefs.getBoolean("live_update_now_playing", false)
-                    val playing = runCatching { controller.player.isPlaying }.getOrDefault(false)
-                    if (enabled && playing) {
-                        val total = (controller.totalDurationSec() ?: 0.0).toInt()
-                        val pos = (controller.globalPositionSec() ?: 0.0).toInt()
-                        liveUpdate.update(np.title, controller.currentChapter()?.title ?: np.author, total, pos)
-                        kotlinx.coroutines.delay(15_000)
-                    } else {
-                        // Nothing to refresh while paused or with the feature off
-                        // (the default) — idle slowly instead of waking every 15s.
-                        liveUpdate.clear()
-                        kotlinx.coroutines.delay(if (enabled) 15_000 else 60_000)
-                    }
-                }
-            }
-        }
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo) = session
@@ -206,11 +169,10 @@ class PlaybackService : MediaLibraryService() {
     }
 
     override fun onDestroy() {
-        // Cancel FIRST: the live-update loop polls the player forever, so leaving it
-        // running kept the destroyed service referenced and let it probe a released
-        // player and repost notifications after teardown.
+        // Cancel FIRST: the library-callback coroutines hold the player, so leaving
+        // them running kept the destroyed service referenced and let them probe a
+        // released player after teardown.
         scope.cancel()
-        liveUpdate.clear()
         session.player.release()
         session.release()
         super.onDestroy()

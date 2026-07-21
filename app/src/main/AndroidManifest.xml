@@ -15,9 +15,6 @@
 
     <!-- Android 13+ runtime notification permission -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- Android 16 "Live Updates": precondition for a promoted ongoing notification
-         (the status-bar / AOD pill). Non-runtime permission. -->
-    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
 
     <application
         android:name=".KitziApplication"

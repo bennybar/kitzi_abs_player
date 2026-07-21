@@ -41,7 +41,6 @@ object SettingsBackup {
         "ui_audible_link_enabled",
         "pause_cancels_sleep_timer",
         "sync_progress_before_play",
-        "live_update_now_playing",
         "detailed_play_history_enabled",
     )
 
