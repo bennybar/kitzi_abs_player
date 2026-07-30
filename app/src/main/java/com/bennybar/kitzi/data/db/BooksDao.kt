@@ -126,6 +126,10 @@ interface BooksDao {
     @Query("SELECT id AS id, coverPath AS coverPath FROM books WHERE coverPath IS NOT NULL AND coverPath != ''")
     suspend fun coversOnDisk(): List<CoverPathRow>
 
+    /** Repoints a book at a freshly-saved cover file (see refreshLowResCovers). */
+    @Query("UPDATE books SET coverPath = :path WHERE id = :id")
+    suspend fun setCoverPath(id: String, path: String)
+
     /** Books the user has actually started, most recently touched first. */
     @Query(
         """

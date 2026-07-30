@@ -147,6 +147,11 @@ class LibraryViewModel : ViewModel() {
         viewModelScope.launch {
             syncNewest(force = true)
             refreshing.value = false
+            // After the spinner drops: an explicit pull is a fair moment to upgrade
+            // any still-soft on-disk covers. Off the refresh flag so it never holds
+            // the spinner, and skipped entirely once every cover is already crisp.
+            runCatching { books.refreshLowResCovers() }
+                .onFailure { Log.w(TAG, "cover refresh failed", it) }
         }
     }
 
