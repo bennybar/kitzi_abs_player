@@ -60,6 +60,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.bennybar.kitzi.data.Bookmark
 import com.bennybar.kitzi.data.Services
@@ -250,6 +251,7 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
             // without scrolling past the metadata.
             val d = download
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                val preparing by Services.playback.preparing.collectAsStateWithLifecycle()
                 Button(
                     // Only navigate once the book actually loaded: opening the player
                     // after a failed load leaves the user staring at whatever was
@@ -260,13 +262,25 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
                             if (Services.playback.playItem(itemId)) onPlay() else playFailed = true
                         }
                     },
+                    // A slow openSession + sync-before-play can take seconds; disabling
+                    // and showing a spinner stops the tap looking like it did nothing.
+                    enabled = !preparing,
                     modifier = Modifier.weight(1f),
                 ) {
-                    Icon(Icons.Default.PlayArrow, null)
-                    Text(
-                        if ((progress?.progress ?: 0.0) > 0) "Resume" else "Play",
-                        modifier = Modifier.padding(start = 6.dp),
-                    )
+                    if (preparing) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            strokeWidth = 2.dp,
+                        )
+                        Text("Starting…", modifier = Modifier.padding(start = 8.dp))
+                    } else {
+                        Icon(Icons.Default.PlayArrow, null)
+                        Text(
+                            if ((progress?.progress ?: 0.0) > 0) "Resume" else "Play",
+                            modifier = Modifier.padding(start = 6.dp),
+                        )
+                    }
                 }
                 val downloading = d != null && !d.isComplete &&
                     (d.status == DownloadStatus.RUNNING || d.status == DownloadStatus.QUEUED)

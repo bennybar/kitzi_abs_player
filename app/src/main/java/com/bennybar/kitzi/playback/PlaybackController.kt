@@ -58,6 +58,12 @@ class PlaybackController(
     private val _nowPlaying = MutableStateFlow<NowPlaying?>(null)
     val nowPlaying: StateFlow<NowPlaying?> = _nowPlaying.asStateFlow()
 
+    // True while a play request is loading — opening the server session and running
+    // the sync-before-play — but audio hasn't started. Drives a spinner so a slow
+    // network doesn't look like a dead button.
+    private val _preparing = MutableStateFlow(false)
+    val preparing: StateFlow<Boolean> = _preparing.asStateFlow()
+
     private var sessionId: String? = null
 
     // Set while stop()/stopAndAwait() tear a book down. player.stop() makes
@@ -287,6 +293,13 @@ class PlaybackController(
         // Don't touch `player` until the service has attached it.
         playerReady.await()
         val myGen = ++loadGeneration
+        // Signal "preparing" for a real play: opening the session and the
+        // sync-before-play can take seconds on a slow network, and without this the
+        // UI shows a paused book with nothing happening and reads as stuck. Guarded
+        // by generation on clear so a superseded double-tap can't switch off the
+        // spinner the newer tap is still relying on.
+        if (startPlaying) _preparing.value = true
+        try {
         loadMutex.withLock {
             // A newer tap arrived while this one waited for the lock — abandon it
             // rather than load a book the user already moved past.
@@ -333,6 +346,11 @@ class PlaybackController(
             sessionId = staged.sessionId
             loadAndStart(staged.nowPlaying, startPlaying)
             return true
+        }
+        } finally {
+            // Only the latest load clears the flag — a superseded one returning here
+            // must not turn off a spinner the newer load still owns.
+            if (myGen == loadGeneration) _preparing.value = false
         }
     }
 

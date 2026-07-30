@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -76,6 +77,7 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
 
     var positionSec by remember { mutableStateOf(0.0) }
     var isPlaying by remember { mutableStateOf(false) }
+    val preparing by controller.preparing.collectAsStateWithLifecycle()
     var speed by remember { mutableStateOf(1.0) }
     var scrubbing by remember { mutableStateOf<Float?>(null) }
     var showSleep by remember { mutableStateOf(false) }
@@ -178,7 +180,7 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
                 val side = minOf(maxWidth, maxHeight, coverMax)
                 Box(Modifier.size(side)) {
                 AsyncImage(
-                    model = np.coverUrl,
+                    model = com.bennybar.kitzi.data.model.BookMapper.largeCover(np.coverUrl),
                     contentDescription = np.title,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(20.dp)),
@@ -371,12 +373,20 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
                         .clickable { controller.playPause() },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(
-                        if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        if (isPlaying) "Pause" else "Play",
-                        tint = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier.size(40.dp),
-                    )
+                    if (preparing) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(34.dp),
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            strokeWidth = 3.dp,
+                        )
+                    } else {
+                        Icon(
+                            if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            if (isPlaying) "Pause" else "Play",
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(40.dp),
+                        )
+                    }
                 }
                 ControlButton(forwardIcon(seekForwardSec), "Forward ${seekForwardSec}s", 60.dp) { controller.seekForward() }
                 ControlButton(Icons.Default.SkipNext, "Next chapter", 60.dp) { controller.nextChapter() }

@@ -549,6 +549,44 @@ class BooksRepository(
     }
 
     /**
+     * Covers saved to disk (shown offline via file://) were stored at 400px, so the
+     * width bump on the network URL never reached them and a downloaded book kept its
+     * soft cover. Re-fetch any that are below the crisp threshold at player width and
+     * overwrite in place. Best-effort and idempotent: a file already large enough is
+     * skipped, and a failed fetch (offline) leaves the old file to be retried next
+     * sync. Coil keys file:// by path + last-modified, so overwriting is enough for
+     * the fresh cover to show without a cache bust.
+     */
+    suspend fun refreshLowResCovers() = withContext(Dispatchers.IO) {
+        val base = session.baseUrl.orEmpty()
+        if (base.isEmpty()) return@withContext
+        val token = session.accessToken
+        val rows = dao.coversOnDisk()
+        Log.i(TAG, "cover refresh: ${rows.size} on-disk covers to check")
+        var upgraded = 0
+        for (row in rows) {
+            val file = java.io.File(row.coverPath)
+            if (!file.isFile) continue
+            val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            android.graphics.BitmapFactory.decodeFile(row.coverPath, bounds)
+            if (bounds.outWidth >= CRISP_COVER_MIN_PX) continue
+            runCatching {
+                val url = BookMapper.coverUrl(row.id, base, token, width = CRISP_COVER_PX)
+                val request = okhttp3.Request.Builder().url(url).build()
+                Services.httpClient.newCall(request).execute().use { resp ->
+                    val bytes = resp.body?.bytes()?.takeIf { resp.isSuccessful && it.isNotEmpty() }
+                        ?: run { Log.w(TAG, "cover refresh ${row.id}: HTTP ${resp.code}"); return@use }
+                    // Temp + rename so an interrupted fetch can't leave a truncated cover.
+                    val tmp = java.io.File(row.coverPath + ".tmp")
+                    tmp.writeBytes(bytes)
+                    if (tmp.renameTo(file)) upgraded++ else tmp.delete()
+                }
+            }.onFailure { Log.w(TAG, "cover refresh failed for ${row.id}", it) }
+        }
+        Log.i(TAG, "cover refresh: upgraded $upgraded covers")
+    }
+
+    /**
      * Removes local books the server no longer lists — but keeps anything the user
      * has downloaded, so a book deleted server-side stays playable offline until
      * they remove the download themselves.
@@ -739,5 +777,9 @@ class BooksRepository(
         /** A backstop against a server that pages forever. 100 * 200 = 20k books. */
         const val MAX_SYNC_PAGES = 200
         const val KEY_AUTHORS_SYNCED = "authors_last_synced"
+        /** Below this stored width, an on-disk cover counts as low-res and is re-fetched. */
+        const val CRISP_COVER_MIN_PX = 700
+        /** The width re-fetched covers are stored at — sized for the full-screen player. */
+        const val CRISP_COVER_PX = 1200
     }
 }

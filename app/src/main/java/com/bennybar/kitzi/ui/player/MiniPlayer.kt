@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Forward30
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay30
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -70,6 +71,7 @@ fun MiniPlayer(onExpand: () -> Unit) {
     var isPlaying by remember { mutableStateOf(false) }
     var fraction by remember { mutableStateOf(0f) }
     var collapsed by remember { mutableStateOf(Services.prefs.getBoolean("ui_mini_player_collapsed", false)) }
+    val preparing by controller.preparing.collectAsStateWithLifecycle()
 
     // Only poll while the app is actually on-screen (repeatOnLifecycle stops it in
     // the background), and slow the cadence when paused since the position is static.
@@ -135,7 +137,7 @@ fun MiniPlayer(onExpand: () -> Unit) {
                         modifier = Modifier.size(48.dp).clip(CircleShape),
                     )
                 }
-                RoundPlayButton(isPlaying, Modifier.padding(start = 12.dp), togglePlay)
+                RoundPlayButton(isPlaying, preparing, Modifier.padding(start = 12.dp), togglePlay)
             }
         }
         return
@@ -196,7 +198,7 @@ fun MiniPlayer(onExpand: () -> Unit) {
                     .clickable { controller.seekBackward() }
                     .padding(11.dp),
             )
-            RoundPlayButton(isPlaying, Modifier.padding(horizontal = 6.dp), togglePlay)
+            RoundPlayButton(isPlaying, preparing, Modifier.padding(horizontal = 6.dp), togglePlay)
             Icon(
                 Icons.Default.Forward30,
                 "Forward",
@@ -215,7 +217,12 @@ fun MiniPlayer(onExpand: () -> Unit) {
 }
 
 @Composable
-private fun RoundPlayButton(isPlaying: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun RoundPlayButton(
+    isPlaying: Boolean,
+    preparing: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
     val primary = MaterialTheme.colorScheme.primary
     val grad = Brush.linearGradient(listOf(primary, blend(primary, Color.Black, 0.72f)))
     Box(
@@ -226,12 +233,20 @@ private fun RoundPlayButton(isPlaying: Boolean, modifier: Modifier = Modifier, o
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(
-            if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-            if (isPlaying) "Pause" else "Play",
-            tint = MaterialTheme.colorScheme.onPrimary,
-            modifier = Modifier.size(24.dp),
-        )
+        if (preparing) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(22.dp),
+                color = MaterialTheme.colorScheme.onPrimary,
+                strokeWidth = 2.5.dp,
+            )
+        } else {
+            Icon(
+                if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                if (isPlaying) "Pause" else "Play",
+                tint = MaterialTheme.colorScheme.onPrimary,
+                modifier = Modifier.size(24.dp),
+            )
+        }
     }
 }
 

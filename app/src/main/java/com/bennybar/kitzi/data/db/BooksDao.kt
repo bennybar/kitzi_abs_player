@@ -122,6 +122,10 @@ interface BooksDao {
     )
     suspend fun seriesCovers(): List<SeriesCoverRow>
 
+    /** (id, coverPath) for every book that has a cover saved to disk. */
+    @Query("SELECT id AS id, coverPath AS coverPath FROM books WHERE coverPath IS NOT NULL AND coverPath != ''")
+    suspend fun coversOnDisk(): List<CoverPathRow>
+
     /** Books the user has actually started, most recently touched first. */
     @Query(
         """
@@ -218,3 +222,5 @@ interface BooksDao {
 data class AuthorCount(val name: String, val bookCount: Int)
 
 data class SeriesCoverRow(val series: String, val id: String, val coverPath: String?)
+
+data class CoverPathRow(val id: String, val coverPath: String)

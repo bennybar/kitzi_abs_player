@@ -128,8 +128,21 @@ object BookMapper {
         )
     }
 
-    fun coverUrl(id: String, baseUrl: String, token: String?): String =
-        "$baseUrl/api/items/$id/cover" + if (!token.isNullOrEmpty()) "?token=$token" else ""
+    // ABS defaults the cover to 400px, which the device then upscales — visibly soft
+    // on the grid and badly so on the near-full-width player cover. 600 is crisp for
+    // the grid, detail hero and mini-player at ~20KB; the full player asks for more
+    // via [largeCover].
+    fun coverUrl(id: String, baseUrl: String, token: String?, width: Int = 600): String =
+        "$baseUrl/api/items/$id/cover?width=$width" + if (!token.isNullOrEmpty()) "&token=$token" else ""
+
+    /**
+     * The same server cover at a larger width, for the full-screen player where it
+     * fills most of the display. A no-op for a downloaded book's local file (already
+     * full resolution) and for anything without our `width=` parameter.
+     */
+    fun largeCover(coverUrl: String?, width: Int = 1200): String? =
+        if (coverUrl == null || coverUrl.startsWith("file://")) coverUrl
+        else coverUrl.replace(Regex("""width=\d+"""), "width=$width")
 
     /**
      * Strictly: has audio AND is not an ebook (book.dart:234). A book with both
@@ -202,7 +215,9 @@ fun Book.toEntity(coverPath: String? = null): BookEntity = BookEntity(
     title = title,
     author = author,
     // Persist without the token, so a rotated token doesn't invalidate every row.
-    coverUrl = coverUrl.substringBefore("?token="),
+    // The token trails as ?token= or &token= depending on other query params, so
+    // strip from either and drop the now-dangling separator.
+    coverUrl = coverUrl.substringBefore("token=").trimEnd('?', '&'),
     coverPath = coverPath,
     coverUpdatedAt = updatedAt,
     description = description,

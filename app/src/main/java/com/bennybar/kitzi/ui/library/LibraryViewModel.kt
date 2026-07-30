@@ -84,6 +84,10 @@ class LibraryViewModel : ViewModel() {
                 .onFailure { Log.w(TAG, "full library sync failed", it) }
             runCatching { loadShelves() }
                 .onFailure { Log.w(TAG, "shelves failed", it) }
+            // One-time-ish, idempotent: upgrade any 400px covers left on disk to a
+            // crisp one. Last so it never delays the library or shelves appearing.
+            runCatching { books.refreshLowResCovers() }
+                .onFailure { Log.w(TAG, "cover refresh failed", it) }
         }
     }
 
