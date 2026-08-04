@@ -137,15 +137,21 @@ class LibraryViewModel : ViewModel() {
     }
 
     /**
-     * Pull-to-refresh. Deliberately forced: a conditional request answered 304
-     * used to be served from the local DB, so newly added books never appeared no
-     * matter how many times the user pulled.
+     * Pull-to-refresh: a full sweep, so the local library actually matches the
+     * server. syncAll fetches every page (newest included) AND prunes books deleted
+     * server-side — the earlier page-1-only sync could add new books but never
+     * remove deleted ones, so a book removed on the server lingered in the app no
+     * matter how many times you pulled. Only a complete sweep can prune safely (a
+     * partial list would look like everything else was deleted), which is why this
+     * is heavier than the quiet background sync.
      */
     fun refresh() {
         if (refreshing.value) return
         refreshing.value = true
         viewModelScope.launch {
-            syncNewest(force = true)
+            runCatching { books.syncAll() }.onFailure { Log.w(TAG, "full sync failed", it) }
+            runCatching { books.syncProgress() }.onFailure { Log.w(TAG, "progress sync failed", it) }
+            runCatching { loadShelves() }.onFailure { Log.w(TAG, "shelves failed", it) }
             refreshing.value = false
             // After the spinner drops: an explicit pull is a fair moment to upgrade
             // any still-soft on-disk covers. Off the refresh flag so it never holds

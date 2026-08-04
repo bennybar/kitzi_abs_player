@@ -172,7 +172,20 @@ fun LibraryScreen(
             CircleIconButton(
                 if (toolbarVisible) Icons.Default.KeyboardArrowUp else Icons.Default.Tune,
                 if (toolbarVisible) "Hide controls" else "Show controls",
-                onClick = { toolbarVisible = !toolbarVisible },
+                onClick = {
+                    toolbarVisible = !toolbarVisible
+                    // Closing the controls also clears any active search/filter and
+                    // collapses their panels. The search field and filter chips are
+                    // otherwise independent of the toolbar, so hiding it alone left a
+                    // filtered library on screen with nothing to explain why.
+                    if (!toolbarVisible) {
+                        showSearch = false
+                        showFilter = false
+                        showSort = false
+                        vm.setSearch("")
+                        vm.setFilter(LibraryFilter.ALL)
+                    }
+                },
             )
         }
 
