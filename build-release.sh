@@ -2,8 +2,8 @@
 #
 # Builds a signed release of Kitzi and copies the artifact(s) to ~/Downloads.
 #
-#   ./build-release.sh          # APK only (default)
-#   ./build-release.sh --aab    # APK + AAB (the AAB is what Play wants)
+#   ./build-release.sh          # APK + AAB (the AAB is what Play wants)
+#   ./build-release.sh --no-aab # APK only (skip the Play bundle)
 #
 # Signing uses key.properties + upload-keystore.jks, exactly as the Flutter
 # project did. The expected signer is the existing Play upload key.
@@ -11,11 +11,14 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-WANT_AAB=false
+# The AAB is what Play requires, so it's built every release. --no-aab skips it
+# for a quick sideload-only APK.
+WANT_AAB=true
 for arg in "$@"; do
   case "$arg" in
-    --aab) WANT_AAB=true ;;
-    *) echo "Unknown option: $arg (use --aab for APK + AAB)"; exit 1 ;;
+    --no-aab) WANT_AAB=false ;;
+    --aab) WANT_AAB=true ;;  # accepted for compatibility; the AAB now builds by default
+    *) echo "Unknown option: $arg (use --no-aab to skip the Play bundle)"; exit 1 ;;
   esac
 done
 
@@ -80,6 +83,18 @@ if [[ -n "$BT" && -x "${BT}apksigner" ]]; then
   else
     echo "WARNING: signer $ACTUAL does not match the expected upload key ($EXPECTED)." >&2
     echo "         Do not upload this build until the keystore is fixed." >&2
+  fi
+fi
+
+# The AAB is the artifact Play actually receives, and apksigner can't read it, so
+# confirm the bundle is signed at all with jarsigner. It shares the APK's signing
+# config (checked above), so this is a "did it get signed" sanity check, not a
+# second key check.
+if $WANT_AAB && [[ -x "${JAVA_HOME}/bin/jarsigner" ]]; then
+  if "${JAVA_HOME}/bin/jarsigner" -verify "$AAB_SRC" >/dev/null 2>&1; then
+    echo "AAB signed OK."
+  else
+    echo "WARNING: the AAB is not signed — Play will reject it." >&2
   fi
 fi
 
