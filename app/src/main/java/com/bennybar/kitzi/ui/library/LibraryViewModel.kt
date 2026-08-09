@@ -85,9 +85,12 @@ class LibraryViewModel : ViewModel() {
             runCatching { loadShelves() }
                 .onFailure { Log.w(TAG, "shelves failed", it) }
             // One-time-ish, idempotent: upgrade any 400px covers left on disk to a
-            // crisp one. Last so it never delays the library or shelves appearing.
+            // crisp one, and save offline covers for books downloaded before that
+            // existed. Last so they never delay the library or shelves appearing.
             runCatching { books.refreshLowResCovers() }
                 .onFailure { Log.w(TAG, "cover refresh failed", it) }
+            runCatching { books.ensureDownloadedCovers() }
+                .onFailure { Log.w(TAG, "downloaded-cover backfill failed", it) }
         }
     }
 
@@ -158,6 +161,8 @@ class LibraryViewModel : ViewModel() {
             // the spinner, and skipped entirely once every cover is already crisp.
             runCatching { books.refreshLowResCovers() }
                 .onFailure { Log.w(TAG, "cover refresh failed", it) }
+            runCatching { books.ensureDownloadedCovers() }
+                .onFailure { Log.w(TAG, "downloaded-cover backfill failed", it) }
         }
     }
 

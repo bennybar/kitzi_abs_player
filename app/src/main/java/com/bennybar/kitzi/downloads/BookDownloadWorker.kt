@@ -99,7 +99,12 @@ class BookDownloadWorker(
 
         when {
             transientFailure && runAttemptCount < MAX_ATTEMPTS -> Result.retry()
-            done == total -> Result.success()
+            done == total -> {
+                // Save a crisp cover next to the audio so the book shows one offline;
+                // the streamed cover URL needs the network and a token. Best-effort.
+                runCatching { Services.books.cacheCoverForOffline(itemId, dir) }
+                Result.success()
+            }
             else -> Result.failure()
         }
     }

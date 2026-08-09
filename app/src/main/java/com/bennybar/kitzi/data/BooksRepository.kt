@@ -561,6 +561,48 @@ class BooksRepository(
      * so the grid repaints. Best-effort and idempotent: a crisp file is skipped, a
      * failed fetch leaves the old file to retry, and the old file is deleted last.
      */
+    /**
+     * Saves a book's cover to disk at player resolution so a downloaded book shows a
+     * crisp cover with no network — the cover URL needs a token and points at the
+     * server, so an offline downloaded book had no cover at all. Called when a
+     * download completes; the file lives in the download's own directory so it is
+     * removed with the download. Idempotent (a crisp file already there is kept) and
+     * best-effort (offline it simply retries on the next completed download).
+     */
+    suspend fun cacheCoverForOffline(itemId: String, intoDir: java.io.File) = withContext(Dispatchers.IO) {
+        val base = session.baseUrl.orEmpty()
+        if (base.isEmpty()) return@withContext
+        val file = java.io.File(intoDir, "cover.jpg")
+        if (file.isFile) {
+            val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            android.graphics.BitmapFactory.decodeFile(file.path, bounds)
+            if (bounds.outWidth >= CRISP_COVER_MIN_PX) { dao.setCoverPath(itemId, file.path); return@withContext }
+        }
+        runCatching {
+            val url = BookMapper.coverUrl(itemId, base, session.accessToken, width = CRISP_COVER_PX)
+            val request = okhttp3.Request.Builder().url(url).build()
+            Services.httpClient.newCall(request).execute().use { resp ->
+                val bytes = resp.body?.bytes()?.takeIf { resp.isSuccessful && it.isNotEmpty() } ?: return@use
+                intoDir.mkdirs()
+                val tmp = java.io.File(intoDir, "cover.jpg.tmp")
+                tmp.writeBytes(bytes)
+                if (tmp.renameTo(file)) dao.setCoverPath(itemId, file.path) else tmp.delete()
+            }
+        }.onFailure { Log.w(TAG, "offline cover save failed for $itemId", it) }
+    }
+
+    /**
+     * Backfills offline covers for books downloaded before this existed (their
+     * cover was only ever the network URL). cacheCoverForOffline is idempotent, so
+     * this is a cheap header-check for books already covered and a one-time fetch
+     * for the rest. Runs alongside the low-res refresh on library sync.
+     */
+    suspend fun ensureDownloadedCovers() = withContext(Dispatchers.IO) {
+        if (session.baseUrl.isNullOrEmpty()) return@withContext
+        val ids = runCatching { Services.downloads.downloadedItemIds() }.getOrDefault(emptyList())
+        for (id in ids) cacheCoverForOffline(id, Services.downloadPaths.itemDir(id, libraryId))
+    }
+
     suspend fun refreshLowResCovers() = withContext(Dispatchers.IO) {
         val base = session.baseUrl.orEmpty()
         if (base.isEmpty()) return@withContext
@@ -640,7 +682,14 @@ class BooksRepository(
             val existing = dao.updatedAtOf(book.id)
             existing == null || book.updatedAt == null || book.updatedAt > existing
         }
-        if (fresh.isNotEmpty()) dao.upsertBooks(fresh.map { it.toEntity() })
+        // coverPath is a LOCAL-only field (a downloaded/cached cover on disk); the
+        // server never supplies it. Carry the existing value across the upsert —
+        // toEntity defaults it to null, so without this every sync wiped the offline
+        // cover pointer, and a downloaded book lost its cover the next time it synced.
+        if (fresh.isNotEmpty()) {
+            val existingCovers = dao.coversOnDisk().associate { it.id to it.coverPath }
+            dao.upsertBooks(fresh.map { it.toEntity(coverPath = existingCovers[it.id]) })
+        }
         return fresh.size
     }
 
