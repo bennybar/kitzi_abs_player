@@ -478,7 +478,16 @@ class PlaybackController(
         if (!dir.isDirectory) return emptyList()
 
         return dir.listFiles().orEmpty()
-            .filter { it.isFile && it.length() > 0 && !it.name.endsWith(".part") }
+            // Audio only. The saved offline cover (cover.jpg) and its .tmp live in
+            // this same directory, and listing everything here treated the cover as
+            // track 0 — the player tried to "play" a JPEG and the book wouldn't
+            // start until the download was deleted.
+            .filter {
+                it.isFile && it.length() > 0 &&
+                    !it.name.endsWith(".part") &&
+                    !it.name.endsWith(".tmp") &&
+                    it.extension.lowercase() !in NON_AUDIO_EXTS
+            }
             .sortedBy { it.name }
             .mapIndexed { i, f ->
                 // `track_007.m4a` -> 7 (the download DB's track index), used to seed
@@ -495,6 +504,8 @@ class PlaybackController(
                 )
             }
     }
+
+    private val NON_AUDIO_EXTS = setOf("jpg", "jpeg", "png", "webp", "gif")
 
     private fun mimeFor(ext: String) = when (ext.lowercase()) {
         "mp3" -> "audio/mpeg"
