@@ -11,6 +11,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -47,7 +48,11 @@ class LibraryViewModel : ViewModel() {
      * stays correct — sorting only the books currently paged in is the single
      * most "app feels broken" bug there is.
      */
-    val items = query
+    // Both DB flows wait for `ready`: the UI collects them as soon as the ViewModel
+    // exists, but on first login ensureLibrary() opens the DB only after a network
+    // round-trip, and reading the DAO before then crashes.
+    val items = ready.filter { it }
+        .flatMapLatest { query }
         .flatMapLatest { q ->
             books.pagedBooks(q.sort, q.filter, q.search.takeIf { it.isNotBlank() }, q.limit, 0)
         }
@@ -57,7 +62,8 @@ class LibraryViewModel : ViewModel() {
     val recentlyAdded = MutableStateFlow<List<Book>>(emptyList())
     val summary = MutableStateFlow(LibrarySummary())
 
-    val progress = books.watchProgress()
+    val progress = ready.filter { it }
+        .flatMapLatest { books.watchProgress() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
     init {
