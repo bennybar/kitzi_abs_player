@@ -83,7 +83,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmapOrNull
 import androidx.palette.graphics.Palette
-import coil.ImageLoader
+import coil.imageLoader
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.bennybar.kitzi.data.Services
@@ -136,7 +136,9 @@ fun rememberCoverPalette(coverUrl: String?): State<CoverPalette?> {
         paletteCache[coverUrl]?.let { value = it; return@produceState }
         value = withContext(Dispatchers.IO) {
             runCatching {
-                val loader = ImageLoader(context)
+                // The app-wide loader: it authenticates, and shares the memory and
+                // disk caches the cover itself was just loaded into.
+                val loader = context.imageLoader
                 val result = loader.execute(
                     ImageRequest.Builder(context)
                         .data(coverUrl)
@@ -188,6 +190,8 @@ fun CoverButton(
     modifier: Modifier = Modifier,
     label: String? = null,
     iconColor: Color = Color.White,
+    /** For an icon-only button, what TalkBack reads (a visible [label] covers it). */
+    contentDescription: String? = label,
     onClick: () -> Unit,
 ) {
     Row(
@@ -198,7 +202,7 @@ fun CoverButton(
             .padding(horizontal = if (label != null) 10.dp else 8.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(icon, label, tint = iconColor, modifier = Modifier.size(16.dp))
+        Icon(icon, contentDescription, tint = iconColor, modifier = Modifier.size(16.dp))
         if (label != null) {
             Text(
                 label,

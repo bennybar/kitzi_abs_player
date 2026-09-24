@@ -70,7 +70,7 @@ fun SeriesScreen(onOpenBook: (String) -> Unit, onBack: () -> Unit) {
     var loading by remember { mutableStateOf(true) }
     // Progress for every book, so expanded series members show the finished /
     // in-progress check the same way the library list does.
-    val progressById by Services.books.watchProgress().collectAsStateWithLifecycle(emptyMap())
+    val progressById by remember { Services.books.watchProgress() }.collectAsStateWithLifecycle(emptyMap())
 
     val minBooks = Services.prefs.getInt("ui_series_min_books", 1)
     LaunchedEffect(Unit) {

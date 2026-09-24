@@ -11,6 +11,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import com.bennybar.kitzi.data.BooksRepository
 import com.bennybar.kitzi.data.legacy.DownloadPaths
 import com.bennybar.kitzi.data.legacy.FlutterPrefs
+import com.bennybar.kitzi.data.net.LocalPlay
 import com.bennybar.kitzi.data.net.PlaybackApi
 import com.bennybar.kitzi.data.net.ProgressReport
 import kotlinx.coroutines.CoroutineScope
@@ -65,6 +66,10 @@ class PlaybackController(
     val preparing: StateFlow<Boolean> = _preparing.asStateFlow()
 
     private var sessionId: String? = null
+
+    /** Set while a DOWNLOADED book plays: its listening time is reported through a
+     *  local session, since there is no server session to carry it (see LocalPlay). */
+    private var localPlay: LocalPlay? = null
 
     // Set while stop()/stopAndAwait() tear a book down. player.stop() makes
     // isPlaying go false, and the listener treats that as a user pause: it fired one
@@ -203,7 +208,11 @@ class PlaybackController(
             PlaybackMath.nextChapterStart(pos, np.chapters, totalDurationSec())
         } else null
 
-        if (next != null) seekGlobal(next) else if (player.hasNextMediaItem()) player.seekToNextMediaItem()
+        // Track skip only for a book with no chapters. In the LAST chapter there is no
+        // next start, and falling back to the next file jumped mid-chapter in a
+        // multi-file book.
+        if (next != null) seekGlobal(next)
+        else if (np?.chapters.isNullOrEmpty() && player.hasNextMediaItem()) player.seekToNextMediaItem()
     }
 
     fun previousChapter() {
@@ -213,7 +222,11 @@ class PlaybackController(
             PlaybackMath.previousChapterStart(pos, np.chapters, totalDurationSec())
         } else null
 
-        if (prev != null) seekGlobal(prev) else if (player.hasPreviousMediaItem()) player.seekToPreviousMediaItem()
+        // In the first chapter there is no previous one: go to its start (a track
+        // skip there jumped mid-chapter in a multi-file book).
+        if (prev != null) seekGlobal(prev)
+        else if (!np?.chapters.isNullOrEmpty()) seekGlobal(0.0)
+        else if (player.hasPreviousMediaItem()) player.seekToPreviousMediaItem()
     }
 
     fun setSpeed(speed: Double) {
@@ -420,8 +433,17 @@ class PlaybackController(
         // resuming picks up where another device left off. Streamed books only —
         // a downloaded book must start instantly and never wait on the network.
         if (!np.isLocal) maybeSyncBeforePlay()
+        // A finished book is saved at (or a hair before) its end. Resuming there ended
+        // it again at once and re-ran the finish handlers — advancing the queue and,
+        // with auto-delete on, deleting the download the user had just tapped to
+        // re-listen. Starting a finished book means starting it over.
+        val total = np.serverDurationSec ?: np.tracks.sumOf { it.durationSec ?: 0.0 }.takeIf { it > 0 }
         val resumeSec = resumePosition(itemId)
+            .let { if (total != null && it >= total - RESTART_WITHIN_SEC) 0.0 else it }
         val tp = PlaybackMath.mapGlobalToTrack(resumeSec, np.tracks)
+        localPlay = if (np.isLocal) {
+            LocalPlay(java.util.UUID.randomUUID().toString(), System.currentTimeMillis(), resumeSec, np.title, np.author)
+        } else null
 
         player.setMediaItems(np.tracks.map { it.toMediaItem(np) }, tp.trackIndex, (tp.offsetSec * 1000).toLong())
         player.prepare()
@@ -458,7 +480,9 @@ class PlaybackController(
             MediaMetadata.Builder()
                 .setTitle(np.title)
                 .setArtist(np.author)
-                .setArtworkUri(np.coverUrl?.let(Uri::parse))
+                // A content URI, never the server URL (which needs the token): the
+                // session hands this to other apps. See CoverProvider.
+                .setArtworkUri(CoverProvider.uriFor(np.itemId))
                 // Tag the real playback items (not just browse items) as audiobooks so
                 // System UI — notably Samsung's Now Bar — classifies the session as a
                 // book rather than a generic track.
@@ -482,12 +506,7 @@ class PlaybackController(
             // this same directory, and listing everything here treated the cover as
             // track 0 — the player tried to "play" a JPEG and the book wouldn't
             // start until the download was deleted.
-            .filter {
-                it.isFile && it.length() > 0 &&
-                    !it.name.endsWith(".part") &&
-                    !it.name.endsWith(".tmp") &&
-                    it.extension.lowercase() !in NON_AUDIO_EXTS
-            }
+            .filter(DownloadPaths::isAudioFile)
             .sortedBy { it.name }
             .mapIndexed { i, f ->
                 // `track_007.m4a` -> 7 (the download DB's track index), used to seed
@@ -504,8 +523,6 @@ class PlaybackController(
                 )
             }
     }
-
-    private val NON_AUDIO_EXTS = setOf("jpg", "jpeg", "png", "webp", "gif")
 
     private fun mimeFor(ext: String) = when (ext.lowercase()) {
         "mp3" -> "audio/mpeg"
@@ -573,6 +590,7 @@ class PlaybackController(
         return SyncPayload(
             itemId = np.itemId,
             sessionId = sessionId,
+            localPlay = localPlay,
             current = current,
             total = totalDurationSec(),
             finished = finished,
@@ -589,12 +607,22 @@ class PlaybackController(
     private suspend fun performSync(p: SyncPayload) {
         syncMutex.withLock {
             val listened = accrual.snapshot()
-            val ok = api.sync(
-                p.sessionId,
-                ProgressReport(p.itemId, p.current, p.total, p.finished, p.paused, listened),
-            )
-            // Only on success — otherwise the time rolls into the next attempt.
-            if (ok && listened != null) {
+            val report = ProgressReport(p.itemId, p.current, p.total, p.finished, p.paused, listened)
+            val ok: Boolean
+            val listenedRecorded: Boolean
+            if (p.sessionId == null && p.localPlay != null) {
+                // Downloaded book: the position (and finished flag) go to the progress
+                // endpoint as before; the listening time goes to the local session,
+                // which is the only place the server counts it.
+                listenedRecorded = listened != null && api.syncLocal(p.localPlay, report, listened)
+                if (listenedRecorded) p.localPlay.listenedSec += listened!!
+                ok = api.sync(null, report.copy(timeListenedSec = null))
+            } else {
+                ok = api.sync(p.sessionId, report)
+                listenedRecorded = ok
+            }
+            // Only once the server has it — otherwise the time rolls into the next attempt.
+            if (listenedRecorded && listened != null) {
                 accrual.consume(listened)
                 // Record the confirmed listened interval for local stats.
                 com.bennybar.kitzi.data.PlayHistoryStore.record(p.itemId, listened)
@@ -606,15 +634,29 @@ class PlaybackController(
     private data class SyncPayload(
         val itemId: String,
         val sessionId: String?,
+        val localPlay: LocalPlay?,
         val current: Double,
         val total: Double?,
         val finished: Boolean,
         val paused: Boolean,
     )
 
-    /** Closes a server session, ordered behind any in-flight progress report. */
-    private fun closeSessionOrdered(sid: String) {
-        scope.launch(Dispatchers.IO) { syncMutex.withLock { runCatching { api.closeSession(sid) } } }
+    /**
+     * The final report for a play, then the session close — in that order, in ONE
+     * coroutine. They used to be two separate launches, and the mutex only made
+     * them exclusive, not ordered: when the close won, the report hit a closed
+     * session, fell back to the progress endpoint, and that interval's listening
+     * time was consumed without the server ever recording it.
+     */
+    private fun syncThenClose(finished: Boolean = false) {
+        val payload = buildSyncPayload(finished) // captures the session id first
+        val sid = sessionId
+        sessionId = null
+        if (payload == null && sid == null) return
+        scope.launch(Dispatchers.IO) {
+            payload?.let { performSync(it) }
+            sid?.let { syncMutex.withLock { runCatching { api.closeSession(it) } } }
+        }
     }
 
     /**
@@ -670,8 +712,7 @@ class PlaybackController(
 
     fun stop() {
         tearingDown = true
-        syncNow(finished = false)          // captures the current session id first
-        sessionId?.let { id -> sessionId = null; closeSessionOrdered(id) }
+        syncThenClose()
         syncJob?.cancel()
         player.stop()
         _nowPlaying.value = null
@@ -742,10 +783,9 @@ class PlaybackController(
                         com.bennybar.kitzi.data.PlaybackJournal.record(np.itemId, pos, ch?.title, ch?.index)
                     }
                 }
-                syncNow()
                 // A session is closed on pause and reopened on resume — that is what
                 // stops the server transcoding for a paused client.
-                sessionId?.let { id -> sessionId = null; closeSessionOrdered(id) }
+                syncThenClose()
             }
         }
 
@@ -764,8 +804,7 @@ class PlaybackController(
         override fun onPlaybackStateChanged(state: Int) {
             if (state == Player.STATE_ENDED) {
                 val finishedId = _nowPlaying.value?.itemId
-                syncNow(finished = true)
-                sessionId?.let { id -> sessionId = null; closeSessionOrdered(id) }
+                syncThenClose(finished = true)
                 finishedId?.let { onBookFinished?.invoke(it) }
             }
         }
@@ -806,6 +845,8 @@ class PlaybackController(
     companion object {
         private const val TAG = "PlaybackController"
         private const val PING_MS = 26_000L
+        /** A saved position this close to the end counts as "finished": start over. */
+        private const val RESTART_WITHIN_SEC = 5.0
 
         private const val KEY_SEEK_FORWARD = "ui_seek_forward_seconds"
         private const val KEY_SEEK_BACKWARD = "ui_seek_backward_seconds"

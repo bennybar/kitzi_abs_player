@@ -25,7 +25,13 @@ class AbsApi(
     class HttpError(val code: Int) : Exception("HTTP $code")
 
     /** A page of results plus the ETag the server gave us for it. */
-    data class Page(val items: List<JsonObject>, val etag: String?, val notModified: Boolean)
+    /** [total] is the library's item count as the server reports it, when it does. */
+    data class Page(
+        val items: List<JsonObject>,
+        val etag: String?,
+        val notModified: Boolean,
+        val total: Int? = null,
+    )
 
     private fun base(): String = session.baseUrl ?: error("Base URL not set")
 
@@ -101,7 +107,12 @@ class AbsApi(
         return client.newCall(request).execute().use { resp ->
             when (resp.code) {
                 304 -> Page(emptyList(), etag, notModified = true)
-                200 -> Page(itemsOf(parse(resp.body?.string())), resp.header("ETag"), notModified = false)
+                200 -> {
+                    val root = parse(resp.body?.string())
+                    val total = ((root as? JsonObject)?.get("total") as? kotlinx.serialization.json.JsonPrimitive)
+                        ?.content?.toIntOrNull()
+                    Page(itemsOf(root), resp.header("ETag"), notModified = false, total = total)
+                }
                 else -> throw HttpError(resp.code)
             }
         }

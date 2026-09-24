@@ -37,8 +37,8 @@ android {
 
         // The Flutter app ships as 1.6.281+281. Play requires a strictly higher
         // versionCode for the Kotlin build to install as an update over it.
-        versionCode = 337
-        versionName = "2.0.337"
+        versionCode = 338
+        versionName = "2.0.338"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -106,6 +106,9 @@ dependencies {
     debugImplementation(libs.compose.ui.tooling)
 
     implementation(libs.media3.exoplayer)
+    // Books in formats the device can't direct-play (WAV, WMA, AIFF…) are served by
+    // ABS as an HLS transcode; without this module ExoPlayer can't open them at all.
+    implementation(libs.media3.exoplayer.hls)
     implementation(libs.media3.session)
     implementation(libs.media3.ui)
     implementation(libs.media3.datasource.okhttp)

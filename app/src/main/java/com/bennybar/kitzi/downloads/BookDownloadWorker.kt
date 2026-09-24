@@ -7,6 +7,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
+import androidx.work.WorkInfo
 import androidx.work.WorkerParameters
 import com.bennybar.kitzi.KitziApplication
 import com.bennybar.kitzi.data.Services
@@ -81,7 +82,18 @@ class BookDownloadWorker(
             when (fetchTrack(itemId, t.fileId, dir, t.filename, dao, t.trackIndex, title, done, total)) {
                 Outcome.OK -> done++
                 Outcome.STOPPED -> {
-                    dao.setStatus(itemId, t.trackIndex, DownloadStatus.CANCELED)
+                    // Only the user's cancel is a cancellation. From Android 12 the
+                    // system also stops workers — the ~10 minute limit for background
+                    // work, constraints lost, low memory — and reschedules them;
+                    // showing "cancelled" while it quietly restarts was wrong. The
+                    // .part file is kept, so the rerun resumes it. (stopReason is API
+                    // 31+; before that the background limit doesn't exist either.)
+                    val systemStop = android.os.Build.VERSION.SDK_INT >= 31 &&
+                        stopReason != WorkInfo.STOP_REASON_CANCELLED_BY_APP
+                    dao.setStatus(
+                        itemId, t.trackIndex,
+                        if (systemStop) DownloadStatus.QUEUED else DownloadStatus.CANCELED,
+                    )
                     return@withContext Result.failure()
                 }
                 // A 4xx won't fix itself: mark this track failed and move on to the
@@ -125,52 +137,70 @@ class BookDownloadWorker(
         val target = File(dir, filename)
 
         return try {
+            // Resume a partial file from where it stopped. Starting every attempt from
+            // zero meant a file too big to finish within one run (a single-file m4b,
+            // with the system stopping background work after ~10 minutes) never
+            // finished at all.
+            val resumeFrom = partial.takeIf { it.isFile }?.length() ?: 0L
+            val request = Request.Builder().url(url).get()
+                .apply { if (resumeFrom > 0) header("Range", "bytes=$resumeFrom-") }
+                .build()
             // The token is fetched now, not baked in at enqueue time; the auth
             // interceptor on this client refreshes and retries on 401.
-            Services.httpClient.newCall(Request.Builder().url(url).get().build()).execute().use { resp ->
+            Services.httpClient.newCall(request).execute().use { resp ->
+                // 416: the partial already holds the whole file.
+                if (resp.code == 416 && resumeFrom > 0) return@use
                 if (!resp.isSuccessful) {
                     return if (resp.code in 400..499) Outcome.PERMANENT else Outcome.TRANSIENT
                 }
                 val body = resp.body ?: return Outcome.TRANSIENT
-                val len = body.contentLength()
-                var written = 0L
-                var lastNotify = 0L
+                // A server that ignores Range answers 200 with the whole file: start over.
+                val appending = resp.code == 206 && resumeFrom > 0
+                var written = if (appending) resumeFrom else 0L
+                val len = body.contentLength().let { if (it > 0 && appending) it + resumeFrom else it }
+                var lastProgressBytes = written
+                var lastNotifyAt = 0L
 
                 body.byteStream().use { input ->
-                    partial.outputStream().use { output ->
+                    java.io.FileOutputStream(partial, appending).use { output ->
                         val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
                         while (true) {
-                            if (isStopped) {
-                                partial.delete()
-                                return Outcome.STOPPED
-                            }
+                            // Kept on disk: the next run (or the user resuming after a
+                            // cancel) continues from here instead of from zero.
+                            if (isStopped) return Outcome.STOPPED
                             val read = input.read(buffer)
                             if (read == -1) break
                             output.write(buffer, 0, read)
                             written += read
-                            if (written - lastNotify >= PROGRESS_EVERY) {
-                                lastNotify = written
+                            if (written - lastProgressBytes >= PROGRESS_EVERY) {
+                                lastProgressBytes = written
                                 dao.setProgress(itemId, trackIndex, written, len, DownloadStatus.RUNNING)
-                                val frac = if (len > 0) written.toDouble() / len else 0.0
-                                runCatchingForeground { setForeground(foregroundInfo(itemId, title, done, total, frac)) }
+                                // The notification at most once a second: every 512 KB
+                                // was thousands of updates for a large book.
+                                val now = android.os.SystemClock.elapsedRealtime()
+                                if (now - lastNotifyAt >= NOTIFY_EVERY_MS) {
+                                    lastNotifyAt = now
+                                    val frac = if (len > 0) written.toDouble() / len else 0.0
+                                    runCatchingForeground { setForeground(foregroundInfo(itemId, title, done, total, frac)) }
+                                }
                             }
                         }
                     }
                 }
+            }
 
-                // Only publish under the real name once the bytes are all there, so a
-                // half-written file can never be mistaken for a finished track.
-                if (!partial.renameTo(target) || !target.exists() || target.length() <= 0) {
-                    partial.delete()
-                    Outcome.TRANSIENT
-                } else {
-                    dao.setProgress(itemId, trackIndex, target.length(), target.length(), DownloadStatus.COMPLETE)
-                    Outcome.OK
-                }
+            // Only publish under the real name once the bytes are all there, so a
+            // half-written file can never be mistaken for a finished track.
+            if (!partial.renameTo(target) || !target.exists() || target.length() <= 0) {
+                partial.delete()
+                Outcome.TRANSIENT
+            } else {
+                dao.setProgress(itemId, trackIndex, target.length(), target.length(), DownloadStatus.COMPLETE)
+                Outcome.OK
             }
         } catch (e: Exception) {
+            // The partial is kept: the retry resumes it with a Range request.
             Log.w(TAG, "download failed: $itemId/$filename", e)
-            partial.delete()
             Outcome.TRANSIENT
         }
     }
@@ -226,6 +256,7 @@ class BookDownloadWorker(
         private const val TAG = "BookDownloadWorker"
         private const val NOTIFICATION_ID_BASE = 4242
         private const val PROGRESS_EVERY = 512 * 1024L
+        private const val NOTIFY_EVERY_MS = 1_000L
         private const val MAX_ATTEMPTS = 3
 
         const val KEY_ITEM_ID = "itemId"

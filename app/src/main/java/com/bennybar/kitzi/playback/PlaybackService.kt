@@ -23,6 +23,7 @@ import com.bennybar.kitzi.data.model.Book
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -42,7 +43,13 @@ import kotlinx.coroutines.launch
 @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 class PlaybackService : MediaLibraryService() {
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    // The handler matters: callbacks launched here (voice "play X", a car's play
+    // request) run with no UI and nothing above them, so an exception in one used
+    // to be uncaught and kill the whole process.
+    private val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Main +
+            CoroutineExceptionHandler { _, e -> android.util.Log.w("PlaybackService", "service job failed", e) }
+    )
     private lateinit var session: MediaLibrarySession
     private lateinit var controller: PlaybackController
 
@@ -315,10 +322,11 @@ class PlaybackService : MediaLibraryService() {
                     browsableItem(ALL, "All books"),
                 )
 
+                // Most recently listened first, the same list as the home screen's
+                // shelf (sorting by the book's metadata updatedAt put whatever was
+                // last edited on the server at the top).
                 CONTINUE -> booksToItems(
-                    Services.books.pagedBooks(
-                        BookSort.UPDATED_DESC, LibraryFilter.IN_PROGRESS, null, pageSize, page * pageSize,
-                    ).first()
+                    Services.books.continueListening(limit = (page + 1) * pageSize).drop(page * pageSize)
                 )
 
                 RECENT -> booksToItems(
@@ -327,8 +335,10 @@ class PlaybackService : MediaLibraryService() {
                     ).first()
                 )
 
+                // Complete downloads only (a folder with files in it may be a download
+                // still in progress), looked up off the main thread in one query.
                 DOWNLOADED -> booksToItems(
-                    Services.downloadPaths.downloadedItemIds().mapNotNull { Services.books.getBook(it) }
+                    Services.books.getBooks(Services.downloads.downloadedItemIds())
                 )
 
                 ALL -> booksToItems(
@@ -385,6 +395,34 @@ class PlaybackService : MediaLibraryService() {
             )
         }
 
+        /**
+         * A play command with nothing loaded: a Bluetooth / headset play button after
+         * the app was killed, Android 13+'s media resumption card, or the car resuming.
+         * Media3's default refuses, so all of those silently did nothing.
+         *
+         * For playback, the controller loads the last book itself (it alone resolves
+         * local files and the resume position) and the empty list returned here is
+         * what Media3 sets first — the same pattern as onSetMediaItems. When the system
+         * only asks what it would resume (to draw the resumption card), describe the
+         * last book without loading it.
+         */
+        override fun onPlaybackResumption(
+            mediaSession: MediaSession,
+            controllerInfo: MediaSession.ControllerInfo,
+            isForPlayback: Boolean,
+        ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> = scope.future {
+            val lastId = Services.prefs.getString(PlaybackController.KEY_LAST_ITEM)
+                ?: throw UnsupportedOperationException("nothing to resume")
+            if (isForPlayback) {
+                scope.launch { controller.playItem(lastId, startPlaying = true) }
+                MediaSession.MediaItemsWithStartPosition(emptyList(), 0, C.TIME_UNSET)
+            } else {
+                val book = Services.books.getBook(lastId)
+                    ?: throw UnsupportedOperationException("last book is gone")
+                MediaSession.MediaItemsWithStartPosition(listOf(book.toMediaItem()), 0, C.TIME_UNSET)
+            }
+        }
+
         override fun onSearch(
             session: MediaLibrarySession,
             browser: MediaSession.ControllerInfo,
@@ -418,7 +456,8 @@ class PlaybackService : MediaLibraryService() {
             MediaMetadata.Builder()
                 .setTitle(title)
                 .setArtist(author)
-                .setArtworkUri(coverUrl.let(android.net.Uri::parse))
+                // A content URI, never the server URL: see CoverProvider.
+                .setArtworkUri(CoverProvider.uriFor(id))
                 .setIsBrowsable(false)
                 .setIsPlayable(true)
                 .setMediaType(MediaMetadata.MEDIA_TYPE_AUDIO_BOOK)

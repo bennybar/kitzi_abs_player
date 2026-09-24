@@ -54,10 +54,11 @@ class AuthApi(
             }
         }.getOrNull() ?: return false
 
-        // Commit URL + tokens together, only now that auth has succeeded. When the
-        // server actually changed, drop the previous server's tokens first so they
-        // can never end up paired with the new base URL.
-        if (base != session.baseUrl) session.clearTokens()
+        // Commit URL + tokens together, only now that auth has succeeded. Always drop
+        // the previous session's tokens first: storeTokens keeps an existing refresh
+        // token when the response carries none, which would pair the last user's (or
+        // last server's) refresh token with this login.
+        session.clearTokens()
         session.baseUrl = base
         storeTokens(tokens)
         return true
@@ -81,6 +82,14 @@ class AuthApi(
 
         val tokens = runCatching {
             client.newCall(request).execute().use { resp ->
+                // ABS answering 401 to the refresh token itself is final: the
+                // session is over, and retrying would only fail forever. Anything
+                // else is treated as transient — including 403, which is what a
+                // Cloudflare Access or WAF block in front of the server returns.
+                if (resp.code == 401) {
+                    session.markExpired()
+                    return false
+                }
                 if (!resp.isSuccessful) return false
                 parseTokens(resp.body?.string())
             }

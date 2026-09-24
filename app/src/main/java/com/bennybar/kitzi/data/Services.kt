@@ -20,6 +20,7 @@ import com.bennybar.kitzi.playback.SleepTimer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 
 /**
@@ -122,6 +123,22 @@ object Services {
                 }
             }
         }
+    }
+
+    /**
+     * Logout, all of it. Stopping first flushes the playing book's final progress
+     * sync while the tokens are still valid. Then the previous session's local state
+     * goes too — progress rows, the last-played book, the queue — so the next
+     * account never sees them; the next login re-syncs its own from the server.
+     * Downloads and the cached library stay (the copy says so).
+     */
+    suspend fun signOut() {
+        runCatching { playback.stopAndAwait() }
+        withContext(Dispatchers.IO) { auth.logout() }
+        runCatching { books.clearProgress() }
+        books.closeLibrary()
+        prefs.remove(PlaybackController.KEY_LAST_ITEM)
+        queue.clear()
     }
 
     /** The id of the library currently in use, or the default before one is chosen. */

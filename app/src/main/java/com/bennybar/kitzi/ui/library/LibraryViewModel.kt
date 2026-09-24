@@ -11,7 +11,6 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -48,11 +47,7 @@ class LibraryViewModel : ViewModel() {
      * stays correct — sorting only the books currently paged in is the single
      * most "app feels broken" bug there is.
      */
-    // Both DB flows wait for `ready`: the UI collects them as soon as the ViewModel
-    // exists, but on first login ensureLibrary() opens the DB only after a network
-    // round-trip, and reading the DAO before then crashes.
-    val items = ready.filter { it }
-        .flatMapLatest { query }
+    val items = query
         .flatMapLatest { q ->
             books.pagedBooks(q.sort, q.filter, q.search.takeIf { it.isNotBlank() }, q.limit, 0)
         }
@@ -62,16 +57,12 @@ class LibraryViewModel : ViewModel() {
     val recentlyAdded = MutableStateFlow<List<Book>>(emptyList())
     val summary = MutableStateFlow(LibrarySummary())
 
-    val progress = ready.filter { it }
-        .flatMapLatest { books.watchProgress() }
+    val progress = books.watchProgress()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
     init {
         viewModelScope.launch {
-            runCatching {
-                books.ensureLibrary()
-                ready.value = true
-            }.onFailure { Log.w(TAG, "could not open the library", it) }
+            openLibrary()
 
             // Each step is guarded on its own: a server hiccup while warming the
             // cache must not stop the shelves (which read from the local DB) from
@@ -98,6 +89,19 @@ class LibraryViewModel : ViewModel() {
             runCatching { books.ensureDownloadedCovers() }
                 .onFailure { Log.w(TAG, "downloaded-cover backfill failed", it) }
         }
+    }
+
+    /**
+     * Opens the library if it isn't yet. On a first login this is a network call,
+     * and when it failed nothing retried: the home screen stayed empty for the
+     * whole session. The refresh paths call it again until it succeeds.
+     */
+    private suspend fun openLibrary() {
+        if (ready.value) return
+        runCatching {
+            books.ensureLibrary()
+            ready.value = true
+        }.onFailure { Log.w(TAG, "could not open the library", it) }
     }
 
     private suspend fun loadShelves() {
@@ -137,6 +141,7 @@ class LibraryViewModel : ViewModel() {
      * over the cache) in the main list under whatever sort is active.
      */
     private suspend fun syncNewest(force: Boolean) {
+        openLibrary()
         runCatching { books.fetchPage(page = 1, sort = BookSort.ADDED_DESC, force = force) }
             .onFailure { Log.w(TAG, "recent sync failed", it) }
         runCatching { books.syncProgress() }
@@ -158,6 +163,7 @@ class LibraryViewModel : ViewModel() {
         if (refreshing.value) return
         refreshing.value = true
         viewModelScope.launch {
+            openLibrary()
             runCatching { books.syncAll() }.onFailure { Log.w(TAG, "full sync failed", it) }
             runCatching { books.syncProgress() }.onFailure { Log.w(TAG, "progress sync failed", it) }
             runCatching { loadShelves() }.onFailure { Log.w(TAG, "shelves failed", it) }

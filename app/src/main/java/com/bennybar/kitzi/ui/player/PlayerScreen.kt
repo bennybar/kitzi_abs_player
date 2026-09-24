@@ -1,5 +1,10 @@
 package com.bennybar.kitzi.ui.player
 
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.setProgress
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -91,6 +96,7 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
     var showDeleteDownload by remember { mutableStateOf(false) }
     val sleep by Services.sleepTimer.mode.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     // Poll only while on-screen (stops in the background) and back off when paused.
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -187,11 +193,20 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
                 )
                 CoverButton(
                     icon = Icons.Default.BookmarkAdd,
+                    contentDescription = "Add bookmark",
                     modifier = Modifier.align(Alignment.TopEnd).padding(12.dp),
                     onClick = {
                         val pos = controller.globalPositionSec() ?: 0.0
                         val label = controller.currentChapter()?.title ?: "Bookmark"
-                        scope.launch(Dispatchers.IO) { Services.playbackApi.addBookmark(np.itemId, pos, label) }
+                        scope.launch {
+                            // Say whether it worked: a failed add used to look the same
+                            // as a successful one.
+                            val ok = kotlinx.coroutines.withContext(Dispatchers.IO) { Services.playbackApi.addBookmark(np.itemId, pos, label) }
+                            android.widget.Toast.makeText(
+                                context, if (ok) "Bookmark added" else "Couldn't add bookmark",
+                                android.widget.Toast.LENGTH_SHORT,
+                            ).show()
+                        }
                     },
                 )
                 if (com.bennybar.kitzi.ui.UiPrefsState.resumeFromHistory.value) {
@@ -310,7 +325,12 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
                 modifier = Modifier.fillMaxWidth().padding(top = 14.dp),
             )
 
-            // position / -remaining (of the chapter in chapter mode, else the book)
+            // position / -remaining (of the chapter in chapter mode, else the book).
+            // Left-to-right like the bar they label: mirrored in RTL, "elapsed" sat
+            // under the unplayed end of the bar and the minus sign trailed the time.
+            androidx.compose.runtime.CompositionLocalProvider(
+                androidx.compose.ui.platform.LocalLayoutDirection provides androidx.compose.ui.unit.LayoutDirection.Ltr,
+            ) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(
                     formatClock((scrubbing?.toDouble() ?: sliderPos).toLong()),
@@ -327,6 +347,7 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontWeight = FontWeight.SemiBold,
                 )
+            }
             }
 
             // chapter descriptor + chapter time (the "book + chapter progress" setting)
@@ -355,6 +376,12 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
             }
 
             // --- transport row ---
+            // Always left-to-right, like the scrubber above it: in RTL the row mirrored
+            // and put "next chapter" and "forward" on the left of a bar that still
+            // runs left to right. (Media controls don't mirror.)
+            androidx.compose.runtime.CompositionLocalProvider(
+                androidx.compose.ui.platform.LocalLayoutDirection provides androidx.compose.ui.unit.LayoutDirection.Ltr,
+            ) {
             Row(
                 Modifier.fillMaxWidth().padding(top = 14.dp),
                 horizontalArrangement = Arrangement.Center,
@@ -391,6 +418,7 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
                 ControlButton(forwardIcon(seekForwardSec), "Forward ${seekForwardSec}s", 60.dp) { controller.seekForward() }
                 ControlButton(Icons.Default.SkipNext, "Next chapter", 60.dp) { controller.nextChapter() }
             }
+            }
 
             // --- bottom action tiles ---
             Row(
@@ -409,7 +437,11 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
                         showDeleteDownload = true
                     }
                     else -> ActionTile(Icons.Default.Download, "Download", Modifier.weight(1f)) {
-                        scope.launch { Services.downloads.download(np.itemId) }
+                        scope.launch {
+                            if (!Services.downloads.download(np.itemId)) {
+                                android.widget.Toast.makeText(context, "Nothing to download: the server lists no audio files for this book", android.widget.Toast.LENGTH_LONG).show()
+                            }
+                        }
                     }
                 }
                 ActionTile(
@@ -568,6 +600,15 @@ private fun PlayerProgressBar(
     androidx.compose.foundation.Canvas(
         modifier
             .height(28.dp)
+            // A drawn bar has no semantics of its own: without these TalkBack found
+            // nothing here — no position, and no way to seek.
+            .semantics {
+                contentDescription = "Playback position"
+                progressBarRangeInfo = ProgressBarRangeInfo(value.coerceIn(valueRange), valueRange)
+                setProgress { target ->
+                    onValueChange(target.coerceIn(valueRange)); onValueChangeFinished(); true
+                }
+            }
             .pointerInput(valueRange) {
                 detectTapGestures { offset ->
                     onValueChange(posToValue(offset.x, size.width)); onValueChangeFinished()

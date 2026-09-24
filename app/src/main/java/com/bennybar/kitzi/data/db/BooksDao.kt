@@ -49,6 +49,9 @@ interface BooksDao {
     @Query("DELETE FROM media_progress WHERE itemId = :id")
     suspend fun deleteProgress(id: String)
 
+    @Query("DELETE FROM media_progress")
+    suspend fun clearProgress()
+
     @Query("SELECT updatedAt FROM books WHERE id = :id")
     suspend fun updatedAtOf(id: String): Long?
 

@@ -36,6 +36,25 @@ data class ProgressReport(
     val timeListenedSec: Double?,
 )
 
+/**
+ * One play of a DOWNLOADED book, reported to the server as a "local" session.
+ *
+ * A downloaded book plays with no server session, so its progress goes through
+ * /api/me/progress — which stores the position but not listening time. ABS only
+ * counts listening in its stats through sessions, so offline listening never
+ * showed up there. [listenedSec] is the running total the server has accepted;
+ * the session is created on the first report and updated by id after that.
+ */
+class LocalPlay(
+    val id: String,
+    val startedAtMs: Long,
+    val startTimeSec: Double,
+    val title: String,
+    val author: String?,
+) {
+    var listenedSec: Double = 0.0
+}
+
 class PlaybackApi(
     private val client: OkHttpClient,
     private val session: SessionStore,
@@ -161,6 +180,39 @@ class PlaybackApi(
         }
     }
 
+    /**
+     * Records [newlyListenedSec] more listening on a downloaded book's [play], via
+     * POST /api/session/local. The session's timeListening is cumulative, so the
+     * total sent is what the server already has plus the new interval; the caller
+     * adds it to [LocalPlay.listenedSec] only when this returns true.
+     */
+    fun syncLocal(play: LocalPlay, r: ProgressReport, newlyListenedSec: Double): Boolean {
+        val now = System.currentTimeMillis()
+        val day = java.time.LocalDate.now()
+        val body = buildJsonObject {
+            put("id", play.id)
+            put("libraryItemId", r.itemId)
+            put("mediaType", "book")
+            put("displayTitle", play.title)
+            play.author?.let { put("displayAuthor", it) }
+            r.totalSec?.takeIf { it > 0 }?.let { put("duration", it) }
+            put("playMethod", PLAY_METHOD_LOCAL)
+            put("startTime", play.startTimeSec)
+            put("currentTime", r.currentTimeSec)
+            put("timeListening", play.listenedSec + newlyListenedSec)
+            put("startedAt", play.startedAtMs)
+            put("updatedAt", now)
+            put("date", day.toString())
+            put("dayOfWeek", day.dayOfWeek.getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.US))
+            put("deviceInfo", buildJsonObject { put("clientVersion", CLIENT_VERSION) })
+        }.toString().toRequestBody(JSON_MEDIA)
+
+        return runCatching {
+            val request = Request.Builder().url("${base()}/api/session/local").post(body).build()
+            client.newCall(request).execute().use { it.isSuccessful }
+        }.onFailure { Log.w(TAG, "local session sync failed", it) }.getOrDefault(false)
+    }
+
     /** Marks a book finished without playing it (the "Mark as Finished" action). */
     /**
      * Marking finished must state a position CONSISTENT with being finished: the
@@ -222,6 +274,8 @@ class PlaybackApi(
 
     private companion object {
         const val TAG = "PlaybackApi"
+        /** ABS PlayMethod.LOCAL: played from a file on the device. */
+        const val PLAY_METHOD_LOCAL = 3
         // Derived from the app version so server session diagnostics never drift.
         val CLIENT_VERSION = "kitzi-android-${com.bennybar.kitzi.BuildConfig.VERSION_NAME}"
         val JSON_MEDIA = "application/json".toMediaType()

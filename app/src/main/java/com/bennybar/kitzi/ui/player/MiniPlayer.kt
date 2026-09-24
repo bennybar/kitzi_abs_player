@@ -15,10 +15,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Forward30
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Replay30
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -185,8 +183,9 @@ fun MiniPlayer(onExpand: () -> Unit) {
                     modifier = Modifier.fillMaxWidth().height(20.dp).padding(top = 2.dp),
                 )
             }
+            // The glyphs follow the configured seek interval, like the full player's.
             Icon(
-                Icons.Default.Replay30,
+                replayIcon(Services.prefs.getInt("ui_seek_backward_seconds", 30)),
                 "Rewind",
                 tint = onGlass,
                 modifier = Modifier
@@ -200,7 +199,7 @@ fun MiniPlayer(onExpand: () -> Unit) {
             )
             RoundPlayButton(isPlaying, preparing, Modifier.padding(horizontal = 6.dp), togglePlay)
             Icon(
-                Icons.Default.Forward30,
+                forwardIcon(Services.prefs.getInt("ui_seek_forward_seconds", 30)),
                 "Forward",
                 tint = onGlass,
                 modifier = Modifier

@@ -54,6 +54,26 @@
             android:name=".downloads.DownloadActionReceiver"
             android:exported="false" />
 
+        <!-- Covers for the notification, lock screen and Android Auto, served without
+             the server token in the URI (see CoverProvider). Readable by anyone: Auto
+             and System UI load artwork from their own processes. -->
+        <provider
+            android:name=".playback.CoverProvider"
+            android:authorities="${applicationId}.covers"
+            android:exported="true" />
+
+        <!-- Media buttons (a Bluetooth / headset play) when the app isn't running, and
+             Android 13+'s media resumption card. Media3 only offers resumption when
+             this receiver is declared; it cold-starts PlaybackService, whose
+             onPlaybackResumption loads the last book. -->
+        <receiver
+            android:name="androidx.media3.session.MediaButtonReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </receiver>
+
         <!-- Playback, lock screen, media buttons and Android Auto. -->
         <service
             android:name=".playback.PlaybackService"

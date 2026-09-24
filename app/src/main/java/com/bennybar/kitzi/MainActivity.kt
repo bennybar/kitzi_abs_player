@@ -245,6 +245,10 @@ private fun KitziNavBar(tabs: List<Tab>, selected: Tab, overlayOpen: Boolean, on
                 label = "navPillScale",
             )
             val pillColor = MaterialTheme.colorScheme.secondaryContainer
+            // The Row lays its tabs out right-to-left in RTL (Hebrew), but the pill and
+            // the drag hit-test measure from the left — so both are mirrored to match.
+            // Without this the pill sat under the mirrored tab and a drag picked it.
+            val rtl = LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Rtl
 
             Row(
                 Modifier
@@ -259,7 +263,8 @@ private fun KitziNavBar(tabs: List<Tab>, selected: Tab, overlayOpen: Boolean, on
                         val w = slotW * pillScale
                         val h = size.height * pillScale
                         // Grow from the slot's centre so the lift is symmetric.
-                        val centerX = (slotW + spacingPx) * animIdx + slotW / 2f
+                        val fromStart = (slotW + spacingPx) * animIdx + slotW / 2f
+                        val centerX = if (rtl) size.width - fromStart else fromStart
                         drawRoundRect(
                             color = pillColor,
                             topLeft = Offset(centerX - w / 2f, (size.height - h) / 2f),
@@ -267,10 +272,13 @@ private fun KitziNavBar(tabs: List<Tab>, selected: Tab, overlayOpen: Boolean, on
                             cornerRadius = CornerRadius(h / 2f),
                         )
                     }
-                    .pointerInput(tabs) {
+                    .pointerInput(tabs, rtl) {
                         val slotW = (size.width - spacingPx * (n - 1)) / n
                         val step = slotW + spacingPx
-                        fun idxAt(x: Float) = ((x - slotW / 2f) / step).coerceIn(0f, (n - 1).toFloat())
+                        fun idxAt(x: Float): Float {
+                            val fromStart = if (rtl) size.width - x else x
+                            return ((fromStart - slotW / 2f) / step).coerceIn(0f, (n - 1).toFloat())
+                        }
                         detectHorizontalDragGestures(
                             onDragStart = { dragIdx = idxAt(it.x) },
                             onHorizontalDrag = { change, _ -> dragIdx = idxAt(change.position.x) },
@@ -342,6 +350,14 @@ private fun App() {
             withContext(Dispatchers.IO) { runCatching { Services.auth.hasValidSession() } }
         }
     }
+    // The server rejected the refresh token: the session is over, so go to login
+    // instead of sitting "signed in" while every request fails.
+    val expired by Services.session.expired.collectAsStateWithLifecycle()
+    LaunchedEffect(expired) { if (expired) signedIn = false }
+    // Signed out (either way): drop the ViewModels, so the next login gets a fresh
+    // LibraryViewModel that opens and syncs its library, not the last session's.
+    val activity = androidx.activity.compose.LocalActivity.current as? ComponentActivity
+    LaunchedEffect(signedIn) { if (!signedIn) activity?.viewModelStore?.clear() }
     var tab by remember { mutableStateOf(Tab.BOOKS) }
     var overlay by remember { mutableStateOf<Overlay?>(null) }
 

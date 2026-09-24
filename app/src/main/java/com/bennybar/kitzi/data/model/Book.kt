@@ -70,7 +70,7 @@ object BookMapper {
      * Ports Book.fromLibraryItemJson (book.dart:55). Returns null for items with
      * no id or no title — the Dart drops those too (books_repository.dart:225).
      */
-    fun fromLibraryItem(json: JsonObject, baseUrl: String, token: String?): Book? {
+    fun fromLibraryItem(json: JsonObject, baseUrl: String): Book? {
         val id = json["id"].str() ?: json["_id"].str() ?: return null
         val media = json["media"].obj()
         val meta = media?.get("metadata").obj()
@@ -93,7 +93,7 @@ object BookMapper {
             title = title,
             author = author,
             // Built, never sent by the server. Stored token-stripped and rebuilt on read.
-            coverUrl = coverUrl(id, baseUrl, token),
+            coverUrl = coverUrl(id, baseUrl),
             description = meta?.get("description").str() ?: json["description"].str(),
             durationMs = durationSec?.takeIf { it > 0 }?.let { (it * 1000).toLong() },
             sizeBytes = media?.get("size").num()?.toLong(),
@@ -132,8 +132,13 @@ object BookMapper {
     // on the grid and badly so on the near-full-width player cover. 600 is crisp for
     // the grid, detail hero and mini-player at ~20KB; the full player asks for more
     // via [largeCover].
-    fun coverUrl(id: String, baseUrl: String, token: String?, width: Int = 600): String =
-        "$baseUrl/api/items/$id/cover?width=$width" + if (!token.isNullOrEmpty()) "&token=$token" else ""
+    //
+    // No token in the URL: the app's image loader and every other fetch go through
+    // Services.httpClient, which sends it as a header. A token in the URL leaked
+    // wherever the URL went (the media session, logs) and changed Coil's cache key
+    // on every rotation, re-downloading every cover.
+    fun coverUrl(id: String, baseUrl: String, width: Int = 600): String =
+        "$baseUrl/api/items/$id/cover?width=$width"
 
     /**
      * The same server cover at a larger width, for the full-screen player where it
@@ -239,7 +244,7 @@ fun Book.toEntity(coverPath: String? = null): BookEntity = BookEntity(
     genres = genres.takeIf { it.isNotEmpty() }?.let { kotlinx.serialization.json.Json.encodeToString(it) },
 )
 
-fun BookEntity.toBook(baseUrl: String, token: String?): Book {
+fun BookEntity.toBook(baseUrl: String): Book {
     val json = kotlinx.serialization.json.Json
     fun list(raw: String?): List<String> =
         raw?.let { runCatching { json.decodeFromString<List<String>>(it) }.getOrNull() }.orEmpty()
@@ -248,9 +253,9 @@ fun BookEntity.toBook(baseUrl: String, token: String?): Book {
         id = id,
         title = title,
         author = author,
-        // Local file wins so covers render offline; otherwise rebuild with the live token.
+        // Local file wins so covers render offline; otherwise the server cover.
         coverUrl = coverPath?.takeIf { java.io.File(it).exists() }?.let { "file://$it" }
-            ?: BookMapper.coverUrl(id, baseUrl, token),
+            ?: BookMapper.coverUrl(id, baseUrl),
         description = description,
         durationMs = durationMs,
         sizeBytes = sizeBytes,

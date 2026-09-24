@@ -27,19 +27,20 @@ abstract class KitziDatabase : RoomDatabase() {
     companion object {
         private const val TAG = "KitziDatabase"
 
-        @Volatile private var instance: KitziDatabase? = null
-        @Volatile private var openLibraryId: String? = null
+        /** The open database and its library, swapped as one so a reader can never
+         *  pair the new id with the old (already closed) database. */
+        private class Open(val libraryId: String, val db: KitziDatabase)
+        @Volatile private var open: Open? = null
 
         /**
          * One database per library, exactly as the Flutter app did — this is what
          * keeps two libraries' caches (and ETags) from polluting each other.
          */
         fun forLibrary(context: Context, libraryId: String): KitziDatabase {
-            val existing = instance
-            if (existing != null && openLibraryId == libraryId) return existing
+            open?.takeIf { it.libraryId == libraryId }?.let { return it.db }
             synchronized(this) {
-                if (instance != null && openLibraryId == libraryId) return instance!!
-                instance?.close()
+                open?.takeIf { it.libraryId == libraryId }?.let { return it.db }
+                open?.db?.close()
 
                 LegacyBooksImport.importIfNeeded(context, libraryId)
 
@@ -48,14 +49,15 @@ abstract class KitziDatabase : RoomDatabase() {
                     KitziDatabase::class.java,
                     "kitzi_room_$libraryId.db",
                 )
-                    // This database is a cache: everything in it is either re-fetchable
-                    // from the server or re-importable from the retained Flutter DB, so
-                    // a schema change rebuilds rather than migrating. Safe only because
-                    // the legacy sqflite file is deliberately never deleted.
-                    .fallbackToDestructiveMigration()
+                    // Versions 1–2 predate the downloads table holding anything that
+                    // matters, so they still rebuild. From v3 on it holds the download
+                    // records (track list, durations, completeness), which can't be
+                    // re-fetched: a schema bump must ship a Migration. Without one Room
+                    // throws on open — caught in testing — instead of silently wiping
+                    // every download.
+                    .fallbackToDestructiveMigrationFrom(dropAllTables = true, 1, 2)
                     .build()
-                instance = db
-                openLibraryId = libraryId
+                open = Open(libraryId, db)
                 return db
             }
         }

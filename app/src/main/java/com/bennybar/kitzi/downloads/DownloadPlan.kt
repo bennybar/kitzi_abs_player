@@ -81,9 +81,18 @@ class DownloadPlanResolver(
             val arr = media[key] as? JsonArray ?: continue
             val planned = arr.mapIndexedNotNull { position, el ->
                 val m = el as? JsonObject ?: return@mapIndexedNotNull null
+                // Files the library owner excluded aren't part of the book.
+                if (m["exclude"]?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content } == "true") {
+                    return@mapIndexedNotNull null
+                }
                 val nested = m["file"] as? JsonObject
-                val fileId = m["id"].str() ?: m["_id"].str()
-                    ?: m["fileId"].str() ?: nested?.get("id").str() ?: nested?.get("_id").str()
+                // ABS identifies an audio file by its inode (`ino`) — the id that
+                // /api/items/<id>/file/<ino>/download takes. Without it this never
+                // matched, and every download fell through to opening a play session
+                // just to list the tracks.
+                val fileId = m["ino"].str() ?: m["id"].str() ?: m["_id"].str()
+                    ?: m["fileId"].str() ?: nested?.get("ino").str() ?: nested?.get("id").str()
+                    ?: nested?.get("_id").str()
                     ?: return@mapIndexedNotNull null
 
                 PlannedTrack(

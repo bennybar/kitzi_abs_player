@@ -61,7 +61,8 @@ class SleepTimer(private val controller: PlaybackController) {
         val itemId = controller.nowPlaying.value?.itemId ?: return false
 
         cancel()
-        val targetEndSec = chapter.endSec
+        var targetEndSec = chapter.endSec
+        var lastPos: Double? = null
 
         job = scope.launch {
             while (true) {
@@ -73,6 +74,17 @@ class SleepTimer(private val controller: PlaybackController) {
 
                 val pos = controller.globalPositionSec()
                 if (pos == null) { delay(500); continue }
+
+                // A jump — the user skipped a chapter or seeked — means "the end of
+                // the chapter I'm in now". The target used to stay fixed, so skipping
+                // into the next chapter was already past it and paused at once.
+                // Playing never moves more than ~1.5 s per tick (3x speed), so a
+                // natural chapter end still counts as reaching the target.
+                val prev = lastPos
+                if (prev != null && (pos < prev - 1.0 || pos > prev + 5.0)) {
+                    controller.currentChapter()?.let { targetEndSec = it.endSec }
+                }
+                lastPos = pos
 
                 val remaining = targetEndSec - pos
                 if (remaining <= 0.5) {

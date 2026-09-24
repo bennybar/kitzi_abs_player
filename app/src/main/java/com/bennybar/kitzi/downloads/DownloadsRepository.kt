@@ -61,9 +61,14 @@ class DownloadsRepository(
      * what runs next, because that is precisely what used to strand books in
      * "queued" forever.
      */
-    suspend fun download(itemId: String) = withContext(Dispatchers.IO) {
+    /**
+     * Returns false when there is nothing to download — the server listed no audio
+     * files for the book — so the caller can say so instead of the tap silently
+     * doing nothing.
+     */
+    suspend fun download(itemId: String): Boolean = withContext(Dispatchers.IO) {
         val plan = planner.resolve(itemId)
-        if (plan.isEmpty()) return@withContext
+        if (plan.isEmpty()) return@withContext false
 
         // Bind this download to the library active NOW, so a worker that runs after
         // the user switches libraries still writes files and rows to the right one.
@@ -92,7 +97,7 @@ class DownloadsRepository(
         )
 
         val missing = plan.filter { !java.io.File(dir, it.filename).let { f -> f.exists() && f.length() > 0 } }
-        if (missing.isEmpty()) return@withContext
+        if (missing.isEmpty()) return@withContext true
 
         // One worker for the whole book (it reads the track plan from the DB rows
         // just written above). A single worker means a single foreground service and
@@ -118,6 +123,7 @@ class DownloadsRepository(
         // behind it. Books are independent, so they are modelled that way; it also
         // stops an inactive-library book from parking at the head of a shared queue.
         workManager.enqueueUniqueWork(queueFor(itemId), ExistingWorkPolicy.REPLACE, request)
+        true
     }
 
     private fun constraints() = Constraints.Builder()
@@ -126,7 +132,8 @@ class DownloadsRepository(
 
     /** Stops the download but KEEPS completed tracks, so the user can resume. */
     suspend fun cancel(itemId: String) = withContext(Dispatchers.IO) {
-        workManager.cancelAllWorkByTag(tagFor(itemId))
+        // Awaited, so the worker has stopped writing before its .part files go.
+        runCatching { workManager.cancelAllWorkByTag(tagFor(itemId)).result.get() }
         paths.itemDir(itemId).listFiles().orEmpty()
             .filter { it.name.endsWith(".part") }
             .forEach { it.delete() }
@@ -137,7 +144,10 @@ class DownloadsRepository(
 
     /** Removes the download entirely: files and bookkeeping. */
     suspend fun delete(itemId: String) = withContext(Dispatchers.IO) {
-        workManager.cancelAllWorkByTag(tagFor(itemId))
+        // Awaited: a worker still finishing could otherwise re-create the folder
+        // (its cover save calls mkdirs) right after the delete, leaving a folder
+        // holding only a cover — which then read as a "downloaded" book.
+        runCatching { workManager.cancelAllWorkByTag(tagFor(itemId)).result.get() }
         paths.itemDir(itemId).deleteRecursively()
         dao.deleteItem(itemId)
     }
@@ -200,8 +210,9 @@ class DownloadsRepository(
         paths.downloadedItemIds()
             .filter { it !in known }
             .forEach { itemId ->
+                // Audio only: the offline cover sits in the same folder.
                 val files = paths.itemDir(itemId).listFiles().orEmpty()
-                    .filter { it.isFile && it.length() > 0 && !it.name.endsWith(".part") }
+                    .filter(DownloadPaths::isAudioFile)
                     .sortedBy { it.name }
                 if (files.isEmpty()) return@forEach
 

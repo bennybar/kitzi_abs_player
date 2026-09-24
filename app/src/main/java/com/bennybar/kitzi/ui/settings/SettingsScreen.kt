@@ -81,6 +81,7 @@ import kotlin.math.roundToInt
 fun SettingsScreen(onSignedOut: () -> Unit, onOpenProfile: () -> Unit = {}) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val activity = androidx.activity.compose.LocalActivity.current as? androidx.activity.ComponentActivity
     val prefs = Services.prefs
 
     var search by remember { mutableStateOf("") }
@@ -129,14 +130,15 @@ fun SettingsScreen(onSignedOut: () -> Unit, onOpenProfile: () -> Unit = {}) {
                             // first also flushes a final sync for the outgoing book.
                             Services.playback.stopAndAwait()
                             Services.books.switchLibrary(id)
-                            // switchLibrary CLOSES the previous database, but every
-                            // screen still holds Room flows bound to it — they would
-                            // keep serving the old library's rows until an app
-                            // restart. Rebuilding the UI rebinds them all at once;
-                            // switching libraries is a rare, deliberate action where a
-                            // brief reload beats keying every flow and ViewModel by
-                            // library id.
-                            (context as? android.app.Activity)?.recreate()
+                            // The repository's flows follow the switch by themselves,
+                            // but the home screen's shelves, counts and first sync were
+                            // loaded for the old library. recreate() alone keeps the
+                            // ViewModels, so clear them first: the rebuilt UI gets a
+                            // fresh LibraryViewModel that opens and syncs the new one.
+                            activity?.let {
+                                it.viewModelStore.clear()
+                                it.recreate()
+                            }
                         }
                     },
                 )
@@ -325,7 +327,7 @@ fun SettingsScreen(onSignedOut: () -> Unit, onOpenProfile: () -> Unit = {}) {
             "This signs you out and clears your saved login. Your downloads and cached books stay on this device.",
         ) {
             scope.launch {
-                withContext(Dispatchers.IO) { Services.auth.logout() }
+                Services.signOut()
                 onSignedOut()
             }
             dialog = null

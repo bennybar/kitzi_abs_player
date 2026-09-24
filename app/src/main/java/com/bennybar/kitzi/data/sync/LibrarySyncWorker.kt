@@ -31,14 +31,17 @@ class LibrarySyncWorker(
             return Result.success() // not signed in / no valid token: nothing to do
         }
         return runCatching {
-            // WorkManager can wake a cold process where nothing has opened a library
-            // yet; BooksRepository.db is lateinit, so going straight to fetchPage
-            // threw and this periodic sync never actually ran.
+            // Picks (on first run) or confirms the library for the current server.
             Services.books.ensureLibrary()
             Services.books.fetchPage(1, 50, BookSort.UPDATED_DESC)
             Services.books.fetchPage(2, 50, BookSort.UPDATED_DESC)
             Result.success()
-        }.getOrElse { Result.retry() }
+        }.getOrElse { e ->
+            // Retry only what can fix itself (offline, a timeout). An HTTP error — a
+            // 404 on a library that no longer exists, a proxy's error page — would
+            // fail the same way on every retry; the next periodic run tries again.
+            if (e is java.io.IOException) Result.retry() else Result.failure()
+        }
     }
 
     companion object {

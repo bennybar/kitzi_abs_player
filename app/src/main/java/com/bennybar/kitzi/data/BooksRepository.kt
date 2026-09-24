@@ -8,6 +8,7 @@ import com.bennybar.kitzi.data.db.BooksDao
 import com.bennybar.kitzi.data.db.KitziDatabase
 import com.bennybar.kitzi.data.db.LibraryFilter
 import com.bennybar.kitzi.data.db.MediaProgressEntity
+import com.bennybar.kitzi.data.legacy.DownloadPaths
 import com.bennybar.kitzi.data.legacy.FlutterPrefs
 import com.bennybar.kitzi.data.model.Book
 import com.bennybar.kitzi.data.model.BookMapper
@@ -22,9 +23,10 @@ import com.bennybar.kitzi.data.model.toEntity
 import com.bennybar.kitzi.data.net.AbsApi
 import com.bennybar.kitzi.data.net.SessionStore
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.emitAll
-import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonArray
@@ -80,6 +82,7 @@ data class DetailedStats(
 /**
  * The library: server sync into Room, and every read served from Room.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 class BooksRepository(
     private val context: Context,
     private val api: AbsApi,
@@ -89,20 +92,38 @@ class BooksRepository(
     private val etagPrefs =
         context.getSharedPreferences("kitzi_etags", Context.MODE_PRIVATE)
 
-    private lateinit var db: KitziDatabase
-    private val dao: BooksDao get() = db.booksDao()
+    /**
+     * The library whose database every read and write goes to. Seeded from the
+     * stored choice, so the database is usable from any entry point (Android Auto,
+     * a media button, a worker) without waiting for ensureLibrary(); before a
+     * library is ever chosen it points at the empty default database. Room flows
+     * are built on top of it with flatMapLatest, so they follow a library switch
+     * instead of staying bound to the closed database.
+     */
+    private val library = MutableStateFlow(
+        prefs.getString(FlutterPrefs.KEY_LIBRARY_ID)?.takeIf { it.isNotBlank() }
+            ?: DownloadPaths.DEFAULT_LIBRARY_ID
+    )
+    val libraryId: String get() = library.value
 
-    var libraryId: String = ""
-        private set
+    private val dao: BooksDao get() = daoFor(libraryId)
+    private fun daoFor(id: String): BooksDao = KitziDatabase.forLibrary(context, id).booksDao()
 
     // ---- library selection -------------------------------------------------
 
     /** Picks the active library, preferring the stored one (books_repository.dart:100). */
     suspend fun ensureLibrary(): String = withContext(Dispatchers.IO) {
-        prefs.getString(FlutterPrefs.KEY_LIBRARY_ID)?.takeIf { it.isNotBlank() }?.let {
-            open(it)
-            return@withContext it
-        }
+        // The stored library only counts for the server it was chosen on. Logging in
+        // to another server used to reuse the old id: every request 404'd and the
+        // previous server's cached books stayed on screen. (A choice stored before
+        // this was recorded has no server, and is trusted as before.)
+        val storedServer = prefs.getString(KEY_LIBRARY_SERVER)
+        prefs.getString(FlutterPrefs.KEY_LIBRARY_ID)?.takeIf { it.isNotBlank() }
+            ?.takeIf { storedServer == null || storedServer == session.baseUrl }
+            ?.let {
+                open(it)
+                return@withContext it
+            }
 
         val libs = listLibraries()
         check(libs.isNotEmpty()) { "server returned no libraries" }
@@ -110,9 +131,23 @@ class BooksRepository(
         val chosen = libs.firstOrNull { it.mediaType?.contains("book", ignoreCase = true) == true }
             ?: libs.first()
 
-        prefs.putString(FlutterPrefs.KEY_LIBRARY_ID, chosen.id)
+        remember(chosen.id)
         open(chosen.id)
         chosen.id
+    }
+
+    private fun remember(id: String) {
+        prefs.putString(FlutterPrefs.KEY_LIBRARY_ID, id)
+        session.baseUrl?.let { prefs.putString(KEY_LIBRARY_SERVER, it) }
+    }
+
+    /**
+     * On logout: point reads back at the empty default database until the next
+     * login's ensureLibrary() reopens the stored library (same server) or picks a
+     * new one — so nothing of the previous session shows in between.
+     */
+    fun closeLibrary() {
+        library.value = DownloadPaths.DEFAULT_LIBRARY_ID
     }
 
     suspend fun listLibraries(): List<Library> = withContext(Dispatchers.IO) {
@@ -132,14 +167,14 @@ class BooksRepository(
      * cache (books_repository.dart:557).
      */
     suspend fun switchLibrary(id: String) = withContext(Dispatchers.IO) {
-        prefs.putString(FlutterPrefs.KEY_LIBRARY_ID, id)
+        remember(id)
         etagPrefs.edit().clear().apply()
         open(id)
     }
 
     private fun open(id: String) {
-        libraryId = id
-        db = KitziDatabase.forLibrary(context, id)
+        KitziDatabase.forLibrary(context, id)
+        library.value = id
     }
 
     // ---- reads (always from Room) ------------------------------------------
@@ -156,9 +191,12 @@ class BooksRepository(
         offset: Int,
     ): Flow<List<Book>> {
         val query = BooksDao.libraryQuery(sort, filter, search, limit, offset)
-        val base = session.baseUrl.orEmpty()
-        val token = session.accessToken
-        return dao.pagedBooksRaw(query).map { rows -> rows.map { it.toBook(base, token) } }
+        return library.flatMapLatest { id ->
+            daoFor(id).pagedBooksRaw(query).map { rows ->
+                val base = session.baseUrl.orEmpty()
+                rows.map { it.toBook(base) }
+            }
+        }
     }
 
     suspend fun countBooks(filter: LibraryFilter, search: String?): Int = withContext(Dispatchers.IO) {
@@ -166,21 +204,21 @@ class BooksRepository(
     }
 
     suspend fun getBook(id: String): Book? = withContext(Dispatchers.IO) {
-        dao.getBook(id)?.toBook(session.baseUrl.orEmpty(), session.accessToken)
+        dao.getBook(id)?.toBook(session.baseUrl.orEmpty())
     }
 
     /** One query for many books — the Downloads list would otherwise do N of them. */
     suspend fun getBooks(ids: Collection<String>): List<Book> = withContext(Dispatchers.IO) {
         if (ids.isEmpty()) return@withContext emptyList()
-        dao.getBooks(ids.toList()).map { it.toBook(session.baseUrl.orEmpty(), session.accessToken) }
+        dao.getBooks(ids.toList()).map { it.toBook(session.baseUrl.orEmpty()) }
     }
 
     suspend fun booksInSeries(series: String): List<Book> = withContext(Dispatchers.IO) {
-        dao.booksInSeries(series).map { it.toBook(session.baseUrl.orEmpty(), session.accessToken) }
+        dao.booksInSeries(series).map { it.toBook(session.baseUrl.orEmpty()) }
     }
 
     suspend fun booksByAuthor(author: String): List<Book> = withContext(Dispatchers.IO) {
-        dao.booksByAuthor(author).map { it.toBook(session.baseUrl.orEmpty(), session.accessToken) }
+        dao.booksByAuthor(author).map { it.toBook(session.baseUrl.orEmpty()) }
     }
 
     suspend fun authors(): List<Pair<String, Int>> = withContext(Dispatchers.IO) {
@@ -201,7 +239,6 @@ class BooksRepository(
         val ids = rows.associate { it.name to it.id }
         val descriptions = rows.associate { it.name to it.description }
         val base = session.baseUrl.orEmpty()
-        val token = session.accessToken
 
         dao.authorsWithCounts().map { (name, count) ->
             val id = ids[name]
@@ -209,7 +246,7 @@ class BooksRepository(
                 name = name,
                 bookCount = count,
                 imageUrl = id?.let {
-                    "$base/api/authors/$it/image" + if (!token.isNullOrEmpty()) "?token=$token" else ""
+                    "$base/api/authors/$it/image"
                 },
                 description = descriptions[name],
             )
@@ -252,7 +289,6 @@ class BooksRepository(
      */
     suspend fun seriesWithCovers(minBooks: Int = 1): List<SeriesRow> = withContext(Dispatchers.IO) {
         val base = session.baseUrl.orEmpty()
-        val token = session.accessToken
         val counts = dao.seriesWithCounts(minBooks)
         val kept = counts.map { it.name }.toSet()
         val covers = LinkedHashMap<String, MutableList<String>>()
@@ -261,7 +297,7 @@ class BooksRepository(
             val list = covers.getOrPut(row.series) { mutableListOf() }
             if (list.size >= 3) continue
             list += row.coverPath?.takeIf { java.io.File(it).exists() }?.let { "file://$it" }
-                ?: BookMapper.coverUrl(row.id, base, token)
+                ?: BookMapper.coverUrl(row.id, base)
         }
         counts.map { SeriesRow(it.name, it.bookCount, covers[it.name].orEmpty()) }
     }
@@ -272,9 +308,8 @@ class BooksRepository(
      */
     suspend fun collections(): Map<String, List<Book>> = withContext(Dispatchers.IO) {
         val base = session.baseUrl.orEmpty()
-        val token = session.accessToken
         dao.booksInAnyCollection()
-            .map { it.toBook(base, token) }
+            .map { it.toBook(base) }
             .groupBy { it.collection!! }
             .mapValues { (_, books) ->
                 // Explicit sequence first, then title — same rule as series.
@@ -288,11 +323,11 @@ class BooksRepository(
     }
 
     suspend fun continueListening(limit: Int = 20): List<Book> = withContext(Dispatchers.IO) {
-        dao.continueListening(limit).map { it.toBook(session.baseUrl.orEmpty(), session.accessToken) }
+        dao.continueListening(limit).map { it.toBook(session.baseUrl.orEmpty()) }
     }
 
     suspend fun recentlyAdded(limit: Int = 20): List<Book> = withContext(Dispatchers.IO) {
-        dao.recentlyAdded(limit).map { it.toBook(session.baseUrl.orEmpty(), session.accessToken) }
+        dao.recentlyAdded(limit).map { it.toBook(session.baseUrl.orEmpty()) }
     }
 
     /** Bookmarks live on `/api/me`; there is no per-item endpoint. */
@@ -328,9 +363,8 @@ class BooksRepository(
     suspend fun detailedStats(): DetailedStats = withContext(Dispatchers.IO) {
         val sessions = PlayHistoryStore.sessions()
         val base = session.baseUrl.orEmpty()
-        val token = session.accessToken
         val books = sessions.map { it.itemId }.toSet()
-            .associateWith { dao.getBook(it)?.toBook(base, token) }
+            .associateWith { dao.getBook(it)?.toBook(base) }
 
         val bookTotals = LinkedHashMap<String, Double>()
         val authorTotals = HashMap<String, Double>()
@@ -458,22 +492,27 @@ class BooksRepository(
         // v2: page numbering was off by one before, so ETags cached under the old key
         // describe a different page's contents — replaying them would 304 away the
         // newest items this fix exists to fetch.
-        val etagKey = "etag2_${libraryId}_${sortField}_${desc}_$page"
+        // One library for the whole call: a switch mid-request must not write this
+        // library's page into the other one's database.
+        val lib = libraryId
+        val libDao = daoFor(lib)
+        val etagKey = "etag2_${lib}_${sortField}_${desc}_$page"
         val etag = if (force) null else etagPrefs.getString(etagKey, null)
 
-        var result = api.libraryItems(libraryId, page, limit, sortField, desc, etag)
+        var result = api.libraryItems(lib, page, limit, sortField, desc, etag)
 
         if (result.notModified) {
-            val cached = dao.countBooksRaw(
+            val cached = libDao.countBooksRaw(
                 BooksDao.libraryQuery(sort, LibraryFilter.ALL, null, 0, 0, countOnly = true)
             )
             // A 304 is only trustworthy if we actually have the rows it refers to.
             if (cached > 0) return@withContext 0
-            result = api.libraryItems(libraryId, page, limit, sortField, desc, etag = null)
+            result = api.libraryItems(lib, page, limit, sortField, desc, etag = null)
         }
 
+        if (libraryId != lib) return@withContext 0
         result.etag?.let { etagPrefs.edit().putString(etagKey, it).apply() }
-        upsert(result.items)
+        upsert(result.items, libDao)
     }
 
     /** User-initiated refresh. Always unconditional. */
@@ -499,21 +538,33 @@ class BooksRepository(
         var total = 0
         val seen = HashSet<String>()
         var fullSweep = false
+        // How many items the server says the library holds (first page's `total`).
+        var serverTotal: Int? = null
+        // Pinned for the whole sweep; a library switch part-way aborts it (below)
+        // rather than mixing two libraries and pruning one against the other.
+        val lib = libraryId
+        val libDao = daoFor(lib)
 
         // Which paging parameter this server actually honours. We start with `page`
         // and, the first time a page>1 comes back as only already-seen items (the
         // server ignored `page`), switch to `offset` and then `skip` — the same
         // three-way fallback the Flutter app used. Once one works we stick with it.
         var paging = AbsApi.Paging.PAGE
-        val (sortField, desc) = serverSort(BookSort.UPDATED_DESC)
+        // Swept by date added, not date updated: an item edited on the server
+        // mid-sweep would jump to the front of an updatedAt ordering, shift every
+        // later item down a slot, and one would cross a page boundary unseen — and
+        // then be pruned as "deleted".
+        val (sortField, desc) = serverSort(BookSort.ADDED_DESC)
 
         fun fetch(p: Int, mode: AbsApi.Paging) = runCatching {
-            api.libraryItems(libraryId, p, pageSize, sortField, desc, etag = null, paging = mode)
+            api.libraryItems(lib, p, pageSize, sortField, desc, etag = null, paging = mode)
         }.getOrNull()
 
         while (page <= MAX_SYNC_PAGES) {
+            if (libraryId != lib) break
             var result = fetch(page, paging) ?: break
-            if (result.items.isEmpty()) { fullSweep = true; break }
+            if (page == 1) serverTotal = result.total
+            if (result.items.isEmpty()) { fullSweep = page > 1; break }
 
             fun freshCount(r: AbsApi.Page) = r.items.count { it["id"].str()?.let { id -> id !in seen } ?: false }
             var fresh = freshCount(result)
@@ -532,7 +583,7 @@ class BooksRepository(
 
             // Commit: record ids as seen, then upsert.
             result.items.forEach { it["id"].str()?.let(seen::add) }
-            total += upsert(result.items)
+            total += upsert(result.items, libDao)
             if (fresh == 0) break
 
             if (result.items.size < pageSize) { fullSweep = true; break }
@@ -541,8 +592,14 @@ class BooksRepository(
 
         // Only a complete, uninterrupted sweep makes `seen` an authoritative list of
         // what still exists on the server — so only then may we prune. A network
-        // failure mid-sweep must never delete books.
-        if (fullSweep) pruneDeletedBooks(seen)
+        // failure mid-sweep must never delete books. Neither may a first page that
+        // came back empty: a Cloudflare Access login page or a captive portal answers
+        // 200 with no items, which is not the server saying the library is empty.
+        // When the server reports its total, the sweep must have seen all of it.
+        val complete = fullSweep && seen.isNotEmpty() &&
+            (serverTotal == null || seen.size >= serverTotal!!) && libraryId == lib
+        if (complete) pruneDeletedBooks(seen, libDao)
+        else if (fullSweep) Log.w(TAG, "syncAll: saw ${seen.size} of $serverTotal items; not pruning")
 
         Log.i(TAG, "syncAll: cached $total new books over $page page(s)")
         total
@@ -579,7 +636,7 @@ class BooksRepository(
             if (bounds.outWidth >= CRISP_COVER_MIN_PX) { dao.setCoverPath(itemId, file.path); return@withContext }
         }
         runCatching {
-            val url = BookMapper.coverUrl(itemId, base, session.accessToken, width = CRISP_COVER_PX)
+            val url = BookMapper.coverUrl(itemId, base, width = CRISP_COVER_PX)
             val request = okhttp3.Request.Builder().url(url).build()
             Services.httpClient.newCall(request).execute().use { resp ->
                 val bytes = resp.body?.bytes()?.takeIf { resp.isSuccessful && it.isNotEmpty() } ?: return@use
@@ -606,7 +663,6 @@ class BooksRepository(
     suspend fun refreshLowResCovers() = withContext(Dispatchers.IO) {
         val base = session.baseUrl.orEmpty()
         if (base.isEmpty()) return@withContext
-        val token = session.accessToken
         val rows = dao.coversOnDisk()
         Log.i(TAG, "cover refresh: ${rows.size} on-disk covers to check")
         var upgraded = 0
@@ -617,7 +673,7 @@ class BooksRepository(
             android.graphics.BitmapFactory.decodeFile(row.coverPath, bounds)
             if (bounds.outWidth >= CRISP_COVER_MIN_PX) continue
             runCatching {
-                val url = BookMapper.coverUrl(row.id, base, token, width = CRISP_COVER_PX)
+                val url = BookMapper.coverUrl(row.id, base, width = CRISP_COVER_PX)
                 val request = okhttp3.Request.Builder().url(url).build()
                 Services.httpClient.newCall(request).execute().use { resp ->
                     val bytes = resp.body?.bytes()?.takeIf { resp.isSuccessful && it.isNotEmpty() }
@@ -647,11 +703,11 @@ class BooksRepository(
      * has downloaded, so a book deleted server-side stays playable offline until
      * they remove the download themselves.
      */
-    private suspend fun pruneDeletedBooks(serverIds: Set<String>) {
+    private suspend fun pruneDeletedBooks(serverIds: Set<String>, libDao: BooksDao) {
         val downloaded = runCatching { Services.downloads.downloadedItemIds() }
             .getOrDefault(emptyList()).toSet()
-        val stale = dao.allBookIds().filter { it !in serverIds && it !in downloaded }
-        stale.forEach { dao.deleteBook(it); dao.deleteProgress(it) }
+        val stale = libDao.allBookIds().filter { it !in serverIds && it !in downloaded }
+        stale.forEach { libDao.deleteBook(it); libDao.deleteProgress(it) }
         if (stale.isNotEmpty()) Log.i(TAG, "pruneDeletedBooks: removed ${stale.size} book(s) gone from server")
     }
 
@@ -667,39 +723,39 @@ class BooksRepository(
         cached
     }
 
-    private suspend fun upsert(items: List<JsonObject>): Int {
+    private suspend fun upsert(items: List<JsonObject>, libDao: BooksDao = dao): Int {
         val base = session.baseUrl.orEmpty()
-        val token = session.accessToken
         val books = items
-            .mapNotNull { BookMapper.fromLibraryItem(it, base, token) }
+            .mapNotNull { BookMapper.fromLibraryItem(it, base) }
             // Ebooks and podcasts never enter the library cache.
             .filter { it.isAudioBook }
 
         if (books.isEmpty()) return 0
 
-        // Don't overwrite a newer local row with a staler server one.
+        // Don't overwrite a newer local row with a staler server one. An equal
+        // timestamp is rewritten, so a mapper fix (or a row imported from the Flutter
+        // cache) is re-mapped by the next sync instead of never.
         val fresh = books.filter { book ->
-            val existing = dao.updatedAtOf(book.id)
-            existing == null || book.updatedAt == null || book.updatedAt > existing
+            val existing = libDao.updatedAtOf(book.id)
+            existing == null || book.updatedAt == null || book.updatedAt >= existing
         }
         // coverPath is a LOCAL-only field (a downloaded/cached cover on disk); the
         // server never supplies it. Carry the existing value across the upsert —
         // toEntity defaults it to null, so without this every sync wiped the offline
         // cover pointer, and a downloaded book lost its cover the next time it synced.
         if (fresh.isNotEmpty()) {
-            val existingCovers = dao.coversOnDisk().associate { it.id to it.coverPath }
-            dao.upsertBooks(fresh.map { it.toEntity(coverPath = existingCovers[it.id]) })
+            val existingCovers = libDao.coversOnDisk().associate { it.id to it.coverPath }
+            libDao.upsertBooks(fresh.map { it.toEntity(coverPath = existingCovers[it.id]) })
         }
         return fresh.size
     }
 
     suspend fun searchServer(query: String): List<Book> = withContext(Dispatchers.IO) {
         val base = session.baseUrl.orEmpty()
-        val token = session.accessToken
-        val found = api.search(libraryId, query).mapNotNull { BookMapper.fromLibraryItem(it, base, token) }
-            .filter { it.isAudioBook }
-        if (found.isNotEmpty()) dao.upsertBooks(found.map { it.toEntity() })
-        found
+        val items = api.search(libraryId, query)
+        // Through upsert, which keeps a downloaded book's offline cover path.
+        upsert(items)
+        items.mapNotNull { BookMapper.fromLibraryItem(it, base) }.filter { it.isAudioBook }
     }
 
     /**
@@ -818,16 +874,17 @@ class BooksRepository(
         return true
     }
 
-    /**
-     * Progress for every book, so a list row can show its finished/in-progress mark.
-     *
-     * Wrapped in `flow { }` so the DAO is not touched until someone collects: the
-     * database is opened by ensureLibrary(), which runs after the ViewModel is
-     * constructed, and touching `dao` eagerly crashes the ViewModel's init.
-     */
-    fun watchProgress(): Flow<Map<String, MediaProgressEntity>> = flow {
-        emitAll(dao.watchAllProgress().map { rows -> rows.associateBy { it.itemId } })
+    /** Progress for every book, so a list row can show its finished/in-progress mark. */
+    fun watchProgress(): Flow<Map<String, MediaProgressEntity>> = library.flatMapLatest { id ->
+        daoFor(id).watchAllProgress().map { rows -> rows.associateBy { it.itemId } }
     }
+
+    /**
+     * Drops every progress row, on logout: the next user (or the same one) gets
+     * theirs back from the server on the first sync, instead of seeing the previous
+     * account's finished marks and Continue Listening.
+     */
+    suspend fun clearProgress() = withContext(Dispatchers.IO) { dao.clearProgress() }
 
     private fun serverSort(sort: BookSort): Pair<String, Boolean> = when (sort) {
         BookSort.NAME_ASC -> "media.metadata.title" to false
@@ -840,6 +897,8 @@ class BooksRepository(
         /** A backstop against a server that pages forever. 100 * 200 = 20k books. */
         const val MAX_SYNC_PAGES = 200
         const val KEY_AUTHORS_SYNCED = "authors_last_synced"
+        /** The server [FlutterPrefs.KEY_LIBRARY_ID] was chosen on. */
+        const val KEY_LIBRARY_SERVER = "kitzi_library_server"
         /** Below this stored width, an on-disk cover counts as low-res and is re-fetched. */
         const val CRISP_COVER_MIN_PX = 700
         /** The width re-fetched covers are stored at — sized for the full-screen player. */

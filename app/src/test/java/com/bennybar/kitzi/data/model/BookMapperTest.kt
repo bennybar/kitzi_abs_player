@@ -10,7 +10,7 @@ import org.junit.Test
 class BookMapperTest {
 
     private fun map(json: String) =
-        BookMapper.fromLibraryItem(Json.parseToJsonElement(json).jsonObject, "https://s", null)
+        BookMapper.fromLibraryItem(Json.parseToJsonElement(json).jsonObject, "https://s")
 
     private fun withSeries(series: String) = map(
         """{"id":"1","media":{"duration":100,"metadata":{"title":"T","series":$series}}}"""
@@ -79,5 +79,12 @@ class BookMapperTest {
         val secs = map("""{"id":"1","updatedAt":1700000000,"media":{"duration":10,"metadata":{"title":"T"}}}""")!!
         val millis = map("""{"id":"2","updatedAt":1700000000000,"media":{"duration":10,"metadata":{"title":"T"}}}""")!!
         assertEquals(millis.updatedAt, secs.updatedAt)
+    }
+
+    /** The token is sent as a header; in the URL it leaked into the media session. */
+    @Test
+    fun `cover URLs carry no token`() {
+        val book = map("""{"id":"abc","media":{"duration":100,"metadata":{"title":"T"}}}""")!!
+        assertEquals("https://s/api/items/abc/cover?width=600", book.coverUrl)
     }
 }

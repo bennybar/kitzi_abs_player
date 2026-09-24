@@ -66,5 +66,20 @@ class DownloadPaths(
     companion object {
         const val DEFAULT_SUBFOLDER = "abs"
         const val DEFAULT_LIBRARY_ID = "default"
+
+        private val NON_AUDIO_EXTS = setOf("jpg", "jpeg", "png", "webp", "gif")
+
+        /**
+         * Whether a file in a download folder is one of the book's audio tracks.
+         * The folder also holds the offline cover (cover.jpg, cover.jpg.tmp) and
+         * in-progress .part files; treating the cover as a track is the bug that
+         * stopped downloaded books playing in 2.0.336. Shared by playback and
+         * download adoption so the two can't drift apart again.
+         */
+        fun isAudioFile(f: java.io.File): Boolean =
+            f.isFile && f.length() > 0 &&
+                !f.name.endsWith(".part") &&
+                !f.name.endsWith(".tmp") &&
+                f.extension.lowercase() !in NON_AUDIO_EXTS
     }
 }

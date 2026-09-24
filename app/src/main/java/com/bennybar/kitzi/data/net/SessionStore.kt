@@ -7,6 +7,9 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.bennybar.kitzi.data.legacy.FlutterPrefs
 import com.bennybar.kitzi.data.legacy.FlutterSecureStorage
+import android.util.Log
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonPrimitive
@@ -29,13 +32,36 @@ class SessionStore(context: Context) {
     private val prefs = FlutterPrefs(context)
     private val legacySecure = FlutterSecureStorage(context)
 
-    private val secure: SharedPreferences = EncryptedSharedPreferences.create(
-        context,
-        SECURE_PREFS,
-        MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build(),
-        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
-    )
+    /**
+     * A lost or corrupted Keystore key (seen on some OEMs, and after certain
+     * restores) makes EncryptedSharedPreferences throw on open. Unguarded, that
+     * happened inside Services.init and crashed every launch. The store only holds
+     * the refresh token, so recover by discarding it and its key: the user signs in
+     * again instead of being locked out of the app.
+     */
+    private val secure: SharedPreferences = runCatching { openSecure(context) }.getOrElse { e ->
+        Log.w(TAG, "encrypted prefs unreadable; resetting them", e)
+        context.deleteSharedPreferences(SECURE_PREFS)
+        runCatching {
+            java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+                .deleteEntry(MasterKey.DEFAULT_MASTER_KEY_ALIAS)
+        }
+        openSecure(context)
+    }
+
+    private val _expired = MutableStateFlow(false)
+
+    /**
+     * True once the server has rejected the refresh token (revoked, expired, or the
+     * user deleted). Tokens are cleared at that point; the UI routes to login rather
+     * than sitting "signed in" while every request silently fails.
+     */
+    val expired: StateFlow<Boolean> = _expired
+
+    fun markExpired() {
+        clearTokens()
+        _expired.value = true
+    }
 
     var baseUrl: String?
         get() = prefs.getString(FlutterPrefs.KEY_BASE_URL)
@@ -68,11 +94,20 @@ class SessionStore(context: Context) {
     var refreshToken: String?
         get() {
             secure.getString(KEY_REFRESH, null)?.let { return it }
-            val adopted = legacySecure.read(FlutterSecureStorage.KEY_REFRESH_TOKEN) ?: return null
-            secure.edit { putString(KEY_REFRESH, adopted) }
+            // Only ever once: the Flutter blob is never deleted, so without this
+            // marker a logout (which removes our copy) re-adopted it on the next
+            // read and the user was silently "signed in" again with a dead token.
+            if (secure.getBoolean(KEY_LEGACY_ADOPTED, false)) return null
+            val adopted = legacySecure.read(FlutterSecureStorage.KEY_REFRESH_TOKEN)
+            secure.edit {
+                putBoolean(KEY_LEGACY_ADOPTED, true)
+                if (adopted != null) putString(KEY_REFRESH, adopted)
+            }
             return adopted
         }
         set(value) = secure.edit {
+            // Any write means this store owns the session now; see the getter.
+            putBoolean(KEY_LEGACY_ADOPTED, true)
             if (value == null) remove(KEY_REFRESH) else putString(KEY_REFRESH, value)
         }
 
@@ -112,6 +147,7 @@ class SessionStore(context: Context) {
     fun setAccess(token: String, expiry: Instant) {
         accessToken = token
         accessExpiry = expiry
+        _expired.value = false
     }
 
     fun clearTokens() {
@@ -121,8 +157,18 @@ class SessionStore(context: Context) {
     }
 
     companion object {
+        private const val TAG = "SessionStore"
         private const val SECURE_PREFS = "kitzi_secure"
         private const val KEY_REFRESH = "abs_refresh"
+        private const val KEY_LEGACY_ADOPTED = "legacy_refresh_adopted"
+
+        private fun openSecure(context: Context): SharedPreferences = EncryptedSharedPreferences.create(
+            context,
+            SECURE_PREFS,
+            MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build(),
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
+        )
 
         /** Same rules as api_client.dart setBaseUrl: default to https, no trailing slash. */
         fun normalizeBaseUrl(input: String): String {

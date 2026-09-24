@@ -87,6 +87,7 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
     var playFailed by remember { mutableStateOf(false) }
     var notFound by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     LaunchedEffect(itemId) {
         val loaded = Services.books.getBook(itemId)
@@ -300,7 +301,13 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
                         Text("Cancel", modifier = Modifier.padding(start = 6.dp))
                     }
                     else -> OutlinedButton(
-                        onClick = { scope.launch { Services.downloads.download(itemId) } },
+                        onClick = {
+                            scope.launch {
+                                if (!Services.downloads.download(itemId)) {
+                                    android.widget.Toast.makeText(context, "Nothing to download: the server lists no audio files for this book", android.widget.Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        },
                         modifier = Modifier.weight(1f),
                     ) {
                         Icon(Icons.Default.Download, null)

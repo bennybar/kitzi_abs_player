@@ -4,9 +4,25 @@ import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import coil.ImageLoader
+import coil.ImageLoaderFactory
 import com.bennybar.kitzi.data.Analytics
+import com.bennybar.kitzi.data.Services
 
-class KitziApplication : Application() {
+class KitziApplication : Application(), ImageLoaderFactory {
+
+    /**
+     * Covers and author portraits load through the app's own HTTP client, which
+     * adds the Bearer token and any custom headers (Cloudflare Access and similar).
+     * Coil's default client sent neither: covers needed the token in their URL, and
+     * with a Zero-Trust proxy in front of the server they didn't load at all.
+     */
+    override fun newImageLoader(): ImageLoader {
+        Services.init(this)
+        return ImageLoader.Builder(this)
+            .okHttpClient { Services.httpClient }
+            .build()
+    }
 
     override fun onCreate() {
         super.onCreate()
