@@ -1,5 +1,6 @@
 package com.bennybar.kitzi.ui.player
 
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -68,6 +69,7 @@ fun MiniPlayer(onExpand: () -> Unit) {
 
     var isPlaying by remember { mutableStateOf(false) }
     var fraction by remember { mutableStateOf(0f) }
+    var leftSec by remember { mutableStateOf<Long?>(null) }
     var collapsed by remember { mutableStateOf(Services.prefs.getBoolean("ui_mini_player_collapsed", false)) }
     val preparing by controller.preparing.collectAsStateWithLifecycle()
 
@@ -81,6 +83,10 @@ fun MiniPlayer(onExpand: () -> Unit) {
                 val pos = controller.globalPositionSec() ?: 0.0
                 val total = controller.totalDurationSec() ?: 0.0
                 fraction = if (total > 0) (pos / total).toFloat().coerceIn(0f, 1f) else 0f
+                // Wall-clock time left at the current speed, like the full player.
+                val speed = runCatching { controller.player.playbackParameters.speed.toDouble() }
+                    .getOrDefault(1.0).coerceAtLeast(0.1)
+                leftSec = if (total > 0) ((total - pos).coerceAtLeast(0.0) / speed).toLong() else null
                 delay(if (isPlaying) 700 else 2000)
             }
         }
@@ -144,6 +150,12 @@ fun MiniPlayer(onExpand: () -> Unit) {
     // The floating Aurora Glass pill: soft drop shadow so it hovers over the
     // page, translucent tinted fill (page shows faintly through), bright hairline
     // edge. Not opaque — matching the Flutter mini-player.
+    // Laid out left-to-right in every locale, like the full player's transport: in
+    // RTL the row mirrored and put "forward" on the left. Text still follows its
+    // own direction, so a Hebrew title reads right-to-left.
+    androidx.compose.runtime.CompositionLocalProvider(
+        androidx.compose.ui.platform.LocalLayoutDirection provides androidx.compose.ui.unit.LayoutDirection.Ltr,
+    ) {
     Box(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 2.dp)) {
         Row(
             Modifier
@@ -156,7 +168,9 @@ fun MiniPlayer(onExpand: () -> Unit) {
                 .padding(start = 13.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // Tap the cover to collapse to the orb.
+            // The cover is where most people tap to open the player, so a tap does
+            // that, like the rest of the pill; collapsing to the orb is a long-press
+            // (it used to be the tap, a hidden gesture on the most-tapped spot).
             AsyncImage(
                 model = np.coverUrl,
                 contentDescription = np.title,
@@ -164,17 +178,32 @@ fun MiniPlayer(onExpand: () -> Unit) {
                 modifier = Modifier
                     .size(50.dp)
                     .clip(CircleShape)
-                    .clickable { setCollapsed(true) },
+                    .combinedClickable(
+                        onClick = onExpand,
+                        onLongClick = { setCollapsed(true) },
+                        onLongClickLabel = "Collapse the mini-player",
+                    ),
             )
             Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                Text(
-                    np.title,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = onGlass,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        np.title,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = onGlass,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    leftSec?.let {
+                        Text(
+                            "  ${com.bennybar.kitzi.ui.common.formatHm(it)} left",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = onGlassMuted,
+                            maxLines = 1,
+                        )
+                    }
+                }
                 Waveform(
                     fraction = fraction,
                     seed = np.title.hashCode(),
@@ -212,6 +241,7 @@ fun MiniPlayer(onExpand: () -> Unit) {
                     .padding(11.dp),
             )
         }
+    }
     }
 }
 

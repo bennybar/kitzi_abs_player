@@ -29,6 +29,14 @@ data class LibrarySummary(
     val streakDays: Int = 0,
     val inProgress: Int = 0,
     val libraryCount: Int = 0,
+    /** False until the first load, so the tiles show "—" rather than zeros. */
+    val loaded: Boolean = false,
+    val weekSec: Double = 0.0,
+    val bestStreakDays: Int = 0,
+    /** Wall-clock time left (at the current speed) across the books in progress. */
+    val leftInProgressSec: Double = 0.0,
+    /** Books added in the last 7 days (counted from the Recently added shelf). */
+    val addedThisWeek: Int = 0,
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -120,14 +128,52 @@ class LibraryViewModel : ViewModel() {
         recentlyAdded.value = books.recentlyAdded()
 
         val stats = runCatching { books.listeningStats() }.getOrNull()
+        val perDay = stats?.perDaySec.orEmpty()
+        val iso = java.time.format.DateTimeFormatter.ISO_LOCAL_DATE
+        val now = java.time.LocalDate.now()
+        val speed = Services.prefs.getDouble("playback_speed", 1.0).coerceAtLeast(0.1)
+        val leftContent = continueListening.value.sumOf { b ->
+            val p = books.progressFor(b.id)
+            val duration = p?.durationSec?.takeIf { it > 0 } ?: (b.durationMs ?: 0L) / 1000.0
+            (duration - (p?.currentTimeSec ?: 0.0)).coerceAtLeast(0.0)
+        }
+        val weekAgoMs = System.currentTimeMillis() - 7L * 24 * 3600 * 1000
         summary.value = LibrarySummary(
-            todaySec = stats?.perDaySec?.get(today()) ?: 0.0,
-            streakDays = stats?.perDaySec?.let(::streakFrom) ?: 0,
+            todaySec = perDay[today()] ?: 0.0,
+            streakDays = streakFrom(perDay),
             inProgress = continueListening.value.size,
             // The locally-cached count, matching the Profile screen's number
             // (the server total can include non-audiobook items).
             libraryCount = books.countBooks(LibraryFilter.ALL, null),
+            loaded = true,
+            weekSec = (0L..6L).sumOf { perDay[now.minusDays(it).format(iso)] ?: 0.0 },
+            bestStreakDays = longestStreak(perDay),
+            leftInProgressSec = leftContent / speed,
+            addedThisWeek = recentlyAdded.value.count { (it.addedAt ?: 0L) >= weekAgoMs },
         )
+    }
+
+    /** The longest run of consecutive listening days on record. */
+    private fun longestStreak(perDay: Map<String, Double>): Int {
+        val days = perDay.filterValues { it > 0 }.keys
+            .mapNotNull { runCatching { java.time.LocalDate.parse(it) }.getOrNull() }
+            .sorted()
+        var best = 0; var run = 0; var prev: java.time.LocalDate? = null
+        for (d in days) {
+            run = if (prev != null && d == prev.plusDays(1)) run + 1 else 1
+            best = maxOf(best, run); prev = d
+        }
+        return best
+    }
+
+    /** Titles in A–Z order for the letter rail (whole library, current filter/search). */
+    suspend fun sortedTitles(): List<String> =
+        query.value.let { books.sortedTitles(it.filter, it.search.takeIf { s -> s.isNotBlank() }) }
+
+    /** Widens the list so row [index] is loaded (a letter-rail jump past the window). */
+    fun ensureLoaded(index: Int) {
+        val q = query.value
+        if (index >= q.limit) query.value = q.copy(limit = index + 60)
     }
 
     private fun today(): String =
@@ -176,6 +222,11 @@ class LibraryViewModel : ViewModel() {
         viewModelScope.launch {
             openLibrary()
             runCatching { books.syncAll() }.onFailure { Log.w(TAG, "full sync failed", it) }
+            // A failed pull used to just stop spinning. Say so — the list below is
+            // still the cached library, which works offline.
+            if (!books.lastSyncReachedServer) {
+                com.bennybar.kitzi.ui.common.Snackbars.show("Couldn't reach the server — showing your offline library")
+            }
             runCatching { books.syncProgress() }.onFailure { Log.w(TAG, "progress sync failed", it) }
             runCatching { loadShelves() }.onFailure { Log.w(TAG, "shelves failed", it) }
             refreshing.value = false

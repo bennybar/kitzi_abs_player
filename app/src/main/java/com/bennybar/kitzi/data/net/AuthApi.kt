@@ -30,7 +30,13 @@ class AuthApi(
     /** Tokens as returned by /login, /auth/refresh and the OIDC callback. */
     data class Tokens(val access: String, val refresh: String?)
 
-    fun login(baseUrl: String, username: String, password: String): Boolean {
+    /** Why a login didn't work, so the sign-in screen can say something useful. */
+    enum class LoginResult { OK, UNREACHABLE, INSECURE, WRONG_CREDENTIALS, NOT_ABS, SERVER_ERROR }
+
+    fun login(baseUrl: String, username: String, password: String): Boolean =
+        loginResult(baseUrl, username, password) == LoginResult.OK
+
+    fun loginResult(baseUrl: String, username: String, password: String): LoginResult {
         val base = SessionStore.normalizeBaseUrl(baseUrl)
 
         val body = json.encodeToString(mapOf("username" to username, "password" to password))
@@ -45,14 +51,26 @@ class AuthApi(
             .post(body)
             .build()
 
-        // runCatching so a DNS/TLS/offline failure returns false instead of throwing
-        // out of the login flow (which used to crash the sign-in screen).
-        val tokens = runCatching {
+        // Caught so a DNS/TLS/offline failure is reported instead of throwing out of
+        // the login flow (which used to crash the sign-in screen) — and classified,
+        // where every failure used to read "Sign in failed".
+        val tokens = try {
             client.newCall(request).execute().use { resp ->
-                if (!resp.isSuccessful) return false
-                parseTokens(resp.body?.string())
+                when {
+                    resp.code == 401 || resp.code == 403 -> return LoginResult.WRONG_CREDENTIALS
+                    resp.code == 404 || resp.code == 405 -> return LoginResult.NOT_ABS
+                    !resp.isSuccessful -> return LoginResult.SERVER_ERROR
+                }
+                // A 200 without tokens is some other web page, not Audiobookshelf.
+                parseTokens(resp.body?.string()) ?: return LoginResult.NOT_ABS
             }
-        }.getOrNull() ?: return false
+        } catch (e: javax.net.ssl.SSLException) {
+            return LoginResult.INSECURE
+        } catch (e: java.io.IOException) {
+            return LoginResult.UNREACHABLE
+        } catch (e: IllegalArgumentException) {
+            return LoginResult.UNREACHABLE // not a valid URL
+        }
 
         // Commit URL + tokens together, only now that auth has succeeded. Always drop
         // the previous session's tokens first: storeTokens keeps an existing refresh
@@ -61,7 +79,7 @@ class AuthApi(
         session.clearTokens()
         session.baseUrl = base
         storeTokens(tokens)
-        return true
+        return LoginResult.OK
     }
 
     /**

@@ -1,5 +1,6 @@
 package com.bennybar.kitzi.ui.browse
 
+import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -67,6 +68,9 @@ fun SeriesScreen(onOpenBook: (String) -> Unit, onBack: () -> Unit) {
     var search by remember { mutableStateOf("") }
     var expanded by remember { mutableStateOf<String?>(null) }
     var books by remember { mutableStateOf<List<Book>>(emptyList()) }
+    // Which group `books` was loaded for: a newly expanded series briefly showed the
+    // previous one's books while its own loaded.
+    var booksFor by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(true) }
     // Progress for every book, so expanded series members show the finished /
     // in-progress check the same way the library list does.
@@ -83,6 +87,7 @@ fun SeriesScreen(onOpenBook: (String) -> Unit, onBack: () -> Unit) {
             SeriesTab.SERIES -> expanded?.let { Services.books.booksInSeries(it) }.orEmpty()
             SeriesTab.COLLECTIONS -> expanded?.let { collections[it] }.orEmpty()
         }
+        booksFor = expanded
     }
 
     val groups = when (tab) {
@@ -94,7 +99,7 @@ fun SeriesScreen(onOpenBook: (String) -> Unit, onBack: () -> Unit) {
 
     Column(Modifier.fillMaxSize()) {
         ScreenHeader(
-            icon = if (tab == SeriesTab.SERIES) Icons.Default.LibraryBooks else Icons.Default.Collections,
+            icon = if (tab == SeriesTab.SERIES) Icons.Default.AutoStories else Icons.Default.Collections,
             title = if (tab == SeriesTab.SERIES) "Series" else "Collections",
             subtitle = "${groups.size} in library",
             onBack = onBack,
@@ -167,10 +172,15 @@ fun SeriesScreen(onOpenBook: (String) -> Unit, onBack: () -> Unit) {
                                         modifier = Modifier.padding(top = 4.dp),
                                     )
                                 }
+                                // Turns to point down while the series is open.
+                                val turn by androidx.compose.animation.core.animateFloatAsState(
+                                    if (expanded == group.name) 90f else 0f, label = "chevron",
+                                )
                                 Icon(
                                     Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                                    null,
+                                    if (expanded == group.name) "Collapse" else "Expand",
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.graphicsLayer { rotationZ = turn },
                                 )
                             }
                         }
@@ -197,7 +207,10 @@ fun SeriesScreen(onOpenBook: (String) -> Unit, onBack: () -> Unit) {
                                         color = MaterialTheme.colorScheme.primary,
                                         fontWeight = FontWeight.SemiBold,
                                     )
-                                    books.forEach { book ->
+                                    if (booksFor != group.name) {
+                                        CircularProgressIndicator(Modifier.size(20.dp).align(Alignment.CenterHorizontally), strokeWidth = 2.dp)
+                                    }
+                                    books.takeIf { booksFor == group.name }.orEmpty().forEach { book ->
                                         BookCard(book, progress = progressById[book.id]) { onOpenBook(book.id) }
                                     }
                                 }

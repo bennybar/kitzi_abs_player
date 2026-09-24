@@ -1,5 +1,8 @@
 package com.bennybar.kitzi.ui.detail
 
+import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -18,7 +21,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
-import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Business
@@ -82,12 +84,12 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
     var bookmarks by remember { mutableStateOf<List<Bookmark>>(emptyList()) }
     var showInfo by remember { mutableStateOf(false) }
     var showCancelConfirm by remember { mutableStateOf(false) }
+    var showRemoveConfirm by remember { mutableStateOf(false) }
     var confirmFinished by remember { mutableStateOf(false) }
     var finishedFailed by remember { mutableStateOf(false) }
     var playFailed by remember { mutableStateOf(false) }
     var notFound by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    val context = androidx.compose.ui.platform.LocalContext.current
 
     LaunchedEffect(itemId) {
         val loaded = Services.books.getBook(itemId)
@@ -146,12 +148,26 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
                 TextButton(onClick = {
                     confirmFinished = false
                     scope.launch {
+                        val before = progress
                         val ok = if (isFinished) Services.books.markUnfinished(itemId)
                                  else Services.books.markFinished(itemId)
                         if (!ok) finishedFailed = true
                         progress = Services.books.progressFor(itemId)
+                        // Undo puts back the exact previous state — position included,
+                        // which a plain "mark unfinished" would reset to the start.
+                        if (ok) com.bennybar.kitzi.ui.common.Snackbars.show(
+                            if (isFinished) "Marked as unfinished" else "Marked as finished", "Undo",
+                        ) {
+                            scope.launch {
+                                if (Services.books.restoreProgress(before, itemId)) {
+                                    progress = Services.books.progressFor(itemId)
+                                } else {
+                                    com.bennybar.kitzi.ui.common.Snackbars.show("Couldn't undo — check your connection")
+                                }
+                            }
+                        }
                     }
-                }) { Text(if (isFinished) "Mark unfinished" else "Mark finished") }
+                }) { Text(if (isFinished) "Mark as unfinished" else "Mark as finished") }
             },
             dismissButton = { TextButton(onClick = { confirmFinished = false }) { Text("Cancel") } },
         )
@@ -168,17 +184,17 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
 
     Column(Modifier.fillMaxSize()) {
         TopAppBar(
-            title = { Text("Book Details", fontWeight = FontWeight.SemiBold) },
+            title = { Text("Book details", fontWeight = FontWeight.SemiBold) },
+            // The screen is already padded below the status bar; the bar's own
+            // status-bar inset on top of that left an empty band above the title.
+            windowInsets = androidx.compose.foundation.layout.WindowInsets(0),
             navigationIcon = {
                 IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
             },
             actions = {
-                IconButton(onClick = {
-                    b.let { Services.queue.addToBack(QueueEntry(it.id, it.title, it.author, it.coverUrl)) }
-                }) { Icon(Icons.AutoMirrored.Filled.PlaylistAdd, "Add to queue") }
                 val isFinished = progress?.isFinished == true
                 TextButton(onClick = { confirmFinished = true }) {
-                    Text(if (isFinished) "Mark as Unfinished" else "Mark as Finished")
+                    Text(if (isFinished) "Mark as unfinished" else "Mark as finished")
                 }
             },
         )
@@ -287,7 +303,9 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
                     (d.status == DownloadStatus.RUNNING || d.status == DownloadStatus.QUEUED)
                 when {
                     d?.isComplete == true -> OutlinedButton(
-                        onClick = { scope.launch { Services.downloads.delete(itemId) } },
+                        // Asks first, like the player and Downloads do — one tap used to
+                        // delete hundreds of MB.
+                        onClick = { showRemoveConfirm = true },
                         modifier = Modifier.weight(1f),
                     ) {
                         Icon(Icons.Default.Delete, null)
@@ -304,7 +322,7 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
                         onClick = {
                             scope.launch {
                                 if (!Services.downloads.download(itemId)) {
-                                    android.widget.Toast.makeText(context, "Nothing to download: the server lists no audio files for this book", android.widget.Toast.LENGTH_LONG).show()
+                                    com.bennybar.kitzi.ui.common.Snackbars.show("Nothing to download: the server lists no audio files for this book")
                                 }
                             }
                         },
@@ -316,7 +334,13 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
                 }
             }
 
-            ProgressCard(progress)
+            ProgressCard(progress, b.durationMs?.let { it / 1000.0 })
+
+            // The description is what people read when deciding, so it comes right
+            // after progress (it used to sit below everything, under Bookmarks).
+            b.description?.takeIf { it.isNotBlank() }?.let { raw ->
+                DescriptionCard(remember(raw) { com.bennybar.kitzi.ui.common.decodeHtml(raw) })
+            }
 
             // One light "details" card: aligned label/value rows (no uneven
             // two-column tiles that stretched when a value wrapped) plus the
@@ -329,9 +353,11 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
                 Column(Modifier.padding(vertical = 4.dp)) {
                     b.publishYear?.let { DetailRow(Icons.Default.CalendarMonth, "Year", it.toString()) }
                     b.publisher?.let { DetailRow(Icons.Default.Business, "Publisher", it) }
-                    b.genres.takeIf { it.isNotEmpty() }?.let {
-                        DetailRow(Icons.Default.LocalOffer, "Genres", it.joinToString(", "))
-                    }
+                    // "Audio Book" as a genre just repeats what every book here is.
+                    b.genres.filterNot { it.replace(" ", "").equals("audiobook", ignoreCase = true) }
+                        .takeIf { it.isNotEmpty() }?.let {
+                            DetailRow(Icons.Default.LocalOffer, "Genres", it.joinToString(", "))
+                        }
                     HorizontalDivider(
                         Modifier.padding(start = 50.dp),
                         thickness = 0.5.dp,
@@ -374,43 +400,60 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
                 }
             }
 
-            OutlinedButton(
-                onClick = {
-                    Services.queue.addToBack(
-                        QueueEntry(b.id, b.title, b.author, b.coverUrl)
-                    )
-                },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Icon(Icons.AutoMirrored.Filled.QueueMusic, null)
-                Text("Add to queue", modifier = Modifier.padding(start = 6.dp))
-            }
-
-            BookmarksCard(bookmarks)
-
-            b.description?.takeIf { it.isNotBlank() }?.let {
-                Surface(
-                    color = MaterialTheme.colorScheme.surfaceContainer,
-                    shape = RoundedCornerShape(20.dp),
-                    modifier = Modifier.fillMaxWidth(),
+            // One place for the queue (it was also an icon in the top bar), with the
+            // "play next" the queue always supported, and a confirmation with Undo.
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                val entry = QueueEntry(b.id, b.title, b.author, b.coverUrl)
+                OutlinedButton(
+                    onClick = {
+                        Services.queue.addNext(entry)
+                        com.bennybar.kitzi.ui.common.Snackbars.show("Plays next", "Undo") { Services.queue.remove(b.id) }
+                    },
+                    modifier = Modifier.weight(1f),
                 ) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text(
-                            "Description",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Text(
-                            // ABS descriptions carry HTML; strip the tags rather than render them.
-                            it.replace(Regex("<[^>]*>"), "").trim(),
-                            style = MaterialTheme.typography.bodyLarge,
-                            modifier = Modifier.padding(top = 8.dp),
-                        )
-                    }
+                    Icon(Icons.AutoMirrored.Filled.PlaylistPlay, null)
+                    Text("Play next", modifier = Modifier.padding(start = 6.dp))
+                }
+                OutlinedButton(
+                    onClick = {
+                        Services.queue.addToBack(entry)
+                        com.bennybar.kitzi.ui.common.Snackbars.show("Added to queue", "Undo") { Services.queue.remove(b.id) }
+                    },
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.QueueMusic, null)
+                    Text("Add to queue", modifier = Modifier.padding(start = 6.dp))
                 }
             }
 
-            Text("", Modifier.padding(bottom = 12.dp))
+            BookmarksCard(
+                bookmarks,
+                onOpen = { bm ->
+                    scope.launch {
+                        // Jump there: seek if this book is loaded, else start it first.
+                        val loaded = Services.playback.nowPlaying.value?.itemId == itemId
+                        if (loaded || Services.playback.playItem(itemId)) {
+                            Services.playback.seekGlobal(bm.timeSec)
+                            if (!loaded) onPlay()
+                        } else playFailed = true
+                    }
+                },
+                onDelete = { bm ->
+                    scope.launch {
+                        val ok = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            Services.playbackApi.deleteBookmark(itemId, bm.timeSec)
+                        }
+                        if (ok) {
+                            bookmarks = bookmarks - bm
+                            com.bennybar.kitzi.ui.common.Snackbars.show("Bookmark deleted")
+                        } else {
+                            com.bennybar.kitzi.ui.common.Snackbars.show("Couldn't delete the bookmark")
+                        }
+                    }
+                },
+            )
+
+            Spacer(Modifier.height(12.dp))
         }
     }
 
@@ -424,6 +467,21 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
             title = { Text("Couldn't start this book") },
             text = { Text("The server didn't return a playable stream. Check your connection and try again — downloaded books always play offline.") },
             confirmButton = { TextButton(onClick = { playFailed = false }) { Text("OK") } },
+        )
+    }
+
+    if (showRemoveConfirm) {
+        AlertDialog(
+            onDismissRequest = { showRemoveConfirm = false },
+            title = { Text("Remove download?") },
+            text = { Text("The downloaded files are deleted from this device. You can still stream the book.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showRemoveConfirm = false
+                    scope.launch { Services.downloads.delete(itemId) }
+                }) { Text("Remove") }
+            },
+            dismissButton = { TextButton(onClick = { showRemoveConfirm = false }) { Text("Keep") } },
         )
     }
 
@@ -491,9 +549,10 @@ private fun DetailRow(
 }
 
 @Composable
-private fun ProgressCard(progress: MediaProgressEntity?) {
+private fun ProgressCard(progress: MediaProgressEntity?, bookDurationSec: Double?) {
     val fraction = progress?.progress ?: 0.0
     val finished = progress?.isFinished == true
+    val duration = progress?.durationSec?.takeIf { it > 0 } ?: bookDurationSec
 
     val title = when {
         finished -> "Finished"
@@ -502,7 +561,11 @@ private fun ProgressCard(progress: MediaProgressEntity?) {
     }
     val subtitle = when {
         finished -> "You've listened to the whole book."
-        fraction > 0 -> "${formatHm((progress!!.currentTimeSec).toLong())} in"
+        fraction > 0 -> {
+            val listened = progress!!.currentTimeSec
+            val left = duration?.let { (it - listened).coerceAtLeast(0.0) }
+            "${formatHm(listened.toLong())} in" + (left?.let { " · ${formatHm(it.toLong())} left" } ?: "")
+        }
         else -> "Start listening to save your progress."
     }
 
@@ -512,14 +575,16 @@ private fun ProgressCard(progress: MediaProgressEntity?) {
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                if (finished) Icons.Default.CheckCircle else Icons.Default.PlayArrow,
-                null,
-                tint = if (finished) MaterialTheme.colorScheme.primary
-                else MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(30.dp),
-            )
-            Column(Modifier.weight(1f).padding(start = 14.dp)) {
+            // Only the finished mark: a play glyph here read as a second Play button
+            // right under the real one.
+            if (finished) {
+                Icon(
+                    Icons.Default.CheckCircle, null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(30.dp).padding(end = 0.dp),
+                )
+            }
+            Column(Modifier.weight(1f).padding(start = if (finished) 14.dp else 0.dp)) {
                 Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Text(
                     subtitle,
@@ -538,7 +603,11 @@ private fun ProgressCard(progress: MediaProgressEntity?) {
 }
 
 @Composable
-private fun BookmarksCard(bookmarks: List<Bookmark>) {
+private fun BookmarksCard(
+    bookmarks: List<Bookmark>,
+    onOpen: (Bookmark) -> Unit,
+    onDelete: (Bookmark) -> Unit,
+) {
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainer,
         shape = RoundedCornerShape(20.dp),
@@ -568,7 +637,10 @@ private fun BookmarksCard(bookmarks: List<Bookmark>) {
             } else {
                 bookmarks.forEach { bm ->
                     Row(
-                        Modifier.fillMaxWidth().padding(top = 10.dp),
+                        Modifier.fillMaxWidth().padding(top = 4.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable { onOpen(bm) }
+                            .padding(vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Icon(
@@ -585,12 +657,55 @@ private fun BookmarksCard(bookmarks: List<Bookmark>) {
                             modifier = Modifier.weight(1f).padding(start = 10.dp),
                         )
                         Text(
-                            formatHm(bm.timeSec.toLong()),
+                            // Exact time: minutes alone showed "0m" for most bookmarks.
+                            com.bennybar.kitzi.ui.player.formatClock(bm.timeSec.toLong()),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        IconButton(onClick = { onDelete(bm) }) {
+                            Icon(
+                                Icons.Default.Delete, "Delete bookmark",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
                     }
                 }
+            }
+        }
+    }
+}
+
+/** The description, collapsed to a few lines with More / Less. */
+@Composable
+private fun DescriptionCard(text: String) {
+    var expanded by remember { mutableStateOf(false) }
+    var overflows by remember { mutableStateOf(false) }
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = RoundedCornerShape(20.dp),
+        modifier = Modifier.fillMaxWidth(),
+        onClick = { expanded = !expanded },
+        enabled = overflows || expanded,
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Text("Description", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(
+                text,
+                style = MaterialTheme.typography.bodyLarge,
+                maxLines = if (expanded) Int.MAX_VALUE else 4,
+                overflow = TextOverflow.Ellipsis,
+                onTextLayout = { if (!expanded) overflows = it.hasVisualOverflow },
+                modifier = Modifier.padding(top = 8.dp),
+            )
+            if (overflows || expanded) {
+                Text(
+                    if (expanded) "Less" else "More",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
             }
         }
     }

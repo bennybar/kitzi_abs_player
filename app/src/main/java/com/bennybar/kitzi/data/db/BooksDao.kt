@@ -76,6 +76,10 @@ interface BooksDao {
     @RawQuery(observedEntities = [BookEntity::class, MediaProgressEntity::class])
     suspend fun countBooksRaw(query: SupportSQLiteQuery): Int
 
+    /** Titles only, for a libraryQuery built with `titlesOnly` (the A–Z rail). */
+    @RawQuery
+    suspend fun titlesRaw(query: SupportSQLiteQuery): List<String>
+
     /** Series members: explicit sequence first, NULLs last, then title. (books_repository.dart:1938) */
     @Query(
         """
@@ -181,6 +185,7 @@ interface BooksDao {
             limit: Int,
             offset: Int,
             countOnly: Boolean = false,
+            titlesOnly: Boolean = false,
         ): SupportSQLiteQuery {
             val args = mutableListOf<Any>()
             val where = mutableListOf(AUDIOBOOK_PREDICATE)
@@ -209,7 +214,11 @@ interface BooksDao {
                 BookSort.UPDATED_DESC -> "b.updatedAt IS NULL, b.updatedAt DESC"
             }
 
-            val select = if (countOnly) "COUNT(*)" else "b.*"
+            val select = when {
+                countOnly -> "COUNT(*)"
+                titlesOnly -> "b.title"
+                else -> "b.*"
+            }
             val sql = buildString {
                 append("SELECT $select FROM books b ")
                 append("LEFT JOIN media_progress p ON p.itemId = b.id ")

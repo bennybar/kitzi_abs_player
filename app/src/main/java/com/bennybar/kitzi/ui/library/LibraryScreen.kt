@@ -1,5 +1,18 @@
 package com.bennybar.kitzi.ui.library
 
+import com.bennybar.kitzi.ui.common.plural
+import kotlinx.coroutines.flow.first
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.material.icons.filled.SearchOff
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.AutoStories
+import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -36,7 +49,6 @@ import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.LibraryBooks
 import androidx.compose.material.icons.filled.LocalFireDepartment
-import androidx.compose.material.icons.filled.MonitorHeart
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -148,6 +160,15 @@ fun LibraryScreen(
     // searching or filtering they are hunting for one book and the header is noise.
     val showHeader = query.search.isBlank() && query.filter == LibraryFilter.ALL
 
+    // Hoisted so the top row can bring the header into view: the controls and the
+    // search field live at the top of the list, so opening them while scrolled down
+    // did nothing visible.
+    val listState = rememberLazyListState()
+    val gridState = rememberLazyGridState()
+    fun revealHeader() {
+        scope.launch { if (grid) gridState.animateScrollToItem(0) else listState.animateScrollToItem(0) }
+    }
+
     Column(Modifier.fillMaxSize()) {
         // Pinned: the library/series switch stays put while the content scrolls.
         Row(
@@ -158,37 +179,60 @@ fun LibraryScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             SegmentedPill(
-                icon = Icons.Default.MonitorHeart,
+                icon = Icons.Default.Headphones,
                 label = "Audiobooks",
                 selected = true,
                 modifier = Modifier.weight(1f),
                 onClick = {},
             )
             SegmentedPill(
-                icon = Icons.Default.LibraryBooks,
+                icon = Icons.Default.AutoStories,
                 label = "Series",
                 selected = false,
                 modifier = Modifier.weight(1f),
                 onClick = onOpenSeries,
             )
+            // Search is always one tap away (it used to be behind the controls).
             CircleIconButton(
-                if (toolbarVisible) Icons.Default.KeyboardArrowUp else Icons.Default.Tune,
-                if (toolbarVisible) "Hide controls" else "Show controls",
+                Icons.Default.Search, if (showSearch) "Close search" else "Search",
+                selected = showSearch,
                 onClick = {
-                    toolbarVisible = !toolbarVisible
-                    // Closing the controls also clears any active search/filter and
-                    // collapses their panels. The search field and filter chips are
-                    // otherwise independent of the toolbar, so hiding it alone left a
-                    // filtered library on screen with nothing to explain why.
-                    if (!toolbarVisible) {
-                        showSearch = false
-                        showFilter = false
-                        showSort = false
-                        vm.setSearch("")
-                        vm.setFilter(LibraryFilter.ALL)
-                    }
+                    showSearch = !showSearch
+                    if (showSearch) revealHeader() else vm.setSearch("")
                 },
             )
+            // A dot on the controls button while a filter or non-default sort is in
+            // effect, so a filtered list is never unexplained.
+            val customized = query.filter != LibraryFilter.ALL || query.sort != LibraryQuery().sort
+            Box {
+                CircleIconButton(
+                    if (toolbarVisible) Icons.Default.KeyboardArrowUp else Icons.Default.Tune,
+                    if (toolbarVisible) "Hide controls" else "Show controls",
+                    onClick = {
+                        toolbarVisible = !toolbarVisible
+                        // Closing the controls keeps the filter (it used to silently
+                        // reset it); the chip below says it's on and removes it.
+                        if (!toolbarVisible) { showFilter = false; showSort = false } else revealHeader()
+                    },
+                )
+                if (customized && !toolbarVisible) {
+                    Box(
+                        Modifier.align(Alignment.TopEnd).padding(2.dp).size(10.dp)
+                            .clip(CircleShape).background(MaterialTheme.colorScheme.primary),
+                    )
+                }
+            }
+        }
+        // With the controls closed, an active filter shows as one removable chip.
+        if (!toolbarVisible && query.filter != LibraryFilter.ALL) {
+            Row(Modifier.padding(horizontal = 16.dp)) {
+                androidx.compose.material3.InputChip(
+                    selected = true,
+                    onClick = { vm.setFilter(LibraryFilter.ALL) },
+                    label = { Text(query.filter.label()) },
+                    trailingIcon = { Icon(Icons.Default.Close, "Remove filter", Modifier.size(16.dp)) },
+                )
+            }
         }
 
         PullToRefreshBox(
@@ -196,9 +240,6 @@ fun LibraryScreen(
             onRefresh = vm::refresh,
             modifier = Modifier.fillMaxSize(),
         ) {
-            val listState = rememberLazyListState()
-            val gridState = rememberLazyGridState()
-
             // Infinite scroll: widen the query window as the end of the list nears,
             // so the library isn't capped at the first 60 of N books. loadMore()
             // self-terminates once the cache is exhausted.
@@ -225,7 +266,6 @@ fun LibraryScreen(
                     if (toolbarVisible) {
                         Toolbar(
                             grid = grid,
-                            onSearch = { showSearch = !showSearch },
                             onToggleLayout = vm::toggleGrid,
                             onStats = onOpenStats,
                             onProfile = onOpenProfile,
@@ -261,10 +301,19 @@ fun LibraryScreen(
                     }
 
                     if (showHeader) {
-                        SummaryBlock(summary)
+                        SummaryBlock(
+                            summary,
+                            onStats = onOpenStats,
+                            onInProgress = { vm.setFilter(LibraryFilter.IN_PROGRESS) },
+                            onLibrary = {
+                                scope.launch {
+                                    if (grid) gridState.animateScrollToItem(1) else listState.animateScrollToItem(1)
+                                }
+                            },
+                        )
                         if (continueListening.isNotEmpty()) {
                             SectionHeader(Icons.Default.PlayArrow, "Continue Listening", Modifier.padding(horizontal = 16.dp))
-                            Shelf(continueListening, onOpenBook)
+                            Shelf(continueListening, onOpenBook, progressById)
                         }
                         if (recentlyAdded.isNotEmpty()) {
                             SectionHeader(Icons.Default.AutoAwesome, "Recently Added", Modifier.padding(horizontal = 16.dp))
@@ -287,8 +336,15 @@ fun LibraryScreen(
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     item(key = "header", span = { GridItemSpan(maxLineSpan) }) { Header() }
+                    if (books.isEmpty()) {
+                        item(key = "empty", span = { GridItemSpan(maxLineSpan) }) {
+                            LibraryEmpty(filtered = !showHeader, loaded = summary.loaded) {
+                                vm.setSearch(""); vm.setFilter(LibraryFilter.ALL); showSearch = false
+                            }
+                        }
+                    }
                     items(books, key = { "b_${it.id}" }) { book ->
-                        BookGridItem(book) { onOpenBook(book.id) }
+                        BookGridItem(book, progressById[book.id], book.id in downloadedIds) { onOpenBook(book.id) }
                     }
                 }
             } else {
@@ -302,6 +358,14 @@ fun LibraryScreen(
                         modifier = Modifier.fillMaxSize(),
                     ) {
                         item(key = "header") { Header() }
+                        // Nothing to list: say why, instead of a blank page under the header.
+                        if (books.isEmpty()) {
+                            item(key = "empty") {
+                                LibraryEmpty(filtered = !showHeader, loaded = summary.loaded) {
+                                    vm.setSearch(""); vm.setFilter(LibraryFilter.ALL); showSearch = false
+                                }
+                            }
+                        }
                         items(books, key = { "b_${it.id}" }) { book ->
                             BookCard(
                                 book,
@@ -311,21 +375,45 @@ fun LibraryScreen(
                             ) { onOpenBook(book.id) }
                         }
                     }
-                    // A–Z fast-scroll rail (the ui_letter_scroll_enabled setting).
-                    if (com.bennybar.kitzi.ui.UiPrefsState.letterScrollEnabled.value && books.isNotEmpty() && showHeader) {
-                        val anchors = remember(books) {
+                    // A–Z fast-scroll rail (the ui_letter_scroll_enabled setting). Only
+                    // under A–Z sort — under "Recently added" letters mean nothing — and
+                    // built from EVERY title in list order, not just the loaded window
+                    // (the list pages 60 at a time, so most letters used to be missing).
+                    // Hebrew titles bring their own letters, after the Latin ones.
+                    val showRail = com.bennybar.kitzi.ui.UiPrefsState.letterScrollEnabled.value &&
+                        query.sort == BookSort.NAME_ASC && books.isNotEmpty()
+                    if (showRail) {
+                        val titles by produceState(emptyList<String>(), query.filter, query.search, refreshing) {
+                            value = vm.sortedTitles()
+                        }
+                        val anchors = remember(titles) {
                             LinkedHashMap<Char, Int>().apply {
-                                books.forEachIndexed { i, b ->
-                                    val c = b.title.firstOrNull { it.isLetter() }?.uppercaseChar() ?: '#'
-                                    putIfAbsent(c, i)
+                                // The FIRST character decides, as it does for the SQL sort: a
+                                // title opening with a quote or digit sorts before "A", so
+                                // it belongs under "#" — taking its first letter instead
+                                // put "B" and "T" ahead of "A".
+                                titles.forEachIndexed { i, t ->
+                                    val first = t.trimStart().firstOrNull()
+                                    putIfAbsent(if (first != null && first.isLetter()) first.uppercaseChar() else '#', i)
                                 }
                             }
                         }
-                        LetterRail(
-                            letters = anchors.keys.sorted(),
-                            onLetter = { c -> anchors[c]?.let { scope.launch { listState.scrollToItem(it + 1) } } },
-                            modifier = Modifier.align(Alignment.CenterEnd).padding(end = 2.dp),
-                        )
+                        if (anchors.size > 1) {
+                            LetterRail(
+                                letters = anchors.keys.toList(),
+                                onLetter = { c ->
+                                    anchors[c]?.let { i ->
+                                        scope.launch {
+                                            // Load far enough first, then jump (row 0 is the header).
+                                            vm.ensureLoaded(i)
+                                            androidx.compose.runtime.snapshotFlow { books.size }.first { it > i }
+                                            listState.scrollToItem(i + 1)
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.align(Alignment.CenterEnd).padding(end = 2.dp),
+                            )
+                        }
                     }
                 }
             }
@@ -340,30 +428,104 @@ private fun LibraryFilter.label() = when (this) {
     LibraryFilter.FINISHED -> "Finished"
 }
 
-/** A slim right-edge A–Z rail; tapping a letter jumps the list to its first book. */
+/**
+ * A slim right-edge A–Z rail. Tap a letter, or drag along the rail, to jump the
+ * list; while touching, a bubble shows the letter under the finger. The whole rail
+ * is the touch target (each letter used to be a ~14dp tap target on its own).
+ */
 @Composable
 private fun LetterRail(letters: List<Char>, onLetter: (Char) -> Unit, modifier: Modifier = Modifier) {
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.85f),
-        shape = RoundedCornerShape(12.dp),
-        modifier = modifier,
-    ) {
-        Column(
-            Modifier.width(22.dp).padding(vertical = 6.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(1.dp),
+    var active by remember { mutableStateOf<Char?>(null) }
+    var railHeight by remember { mutableIntStateOf(1) }
+    fun letterAt(y: Float): Char =
+        letters[((y / railHeight) * letters.size).toInt().coerceIn(0, letters.lastIndex)]
+    fun select(y: Float) {
+        val c = letterAt(y)
+        if (c != active) { active = c; onLetter(c) }
+    }
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        active?.let { c ->
+            Surface(
+                color = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+                shape = CircleShape,
+                shadowElevation = 6.dp,
+                modifier = Modifier.padding(end = 10.dp).size(56.dp),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(c.toString(), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.85f),
+            shape = RoundedCornerShape(14.dp),
         ) {
-            letters.forEach { c ->
-                Text(
-                    c.toString(),
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(4.dp))
-                        .clickable { onLetter(c) }
-                        .padding(horizontal = 4.dp, vertical = 1.dp),
-                )
+            Column(
+                Modifier
+                    .width(28.dp)
+                    .fillMaxHeight(0.8f)
+                    .heightIn(max = (letters.size * 18).dp)
+                    .padding(vertical = 6.dp)
+                    .onSizeChanged { railHeight = it.height.coerceAtLeast(1) }
+                    .pointerInput(letters) {
+                        detectTapGestures(
+                            onPress = { select(it.y); tryAwaitRelease(); active = null },
+                        )
+                    }
+                    .pointerInput(letters) {
+                        detectVerticalDragGestures(
+                            onDragStart = { select(it.y) },
+                            onDragEnd = { active = null },
+                            onDragCancel = { active = null },
+                            onVerticalDrag = { change, _ -> select(change.position.y) },
+                        )
+                    },
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                letters.forEach { c ->
+                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        Text(
+                            c.toString(),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (c == active) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Why the list is empty: no matches for the search/filter, or no books yet. */
+@Composable
+private fun LibraryEmpty(filtered: Boolean, loaded: Boolean, onClear: () -> Unit) {
+    if (!filtered && !loaded) return // still loading: the tiles show "—"
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 40.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(
+            if (filtered) Icons.Default.SearchOff else Icons.Default.Headphones, null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(48.dp),
+        )
+        Text(
+            if (filtered) "No matches" else "Your library is empty",
+            style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.padding(top = 12.dp),
+        )
+        Text(
+            if (filtered) "Nothing in your library matches this search or filter."
+            else "Books you add on the server appear here. Pull down to refresh.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = Modifier.padding(top = 6.dp),
+        )
+        if (filtered) {
+            androidx.compose.material3.TextButton(onClick = onClear, modifier = Modifier.padding(top = 8.dp)) {
+                Text("Clear search and filters")
             }
         }
     }
@@ -373,7 +535,6 @@ private fun LetterRail(letters: List<Char>, onLetter: (Char) -> Unit, modifier: 
 @Composable
 private fun Toolbar(
     grid: Boolean,
-    onSearch: () -> Unit,
     onToggleLayout: () -> Unit,
     onStats: () -> Unit,
     onProfile: () -> Unit,
@@ -392,7 +553,6 @@ private fun Toolbar(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            CircleIconButton(Icons.Default.Search, "Search", onClick = onSearch)
             CircleIconButton(
                 if (grid) Icons.Default.ViewList else Icons.Default.GridView,
                 "Toggle layout",
@@ -427,7 +587,15 @@ private fun <T> ChipRow(options: List<Pair<T, String>>, selected: T, onSelect: (
 
 /** The 2x2 at-a-glance block: one container, four inner cards, each with a tinted badge. */
 @Composable
-private fun SummaryBlock(summary: LibrarySummary) {
+private fun SummaryBlock(
+    summary: LibrarySummary,
+    onStats: () -> Unit,
+    onInProgress: () -> Unit,
+    onLibrary: () -> Unit,
+) {
+    // "—" until the first load, instead of a row of zeros that then jumps.
+    val ready = summary.loaded
+    fun v(text: String) = if (ready) text else "—"
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainer,
         shape = RoundedCornerShape(24.dp),
@@ -436,38 +604,47 @@ private fun SummaryBlock(summary: LibrarySummary) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 SummaryTile(
-                    "Listening Time",
-                    formatHm(summary.todaySec.toLong()),
-                    "Today",
+                    "Listening today",
+                    v(formatHm(summary.todaySec.toLong())),
+                    if (ready && summary.weekSec > 0) "This week: ${formatHm(summary.weekSec.toLong())}" else "Today",
                     Icons.Default.Schedule,
                     MaterialTheme.colorScheme.primary,
                     Modifier.weight(1f),
+                    onClick = onStats,
                 )
                 SummaryTile(
                     "Streak",
-                    if (summary.streakDays > 0) "${summary.streakDays} days" else "Start today",
-                    if (summary.streakDays > 0) "Keep momentum" else "No active streak",
+                    v(if (summary.streakDays > 0) plural(summary.streakDays, "day") else "Start today"),
+                    when {
+                        !ready -> ""
+                        summary.bestStreakDays > summary.streakDays -> "Best: ${plural(summary.bestStreakDays, "day")}"
+                        summary.streakDays > 0 -> "Your best yet"
+                        else -> "No active streak"
+                    },
                     Icons.Default.LocalFireDepartment,
                     Color(0xFFE8A33D),
                     Modifier.weight(1f),
+                    onClick = onStats,
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 SummaryTile(
-                    "Continue Listening",
-                    "${summary.inProgress} books",
-                    "Jump back in quickly",
+                    "In progress",
+                    v(plural(summary.inProgress, "book")),
+                    if (ready && summary.leftInProgressSec > 0) "${formatHm(summary.leftInProgressSec.toLong())} left" else "Nothing in progress",
                     Icons.Default.PlayArrow,
                     MaterialTheme.colorScheme.primary,
                     Modifier.weight(1f),
+                    onClick = onInProgress,
                 )
                 SummaryTile(
                     "Library",
-                    "${summary.libraryCount} titles",
-                    "Freshest shelf on top",
+                    v(plural(summary.libraryCount, "title")),
+                    if (ready && summary.addedThisWeek > 0) "+${summary.addedThisWeek} this week" else "Newest first",
                     Icons.Default.LibraryBooks,
                     MaterialTheme.colorScheme.primary,
                     Modifier.weight(1f),
+                    onClick = onLibrary,
                 )
             }
         }
@@ -482,11 +659,13 @@ private fun SummaryTile(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     tint: Color,
     modifier: Modifier = Modifier,
+    onClick: () -> Unit,
 ) {
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         shape = RoundedCornerShape(18.dp),
         modifier = modifier,
+        onClick = onClick,
     ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
@@ -531,7 +710,13 @@ private fun SummaryTile(
  * zero height and silently disappears.
  */
 @Composable
-private fun Shelf(books: List<Book>, onOpenBook: (String) -> Unit) {
+private fun Shelf(
+    books: List<Book>,
+    onOpenBook: (String) -> Unit,
+    /** Set for Continue Listening: each card shows its progress and time left. */
+    progressById: Map<String, MediaProgressEntity>? = null,
+) {
+    val speed = com.bennybar.kitzi.data.Services.prefs.getDouble("playback_speed", 1.0).coerceAtLeast(0.1)
     Row(
         Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -543,15 +728,16 @@ private fun Shelf(books: List<Book>, onOpenBook: (String) -> Unit) {
                 modifier = Modifier.width(150.dp).clickable { onOpenBook(book.id) },
             ) {
                 Column(Modifier.padding(10.dp)) {
-                    AsyncImage(
-                        model = book.coverUrl,
-                        contentDescription = book.title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(1f)
-                            .clip(RoundedCornerShape(12.dp)),
-                    )
+                    val p = progressById?.get(book.id)
+                    Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(12.dp))) {
+                        AsyncImage(
+                            model = book.coverUrl,
+                            contentDescription = book.title,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                        p?.progress?.toFloat()?.takeIf { it > 0f && !p.isFinished }?.let { CoverProgressBar(it) }
+                    }
                     Text(
                         book.title,
                         style = MaterialTheme.typography.bodyLarge,
@@ -560,7 +746,13 @@ private fun Shelf(books: List<Book>, onOpenBook: (String) -> Unit) {
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.padding(top = 8.dp),
                     )
-                    book.author?.let {
+                    // Continue Listening: time left at your speed, where the author
+                    // would be (the author is already on the cover for most books).
+                    val left = p?.takeIf { !it.isFinished }?.let {
+                        val d = it.durationSec.takeIf { d -> d > 0 } ?: (book.durationMs ?: 0L) / 1000.0
+                        ((d - it.currentTimeSec).coerceAtLeast(0.0) / speed).takeIf { l -> l > 0 }
+                    }
+                    (left?.let { "${formatHm(it.toLong())} left" } ?: book.author)?.let {
                         Text(
                             it,
                             style = MaterialTheme.typography.bodyMedium,
@@ -572,6 +764,25 @@ private fun Shelf(books: List<Book>, onOpenBook: (String) -> Unit) {
                 }
             }
         }
+    }
+}
+
+/** The slim progress bar across the bottom of a cover. */
+@Composable
+private fun androidx.compose.foundation.layout.BoxScope.CoverProgressBar(fraction: Float) {
+    Box(
+        Modifier
+            .align(Alignment.BottomCenter)
+            .fillMaxWidth()
+            .height(5.dp)
+            .background(Color.Black.copy(alpha = 0.35f)),
+    ) {
+        Box(
+            Modifier
+                .fillMaxHeight()
+                .fillMaxWidth(fraction.coerceIn(0f, 1f))
+                .background(MaterialTheme.colorScheme.primary),
+        )
     }
 }
 
@@ -600,22 +811,7 @@ fun BookCard(
                 // A slim progress bar across the bottom of the cover for books in
                 // progress (not the finished ones, which read as a full bar of noise).
                 val frac = progress?.takeIf { it.isFinished != true }?.progress?.toFloat()
-                if (frac != null && frac > 0f) {
-                    Box(
-                        Modifier
-                            .align(Alignment.BottomCenter)
-                            .fillMaxWidth()
-                            .height(5.dp)
-                            .background(Color.Black.copy(alpha = 0.35f)),
-                    ) {
-                        Box(
-                            Modifier
-                                .fillMaxHeight()
-                                .fillMaxWidth(frac.coerceIn(0f, 1f))
-                                .background(MaterialTheme.colorScheme.primary),
-                        )
-                    }
-                }
+                if (frac != null && frac > 0f) CoverProgressBar(frac)
             }
             Column(Modifier.weight(1f).padding(start = 14.dp)) {
                 Text(
@@ -711,14 +907,25 @@ fun BookCard(
 }
 
 @Composable
-private fun BookGridItem(book: Book, onClick: () -> Unit) {
+private fun BookGridItem(book: Book, progress: MediaProgressEntity?, downloaded: Boolean, onClick: () -> Unit) {
     Column(Modifier.clickable(onClick = onClick)) {
-        AsyncImage(
-            model = book.coverUrl,
-            contentDescription = book.title,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(12.dp)),
-        )
+        // The same marks the list rows have: progress, finished, downloaded.
+        Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(12.dp))) {
+            AsyncImage(
+                model = book.coverUrl,
+                contentDescription = book.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+            progress?.progress?.toFloat()?.takeIf { it > 0f && !progress.isFinished }?.let { CoverProgressBar(it) }
+            Row(
+                Modifier.align(Alignment.TopEnd).padding(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                if (downloaded) GridBadge(Icons.Default.DownloadDone, "Downloaded", Color(0xFF4CAF50))
+                if (progress?.isFinished == true) GridBadge(Icons.Default.CheckCircle, "Finished", Color(0xFF4CAF50))
+            }
+        }
         Text(
             book.title,
             style = MaterialTheme.typography.bodyMedium,
@@ -736,5 +943,15 @@ private fun BookGridItem(book: Book, onClick: () -> Unit) {
                 overflow = TextOverflow.Ellipsis,
             )
         }
+    }
+}
+
+@Composable
+private fun GridBadge(icon: androidx.compose.ui.graphics.vector.ImageVector, description: String, tint: Color) {
+    Box(
+        Modifier.size(24.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.55f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, description, tint = tint, modifier = Modifier.size(16.dp))
     }
 }

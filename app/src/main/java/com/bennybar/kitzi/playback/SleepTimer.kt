@@ -34,7 +34,10 @@ sealed interface SleepMode {
  * End-of-chapter tracks the chapter's END in BOOK coordinates, so it survives the
  * playhead crossing a track boundary mid-chapter.
  */
-class SleepTimer(private val controller: PlaybackController) {
+class SleepTimer(context: android.content.Context, private val controller: PlaybackController) {
+
+    /** Shake to add 5 minutes, listened for only in a timer's last minute. */
+    private val shake = ShakeDetector(context)
 
     private val scope = CoroutineScope(Dispatchers.Main)
     private var job: Job? = null
@@ -42,23 +45,32 @@ class SleepTimer(private val controller: PlaybackController) {
     private val _mode = MutableStateFlow<SleepMode>(SleepMode.Off)
     val mode: StateFlow<SleepMode> = _mode.asStateFlow()
 
-    fun startDuration(minutes: Int) {
+    fun startDuration(minutes: Int) = startDurationUntil(SystemClock.elapsedRealtime() + minutes * 60_000L)
+
+    private fun startDurationUntil(endsAt: Long) {
         cancel()
-        val endsAt = SystemClock.elapsedRealtime() + minutes * 60_000L
         _mode.value = SleepMode.Duration(endsAt)
 
         job = scope.launch {
             while (true) {
                 val remainingMs = endsAt - SystemClock.elapsedRealtime()
                 if (remainingMs <= 0) {
+                    shake.stop()
                     controller.player.pause()
                     _mode.value = SleepMode.Off
+                    com.bennybar.kitzi.ui.common.Snackbars.show("Sleep timer paused playback", "+5 min") {
+                        controller.resume(); startDuration(EXTEND_MINUTES)
+                    }
                     return@launch
                 }
-                // Sleep until the end, re-checking at least every 30 s: delay runs on
-                // uptime, which stops while the CPU sleeps, so a single long delay
-                // could fire late; the monotonic clock above is the authority.
-                delay(remainingMs.coerceAtMost(MAX_WAIT_MS))
+                // In the last minute, a shake adds 5 minutes (as in most audiobook
+                // apps) — for someone half asleep, easier than finding the phone's UI.
+                if (remainingMs <= SHAKE_WINDOW_MS) shake.start { addMinutes(EXTEND_MINUTES) }
+                // Sleep until the end (or the start of that last minute), re-checking at
+                // least every 30 s: delay runs on uptime, which stops while the CPU
+                // sleeps, so one long delay could fire late; the clock above decides.
+                val untilNext = if (remainingMs > SHAKE_WINDOW_MS) remainingMs - SHAKE_WINDOW_MS else remainingMs
+                delay(untilNext.coerceIn(MIN_WAIT_MS, MAX_WAIT_MS))
             }
         }
     }
@@ -96,6 +108,9 @@ class SleepTimer(private val controller: PlaybackController) {
                 if (remaining <= 0.5) {
                     controller.player.pause()
                     _mode.value = SleepMode.Off
+                    com.bennybar.kitzi.ui.common.Snackbars.show("Paused at the end of the chapter", "Keep listening") {
+                        controller.resume()
+                    }
                     return@launch
                 }
                 _mode.value = SleepMode.EndOfChapter(remaining.toLong())
@@ -113,13 +128,17 @@ class SleepTimer(private val controller: PlaybackController) {
     fun addMinutes(minutes: Int) {
         val current = _mode.value
         if (current is SleepMode.Duration) {
-            startDuration(((current.remainingSec / 60) + minutes).toInt().coerceAtLeast(1))
+            // Keep the seconds: rounding down to whole minutes could make "+5" less
+            // than five minutes from now.
+            val endsAt = current.endsAtElapsedMs.coerceAtLeast(SystemClock.elapsedRealtime()) + minutes * 60_000L
+            startDurationUntil(endsAt)
         }
     }
 
     fun cancel() {
         job?.cancel()
         job = null
+        shake.stop()
         _mode.value = SleepMode.Off
     }
 
@@ -127,5 +146,8 @@ class SleepTimer(private val controller: PlaybackController) {
         /** The longest the timer sleeps between checks. */
         const val MAX_WAIT_MS = 30_000L
         const val MIN_WAIT_MS = 200L
+        /** The final stretch of a timer in which a shake extends it. */
+        const val SHAKE_WINDOW_MS = 60_000L
+        const val EXTEND_MINUTES = 5
     }
 }

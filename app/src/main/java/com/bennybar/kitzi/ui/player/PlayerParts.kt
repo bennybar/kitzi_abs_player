@@ -1,5 +1,16 @@
 package com.bennybar.kitzi.ui.player
 
+import androidx.compose.foundation.layout.height
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Bookmarks
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.material3.minimumInteractiveComponentSize
 import android.graphics.Bitmap
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -194,11 +205,19 @@ fun CoverButton(
     contentDescription: String? = label,
     onClick: () -> Unit,
 ) {
-    Row(
+    // The touch area is at least 48dp (the icon-only bookmark button was ~32dp);
+    // the visible pill keeps its size inside it.
+    Box(
         modifier
+            .minimumInteractiveComponentSize()
+            .clip(RoundedCornerShape(24.dp))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+    Row(
+        Modifier
             .clip(RoundedCornerShape(20.dp))
             .background(Color.Black.copy(alpha = 0.45f))
-            .clickable(onClick = onClick)
             .padding(horizontal = if (label != null) 10.dp else 8.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -212,6 +231,7 @@ fun CoverButton(
                 modifier = Modifier.padding(start = 6.dp),
             )
         }
+    }
     }
 }
 
@@ -239,6 +259,8 @@ fun ActionTile(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     highlighted: Boolean = false,
+    /** Shown instead of the icon when set: the tile's current state ("1.5×", "12:04"). */
+    label: String? = null,
     onClick: () -> Unit,
 ) {
     val bg = when {
@@ -253,14 +275,26 @@ fun ActionTile(
             .padding(vertical = 14.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(
-            icon,
-            contentDescription,
-            tint = if (enabled) {
-                if (highlighted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-            } else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-            modifier = Modifier.size(22.dp),
-        )
+        if (label != null) {
+            Text(
+                label,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = if (highlighted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                // Same height as the 22dp icon, so the tile doesn't jump.
+                modifier = Modifier.height(22.dp).semantics { this.contentDescription = contentDescription },
+            )
+        } else {
+            Icon(
+                icon,
+                contentDescription,
+                tint = if (enabled) {
+                    if (highlighted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                } else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                modifier = Modifier.size(22.dp),
+            )
+        }
     }
 }
 
@@ -377,6 +411,16 @@ fun SleepTimerSheet(
                 com.bennybar.kitzi.playback.SleepMode.Off -> {}
             }
 
+            // Presets start the timer in one tap; the slider below is for other lengths.
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(15, 30, 45, 60).forEach { m ->
+                    FilterChip(
+                        selected = false,
+                        onClick = { minutes = m.toFloat(); onDuration(m); userMoved = false },
+                        label = { Text("$m min") },
+                    )
+                }
+            }
             Slider(
                 value = minutes,
                 onValueChange = { minutes = it; userMoved = true },
@@ -438,6 +482,15 @@ fun SpeedSheet(current: Float, onChange: (Float) -> Unit, onDismiss: () -> Unit)
                     color = MaterialTheme.colorScheme.primary,
                 )
             }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(1f, 1.25f, 1.5f, 1.75f, 2f).forEach { preset ->
+                    FilterChip(
+                        selected = kotlin.math.abs(value - preset) < 0.001f,
+                        onClick = { value = preset; onChange(preset) },
+                        label = { Text(speedLabel(preset)) },
+                    )
+                }
+            }
             Slider(
                 value = value,
                 onValueChange = { value = it; onChange(it) },
@@ -457,6 +510,10 @@ fun SpeedSheet(current: Float, onChange: (Float) -> Unit, onDismiss: () -> Unit)
         }
     }
 }
+
+/** "1×", "1.25×", "1.5×". */
+fun speedLabel(speed: Float): String =
+    String.format(java.util.Locale.US, "%.2f", speed).trimEnd('0').trimEnd('.') + "×"
 
 /** "More info" — the book's full metadata fact list, opened from the player cover or book detail. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -514,7 +571,11 @@ fun PlayerInfoSheet(itemId: String, onDismiss: () -> Unit) {
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(top = 16.dp, bottom = 6.dp),
                         )
-                        Text(desc, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            remember(desc) { com.bennybar.kitzi.ui.common.decodeHtml(desc) },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 }
             }
@@ -569,6 +630,7 @@ fun PlayerMoreSheet(
     gradientEnabled: Boolean,
     chapterized: Boolean,
     onPlayHistory: () -> Unit,
+    onBookmarks: () -> Unit,
     onToggleGradient: () -> Unit,
     onToggleChapterized: () -> Unit,
     onMarkFinished: () -> Unit,
@@ -577,6 +639,7 @@ fun PlayerMoreSheet(
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
             MoreRow(Icons.Default.CheckCircle, "Mark as finished", onMarkFinished)
+            MoreRow(Icons.Default.Bookmarks, "Bookmarks", onBookmarks)
             MoreRow(Icons.Default.History, "Play history", onPlayHistory)
             MoreRow(
                 Icons.Default.Gradient,
@@ -683,33 +746,113 @@ private fun MoreRow(icon: ImageVector, label: String, onClick: () -> Unit) {
 fun ChapterSheet(
     chapters: List<Chapter>,
     currentIndex: Int,
+    totalSec: Double?,
     onPick: (Chapter) -> Unit,
     onDismiss: () -> Unit,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        LazyColumn(Modifier.fillMaxWidth()) {
+        Text(
+            if (currentIndex >= 0) "Chapters · ${currentIndex + 1} of ${chapters.size}" else "Chapters",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 8.dp),
+        )
+        // Opens on the chapter you're in (a couple of rows of context above it),
+        // not on "00: Intro" with 60 chapters to scroll through.
+        val listState = rememberLazyListState(initialFirstVisibleItemIndex = (currentIndex - 2).coerceAtLeast(0))
+        LazyColumn(Modifier.fillMaxWidth(), state = listState) {
             itemsIndexed(chapters) { index, chapter ->
+                val current = index == currentIndex
+                val played = currentIndex >= 0 && index < currentIndex
+                // Each chapter's length, which says more than its start time.
+                val end = chapters.getOrNull(index + 1)?.startSec ?: totalSec
+                val length = end?.let { (it - chapter.startSec).coerceAtLeast(0.0) }
                 Row(
                     Modifier
                         .fillMaxWidth()
                         .clickable { onPick(chapter) }
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                        .background(if (current) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f) else Color.Transparent)
+                        .padding(horizontal = 20.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    Box(Modifier.width(26.dp)) {
+                        if (current) Icon(Icons.Default.PlayArrow, "Now playing", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                    }
                     Text(
                         chapter.title,
                         style = MaterialTheme.typography.bodyLarge,
-                        color = if (index == currentIndex) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurface,
+                        fontWeight = if (current) FontWeight.SemiBold else FontWeight.Normal,
+                        color = when {
+                            current -> MaterialTheme.colorScheme.primary
+                            played -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            else -> MaterialTheme.colorScheme.onSurface
+                        },
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f),
                     )
-                    Text(
-                        formatClock(chapter.startSec.toLong()),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    length?.let {
+                        Text(
+                            com.bennybar.kitzi.ui.common.formatHm(it.toLong()).takeIf { _ -> it >= 60 } ?: formatClock(it.toLong()),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 12.dp),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** The book's bookmarks, from the player: tap to jump, delete to remove. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun BookmarksSheet(itemId: String, onPick: (Double) -> Unit, onDismiss: () -> Unit) {
+    var marks by remember { mutableStateOf<List<com.bennybar.kitzi.data.Bookmark>?>(null) }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(itemId) { marks = runCatching { Services.books.bookmarks(itemId) }.getOrDefault(emptyList()) }
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Text(
+            "Bookmarks",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 8.dp),
+        )
+        val m = marks
+        when {
+            m == null -> Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            m.isEmpty() -> Text(
+                "No bookmarks yet. Use the bookmark button on the cover to save your spot.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+            )
+            else -> LazyColumn(Modifier.fillMaxWidth().heightIn(max = 460.dp), contentPadding = PaddingValues(bottom = 16.dp)) {
+                items(m, key = { it.timeSec }) { bm ->
+                    Row(
+                        Modifier.fillMaxWidth().clickable { onPick(bm.timeSec) }.padding(start = 20.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Default.Bookmark, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                        Text(
+                            bm.title,
+                            style = MaterialTheme.typography.bodyLarge,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f).padding(start = 14.dp),
+                        )
+                        Text(formatClock(bm.timeSec.toLong()), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        IconButton(onClick = {
+                            scope.launch {
+                                val ok = kotlinx.coroutines.withContext(Dispatchers.IO) { Services.playbackApi.deleteBookmark(itemId, bm.timeSec) }
+                                if (ok) marks = marks.orEmpty() - bm
+                                com.bennybar.kitzi.ui.common.Snackbars.show(if (ok) "Bookmark deleted" else "Couldn't delete the bookmark")
+                            }
+                        }) {
+                            Icon(Icons.Default.Delete, "Delete bookmark", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                        }
+                    }
                 }
             }
         }

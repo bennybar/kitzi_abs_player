@@ -40,8 +40,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
-import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.LibraryBooks
 import androidx.compose.material.icons.filled.Person
@@ -180,7 +180,7 @@ val LocalMiniPlayerInset = androidx.compose.runtime.staticCompositionLocalOf { 0
 /** Every possible tab. Which ones actually show is decided by the settings. */
 private enum class Tab(val label: String, val icon: ImageVector) {
     BOOKS("Books", Icons.Default.LibraryBooks),
-    SERIES("Series", Icons.Default.Bookmarks),
+    SERIES("Series", Icons.Default.AutoStories),
     AUTHORS("Authors", Icons.Default.Person),
     QUEUE("Queue", Icons.AutoMirrored.Filled.QueueMusic),
     PLAYER("Player", Icons.Default.PlayArrow),
@@ -362,7 +362,13 @@ private fun App() {
     val activity = androidx.activity.compose.LocalActivity.current as? ComponentActivity
     LaunchedEffect(signedIn) { if (!signedIn) activity?.viewModelStore?.clear() }
     var tab by remember { mutableStateOf(Tab.BOOKS) }
-    var overlay by remember { mutableStateOf<Overlay?>(null) }
+    // Overlays stack: Series → a book → back returns to Series, not to the tab
+    // underneath. Opening one pushes, back pops; switching tab or opening the
+    // player clears the stack.
+    var overlays by remember { mutableStateOf(emptyList<Overlay>()) }
+    val overlay = overlays.lastOrNull()
+    val pushOverlay: (Overlay) -> Unit = { overlays = overlays + it }
+    val popOverlay: () -> Unit = { overlays = overlays.dropLast(1) }
 
     if (!signedIn) {
         Scaffold(Modifier.fillMaxSize()) { insets ->
@@ -408,7 +414,7 @@ private fun App() {
     if (playerAsTab) playerCard = false
 
     val openPlayer = {
-        if (playerAsTab) { tab = Tab.PLAYER; overlay = null } else playerCard = true
+        if (playerAsTab) { tab = Tab.PLAYER; overlays = emptyList() } else playerCard = true
     }
 
     val nowPlaying by Services.playback.nowPlaying.collectAsStateWithLifecycle()
@@ -429,7 +435,7 @@ private fun App() {
         // strip is never a mismatched colour.
         containerColor = MaterialTheme.colorScheme.surface,
     ) { insets ->
-        val openBook: (String) -> Unit = { overlay = Overlay.BookDetail(it) }
+        val openBook: (String) -> Unit = { pushOverlay(Overlay.BookDetail(it)) }
         // The tab player draws its background (gradient or surface) edge to edge —
         // behind the status bar / cutout — and pads its own content.
         val playerIsTabFull = tab == Tab.PLAYER && overlay == null
@@ -485,21 +491,24 @@ private fun App() {
                             is Overlay.BookDetail -> BookDetailScreen(
                                 itemId = ov.id,
                                 onPlay = openPlayer,
-                                onBack = { overlay = null },
+                                onBack = popOverlay,
                             )
 
-                            Overlay.Series -> SeriesScreen(onOpenBook = openBook, onBack = { overlay = null })
+                            Overlay.Series -> SeriesScreen(onOpenBook = openBook, onBack = popOverlay)
 
-                            Overlay.Stats -> StatsScreen(onBack = { overlay = null })
+                            Overlay.Stats -> StatsScreen(onBack = popOverlay)
 
-                            Overlay.Profile -> com.bennybar.kitzi.ui.profile.ProfileScreen(onBack = { overlay = null })
+                            Overlay.Profile -> com.bennybar.kitzi.ui.profile.ProfileScreen(
+                                onBack = popOverlay,
+                                onOpenStats = { pushOverlay(Overlay.Stats) },
+                            )
 
                             null -> when (tb) {
                                 Tab.BOOKS -> LibraryScreen(
                                     onOpenBook = openBook,
-                                    onOpenSeries = { overlay = Overlay.Series },
-                                    onOpenStats = { overlay = Overlay.Stats },
-                                    onOpenProfile = { overlay = Overlay.Profile },
+                                    onOpenSeries = { pushOverlay(Overlay.Series) },
+                                    onOpenStats = { pushOverlay(Overlay.Stats) },
+                                    onOpenProfile = { pushOverlay(Overlay.Profile) },
                                 )
                                 Tab.SERIES -> SeriesScreen(onOpenBook = openBook, onBack = { tab = Tab.BOOKS })
                                 Tab.AUTHORS -> AuthorsScreen(onOpenBook = openBook)
@@ -508,7 +517,8 @@ private fun App() {
                                 Tab.DOWNLOADS -> DownloadsScreen(onOpenBook = openBook)
                                 Tab.SETTINGS -> SettingsScreen(
                                     onSignedOut = { signedIn = false },
-                                    onOpenProfile = { overlay = Overlay.Profile },
+                                    onOpenProfile = { pushOverlay(Overlay.Profile) },
+                                    onOpenStats = { pushOverlay(Overlay.Stats) },
                                 )
                             }
                         }
@@ -529,7 +539,7 @@ private fun App() {
                     tabs = tabs,
                     selected = tab,
                     overlayOpen = overlay != null,
-                    onSelect = { tab = it; overlay = null },
+                    onSelect = { tab = it; overlays = emptyList() },
                 )
             }
 
@@ -605,6 +615,31 @@ private fun App() {
                     }
                 }
             }
+            // App-wide snackbars (see Snackbars), just above the floating bar and over
+            // the player card, so feedback shows wherever the action came from.
+            val snackbarHost = remember { androidx.compose.material3.SnackbarHostState() }
+            LaunchedEffect(snackbarHost) {
+                com.bennybar.kitzi.ui.common.Snackbars.messages.collect { m ->
+                    // A new message replaces one still showing rather than queueing.
+                    snackbarHost.currentSnackbarData?.dismiss()
+                    launch {
+                        val result = snackbarHost.showSnackbar(
+                            message = m.text,
+                            actionLabel = m.actionLabel,
+                            withDismissAction = m.actionLabel == null,
+                            duration = androidx.compose.material3.SnackbarDuration.Short,
+                        )
+                        if (result == androidx.compose.material3.SnackbarResult.ActionPerformed) m.onAction?.invoke()
+                    }
+                }
+            }
+            androidx.compose.material3.SnackbarHost(
+                snackbarHost,
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = if (playerCard) WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 96.dp else barInset),
+            )
+
             // Back navigates WITHIN the app instead of dropping straight to the
             // launcher: collapse the player card, then close an overlay (book detail /
             // series / stats / profile), then fall back to the Books tab. Only when
@@ -615,7 +650,7 @@ private fun App() {
             ) {
                 when {
                     playerCard -> playerCard = false
-                    overlay != null -> overlay = null
+                    overlay != null -> popOverlay()
                     tab != Tab.BOOKS -> tab = Tab.BOOKS
                 }
             }

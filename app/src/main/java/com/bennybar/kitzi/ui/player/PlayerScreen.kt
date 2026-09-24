@@ -1,5 +1,6 @@
 package com.bennybar.kitzi.ui.player
 
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.semantics.progressBarRangeInfo
@@ -91,12 +92,12 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
     var showInfo by remember { mutableStateOf(false) }
     var showMore by remember { mutableStateOf(false) }
     var showHistory by remember { mutableStateOf(false) }
+    var showBookmarks by remember { mutableStateOf(false) }
     var confirmFinished by remember { mutableStateOf(false) }
     var showCancelDownload by remember { mutableStateOf(false) }
     var showDeleteDownload by remember { mutableStateOf(false) }
     val sleep by Services.sleepTimer.mode.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
-    val context = androidx.compose.ui.platform.LocalContext.current
 
     // Poll only while on-screen (stops in the background) and back off when paused.
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -204,10 +205,11 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
                             // Say whether it worked: a failed add used to look the same
                             // as a successful one.
                             val ok = kotlinx.coroutines.withContext(Dispatchers.IO) { Services.playbackApi.addBookmark(np.itemId, pos, label) }
-                            android.widget.Toast.makeText(
-                                context, if (ok) "Bookmark added" else "Couldn't add bookmark",
-                                android.widget.Toast.LENGTH_SHORT,
-                            ).show()
+                            if (ok) {
+                                com.bennybar.kitzi.ui.common.Snackbars.show("Bookmark added at ${formatClock(pos.toLong())}", "View") { showBookmarks = true }
+                            } else {
+                                com.bennybar.kitzi.ui.common.Snackbars.show("Couldn't add bookmark")
+                            }
                         }
                     },
                 )
@@ -320,13 +322,27 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
                 onValueChange = { scrubbing = it },
                 onValueChangeFinished = {
                     scrubbing?.let {
+                        val before = controller.globalPositionSec()
                         val target = if (chapterMode) chapter!!.startSec + it else it.toDouble()
                         controller.seekGlobal(target.toDouble(), reportNow = true)
+                        // A stray tap on the bar can jump hours: offer the way back.
+                        if (before != null && kotlin.math.abs(target - before) > UNDO_JUMP_MIN_SEC) {
+                            com.bennybar.kitzi.ui.common.Snackbars.show("Jumped to ${formatClock(target.toLong())}", "Undo") {
+                                controller.seekGlobal(before, reportNow = true)
+                            }
+                        }
                     }
                     scrubbing = null
                 },
                 chapterTicks = tickFractions,
-                modifier = Modifier.fillMaxWidth().padding(top = 14.dp),
+                // While dragging: the target time, and in book mode the chapter it's in.
+                bubbleLabel = { v ->
+                    val global = if (chapterMode) chapter!!.startSec + v else v.toDouble()
+                    val ch = if (chapterMode) null else com.bennybar.kitzi.playback.PlaybackMath.currentChapter(global, np.chapters, total)
+                    formatClock(v.toLong()) + (ch?.title?.takeIf { it.isNotBlank() }?.let { "\n$it" } ?: "")
+                },
+                // The bar is 48dp tall for touch (was 28); the thin track is unchanged.
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
             )
 
             // position / -remaining (of the chapter in chapter mode, else the book).
@@ -362,7 +378,10 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
                     verticalAlignment = Alignment.Top,
                 ) {
                     Text(
-                        "Chapter ${c.index + 1} of ${np.chapters.size} • ${c.title}",
+                        // A title that carries its own number ("21: Robben Island")
+                        // next to "Chapter 22 of 61" read as an off-by-one mistake.
+                        if (c.title.trimStart().firstOrNull()?.isDigit() == true) c.title
+                        else "Chapter ${c.index + 1} of ${np.chapters.size} • ${c.title}",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontWeight = FontWeight.SemiBold,
@@ -443,18 +462,27 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
                     else -> ActionTile(Icons.Default.Download, "Download", Modifier.weight(1f)) {
                         scope.launch {
                             if (!Services.downloads.download(np.itemId)) {
-                                android.widget.Toast.makeText(context, "Nothing to download: the server lists no audio files for this book", android.widget.Toast.LENGTH_LONG).show()
+                                com.bennybar.kitzi.ui.common.Snackbars.show("Nothing to download: the server lists no audio files for this book")
                             }
                         }
                     }
                 }
+                // The tiles show their state: time left on a running sleep timer (this
+                // screen recomposes every second, which keeps it live), and the speed
+                // when it isn't 1×.
+                val sleepNow = sleep
                 ActionTile(
                     Icons.Default.NightsStay,
                     "Sleep",
                     Modifier.weight(1f),
-                    highlighted = sleep !is SleepMode.Off,
+                    highlighted = sleepNow !is SleepMode.Off,
+                    label = (sleepNow as? SleepMode.Duration)?.remainingSec?.let { formatClock(it) },
                 ) { showSleep = true }
-                ActionTile(Icons.Default.Speed, "Speed", Modifier.weight(1f)) { showSpeed = true }
+                ActionTile(
+                    Icons.Default.Speed, "Speed", Modifier.weight(1f),
+                    highlighted = kotlin.math.abs(speed - 1.0) > 0.001,
+                    label = speed.takeIf { kotlin.math.abs(it - 1.0) > 0.001 }?.let { speedLabel(it.toFloat()) },
+                ) { showSpeed = true }
                 ActionTile(Icons.Default.MoreVert, "More", Modifier.weight(1f)) { showMore = true }
             }
 
@@ -518,6 +546,7 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
         ChapterSheet(
             chapters = np.chapters,
             currentIndex = chapter?.index ?: -1,
+            totalSec = controller.totalDurationSec(),
             onPick = { controller.seekGlobal(it.startSec); showChapters = false },
             onDismiss = { showChapters = false },
         )
@@ -536,13 +565,34 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
             confirmButton = {
                 TextButton(onClick = {
                     confirmFinished = false
-                    scope.launch { Services.books.markFinished(np.itemId) }
-                }) { Text("Mark finished") }
+                    scope.launch {
+                        val itemId = np.itemId
+                        val before = Services.books.progressFor(itemId)
+                        if (Services.books.markFinished(itemId)) {
+                            com.bennybar.kitzi.ui.common.Snackbars.show("Marked as finished", "Undo") {
+                                scope.launch {
+                                    if (!Services.books.restoreProgress(before, itemId)) {
+                                        com.bennybar.kitzi.ui.common.Snackbars.show("Couldn't undo — check your connection")
+                                    }
+                                }
+                            }
+                        } else {
+                            com.bennybar.kitzi.ui.common.Snackbars.show("Couldn't update the server")
+                        }
+                    }
+                }) { Text("Mark as finished") }
             },
             dismissButton = { TextButton(onClick = { confirmFinished = false }) { Text("Cancel") } },
         )
     }
 
+    if (showBookmarks) {
+        BookmarksSheet(
+            itemId = np.itemId,
+            onPick = { controller.seekGlobal(it, reportNow = true); showBookmarks = false },
+            onDismiss = { showBookmarks = false },
+        )
+    }
     if (showHistory) {
         PlayHistorySheet(
             itemId = np.itemId,
@@ -556,6 +606,7 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
             gradientEnabled = gradientEnabled,
             chapterized = chapterizedBar,
             onPlayHistory = { showMore = false; showHistory = true },
+            onBookmarks = { showMore = false; showBookmarks = true },
             onToggleGradient = {
                 gradientEnabled = !gradientEnabled
                 prefs.putBoolean("ui_player_gradient_background", gradientEnabled)
@@ -586,6 +637,7 @@ private fun PlayerProgressBar(
     onValueChange: (Float) -> Unit,
     onValueChangeFinished: () -> Unit,
     chapterTicks: List<Float>,
+    bubbleLabel: (Float) -> String,
     modifier: Modifier = Modifier,
 ) {
     val primary = MaterialTheme.colorScheme.primary
@@ -601,9 +653,11 @@ private fun PlayerProgressBar(
     fun posToValue(x: Float, width: Int): Float =
         valueRange.start + (x / width).coerceIn(0f, 1f) * span
 
+    Box(modifier) {
     androidx.compose.foundation.Canvas(
-        modifier
-            .height(28.dp)
+        Modifier
+            .fillMaxWidth()
+            .height(48.dp)
             // A drawn bar has no semantics of its own: without these TalkBack found
             // nothing here — no position, and no way to seek.
             .semantics {
@@ -657,4 +711,34 @@ private fun PlayerProgressBar(
         val cx = (w * fraction).coerceIn(0f, w)
         drawCircle(primary, radius = thumbRadius.toPx(), center = Offset(cx, cy))
     }
+    // While dragging, a bubble over the thumb says where you'll land.
+    if (dragging) {
+        androidx.compose.material3.Surface(
+            color = MaterialTheme.colorScheme.inverseSurface,
+            contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+            shape = RoundedCornerShape(10.dp),
+            modifier = Modifier.layout { measurable, constraints ->
+                val placeable = measurable.measure(constraints.copy(minWidth = 0, maxWidth = (constraints.maxWidth * 0.8f).toInt()))
+                val x = (constraints.maxWidth * fraction - placeable.width / 2f)
+                    .coerceIn(0f, (constraints.maxWidth - placeable.width).toFloat().coerceAtLeast(0f))
+                layout(placeable.width, placeable.height) {
+                    placeable.place(x.toInt() - 0, -placeable.height - 2.dp.roundToPx())
+                }
+            },
+        ) {
+            Text(
+                bubbleLabel(value),
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            )
+        }
+    }
+    }
 }
+
+/** A tap or drag that moves further than this offers "Undo". */
+private const val UNDO_JUMP_MIN_SEC = 60.0

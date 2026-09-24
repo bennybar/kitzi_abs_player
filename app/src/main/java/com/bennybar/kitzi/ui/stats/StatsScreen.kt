@@ -17,7 +17,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
-import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -87,7 +86,7 @@ fun StatsScreen(onBack: () -> Unit = {}) {
             StatTile("Total", humanDuration(s.totalSec), Modifier.weight(1f))
             StatTile("Finished", "${s.itemsFinished}", Modifier.weight(1f))
             detailed?.let {
-                StatTile("Streak", if (it.currentStreakDays == 1) "1 day" else "${it.currentStreakDays} days", Modifier.weight(1f))
+                StatTile("Streak", com.bennybar.kitzi.ui.common.plural(it.currentStreakDays, "day"), Modifier.weight(1f))
             }
         }
 
@@ -98,7 +97,7 @@ fun StatsScreen(onBack: () -> Unit = {}) {
 
         val d = detailed
         if (d != null && d.topBooks.isEmpty()) {
-            Card(Modifier.fillMaxWidth()) {
+            StatsCard(Modifier.fillMaxWidth()) {
                 Text(
                     if (com.bennybar.kitzi.data.PlayHistoryStore.enabled())
                         "No detailed history yet — keep listening and your top books, authors and narrators will show up here."
@@ -121,7 +120,7 @@ fun StatsScreen(onBack: () -> Unit = {}) {
 @Composable
 private fun TopList(title: String, entries: List<com.bennybar.kitzi.data.TopEntry>, showCovers: Boolean) {
     Text(title, style = MaterialTheme.typography.titleMedium)
-    Card(Modifier.fillMaxWidth()) {
+    StatsCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(vertical = 6.dp)) {
             entries.forEachIndexed { i, e ->
                 Row(
@@ -162,7 +161,7 @@ private fun TopList(title: String, entries: List<com.bennybar.kitzi.data.TopEntr
 
 @Composable
 private fun StatTile(label: String, value: String, modifier: Modifier = Modifier) {
-    Card(modifier) {
+    StatsCard(modifier) {
         Column(Modifier.padding(16.dp)) {
             Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(value, style = MaterialTheme.typography.headlineSmall)
@@ -196,6 +195,7 @@ private fun DailyBars(perDay: Map<String, Double>) {
         verticalAlignment = Alignment.Bottom,
     ) {
         days.forEach { (date, seconds) ->
+            val isToday = date == today
             Column(
                 Modifier.weight(1f),
                 verticalArrangement = Arrangement.Bottom,
@@ -208,12 +208,18 @@ private fun DailyBars(perDay: Map<String, Double>) {
                         // none gets no bar at all, just its date label.
                         .height(if (seconds <= 0) 0.dp else maxBarHeight * (seconds / max).toFloat().coerceIn(0.04f, 1f))
                         .clip(RoundedCornerShape(4.dp))
-                        .background(MaterialTheme.colorScheme.primary),
+                        // Today stands out; the other days are a lighter tint.
+                        .background(if (isToday) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)),
                 )
                 Text(
+                    // Today's number in bold primary: the word "Today" doesn't fit a
+                    // bar's width.
                     date.dayOfMonth.toString(),
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = if (isToday) androidx.compose.ui.text.font.FontWeight.Bold else null,
+                    color = if (isToday) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    softWrap = false,
                     modifier = Modifier.padding(top = 4.dp),
                 )
             }
@@ -223,31 +229,56 @@ private fun DailyBars(perDay: Map<String, Double>) {
 
 @Composable
 private fun YearWrapped(s: ListeningStats, detailed: com.bennybar.kitzi.data.DetailedStats?) {
-    val hours = (s.totalSec / 3600).roundToInt()
-    val busiest = s.perDaySec.maxByOrNull { it.value }
+    // This year only: it used the all-time totals under a "year" heading.
+    val year = java.time.LocalDate.now().year
+    val thisYear = s.perDaySec.filterKeys { it.startsWith("$year-") }.filterValues { it > 0 }
+    val hours = (thisYear.values.sum() / 3600).roundToInt()
+    val busiest = thisYear.maxByOrNull { it.value }
+    val locale = androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
+    val busiestDate = busiest?.key?.let {
+        runCatching {
+            java.time.LocalDate.parse(it).format(java.time.format.DateTimeFormatter.ofPattern("d MMMM", locale))
+        }.getOrDefault(it)
+    }
+    if (thisYear.isEmpty()) return
 
-    Card(Modifier.fillMaxWidth()) {
+    StatsCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Year Wrapped", style = MaterialTheme.typography.titleLarge)
-            Text("You listened for about $hours hours.", style = MaterialTheme.typography.bodyLarge)
-            Text("You finished ${s.itemsFinished} ${if (s.itemsFinished == 1) "book" else "books"}.", style = MaterialTheme.typography.bodyLarge)
-            detailed?.takeIf { it.daysListened > 0 }?.let {
-                Text("You listened on ${it.daysListened} different ${if (it.daysListened == 1) "day" else "days"}.", style = MaterialTheme.typography.bodyLarge)
-                if (it.currentStreakDays > 1) {
-                    Text("You're on a ${it.currentStreakDays}-day streak.", style = MaterialTheme.typography.bodyLarge)
-                }
+            Text("Your $year so far", style = MaterialTheme.typography.titleLarge)
+            Text(
+                if (hours < 1) "You've listened for under an hour." else "You've listened for about ${com.bennybar.kitzi.ui.common.plural(hours, "hour")}.",
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            Text("You listened on ${com.bennybar.kitzi.ui.common.plural(thisYear.size, "day")}.", style = MaterialTheme.typography.bodyLarge)
+            detailed?.takeIf { it.currentStreakDays > 1 }?.let {
+                Text("You're on a ${it.currentStreakDays}-day streak.", style = MaterialTheme.typography.bodyLarge)
             }
             detailed?.topBooks?.firstOrNull()?.let {
-                Text("Your top book was “${it.label}”.", style = MaterialTheme.typography.bodyLarge)
+                Text("Your most-listened book: “${it.label}”.", style = MaterialTheme.typography.bodyLarge)
             }
-            busiest?.let {
+            if (busiest != null && busiestDate != null) {
                 Text(
-                    "Your biggest day was ${it.key} — ${humanDuration(it.value)}.",
+                    "Your biggest day was $busiestDate — ${humanDuration(busiest.value)}.",
                     style = MaterialTheme.typography.bodyLarge,
                 )
             }
+            // Finished counts carry no dates, so this one is all-time and says so.
+            Text(
+                "You've finished ${com.bennybar.kitzi.ui.common.plural(s.itemsFinished, "book")} in total.",
+                style = MaterialTheme.typography.bodyLarge,
+            )
         }
     }
+}
+
+/** The filled, no-elevation container the rest of the app uses (not a Material Card). */
+@Composable
+private fun StatsCard(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    androidx.compose.material3.Surface(
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = RoundedCornerShape(20.dp),
+        modifier = modifier,
+    ) { content() }
 }
 
 private fun humanDuration(seconds: Double): String {

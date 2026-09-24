@@ -1,5 +1,7 @@
 package com.bennybar.kitzi.ui.login
 
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -44,6 +46,7 @@ fun LoginScreen(onSignedIn: () -> Unit) {
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var ssoAvailable by remember { mutableStateOf(false) }
+    var showPassword by remember { mutableStateOf(false) }
 
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -94,15 +97,23 @@ fun LoginScreen(onSignedIn: () -> Unit) {
         busy = true
         error = null
         scope.launch {
-            val ok = try {
+            val result = try {
                 withContext(Dispatchers.IO) {
-                    Services.auth.login(server, username.trim(), password)
+                    Services.auth.loginResult(server, username.trim(), password)
                 }
             } catch (e: Exception) {
-                false
+                com.bennybar.kitzi.data.net.AuthApi.LoginResult.UNREACHABLE
             }
             busy = false
-            if (ok) onSignedIn() else error = "Sign in failed. Check the server and your credentials."
+            // Say which part is wrong: every failure used to read the same.
+            error = when (result) {
+                com.bennybar.kitzi.data.net.AuthApi.LoginResult.OK -> { onSignedIn(); null }
+                com.bennybar.kitzi.data.net.AuthApi.LoginResult.WRONG_CREDENTIALS -> "Wrong username or password."
+                com.bennybar.kitzi.data.net.AuthApi.LoginResult.UNREACHABLE -> "Can't reach the server. Check the address and your connection."
+                com.bennybar.kitzi.data.net.AuthApi.LoginResult.INSECURE -> "Couldn't make a secure connection to this server (certificate problem). If it's on your home network, try http:// instead."
+                com.bennybar.kitzi.data.net.AuthApi.LoginResult.NOT_ABS -> "This doesn't look like an Audiobookshelf server. Check the address."
+                com.bennybar.kitzi.data.net.AuthApi.LoginResult.SERVER_ERROR -> "The server had a problem. Try again in a moment."
+            }
         }
     }
 
@@ -125,14 +136,27 @@ fun LoginScreen(onSignedIn: () -> Unit) {
                 Modifier.padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text("Login", style = MaterialTheme.typography.headlineSmall)
+                // "Sign in" throughout (the title said "Login", the button "Sign in").
+                Text("Sign in", style = MaterialTheme.typography.headlineSmall)
+                Text(
+                    "Connect to your Audiobookshelf server.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
 
+                val canSignIn = server.isNotBlank() && username.isNotBlank()
                 OutlinedTextField(
                     value = server,
                     onValueChange = { server = it },
                     label = { Text("Server URL") },
+                    placeholder = { Text("https://abs.example.com") },
                     singleLine = true,
                     enabled = !busy,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Uri,
+                        autoCorrectEnabled = false,
+                        imeAction = androidx.compose.ui.text.input.ImeAction.Next,
+                    ),
                     modifier = Modifier.fillMaxWidth(),
                 )
                 OutlinedTextField(
@@ -141,6 +165,10 @@ fun LoginScreen(onSignedIn: () -> Unit) {
                     label = { Text("Username") },
                     singleLine = true,
                     enabled = !busy,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        autoCorrectEnabled = false,
+                        imeAction = androidx.compose.ui.text.input.ImeAction.Next,
+                    ),
                     modifier = Modifier.fillMaxWidth(),
                 )
                 OutlinedTextField(
@@ -149,7 +177,24 @@ fun LoginScreen(onSignedIn: () -> Unit) {
                     label = { Text("Password") },
                     singleLine = true,
                     enabled = !busy,
-                    visualTransformation = PasswordVisualTransformation(),
+                    visualTransformation = if (showPassword) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        androidx.compose.material3.IconButton(onClick = { showPassword = !showPassword }) {
+                            androidx.compose.material3.Icon(
+                                if (showPassword) androidx.compose.material.icons.Icons.Default.VisibilityOff
+                                else androidx.compose.material.icons.Icons.Default.Visibility,
+                                if (showPassword) "Hide password" else "Show password",
+                            )
+                        }
+                    },
+                    // Done on the keyboard signs in.
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Password,
+                        imeAction = androidx.compose.ui.text.input.ImeAction.Done,
+                    ),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                        onDone = { if (canSignIn && !busy) signIn() },
+                    ),
                     modifier = Modifier.fillMaxWidth(),
                 )
 
@@ -162,7 +207,7 @@ fun LoginScreen(onSignedIn: () -> Unit) {
                 } else {
                     Button(
                         onClick = { signIn() },
-                        enabled = server.isNotBlank() && username.isNotBlank(),
+                        enabled = canSignIn,
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text("Sign in") }
 

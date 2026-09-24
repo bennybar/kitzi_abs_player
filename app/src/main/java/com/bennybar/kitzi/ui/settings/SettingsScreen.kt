@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.BatteryStd
@@ -78,7 +80,7 @@ import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
 @Composable
-fun SettingsScreen(onSignedOut: () -> Unit, onOpenProfile: () -> Unit = {}) {
+fun SettingsScreen(onSignedOut: () -> Unit, onOpenProfile: () -> Unit = {}, onOpenStats: () -> Unit = {}) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val activity = androidx.activity.compose.LocalActivity.current as? androidx.activity.ComponentActivity
@@ -115,6 +117,7 @@ fun SettingsScreen(onSignedOut: () -> Unit, onOpenProfile: () -> Unit = {}) {
         // ---------- Library ----------
         if (matches("library", "active library", "cleanup", "resync", "deleted")) {
             Section("Library")
+            ActionRow(Icons.Default.BarChart, "Listening stats", "Streaks, top books and daily listening", onClick = onOpenStats)
             if (libraries.size > 1) {
                 DropdownRow(
                     icon = Icons.Default.LibraryBooks,
@@ -175,17 +178,13 @@ fun SettingsScreen(onSignedOut: () -> Unit, onOpenProfile: () -> Unit = {}) {
             TogglePref("ui_player_gradient_background", true, "Gradient background in player", "Apply a gradient surface to the full screen player", Icons.Default.Gradient)
             TogglePref("ui_player_scrolling_single_line_title", false, "Single-line scrolling player title", "Show one title line that continuously scrolls left in full player")
             TogglePref("ui_audible_link_enabled", true, "Tap ratings to open Audible", "Open the book's Audible page in your browser when you tap its star rating")
-            TogglePref("ui_letter_scroll_enabled", false, "Add Letter Scrolling", "Show an alphabetical scrollbar in long lists", Icons.Default.SortByAlpha)
+            TogglePref("ui_letter_scroll_enabled", false, "Letter scrolling", "Show an alphabetical scrollbar in long lists", Icons.Default.SortByAlpha)
             TogglePref("ui_letter_scroll_books_alpha", false, "Books tab alphabetical order", "Required for letter scrolling in the Books tab", indent = true)
 
-            // Theme mode reflected as two toggles, exactly like Flutter.
+            // One three-way choice. It was two toggles ("Dark mode" + "Use system
+            // theme") for the same setting; the stored value is unchanged.
             val mode by ThemeState.mode
-            ToggleRow(Icons.Default.Palette, "Dark mode", mode.name.lowercase().replaceFirstChar { it.uppercase() }, checked = mode == ThemeMode.DARK) {
-                ThemeState.set(if (it) ThemeMode.DARK else ThemeMode.LIGHT, prefs)
-            }
-            ToggleRow(Icons.Default.Palette, "Use system theme", "Follow the device light/dark setting", checked = mode == ThemeMode.SYSTEM) {
-                ThemeState.set(if (it) ThemeMode.SYSTEM else ThemeMode.LIGHT, prefs)
-            }
+            ThemeModeRow(mode) { ThemeState.set(it, prefs) }
 
             // Font size slider (80..120, step 5).
             val fontPct by ThemeState.fontScalePercent
@@ -288,7 +287,7 @@ fun SettingsScreen(onSignedOut: () -> Unit, onOpenProfile: () -> Unit = {}) {
         ActionRow(Icons.Default.Logout, "Log out", Services.session.baseUrl.orEmpty()) {
             dialog = SettingsDialog.Logout
         }
-        ActionRow(Icons.Default.ExitToApp, "Exit App", "Stop playback and close the app") {
+        ActionRow(Icons.Default.ExitToApp, "Exit app", "Stop playback and close the app") {
             val activity = context as? android.app.Activity
             scope.launch {
                 // Flush the final progress/close (bounded), THEN finish normally —
@@ -304,7 +303,7 @@ fun SettingsScreen(onSignedOut: () -> Unit, onOpenProfile: () -> Unit = {}) {
         SettingsDialog.Headers -> HeadersDialog { dialog = null }
         SettingsDialog.Backup -> BackupDialog { dialog = null }
         SettingsDialog.Storage -> StorageDialog { dialog = null }
-        SettingsDialog.CleanupLog -> InfoDialog("Cleanup Log", "No cleanup activity yet.") { dialog = null }
+        SettingsDialog.CleanupLog -> InfoDialog("Cleanup log", "No cleanup activity yet.") { dialog = null }
         SettingsDialog.Cleanup -> ConfirmDialog(
             "Clear deleted and broken items",
             "Check each cached book against the server and remove any that were deleted?",
@@ -398,6 +397,29 @@ private fun ToggleRow(
             }
         }
         Switch(checked = checked, onCheckedChange = onChange)
+    }
+}
+
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun ThemeModeRow(mode: ThemeMode, onSelect: (ThemeMode) -> Unit) {
+    val options = listOf(ThemeMode.SYSTEM to "System", ThemeMode.LIGHT to "Light", ThemeMode.DARK to "Dark")
+    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Palette, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(24.dp))
+            Text("Theme", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(start = 16.dp))
+        }
+        androidx.compose.material3.SingleChoiceSegmentedButtonRow(
+            Modifier.fillMaxWidth().padding(start = 40.dp, top = 10.dp),
+        ) {
+            options.forEachIndexed { i, (value, label) ->
+                SegmentedButton(
+                    selected = mode == value,
+                    onClick = { onSelect(value) },
+                    shape = androidx.compose.material3.SegmentedButtonDefaults.itemShape(i, options.size),
+                ) { Text(label) }
+            }
+        }
     }
 }
 

@@ -204,6 +204,19 @@ class BooksRepository(
         }.flowOn(Dispatchers.Default)
     }
 
+    /**
+     * Every title in the list's A–Z order (same filter and search), for the letter
+     * rail: the list itself is paged, so letters built from the loaded window
+     * missed most of the library.
+     */
+    suspend fun sortedTitles(filter: LibraryFilter, search: String?): List<String> = withContext(Dispatchers.IO) {
+        dao.titlesRaw(BooksDao.libraryQuery(BookSort.NAME_ASC, filter, search, -1, 0, titlesOnly = true))
+    }
+
+    /** Whether the last full sync reached the server (false: offline, or it answered with an error). */
+    @Volatile var lastSyncReachedServer: Boolean = true
+        private set
+
     suspend fun countBooks(filter: LibraryFilter, search: String?): Int = withContext(Dispatchers.IO) {
         dao.countBooksRaw(BooksDao.libraryQuery(BookSort.NAME_ASC, filter, search, 0, 0, countOnly = true))
     }
@@ -581,7 +594,9 @@ class BooksRepository(
 
         while (page <= MAX_SYNC_PAGES) {
             if (libraryId != lib) break
-            var result = fetch(page, paging) ?: break
+            val fetched = fetch(page, paging)
+            if (page == 1) lastSyncReachedServer = fetched != null
+            var result = fetched ?: break
             if (page == 1) serverTotal = result.total
             if (result.items.isEmpty()) { fullSweep = page > 1; break }
 
@@ -918,6 +933,32 @@ class BooksRepository(
             )
         )
         return true
+    }
+
+    /**
+     * Puts a book's progress back exactly as it was (position and finished flag), on
+     * the server and locally — the Undo for "Mark as finished". Marking unfinished
+     * instead would reset the position to the start.
+     */
+    suspend fun restoreProgress(previous: MediaProgressEntity?, itemId: String): Boolean = withContext(Dispatchers.IO) {
+        val prev = previous ?: MediaProgressEntity(
+            itemId, 0.0, false, 0.0,
+            dao.getBook(itemId)?.durationMs?.let { it / 1000.0 } ?: 0.0,
+            System.currentTimeMillis(),
+        )
+        val ok = Services.playbackApi.sync(
+            null,
+            com.bennybar.kitzi.data.net.ProgressReport(
+                itemId = itemId,
+                currentTimeSec = prev.currentTimeSec,
+                totalSec = prev.durationSec.takeIf { it > 0 },
+                isFinished = prev.isFinished,
+                isPaused = true,
+                timeListenedSec = null,
+            ),
+        )
+        if (ok) dao.upsertProgress(listOf(prev.copy(lastUpdate = System.currentTimeMillis())))
+        ok
     }
 
     /** Progress for every book, so a list row can show its finished/in-progress mark. */

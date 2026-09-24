@@ -143,20 +143,36 @@ fun AuthorsScreen(onOpenBook: (String) -> Unit) {
 
 @Composable
 private fun AuthorAvatar(author: Author, size: androidx.compose.ui.unit.Dp) {
-    if (author.imageUrl != null) {
-        AsyncImage(
-            model = author.imageUrl,
-            contentDescription = author.name,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.size(size).clip(CircleShape),
+    // Initials on a colour picked from the name, always drawn underneath: the
+    // portrait loads over them when there is one. An author with an image URL the
+    // server can't serve used to show an empty circle, since only a missing URL
+    // got the placeholder.
+    val palette = listOf(
+        MaterialTheme.colorScheme.primaryContainer,
+        MaterialTheme.colorScheme.secondaryContainer,
+        MaterialTheme.colorScheme.tertiaryContainer,
+    )
+    val bg = palette[(author.name.hashCode() and 0x7fffffff) % palette.size]
+    val initials = author.name.split(' ', '.', '-').filter { it.isNotBlank() }
+        .let { parts -> (parts.firstOrNull()?.take(1).orEmpty() + (if (parts.size > 1) parts.last().take(1) else "")) }
+        .uppercase()
+    Box(
+        Modifier.size(size).clip(CircleShape).background(bg),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            initials.ifEmpty { "?" },
+            style = if (size >= 64.dp) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onPrimaryContainer,
         )
-    } else {
-        // Authors the server has no portrait for get a tinted placeholder.
-        Box(
-            Modifier.size(size).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(Icons.Default.Person, null, tint = MaterialTheme.colorScheme.primary)
+        author.imageUrl?.let {
+            AsyncImage(
+                model = it,
+                contentDescription = author.name,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
         }
     }
 }
@@ -197,7 +213,8 @@ private fun AuthorSheet(author: Author, onDismiss: () -> Unit, onOpenBook: (Stri
                 }
                 author.description?.takeIf { it.isNotBlank() }?.let {
                     Text(
-                        it,
+                        // Bios are HTML too, like book descriptions.
+                        remember(it) { com.bennybar.kitzi.ui.common.decodeHtml(it) },
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 5,

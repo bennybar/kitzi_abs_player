@@ -78,7 +78,7 @@ object Services {
                 prefs,
                 books,
             )
-            sleepTimer = SleepTimer(playback)
+            sleepTimer = SleepTimer(app, playback)
             queue = PlayQueue(prefs)
 
             initialized = true

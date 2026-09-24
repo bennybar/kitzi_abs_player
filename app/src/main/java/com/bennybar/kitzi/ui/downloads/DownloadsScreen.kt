@@ -1,5 +1,6 @@
 package com.bennybar.kitzi.ui.downloads
 
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -155,7 +156,9 @@ fun DownloadsScreen(onOpenBook: (String) -> Unit) {
                         )
                         Column(Modifier.weight(1f).padding(start = 12.dp)) {
                             Text(
-                                book?.title ?: "Downloading…",
+                                // The book's details can be missing from the cache; only an
+                                // unfinished download is actually "downloading".
+                                book?.title ?: if (d.isComplete) "Downloaded book" else "Downloading…",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.SemiBold,
                                 maxLines = 1,
@@ -194,6 +197,19 @@ fun DownloadsScreen(onOpenBook: (String) -> Unit) {
                                     progress = { d.progress.toFloat() },
                                     modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
                                 )
+                            }
+                        }
+                        // A failed or stopped download can be picked up again from here
+                        // (files already on disk are kept and skipped).
+                        if (d.status == DownloadStatus.FAILED || d.status == DownloadStatus.CANCELED) {
+                            IconButton(onClick = {
+                                scope.launch {
+                                    if (!Services.downloads.download(d.itemId)) {
+                                        com.bennybar.kitzi.ui.common.Snackbars.show("Couldn't restart the download")
+                                    }
+                                }
+                            }) {
+                                Icon(Icons.Default.Refresh, "Retry download")
                             }
                         }
                         IconButton(onClick = { pendingDelete = d }) {

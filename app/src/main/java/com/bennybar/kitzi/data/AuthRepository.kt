@@ -39,6 +39,9 @@ class AuthRepository(
     fun login(baseUrl: String, username: String, password: String): Boolean =
         authApi.login(baseUrl, username, password)
 
+    fun loginResult(baseUrl: String, username: String, password: String): AuthApi.LoginResult =
+        authApi.loginResult(baseUrl, username, password)
+
     fun logout() = authApi.logout()
 
     /** e.g. ["local", "openid"] — the login screen uses this to offer SSO. */

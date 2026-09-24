@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.LibraryBooks
@@ -42,7 +43,7 @@ import com.bennybar.kitzi.ui.common.ScreenHeader
 import com.bennybar.kitzi.ui.common.formatHm
 
 @Composable
-fun ProfileScreen(onBack: () -> Unit) {
+fun ProfileScreen(onBack: () -> Unit, onOpenStats: () -> Unit = {}) {
     var info by remember { mutableStateOf<ProfileInfo?>(null) }
     LaunchedEffect(Unit) { info = Services.books.profile() }
 
@@ -102,22 +103,37 @@ fun ProfileScreen(onBack: () -> Unit) {
                 StatCard(Icons.Default.Schedule, "Listened", formatHm(i.totalListenedSec.toLong()), Modifier.weight(1f))
                 StatCard(Icons.Default.CheckCircle, "Finished", "${i.finished}", Modifier.weight(1f))
             }
+            // Stats used to be reachable only from the library's hidden controls.
+            InfoTile(Icons.Default.Schedule, "Listening stats", "Streaks, top books and daily listening", onClick = onOpenStats)
         }
     }
 }
 
 @Composable
-private fun InfoTile(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, value: String) {
+private fun InfoTile(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    value: String,
+    onClick: (() -> Unit)? = null,
+) {
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainer,
         shape = RoundedCornerShape(16.dp),
         modifier = Modifier.fillMaxWidth(),
+        onClick = onClick ?: {},
+        enabled = onClick != null,
     ) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(icon, null, tint = MaterialTheme.colorScheme.primary)
-            Column(Modifier.padding(start = 14.dp)) {
+            Column(Modifier.padding(start = 14.dp).weight(1f)) {
                 Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(value, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            if (onClick != null) {
+                Icon(
+                    Icons.AutoMirrored.Filled.KeyboardArrowRight, null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }

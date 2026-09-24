@@ -194,3 +194,17 @@ fun formatSize(bytes: Long): String {
     val mb = bytes / 1024.0 / 1024.0
     return if (mb >= 1024) String.format("%.1f GB", mb / 1024) else String.format("%.1f MB", mb)
 }
+
+/** "1 day" / "3 days". [plural] defaults to [word] + "s". */
+fun plural(n: Long, word: String, plural: String = word + "s"): String = "$n ${if (n == 1L) word else plural}"
+
+fun plural(n: Int, word: String, plural: String = word + "s"): String = plural(n.toLong(), word, plural)
+
+/**
+ * Plain text from an ABS description, which is HTML: entities ("&amp;"), tags and
+ * line breaks. Shown raw, "Ric Young &amp; Waleed Zuaiter" appeared as-is.
+ */
+fun decodeHtml(text: String): String =
+    androidx.core.text.HtmlCompat.fromHtml(text, androidx.core.text.HtmlCompat.FROM_HTML_MODE_COMPACT)
+        .toString().trim()
+

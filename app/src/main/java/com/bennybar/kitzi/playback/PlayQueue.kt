@@ -45,6 +45,9 @@ class PlayQueue(private val prefs: FlutterPrefs) {
 
     fun clear() = update { emptyList() }
 
+    /** Puts back a previous queue exactly (the Undo for clear and remove). */
+    fun restore(entries: List<QueueEntry>) = update { entries }
+
     fun move(from: Int, to: Int) = update { list ->
         if (from !in list.indices) return@update list
         val mutable = list.toMutableList()
