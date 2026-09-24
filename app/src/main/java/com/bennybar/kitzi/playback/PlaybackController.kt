@@ -17,6 +17,7 @@ import com.bennybar.kitzi.data.net.ProgressReport
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -77,6 +78,19 @@ class PlaybackController(
     // the teardown finished. That is what reverted "Mark as Finished" on the server.
     @Volatile private var tearingDown = false
     private var lastSyncedSec: Double = -1.0
+
+    /** When the last server report went out, and how many in a row have failed —
+     *  the sync loop spaces reports out (and backs off) using these. */
+    @Volatile private var lastNetSyncAt = 0L
+    @Volatile private var failedSyncs = 0
+
+    /** Bumped on every seek and chapter/track skip, so the sleep timer can tell a
+     *  jump (re-target "end of chapter") from playing on. */
+    @Volatile var seekGeneration = 0
+        private set
+
+    /** The report after a seek, delayed so a burst of taps sends one request. */
+    private var seekSyncJob: kotlinx.coroutines.Job? = null
     private var syncJob: kotlinx.coroutines.Job? = null
     // A book that was loaded paused (the auto-loaded last book on startup) hasn't
     // opened a live streaming session for THIS play; its first play reloads from
@@ -166,7 +180,12 @@ class PlaybackController(
         val tp = PlaybackMath.mapGlobalToTrack(target, np.tracks)
 
         player.seekTo(tp.trackIndex, (tp.offsetSec * 1000).toLong())
-        if (reportNow) syncNow()
+        seekGeneration++
+        if (reportNow) {
+            // Debounced: five quick +30 s taps (or a scrub) sent five requests.
+            seekSyncJob?.cancel()
+            seekSyncJob = scope.launch { delay(SEEK_SYNC_DEBOUNCE_MS); syncNow() }
+        }
     }
 
     fun nudge(seconds: Double) {
@@ -212,7 +231,7 @@ class PlaybackController(
         // next start, and falling back to the next file jumped mid-chapter in a
         // multi-file book.
         if (next != null) seekGlobal(next)
-        else if (np?.chapters.isNullOrEmpty() && player.hasNextMediaItem()) player.seekToNextMediaItem()
+        else if (np?.chapters.isNullOrEmpty() && player.hasNextMediaItem()) { player.seekToNextMediaItem(); seekGeneration++ }
     }
 
     fun previousChapter() {
@@ -226,7 +245,7 @@ class PlaybackController(
         // skip there jumped mid-chapter in a multi-file book).
         if (prev != null) seekGlobal(prev)
         else if (!np?.chapters.isNullOrEmpty()) seekGlobal(0.0)
-        else if (player.hasPreviousMediaItem()) player.seekToPreviousMediaItem()
+        else if (player.hasPreviousMediaItem()) { player.seekToPreviousMediaItem(); seekGeneration++ }
     }
 
     fun setSpeed(speed: Double) {
@@ -287,11 +306,69 @@ class PlaybackController(
             // URLs are session-scoped and 404 once it's gone — play looked like it
             // did nothing. A downloaded book has no session and is unaffected.
             (!np.isLocal && sessionId == null)
-        if (notResumable) {
+        // A streamed book paused briefly doesn't need the full reload: its session was
+        // closed on pause, but a direct-played file's URL doesn't belong to the
+        // session. So play at once and open a new session in the background, rather
+        // than reopening it, re-downloading the whole /api/me and rebuffering from
+        // scratch on every headset or car pause. Transcoded books (whose track URLs
+        // die with the session) and long pauses (another device may have moved on)
+        // still reload fully.
+        val pausedFor = pausedAtMs?.let { android.os.SystemClock.elapsedRealtime() - it }
+        val quickResume = notResumable && !needsFreshLoad &&
+            player.playerError == null &&
+            player.playbackState != Player.STATE_IDLE &&
+            player.mediaItemCount > 0 &&
+            !np.isLocal && sessionId == null &&
+            np.tracks.none { it.isSessionScoped() } &&
+            pausedFor != null && pausedFor < QUICK_RESUME_MAX_PAUSE_MS
+        if (quickResume) {
+            scope.launch {
+                // "Sync progress before play" still applies: if another device moved
+                // this book on during the pause, resume from there. One small
+                // request, awaited for at most QUICK_SYNC_WAIT_MS so an unreachable
+                // server can't stall the play (it may still land later, harmlessly).
+                if (prefs.getBoolean("sync_progress_before_play", true)) {
+                    val fetch = scope.async(Dispatchers.IO) { runCatching { books.syncProgressFor(itemId) } }
+                    withTimeoutOrNull(QUICK_SYNC_WAIT_MS) { fetch.await() }
+                    // Same rule as a fresh start: the newer of the local and server
+                    // positions wins.
+                    val target = resumePosition(itemId)
+                    val here = globalPositionSec()
+                    if (_nowPlaying.value?.itemId == itemId && here != null &&
+                        kotlin.math.abs(target - here) > RESUME_JUMP_MIN_SEC
+                    ) {
+                        seekGlobal(target, reportNow = false)
+                    }
+                }
+                player.play()
+                reopenSession(itemId)
+            }
+        } else if (notResumable) {
             needsFreshLoad = false
             scope.launch { runCatching { playItem(itemId, startPlaying = true) } }
         } else {
             player.play()
+        }
+    }
+
+    /** A transcode (HLS) track: its URL belongs to the server session. */
+    private fun Track.isSessionScoped() =
+        "/hls/" in url || url.substringBefore('?').endsWith(".m3u8") || mimeType.contains("mpegurl", ignoreCase = true)
+
+    /**
+     * The session for a quick resume. Progress reports and listening time go
+     * through it once it's back; until then they wait in the accrual. If the user
+     * paused again or moved to another book meanwhile, it's closed straight away
+     * rather than left open on the server.
+     */
+    private suspend fun reopenSession(itemId: String) {
+        val opened = withContext(Dispatchers.IO) { runCatching { api.openSession(itemId) }.getOrNull() }
+            ?: return
+        val sid = opened.sessionId ?: return
+        if (_nowPlaying.value?.itemId == itemId && player.isPlaying && sessionId == null) {
+            sessionId = sid
+        } else {
+            withContext(Dispatchers.IO) { syncMutex.withLock { runCatching { api.closeSession(sid) } } }
         }
     }
 
@@ -432,7 +509,7 @@ class PlaybackController(
         // "Sync progress before play": pull the latest server progress first so
         // resuming picks up where another device left off. Streamed books only —
         // a downloaded book must start instantly and never wait on the network.
-        if (!np.isLocal) maybeSyncBeforePlay()
+        if (!np.isLocal && startPlaying) maybeSyncBeforePlay(itemId)
         // A finished book is saved at (or a hair before) its end. Resuming there ended
         // it again at once and re-ran the finish handlers — advancing the queue and,
         // with auto-delete on, deleting the download the user had just tapped to
@@ -445,9 +522,23 @@ class PlaybackController(
             LocalPlay(java.util.UUID.randomUUID().toString(), System.currentTimeMillis(), resumeSec, np.title, np.author)
         } else null
 
+        // Streaming holds a Wi-Fi lock as well as the CPU one (only while playing):
+        // with the screen off, Wi-Fi power saving otherwise throttles the stream.
+        player.setWakeMode(if (np.isLocal) androidx.media3.common.C.WAKE_MODE_LOCAL else androidx.media3.common.C.WAKE_MODE_NETWORK)
         player.setMediaItems(np.tracks.map { it.toMediaItem(np) }, tp.trackIndex, (tp.offsetSec * 1000).toLong())
-        player.prepare()
+        // A streamed book loaded paused (the last book, auto-loaded on launch) isn't
+        // prepared, and its server session is given back now: preparing buffered
+        // about a minute of audio for a book the user may never play, and the first
+        // play reloads it fresh anyway. A downloaded book is prepared — that's only
+        // local disk, and it's what reads its track durations.
+        if (startPlaying || np.isLocal) player.prepare()
         if (startPlaying) player.play()
+        if (!startPlaying && !np.isLocal) {
+            sessionId?.let { sid ->
+                sessionId = null
+                scope.launch(Dispatchers.IO) { syncMutex.withLock { runCatching { api.closeSession(sid) } } }
+            }
+        }
         // Loaded-but-not-playing (auto-load) → the first play reloads it fresh.
         needsFreshLoad = !startPlaying
 
@@ -535,12 +626,28 @@ class PlaybackController(
 
     // ---- progress ----------------------------------------------------------
 
+    /**
+     * While playing: the position is saved on the device every [PING_MS] (no radio),
+     * and reported to the server every [NET_SYNC_MS]. A report every 26 s kept the
+     * cellular radio awake for a third of the time; the final position still goes
+     * out on pause, stop and book switch. After failures (server unreachable) the
+     * reports back off, and a tick never starts one while another is still running —
+     * each can take a minute to time out, and they used to queue up without limit.
+     */
     private fun startSyncLoop() {
         syncJob?.cancel()
         syncJob = scope.launch {
             while (true) {
                 delay(PING_MS)
-                if (player.isPlaying) syncNow()
+                if (!player.isPlaying) continue
+                val now = android.os.SystemClock.elapsedRealtime()
+                val interval = NET_SYNC_MS shl failedSyncs.coerceAtMost(MAX_BACKOFF_STEPS)
+                if (now - lastNetSyncAt >= interval && !syncMutex.isLocked) {
+                    lastNetSyncAt = now
+                    syncNow()
+                } else {
+                    buildSyncPayload(finished = false) // saves the position locally
+                }
             }
         }
     }
@@ -628,6 +735,7 @@ class PlaybackController(
                 com.bennybar.kitzi.data.PlayHistoryStore.record(p.itemId, listened)
             }
             if (ok) lastSyncedSec = p.current
+            failedSyncs = if (ok) 0 else failedSyncs + 1
         }
     }
 
@@ -649,6 +757,8 @@ class PlaybackController(
      * time was consumed without the server ever recording it.
      */
     private fun syncThenClose(finished: Boolean = false) {
+        // This report supersedes a pending post-seek one.
+        seekSyncJob?.cancel()
         val payload = buildSyncPayload(finished) // captures the session id first
         val sid = sessionId
         sessionId = null
@@ -687,9 +797,11 @@ class PlaybackController(
     private fun progressTsKey(itemId: String) = "abs_progress_ts:$itemId"
 
     /** Refreshes server-side progress into the local DB before resuming a book. */
-    private suspend fun maybeSyncBeforePlay() {
+    private suspend fun maybeSyncBeforePlay(itemId: String) {
         if (!prefs.getBoolean("sync_progress_before_play", true)) return
-        withContext(Dispatchers.IO) { runCatching { books.syncProgress() } }
+        // This one book's progress, not the whole /api/me (every book's progress
+        // plus all bookmarks) on every play.
+        withContext(Dispatchers.IO) { runCatching { books.syncProgressFor(itemId) } }
     }
 
     // Chapters are cached so a downloaded book has them offline.
@@ -844,7 +956,17 @@ class PlaybackController(
 
     companion object {
         private const val TAG = "PlaybackController"
-        private const val PING_MS = 26_000L
+        private const val PING_MS = 30_000L
+        private const val NET_SYNC_MS = 90_000L
+        /** Backoff doubles the report interval up to 8x (12 minutes). */
+        private const val MAX_BACKOFF_STEPS = 3
+        private const val SEEK_SYNC_DEBOUNCE_MS = 2_500L
+        /** How long a quick resume waits for the server's position before playing. */
+        private const val QUICK_SYNC_WAIT_MS = 1_500L
+        /** A server position closer than this to where we are isn't worth a jump. */
+        private const val RESUME_JUMP_MIN_SEC = 5.0
+        /** A pause longer than this resumes with a full reload (see resume()). */
+        private const val QUICK_RESUME_MAX_PAUSE_MS = 10 * 60 * 1000L
         /** A saved position this close to the end counts as "finished": start over. */
         private const val RESTART_WITHIN_SEC = 5.0
 

@@ -174,6 +174,14 @@ class AbsApi(
         return parse(body) as? JsonObject
     }
 
+    /** One book's progress (`/api/me/progress/<id>`); null when the user has none. */
+    fun mediaProgress(itemId: String): JsonObject? {
+        val (code, body) = get("/api/me/progress/$itemId")
+        if (code == 404) return null
+        if (code != 200) throw HttpError(code)
+        return parse(body) as? JsonObject
+    }
+
     fun listeningStats(): JsonObject? {
         val (code, body) = get("/api/me/listening-stats")
         if (code != 200) return null

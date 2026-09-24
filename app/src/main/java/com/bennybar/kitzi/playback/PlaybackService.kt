@@ -94,15 +94,34 @@ class PlaybackService : MediaLibraryService() {
 
         val httpFactory = OkHttpDataSource.Factory(Services.httpClient)
         // Streamed (non-downloaded) audio is served through an LRU disk cache so
-        // re-seeking or replaying doesn't re-download bytes. Local file playback
-        // bypasses it. Size = the streaming_cache_max_bytes_mb setting.
-        val cacheFactory = androidx.media3.datasource.cache.CacheDataSource.Factory()
+        // re-seeking or replaying doesn't re-download bytes. Size = the
+        // streaming_cache_max_bytes_mb setting. The cache sits UNDER DefaultDataSource,
+        // so only http(s) goes through it: wrapped the other way round, every
+        // downloaded book played was copied into the stream cache too — twice the
+        // disk writes, and it evicted the streamed audio the cache is for.
+        val cachedHttpFactory = androidx.media3.datasource.cache.CacheDataSource.Factory()
             .setCache(StreamCache.get(this, Services.prefs))
-            .setUpstreamDataSourceFactory(DefaultDataSource.Factory(this, httpFactory))
+            .setUpstreamDataSourceFactory(httpFactory)
             .setFlags(androidx.media3.datasource.cache.CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
         val player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(
-                DefaultMediaSourceFactory(cacheFactory)
+                DefaultMediaSourceFactory(DefaultDataSource.Factory(this, cachedHttpFactory))
+            )
+            // Load in bursts. The default buffer is 50 s minimum AND maximum, so it
+            // tops up a few seconds at a time and the cellular radio never gets to
+            // idle. Audiobooks are 32–128 kbps: buffering up to 15 minutes is only
+            // ~5–15 MB, and refilling from 2 minutes lets the radio sleep in between.
+            .setLoadControl(
+                androidx.media3.exoplayer.DefaultLoadControl.Builder()
+                    .setBufferDurationsMs(
+                        /* minBufferMs = */ 120_000,
+                        /* maxBufferMs = */ 900_000,
+                        /* bufferForPlaybackMs = */ 2_500,
+                        /* bufferForPlaybackAfterRebufferMs = */ 5_000,
+                    )
+                    .setTargetBufferBytes(24 * 1024 * 1024)
+                    .setPrioritizeTimeOverSizeThresholds(true)
+                    .build()
             )
             .setAudioAttributes(
                 AudioAttributes.Builder()

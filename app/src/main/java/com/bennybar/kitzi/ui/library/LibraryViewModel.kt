@@ -11,6 +11,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -51,6 +52,9 @@ class LibraryViewModel : ViewModel() {
         .flatMapLatest { q ->
             books.pagedBooks(q.sort, q.filter, q.search.takeIf { it.isNotBlank() }, q.limit, 0)
         }
+        // A write that didn't change what's shown (a sync touching other rows) must
+        // not recompose the list.
+        .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val continueListening = MutableStateFlow<List<Book>>(emptyList())
@@ -58,9 +62,16 @@ class LibraryViewModel : ViewModel() {
     val summary = MutableStateFlow(LibrarySummary())
 
     val progress = books.watchProgress()
+        .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
+    /** When the last quiet refresh (or the init sync) started; see refreshNewestQuietly. */
+    private var lastQuietSyncAt = 0L
+
     init {
+        // The init sync below covers what a quiet refresh would do, so the screen's
+        // first on-resume refresh (which fires at the same moment) is skipped.
+        lastQuietSyncAt = android.os.SystemClock.elapsedRealtime()
         viewModelScope.launch {
             openLibrary()
 
@@ -77,7 +88,7 @@ class LibraryViewModel : ViewModel() {
                 .onFailure { Log.w(TAG, "progress sync failed", it) }
             runCatching { loadShelves() }
                 .onFailure { Log.w(TAG, "shelves failed", it) }
-            runCatching { books.syncAll() }
+            runCatching { books.syncAllIfStale() }
                 .onFailure { Log.w(TAG, "full library sync failed", it) }
             runCatching { loadShelves() }
                 .onFailure { Log.w(TAG, "shelves failed", it) }
@@ -189,6 +200,13 @@ class LibraryViewModel : ViewModel() {
      */
     fun refreshNewestQuietly() {
         if (quietSyncing || refreshing.value) return
+        // Coming back to the list (from a book, a tab, the player) re-fires this.
+        // Each run is 3 requests, two of them full downloads (/api/me and listening
+        // stats), so opening and closing ten books cost thirty. Once every few
+        // minutes is plenty.
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - lastQuietSyncAt < QUIET_MIN_INTERVAL_MS) return
+        lastQuietSyncAt = now
         quietSyncing = true
         viewModelScope.launch {
             syncNewest(force = false)
@@ -211,6 +229,7 @@ class LibraryViewModel : ViewModel() {
 
     private companion object {
         const val TAG = "LibraryViewModel"
+        const val QUIET_MIN_INTERVAL_MS = 3 * 60 * 1000L
     }
 
     fun setSort(sort: BookSort) { query.value = query.value.copy(sort = sort, limit = 60) }

@@ -113,16 +113,18 @@ fun LibraryScreen(
     }
 
     // Keep the library fresh while the user is looking at it: re-check the server
-    // the moment the screen resumes (app-open, or coming back from another screen)
-    // and every couple of minutes it stays open. Both are cheap conditional
-    // requests. repeatOnLifecycle cancels the loop when the app is backgrounded and
-    // re-runs the immediate check when it returns.
+    // when the screen resumes (app-open, or coming back from another screen) and
+    // every 15 minutes it stays open. The ViewModel skips a check if one ran in the
+    // last few minutes. repeatOnLifecycle cancels the loop when the app is
+    // backgrounded and re-runs the check when it returns.
     val lifecycleOwner = LocalLifecycleOwner.current
     LaunchedEffect(lifecycleOwner) {
         lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             vm.refreshNewestQuietly()
             while (true) {
-                kotlinx.coroutines.delay(2 * 60 * 1000L)
+                // Every 15 minutes, not 2: each refresh downloads the whole /api/me
+                // and listening stats (only the page fetch is conditional).
+                kotlinx.coroutines.delay(15 * 60 * 1000L)
                 vm.refreshNewestQuietly()
             }
         }

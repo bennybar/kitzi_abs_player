@@ -120,6 +120,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         Services.init(this)
+        // Anonymous daily-active-user ping, when the app is actually opened: not when
+        // Android re-creates the activity, and not on background process starts.
+        if (savedInstanceState == null) com.bennybar.kitzi.data.Analytics.logAppOpen()
         ThemeState.load(Services.prefs)
         com.bennybar.kitzi.ui.UiPrefsState.load(Services.prefs)
 

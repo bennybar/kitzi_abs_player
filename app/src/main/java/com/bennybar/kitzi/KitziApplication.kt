@@ -27,10 +27,11 @@ class KitziApplication : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         createAudioNotificationChannel()
-        // Anonymous daily-active-user ping, as the Flutter app does on startup.
         Analytics.init(this)
-        Analytics.logAppOpen()
-        // Periodic background library refresh (~3h).
+        // The "app open" ping is sent from MainActivity: this runs on every process
+        // start, including background ones (the sync worker, media buttons, Android
+        // Auto), which cost a request each and inflated the daily-user count.
+        // Periodic background library refresh (twice a day).
         com.bennybar.kitzi.data.sync.LibrarySyncWorker.schedule(this)
     }
 

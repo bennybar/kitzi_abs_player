@@ -48,13 +48,20 @@ class LibrarySyncWorker(
         private const val NAME = "library_sync"
 
         fun schedule(context: Context) {
-            val request = PeriodicWorkRequestBuilder<LibrarySyncWorker>(3, TimeUnit.HOURS)
+            // Twice a day, and not on a low battery. Every 3 h woke the app eight
+            // times a day for results nobody sees until the next launch — which
+            // syncs on its own anyway.
+            val request = PeriodicWorkRequestBuilder<LibrarySyncWorker>(12, TimeUnit.HOURS)
                 .setConstraints(
-                    Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
+                    Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .setRequiresBatteryNotLow(true)
+                        .build()
                 )
                 .build()
+            // UPDATE, not KEEP: KEEP left installs on the old 3-hour schedule forever.
             WorkManager.getInstance(context)
-                .enqueueUniquePeriodicWork(NAME, ExistingPeriodicWorkPolicy.KEEP, request)
+                .enqueueUniquePeriodicWork(NAME, ExistingPeriodicWorkPolicy.UPDATE, request)
         }
     }
 }

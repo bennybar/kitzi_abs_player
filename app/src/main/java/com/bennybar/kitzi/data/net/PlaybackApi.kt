@@ -129,11 +129,20 @@ class PlaybackApi(
      * listening time must NOT be consumed, so it rolls into the next attempt.
      */
     fun sync(sessionId: String?, report: ProgressReport): Boolean {
-        if (sessionId != null && syncSession(sessionId, report)) return true
+        if (sessionId != null) {
+            when (syncSession(sessionId, report)) {
+                true -> return true
+                // Unreachable: the fallback would only time out again (up to a
+                // minute per attempt), keeping the radio busy for nothing.
+                null -> return false
+                false -> {}
+            }
+        }
         return patchProgress(report)
     }
 
-    private fun syncSession(sessionId: String, r: ProgressReport): Boolean {
+    /** true = accepted, false = rejected (try the fallback), null = server unreachable. */
+    private fun syncSession(sessionId: String, r: ProgressReport): Boolean? {
         val body = buildJsonObject {
             put("currentTime", r.currentTimeSec)
             put("position", (r.currentTimeSec * 1000).toLong())
@@ -154,7 +163,7 @@ class PlaybackApi(
                 .post(body)
                 .build()
             client.newCall(request).execute().use { it.isSuccessful }
-        }.getOrDefault(false)
+        }.getOrNull()
     }
 
     private fun patchProgress(r: ProgressReport): Boolean {
@@ -171,13 +180,18 @@ class PlaybackApi(
         }.toString().toRequestBody(JSON_MEDIA)
 
         val url = "${base()}/api/me/progress/${r.itemId}"
-        // Older servers accept only one of these verbs.
-        return listOf("PATCH", "PUT", "POST").any { verb ->
-            runCatching {
+        // Older servers accept only one of these verbs. The next one is tried only
+        // when the server says the verb doesn't exist here (404/405) — not when it
+        // can't be reached, where each attempt is just another timeout.
+        for (verb in listOf("PATCH", "PUT", "POST")) {
+            val code = runCatching {
                 val request = Request.Builder().url(url).method(verb, body).build()
-                client.newCall(request).execute().use { it.isSuccessful }
-            }.getOrDefault(false)
+                client.newCall(request).execute().use { it.code }
+            }.getOrNull() ?: return false
+            if (code in 200..299) return true
+            if (code != 404 && code != 405) return false
         }
+        return false
     }
 
     /**

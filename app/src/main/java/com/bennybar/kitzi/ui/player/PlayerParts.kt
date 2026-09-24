@@ -353,11 +353,18 @@ fun SleepTimerSheet(
                 )
             }
 
-            // Live status when a timer is already running.
+            // Live status when a timer is already running. The timer only holds its
+            // end time, so the countdown ticks here, while the sheet is open.
+            val durationLeft by produceState(
+                (current as? com.bennybar.kitzi.playback.SleepMode.Duration)?.remainingSec ?: 0L, current,
+            ) {
+                val c = current as? com.bennybar.kitzi.playback.SleepMode.Duration ?: return@produceState
+                while (true) { value = c.remainingSec; kotlinx.coroutines.delay(1000) }
+            }
             when (val c = current) {
                 is com.bennybar.kitzi.playback.SleepMode.Duration ->
                     Text(
-                        "Running — ${c.remainingSec / 60}m ${c.remainingSec % 60}s left",
+                        "Running — ${durationLeft / 60}m ${durationLeft % 60}s left",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.primary,
                     )

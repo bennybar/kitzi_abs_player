@@ -11,6 +11,7 @@ import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.longOrNull
 
+@androidx.compose.runtime.Immutable
 data class Book(
     val id: String,
     val title: String,

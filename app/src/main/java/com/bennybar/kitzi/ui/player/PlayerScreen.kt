@@ -107,7 +107,9 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
                 isPlaying = runCatching { controller.player.isPlaying }.getOrDefault(false)
                 speed = runCatching { controller.player.playbackParameters.speed.toDouble() }
                     .getOrDefault(1.0).coerceAtLeast(0.1)
-                delay(if (isPlaying) 400 else 1000)
+                // Once a second: the labels show whole seconds, and each poll
+                // recomposes the whole player (it was every 0.4 s while playing).
+                delay(1000)
             }
         }
     }
@@ -307,9 +309,11 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
             val sliderValue = scrubbing ?: sliderPos.toFloat()
             // Chapter boundaries as fractions, drawn as subtle notches on the track —
             // only in book mode (they're book-scale) and when the setting is on.
-            val tickFractions = if (!chapterMode && chapterizedBar && np.chapters.size > 1 && total > 0) {
-                np.chapters.map { (it.startSec / total).toFloat() }.filter { it > 0.008f && it < 0.992f }
-            } else emptyList()
+            val tickFractions = remember(np.chapters, total, chapterMode, chapterizedBar) {
+                if (!chapterMode && chapterizedBar && np.chapters.size > 1 && total > 0) {
+                    np.chapters.map { (it.startSec / total).toFloat() }.filter { it > 0.008f && it < 0.992f }
+                } else emptyList()
+            }
             PlayerProgressBar(
                 value = sliderValue,
                 valueRange = 0f..(sliderMax.toFloat().coerceAtLeast(1f)),

@@ -12,8 +12,14 @@ import kotlinx.coroutines.launch
 
 sealed interface SleepMode {
     data object Off : SleepMode
-    /** Stop after a fixed wall-clock duration. */
-    data class Duration(val remainingSec: Long) : SleepMode
+    /**
+     * Stop after a fixed wall-clock duration. Holds the end time (elapsedRealtime),
+     * not a countdown, so the timer needn't wake every half second just to publish
+     * one; whoever shows the countdown ticks it while it's on screen.
+     */
+    data class Duration(val endsAtElapsedMs: Long) : SleepMode {
+        val remainingSec: Long get() = ((endsAtElapsedMs - SystemClock.elapsedRealtime()) / 1000).coerceAtLeast(0)
+    }
     /** Stop when the current chapter ends. */
     data class EndOfChapter(val remainingSec: Long) : SleepMode
 }
@@ -39,7 +45,7 @@ class SleepTimer(private val controller: PlaybackController) {
     fun startDuration(minutes: Int) {
         cancel()
         val endsAt = SystemClock.elapsedRealtime() + minutes * 60_000L
-        _mode.value = SleepMode.Duration(minutes * 60L)
+        _mode.value = SleepMode.Duration(endsAt)
 
         job = scope.launch {
             while (true) {
@@ -49,8 +55,10 @@ class SleepTimer(private val controller: PlaybackController) {
                     _mode.value = SleepMode.Off
                     return@launch
                 }
-                _mode.value = SleepMode.Duration(remainingMs / 1000)
-                delay(500)
+                // Sleep until the end, re-checking at least every 30 s: delay runs on
+                // uptime, which stops while the CPU sleeps, so a single long delay
+                // could fire late; the monotonic clock above is the authority.
+                delay(remainingMs.coerceAtMost(MAX_WAIT_MS))
             }
         }
     }
@@ -62,7 +70,7 @@ class SleepTimer(private val controller: PlaybackController) {
 
         cancel()
         var targetEndSec = chapter.endSec
-        var lastPos: Double? = null
+        var seenSeeks = controller.seekGeneration
 
         job = scope.launch {
             while (true) {
@@ -75,16 +83,14 @@ class SleepTimer(private val controller: PlaybackController) {
                 val pos = controller.globalPositionSec()
                 if (pos == null) { delay(500); continue }
 
-                // A jump — the user skipped a chapter or seeked — means "the end of
-                // the chapter I'm in now". The target used to stay fixed, so skipping
-                // into the next chapter was already past it and paused at once.
-                // Playing never moves more than ~1.5 s per tick (3x speed), so a
-                // natural chapter end still counts as reaching the target.
-                val prev = lastPos
-                if (prev != null && (pos < prev - 1.0 || pos > prev + 5.0)) {
+                // A seek or skip means "the end of the chapter I'm in now". The target
+                // used to stay fixed, so skipping into the next chapter was already
+                // past it and paused at once. Playing on into the next chapter is not
+                // a seek, so a natural chapter end still pauses.
+                if (controller.seekGeneration != seenSeeks) {
+                    seenSeeks = controller.seekGeneration
                     controller.currentChapter()?.let { targetEndSec = it.endSec }
                 }
-                lastPos = pos
 
                 val remaining = targetEndSec - pos
                 if (remaining <= 0.5) {
@@ -93,7 +99,12 @@ class SleepTimer(private val controller: PlaybackController) {
                     return@launch
                 }
                 _mode.value = SleepMode.EndOfChapter(remaining.toLong())
-                delay(500)
+                // Wake just before the chapter ends (media time, converted at the
+                // current speed) instead of twice a second — but at least every 30 s,
+                // so a seek or speed change is picked up. Paused, just re-check.
+                val speed = if (controller.player.isPlaying) controller.player.playbackParameters.speed else 0f
+                val waitMs = if (speed > 0f) ((remaining - 0.25) / speed * 1000).toLong() else MAX_WAIT_MS
+                delay(waitMs.coerceIn(MIN_WAIT_MS, MAX_WAIT_MS))
             }
         }
         return true
@@ -110,5 +121,11 @@ class SleepTimer(private val controller: PlaybackController) {
         job?.cancel()
         job = null
         _mode.value = SleepMode.Off
+    }
+
+    private companion object {
+        /** The longest the timer sleeps between checks. */
+        const val MAX_WAIT_MS = 30_000L
+        const val MIN_WAIT_MS = 200L
     }
 }

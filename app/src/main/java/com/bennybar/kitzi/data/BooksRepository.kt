@@ -27,6 +27,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonArray
@@ -37,6 +38,7 @@ data class Library(val id: String, val name: String, val mediaType: String?)
 data class Author(val name: String, val bookCount: Int, val imageUrl: String?, val description: String? = null)
 
 /** A series row for the browse list: name, book count, and up to three member cover URLs for the fanned deck. */
+@androidx.compose.runtime.Immutable
 data class SeriesRow(val name: String, val bookCount: Int, val coverUrls: List<String>)
 
 /** Position is the BOOK position, never the track position. */
@@ -191,12 +193,15 @@ class BooksRepository(
         offset: Int,
     ): Flow<List<Book>> {
         val query = BooksDao.libraryQuery(sort, filter, search, limit, offset)
+        // Mapped off the main thread: each row costs a file check (its offline cover)
+        // and JSON decodes, and this re-runs on every write to books or progress —
+        // which a sync does many times. Collected on Main, it stuttered the list.
         return library.flatMapLatest { id ->
             daoFor(id).pagedBooksRaw(query).map { rows ->
                 val base = session.baseUrl.orEmpty()
                 rows.map { it.toBook(base) }
             }
-        }
+        }.flowOn(Dispatchers.Default)
     }
 
     suspend fun countBooks(filter: LibraryFilter, search: String?): Int = withContext(Dispatchers.IO) {
@@ -533,6 +538,20 @@ class BooksRepository(
      * were skipped and never cached. This is the "not all books show" bug the
      * Flutter app fixed the same way.
      */
+    /**
+     * The launch-time sweep, at most once per [maxAgeMs] per library. A full sweep
+     * re-downloads every page (8 requests for 350 books) and nearly always finds
+     * nothing new; the quick page-1 sync on launch already picks up new and edited
+     * books. Pull-to-refresh and "Clear deleted" still sweep every time.
+     */
+    suspend fun syncAllIfStale(maxAgeMs: Long = AUTO_SWEEP_MAX_AGE_MS): Int {
+        val last = prefs.getDouble(sweptKey(libraryId), 0.0).toLong()
+        if (System.currentTimeMillis() - last < maxAgeMs) return 0
+        return syncAll()
+    }
+
+    private fun sweptKey(lib: String) = "kitzi_last_full_sweep_$lib"
+
     suspend fun syncAll(pageSize: Int = 50): Int = withContext(Dispatchers.IO) {
         var page = 1
         var total = 0
@@ -598,7 +617,10 @@ class BooksRepository(
         // When the server reports its total, the sweep must have seen all of it.
         val complete = fullSweep && seen.isNotEmpty() &&
             (serverTotal == null || seen.size >= serverTotal!!) && libraryId == lib
-        if (complete) pruneDeletedBooks(seen, libDao)
+        if (complete) {
+            pruneDeletedBooks(seen, libDao)
+            prefs.putDouble(sweptKey(lib), System.currentTimeMillis().toDouble())
+        }
         else if (fullSweep) Log.w(TAG, "syncAll: saw ${seen.size} of $serverTotal items; not pruning")
 
         Log.i(TAG, "syncAll: cached $total new books over $page page(s)")
@@ -732,22 +754,26 @@ class BooksRepository(
 
         if (books.isEmpty()) return 0
 
-        // Don't overwrite a newer local row with a staler server one. An equal
-        // timestamp is rewritten, so a mapper fix (or a row imported from the Flutter
-        // cache) is re-mapped by the next sync instead of never.
-        val fresh = books.filter { book ->
-            val existing = libDao.updatedAtOf(book.id)
-            existing == null || book.updatedAt == null || book.updatedAt >= existing
+        // One query for the page's existing rows, instead of one per book plus a scan
+        // of the whole covers table on every page.
+        val existing = libDao.getBooks(books.map { it.id }).associateBy { it.id }
+        val changed = books.mapNotNull { book ->
+            val old = existing[book.id]
+            // Don't overwrite a newer local row with a staler server one.
+            if (old?.updatedAt != null && book.updatedAt != null && book.updatedAt < old.updatedAt) {
+                return@mapNotNull null
+            }
+            // coverPath is a LOCAL-only field (a downloaded/cached cover on disk); the
+            // server never supplies it, so it's carried across — otherwise every sync
+            // wiped the offline cover pointer.
+            book.toEntity(coverPath = old?.coverPath)
+                // Only rows that actually differ are written. Rewriting every row made
+                // each sync page re-run and re-map every open list. A mapper fix still
+                // reaches old rows: the re-mapped entity differs, so it's written.
+                .takeIf { it != old }
         }
-        // coverPath is a LOCAL-only field (a downloaded/cached cover on disk); the
-        // server never supplies it. Carry the existing value across the upsert —
-        // toEntity defaults it to null, so without this every sync wiped the offline
-        // cover pointer, and a downloaded book lost its cover the next time it synced.
-        if (fresh.isNotEmpty()) {
-            val existingCovers = libDao.coversOnDisk().associate { it.id to it.coverPath }
-            libDao.upsertBooks(fresh.map { it.toEntity(coverPath = existingCovers[it.id]) })
-        }
-        return fresh.size
+        if (changed.isNotEmpty()) libDao.upsertBooks(changed)
+        return changed.size
     }
 
     suspend fun searchServer(query: String): List<Book> = withContext(Dispatchers.IO) {
@@ -765,34 +791,14 @@ class BooksRepository(
     suspend fun syncProgress(): Int = withContext(Dispatchers.IO) {
         val me = runCatching { api.me() }.getOrNull() ?: return@withContext 0
         val entries = (me["mediaProgress"] as? JsonArray).orEmpty().mapNotNull { el ->
-            val m = el.obj() ?: return@mapNotNull null
-            val itemId = m["libraryItemId"].str() ?: m["id"].str() ?: return@mapNotNull null
-
-            val duration = m["duration"].num() ?: 0.0
-            val currentTime = m["currentTime"].num() ?: 0.0
-            val finished = m["isFinished"].bool() == true
-            // DERIVE progress from position/duration — the server's own `progress`
-            // field is unreliable: ABS can report it as 0 while currentTime is set,
-            // OR leave it stuck at 1.0 (a book "100% complete" 23 minutes in) after
-            // an old finish. Position over duration is authoritative; only fall back
-            // to the reported figure when the duration is unknown.
-            val reported = m["progress"].num() ?: 0.0
-            val progress = when {
-                finished -> 1.0
-                duration > 0 -> currentTime / duration
-                else -> reported
-            }.coerceIn(0.0, 1.0).let { if (it.isNaN()) 0.0 else it }
-
-            MediaProgressEntity(
-                itemId = itemId,
-                progress = progress,
-                isFinished = finished,
-                currentTimeSec = currentTime,
-                durationSec = duration,
-                lastUpdate = m["lastUpdate"].num()?.toLong() ?: System.currentTimeMillis(),
-            )
+            el.obj()?.let(::progressEntity)
         }
-        if (entries.isNotEmpty()) dao.upsertProgress(entries)
+        // Only rows that changed: rewriting all of them on every refresh re-ran every
+        // list observing progress (the whole library list among them).
+        if (entries.isNotEmpty()) {
+            val current = dao.allProgress().associateBy { it.itemId }
+            entries.filter { it != current[it.itemId] }.takeIf { it.isNotEmpty() }?.let { dao.upsertProgress(it) }
+        }
 
         // Progress the server no longer reports (reset on another device, or the
         // book removed) should not linger locally. Room progress rows are only ever
@@ -810,6 +816,46 @@ class BooksRepository(
                 .forEach { dao.deleteProgress(it) }
         }
         entries.size
+    }
+
+    /** A server mediaProgress object as a row; null without an item id. */
+    private fun progressEntity(m: JsonObject): MediaProgressEntity? {
+        val itemId = m["libraryItemId"].str() ?: m["id"].str() ?: return null
+
+        val duration = m["duration"].num() ?: 0.0
+        val currentTime = m["currentTime"].num() ?: 0.0
+        val finished = m["isFinished"].bool() == true
+        // DERIVE progress from position/duration — the server's own `progress`
+        // field is unreliable: ABS can report it as 0 while currentTime is set,
+        // OR leave it stuck at 1.0 (a book "100% complete" 23 minutes in) after
+        // an old finish. Position over duration is authoritative; only fall back
+        // to the reported figure when the duration is unknown.
+        val reported = m["progress"].num() ?: 0.0
+        val progress = when {
+            finished -> 1.0
+            duration > 0 -> currentTime / duration
+            else -> reported
+        }.coerceIn(0.0, 1.0).let { if (it.isNaN()) 0.0 else it }
+
+        return MediaProgressEntity(
+            itemId = itemId,
+            progress = progress,
+            isFinished = finished,
+            currentTimeSec = currentTime,
+            durationSec = duration,
+            lastUpdate = m["lastUpdate"].num()?.toLong() ?: System.currentTimeMillis(),
+        )
+    }
+
+    /**
+     * One book's progress, for the sync before playing it — a single small request
+     * instead of the whole /api/me (every book's progress plus all bookmarks).
+     */
+    suspend fun syncProgressFor(itemId: String) = withContext(Dispatchers.IO) {
+        val m = api.mediaProgress(itemId) ?: return@withContext
+        progressEntity(m)?.let { row ->
+            if (row != dao.progressFor(row.itemId)) dao.upsertProgress(listOf(row))
+        }
     }
 
     suspend fun progressFor(id: String): MediaProgressEntity? = withContext(Dispatchers.IO) {
@@ -877,7 +923,7 @@ class BooksRepository(
     /** Progress for every book, so a list row can show its finished/in-progress mark. */
     fun watchProgress(): Flow<Map<String, MediaProgressEntity>> = library.flatMapLatest { id ->
         daoFor(id).watchAllProgress().map { rows -> rows.associateBy { it.itemId } }
-    }
+    }.flowOn(Dispatchers.Default)
 
     /**
      * Drops every progress row, on logout: the next user (or the same one) gets
@@ -897,6 +943,8 @@ class BooksRepository(
         /** A backstop against a server that pages forever. 100 * 200 = 20k books. */
         const val MAX_SYNC_PAGES = 200
         const val KEY_AUTHORS_SYNCED = "authors_last_synced"
+        /** The automatic (launch) full sweep runs at most this often. */
+        const val AUTO_SWEEP_MAX_AGE_MS = 12 * 3600 * 1000L
         /** The server [FlutterPrefs.KEY_LIBRARY_ID] was chosen on. */
         const val KEY_LIBRARY_SERVER = "kitzi_library_server"
         /** Below this stored width, an on-disk cover counts as low-res and is re-fetched. */
