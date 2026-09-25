@@ -92,6 +92,15 @@ object Services {
             runCatching { com.bennybar.kitzi.data.db.LegacyHistoryImport.importIfNeeded(appContext, prefs) }
         }
 
+        // A play that finds the playback service gone (Android destroyed it while the
+        // app was in the background) starts it again; its onCreate attaches a player.
+        // Only ever called from a user's play in the app, i.e. while in the foreground.
+        playback.requestPlayer = {
+            runCatching {
+                appContext.startService(android.content.Intent(appContext, com.bennybar.kitzi.playback.PlaybackService::class.java))
+            }.onFailure { android.util.Log.w("Services", "couldn't restart the playback service", it) }
+        }
+
         // Local playback only engages for COMPLETE downloads; a partial download
         // (interrupted mid-queue) must stream instead of playing 1-of-N files.
         playback.isDownloadComplete = { itemId -> downloads.isDownloaded(itemId) }

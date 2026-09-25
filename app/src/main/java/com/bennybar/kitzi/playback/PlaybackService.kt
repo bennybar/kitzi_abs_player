@@ -52,6 +52,7 @@ class PlaybackService : MediaLibraryService() {
     )
     private lateinit var session: MediaLibrarySession
     private lateinit var controller: PlaybackController
+    private lateinit var exoPlayer: ExoPlayer
 
     // Notification / Samsung Now Bar buttons, ALL as explicit button preferences so
     // they surface as custom actions (verified working via dumpsys) — the standard
@@ -139,6 +140,7 @@ class PlaybackService : MediaLibraryService() {
             )
             .build()
 
+        exoPlayer = player
         controller.attach(player)
 
         // Notification / lock-screen / Samsung Now Bar buttons come from STANDARD
@@ -199,6 +201,9 @@ class PlaybackService : MediaLibraryService() {
         // them running kept the destroyed service referenced and let them probe a
         // released player after teardown.
         scope.cancel()
+        // Before the release: the controller saves where the book was and waits for
+        // the next player, instead of holding on to a released one.
+        controller.detach(exoPlayer)
         session.player.release()
         session.release()
         super.onDestroy()

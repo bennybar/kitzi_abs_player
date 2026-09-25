@@ -112,8 +112,22 @@ class PlaybackController(
 
     // Completed once PlaybackService.onCreate has attached the ExoPlayer. A very
     // fast Resume/Play tap can arrive before the service connection finishes; a
-    // load waits on this rather than touching an uninitialised `player`.
-    private val playerReady = kotlinx.coroutines.CompletableDeferred<Unit>()
+    // load waits on this rather than touching an uninitialised `player`. Replaced
+    // with a fresh one when the service goes away (see detach).
+    @Volatile private var playerReady = kotlinx.coroutines.CompletableDeferred<Unit>()
+
+    /**
+     * Set between the service releasing its player and the next load: where the book
+     * was, in book seconds. Android can destroy a paused playback service while the
+     * app lives on; the book stayed "loaded" here, but the player under it was
+     * released (play did nothing) or replaced by an empty one (the position read 0 —
+     * and the next play saved and synced that 0, resuming the book from the start
+     * and overwriting the server's position).
+     */
+    @Volatile private var detachedAtSec: Double? = null
+
+    /** Asks the app to bring the playback service back, when a play finds it gone. */
+    var requestPlayer: (() -> Unit)? = null
 
     /** Fired when a book plays to its end: drives the queue and delete-on-finish. */
     var onBookFinished: ((String) -> Unit)? = null
@@ -142,6 +156,29 @@ class PlaybackController(
         playerReady.complete(Unit)
     }
 
+    /**
+     * The service is about to release [released]. Keeps the book (so the mini-player
+     * still shows it, at the right place) but remembers the exact position, closes
+     * the server session, and makes the next play reload the book on the next
+     * player the service attaches.
+     */
+    fun detach(released: ExoPlayer) {
+        if (!::player.isInitialized || player !== released) return
+        if (_nowPlaying.value != null && detachedAtSec == null) {
+            val pos = globalPositionSec()
+            buildSyncPayload(finished = false) // saves that position locally, timestamped
+            detachedAtSec = pos ?: prefs.getDouble(progressKey(_nowPlaying.value!!.itemId), 0.0)
+        }
+        syncJob?.cancel()
+        seekSyncJob?.cancel()
+        sessionId?.let { sid ->
+            sessionId = null
+            scope.launch(Dispatchers.IO) { syncMutex.withLock { runCatching { api.closeSession(sid) } } }
+        }
+        needsFreshLoad = true
+        playerReady = kotlinx.coroutines.CompletableDeferred()
+    }
+
     // ---- book coordinates --------------------------------------------------
 
     private fun tracks(): List<Track> = _nowPlaying.value?.tracks.orEmpty()
@@ -150,6 +187,9 @@ class PlaybackController(
     fun globalPositionSec(): Double? {
         if (!::player.isInitialized) return null
         val np = _nowPlaying.value ?: return null
+        // No player holding this book right now (see detach): where it was, not the
+        // empty player's 0.
+        detachedAtSec?.let { return it }
         return PlaybackMath.computeGlobal(
             player.currentMediaItemIndex,
             player.currentPosition / 1000.0,
@@ -296,7 +336,7 @@ class PlaybackController(
         if (!::player.isInitialized) return
         val np = _nowPlaying.value ?: return
         val itemId = np.itemId
-        val notResumable = needsFreshLoad ||
+        val notResumable = needsFreshLoad || detachedAtSec != null ||
             player.playerError != null ||
             player.playbackState == Player.STATE_IDLE ||
             player.mediaItemCount == 0 ||
@@ -380,7 +420,9 @@ class PlaybackController(
      * which since the last book auto-loads at startup is a different book entirely.
      */
     suspend fun playItem(itemId: String, startPlaying: Boolean = true): Boolean {
-        // Don't touch `player` until the service has attached it.
+        // Don't touch `player` until the service has attached it — and if the service
+        // was destroyed, ask for it back first.
+        if (!playerReady.isCompleted) requestPlayer?.invoke()
         playerReady.await()
         val myGen = ++loadGeneration
         // Signal "preparing" for a real play: opening the session and the
@@ -423,7 +465,9 @@ class PlaybackController(
             // Bounded: the local position is already persisted synchronously inside
             // the payload build, so this wait only buys the server report landing
             // before the session closes. Offline it must not stall the switch.
-            if (_nowPlaying.value != null) {
+            // Not when detached: the position was saved when the player went, and the
+            // new player can't report it (it would report 0).
+            if (_nowPlaying.value != null && detachedAtSec == null) {
                 runCatching { withTimeoutOrNull(3_000) { syncNowAwaiting() } }
             }
             // Close the previous streamed session so the server stops transcoding for
@@ -526,6 +570,8 @@ class PlaybackController(
         // with the screen off, Wi-Fi power saving otherwise throttles the stream.
         player.setWakeMode(if (np.isLocal) androidx.media3.common.C.WAKE_MODE_LOCAL else androidx.media3.common.C.WAKE_MODE_NETWORK)
         player.setMediaItems(np.tracks.map { it.toMediaItem(np) }, tp.trackIndex, (tp.offsetSec * 1000).toLong())
+        // The player holds the book again; positions come from it from here on.
+        detachedAtSec = null
         // A streamed book loaded paused (the last book, auto-loaded on launch) isn't
         // prepared, and its server session is given back now: preparing buffered
         // about a minute of audio for a book the user may never play, and the first

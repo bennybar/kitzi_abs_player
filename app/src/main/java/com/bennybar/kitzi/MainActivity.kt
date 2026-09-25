@@ -103,7 +103,6 @@ import com.bennybar.kitzi.ui.stats.StatsScreen
 import com.bennybar.kitzi.ui.theme.KitziTheme
 import com.bennybar.kitzi.ui.theme.ThemeMode
 import com.bennybar.kitzi.ui.theme.ThemeState
-import com.google.common.util.concurrent.MoreExecutors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -136,12 +135,6 @@ class MainActivity : ComponentActivity() {
             requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 100)
         }
 
-        // Binding to the session starts the service, so playback, the notification
-        // and the app all share one player.
-        val token = SessionToken(this, ComponentName(this, PlaybackService::class.java))
-        controllerFuture = MediaController.Builder(this, token).buildAsync().also { future ->
-            future.addListener({ /* the session owns the player */ }, MoreExecutors.directExecutor())
-        }
 
         setContent {
             val mode by ThemeState.mode
@@ -162,6 +155,24 @@ class MainActivity : ComponentActivity() {
                 KitziTheme(darkTheme = dark) { App() }
             }
         }
+    }
+
+    /**
+     * Binding to the session starts the service, so playback, the notification and
+     * the app all share one player. Done on every start, not once in onCreate:
+     * Android can destroy the playback service while the app sits in the
+     * background, and a binding made only at creation was never renewed — back in
+     * the app, play did nothing until the app was force-closed.
+     */
+    override fun onStart() {
+        super.onStart()
+        val existing = controllerFuture
+        val connected = existing != null && (!existing.isDone ||
+            runCatching { existing.get().isConnected }.getOrDefault(false))
+        if (connected) return
+        existing?.let { MediaController.releaseFuture(it) }
+        val token = SessionToken(this, ComponentName(this, PlaybackService::class.java))
+        controllerFuture = MediaController.Builder(this, token).buildAsync()
     }
 
     override fun onDestroy() {
