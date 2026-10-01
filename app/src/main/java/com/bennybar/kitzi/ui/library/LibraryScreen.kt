@@ -593,9 +593,12 @@ private fun SummaryBlock(
     onInProgress: () -> Unit,
     onLibrary: () -> Unit,
 ) {
-    // "—" until the first load, instead of a row of zeros that then jumps.
+    // "—" until the first load, instead of a row of zeros that then jumps. The
+    // listening tiles also wait for stats (fresh or cached from the last start).
     val ready = summary.loaded
+    val statsReady = summary.loaded && summary.statsLoaded
     fun v(text: String) = if (ready) text else "—"
+    fun vs(text: String) = if (statsReady) text else "—"
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainer,
         shape = RoundedCornerShape(24.dp),
@@ -605,8 +608,8 @@ private fun SummaryBlock(
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 SummaryTile(
                     "Listening today",
-                    v(formatHm(summary.todaySec.toLong())),
-                    if (ready && summary.weekSec > 0) "This week: ${formatHm(summary.weekSec.toLong())}" else "Today",
+                    vs(formatHm(summary.todaySec.toLong())),
+                    if (statsReady && summary.weekSec > 0) "This week: ${formatHm(summary.weekSec.toLong())}" else "Today",
                     Icons.Default.Schedule,
                     MaterialTheme.colorScheme.primary,
                     Modifier.weight(1f),
@@ -614,9 +617,9 @@ private fun SummaryBlock(
                 )
                 SummaryTile(
                     "Streak",
-                    v(if (summary.streakDays > 0) plural(summary.streakDays, "day") else "Start today"),
+                    vs(if (summary.streakDays > 0) plural(summary.streakDays, "day") else "Start today"),
                     when {
-                        !ready -> ""
+                        !statsReady -> ""
                         summary.bestStreakDays > summary.streakDays -> "Best: ${plural(summary.bestStreakDays, "day")}"
                         summary.streakDays > 0 -> "Your best yet"
                         else -> "No active streak"

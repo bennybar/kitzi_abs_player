@@ -145,6 +145,7 @@ object Services {
         runCatching { playback.stopAndAwait() }
         withContext(Dispatchers.IO) { auth.logout() }
         runCatching { books.clearProgress() }
+        books.clearCachedStats()
         books.closeLibrary()
         prefs.remove(PlaybackController.KEY_LAST_ITEM)
         queue.clear()

@@ -363,10 +363,22 @@ class BooksRepository(
         }.sortedBy { it.timeSec }
     }
 
+    /** The per-day listening from the last successful [listeningStats], or null if there's none. */
+    fun cachedPerDaySec(): Map<String, Double>? =
+        prefs.getString(KEY_STATS_CACHE)?.let {
+            runCatching { kotlinx.serialization.json.Json.decodeFromString(STATS_SERIALIZER, it) }.getOrNull()
+        }
+
+    /** On logout: the next account mustn't see this one's listening. */
+    fun clearCachedStats() = prefs.remove(KEY_STATS_CACHE)
+
     /** `GET /api/me/listening-stats` — total seconds listened, and per-day totals. */
     suspend fun listeningStats(): ListeningStats? = withContext(Dispatchers.IO) {
         val json = runCatching { api.listeningStats() }.getOrNull() ?: return@withContext null
         val perDay = (json["days"] as? JsonObject)?.mapValues { (_, v) -> v.num() ?: 0.0 }.orEmpty()
+        // Kept for the next start, so the home tiles show real numbers at once
+        // instead of waiting on this request (see cachedPerDaySec).
+        runCatching { prefs.putString(KEY_STATS_CACHE, kotlinx.serialization.json.Json.encodeToString(STATS_SERIALIZER, perDay)) }
         ListeningStats(
             totalSec = json["totalTime"].num() ?: 0.0,
             perDaySec = perDay,
@@ -984,6 +996,8 @@ class BooksRepository(
         /** A backstop against a server that pages forever. 100 * 200 = 20k books. */
         const val MAX_SYNC_PAGES = 200
         const val KEY_AUTHORS_SYNCED = "authors_last_synced"
+        const val KEY_STATS_CACHE = "kitzi_listening_per_day_cache"
+        val STATS_SERIALIZER = kotlinx.serialization.serializer<Map<String, Double>>()
         /** The automatic (launch) full sweep runs at most this often. */
         const val AUTO_SWEEP_MAX_AGE_MS = 12 * 3600 * 1000L
         /** The server [FlutterPrefs.KEY_LIBRARY_ID] was chosen on. */

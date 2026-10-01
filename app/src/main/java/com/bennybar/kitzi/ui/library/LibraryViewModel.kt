@@ -31,6 +31,8 @@ data class LibrarySummary(
     val libraryCount: Int = 0,
     /** False until the first load, so the tiles show "—" rather than zeros. */
     val loaded: Boolean = false,
+    /** Whether listening stats (fresh or cached) are behind todaySec / streaks. */
+    val statsLoaded: Boolean = false,
     val weekSec: Double = 0.0,
     val bestStreakDays: Int = 0,
     /** Wall-clock time left (at the current speed) across the books in progress. */
@@ -82,6 +84,12 @@ class LibraryViewModel : ViewModel() {
         lastQuietSyncAt = android.os.SystemClock.elapsedRealtime()
         viewModelScope.launch {
             openLibrary()
+            // Everything the home screen can show without the network, at once: the
+            // shelves and counts come from the local database, the listening tiles
+            // from the last stats fetched. It used to stay blank until the page
+            // fetch and progress sync below had finished. Those then refresh it.
+            runCatching { loadShelves(fetchStats = false) }
+                .onFailure { Log.w(TAG, "cached shelves failed", it) }
 
             // Each step is guarded on its own: a server hiccup while warming the
             // cache must not stop the shelves (which read from the local DB) from
@@ -123,12 +131,18 @@ class LibraryViewModel : ViewModel() {
         }.onFailure { Log.w(TAG, "could not open the library", it) }
     }
 
-    private suspend fun loadShelves() {
+    /**
+     * [fetchStats] false: local data only (the shelves and counts from the database,
+     * listening from the cached stats). Fresh stats that fail to load also fall back
+     * to the cache, rather than the tiles dropping to zero.
+     */
+    private suspend fun loadShelves(fetchStats: Boolean = true) {
         continueListening.value = books.continueListening()
         recentlyAdded.value = books.recentlyAdded()
 
-        val stats = runCatching { books.listeningStats() }.getOrNull()
-        val perDay = stats?.perDaySec.orEmpty()
+        val fresh = if (fetchStats) runCatching { books.listeningStats() }.getOrNull()?.perDaySec else null
+        val known = fresh ?: books.cachedPerDaySec()
+        val perDay = known.orEmpty()
         val iso = java.time.format.DateTimeFormatter.ISO_LOCAL_DATE
         val now = java.time.LocalDate.now()
         val speed = Services.prefs.getDouble("playback_speed", 1.0).coerceAtLeast(0.1)
@@ -146,6 +160,7 @@ class LibraryViewModel : ViewModel() {
             // (the server total can include non-audiobook items).
             libraryCount = books.countBooks(LibraryFilter.ALL, null),
             loaded = true,
+            statsLoaded = known != null,
             weekSec = (0L..6L).sumOf { perDay[now.minusDays(it).format(iso)] ?: 0.0 },
             bestStreakDays = longestStreak(perDay),
             leftInProgressSec = leftContent / speed,
