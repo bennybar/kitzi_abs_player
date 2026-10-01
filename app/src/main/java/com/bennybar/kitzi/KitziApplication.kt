@@ -21,6 +21,12 @@ class KitziApplication : Application(), ImageLoaderFactory {
         Services.init(this)
         return ImageLoader.Builder(this)
             .okHttpClient { Services.httpClient }
+            // ABS serves covers with no cache headers, which Coil reads as "stale at
+            // once, can't revalidate" — so every cover not already in memory was
+            // downloaded again on each launch. Keep what's on disk instead; cover URLs
+            // carry the item's updatedAt (BookMapper.coverUrl), so a changed cover
+            // still loads fresh.
+            .respectCacheHeaders(false)
             .build()
     }
 

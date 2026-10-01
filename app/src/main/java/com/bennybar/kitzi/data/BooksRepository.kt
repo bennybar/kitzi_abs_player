@@ -315,7 +315,7 @@ class BooksRepository(
             val list = covers.getOrPut(row.series) { mutableListOf() }
             if (list.size >= 3) continue
             list += row.coverPath?.takeIf { java.io.File(it).exists() }?.let { "file://$it" }
-                ?: BookMapper.coverUrl(row.id, base)
+                ?: BookMapper.coverUrl(row.id, base, ts = row.updatedAt)
         }
         counts.map { SeriesRow(it.name, it.bookCount, covers[it.name].orEmpty()) }
     }

@@ -94,7 +94,7 @@ object BookMapper {
             title = title,
             author = author,
             // Built, never sent by the server. Stored token-stripped and rebuilt on read.
-            coverUrl = coverUrl(id, baseUrl),
+            coverUrl = coverUrl(id, baseUrl, ts = json["updatedAt"].epochMs()),
             description = meta?.get("description").str() ?: json["description"].str(),
             durationMs = durationSec?.takeIf { it > 0 }?.let { (it * 1000).toLong() },
             sizeBytes = media?.get("size").num()?.toLong(),
@@ -138,8 +138,13 @@ object BookMapper {
     // Services.httpClient, which sends it as a header. A token in the URL leaked
     // wherever the URL went (the media session, logs) and changed Coil's cache key
     // on every rotation, re-downloading every cover.
-    fun coverUrl(id: String, baseUrl: String, width: Int = 600): String =
-        "$baseUrl/api/items/$id/cover?width=$width"
+    //
+    // [ts] is the item's updatedAt, as the ABS web client sends it. The server sends
+    // covers with no cache headers, so the image loader keeps them indefinitely
+    // (KitziApplication); a replaced cover changes the item's updatedAt, hence the
+    // URL, and is fetched fresh.
+    fun coverUrl(id: String, baseUrl: String, width: Int = 600, ts: Long? = null): String =
+        "$baseUrl/api/items/$id/cover?width=$width" + (ts?.let { "&ts=$it" } ?: "")
 
     /**
      * The same server cover at a larger width, for the full-screen player where it
@@ -256,7 +261,7 @@ fun BookEntity.toBook(baseUrl: String): Book {
         author = author,
         // Local file wins so covers render offline; otherwise the server cover.
         coverUrl = coverPath?.takeIf { java.io.File(it).exists() }?.let { "file://$it" }
-            ?: BookMapper.coverUrl(id, baseUrl),
+            ?: BookMapper.coverUrl(id, baseUrl, ts = coverUpdatedAt ?: updatedAt),
         description = description,
         durationMs = durationMs,
         sizeBytes = sizeBytes,

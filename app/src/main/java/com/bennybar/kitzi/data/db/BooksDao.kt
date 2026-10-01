@@ -123,7 +123,7 @@ interface BooksDao {
      */
     @Query(
         """
-        SELECT series AS series, id AS id, coverPath AS coverPath FROM books
+        SELECT series AS series, id AS id, coverPath AS coverPath, updatedAt AS updatedAt FROM books
         WHERE series IS NOT NULL AND series != '' AND $AUDIOBOOK_PREDICATE
         ORDER BY series COLLATE NOCASE ASC, seriesSequence IS NULL, seriesSequence ASC, title COLLATE NOCASE ASC
         """
@@ -238,6 +238,6 @@ interface BooksDao {
 
 data class AuthorCount(val name: String, val bookCount: Int)
 
-data class SeriesCoverRow(val series: String, val id: String, val coverPath: String?)
+data class SeriesCoverRow(val series: String, val id: String, val coverPath: String?, val updatedAt: Long?)
 
 data class CoverPathRow(val id: String, val coverPath: String)
