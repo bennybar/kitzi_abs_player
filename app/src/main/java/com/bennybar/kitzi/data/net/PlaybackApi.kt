@@ -128,18 +128,27 @@ class PlaybackApi(
      * Returns true only when the server accepted it; a false here means the
      * listening time must NOT be consumed, so it rolls into the next attempt.
      */
-    fun sync(sessionId: String?, report: ProgressReport): Boolean {
+    fun sync(sessionId: String?, report: ProgressReport): Boolean = syncReport(sessionId, report).positionSaved
+
+    /**
+     * Like [sync], but says separately whether the listening time was recorded: only
+     * a session sync records it. The progress endpoint stores the position and drops
+     * `timeListened`, so time reported that way must not be counted as sent.
+     */
+    fun syncReport(sessionId: String?, report: ProgressReport): SyncOutcome {
         if (sessionId != null) {
             when (syncSession(sessionId, report)) {
-                true -> return true
+                true -> return SyncOutcome(positionSaved = true, listeningRecorded = true)
                 // Unreachable: the fallback would only time out again (up to a
                 // minute per attempt), keeping the radio busy for nothing.
-                null -> return false
+                null -> return SyncOutcome(positionSaved = false, listeningRecorded = false)
                 false -> {}
             }
         }
-        return patchProgress(report)
+        return SyncOutcome(positionSaved = patchProgress(report), listeningRecorded = false)
     }
+
+    data class SyncOutcome(val positionSaved: Boolean, val listeningRecorded: Boolean)
 
     /** true = accepted, false = rejected (try the fallback), null = server unreachable. */
     private fun syncSession(sessionId: String, r: ProgressReport): Boolean? {
@@ -267,6 +276,22 @@ class PlaybackApi(
             val request = Request.Builder()
                 .url("${base()}/api/me/item/$itemId/bookmark")
                 .post(body)
+                .build()
+            client.newCall(request).execute().use { it.isSuccessful }
+        }.getOrDefault(false)
+    }
+
+    /** Renames the bookmark at [timeSec] (the server finds it by its time). */
+    fun renameBookmark(itemId: String, timeSec: Double, title: String): Boolean {
+        val body = buildJsonObject {
+            put("time", timeSec)
+            put("title", title)
+        }.toString().toRequestBody(JSON_MEDIA)
+
+        return runCatching {
+            val request = Request.Builder()
+                .url("${base()}/api/me/item/$itemId/bookmark")
+                .patch(body)
                 .build()
             client.newCall(request).execute().use { it.isSuccessful }
         }.getOrDefault(false)

@@ -54,7 +54,9 @@ import com.bennybar.kitzi.ui.common.KitziSearchField
 import com.bennybar.kitzi.ui.common.ScreenHeader
 import com.bennybar.kitzi.ui.library.BookCard
 
-private enum class SeriesTab { SERIES, COLLECTIONS }
+private enum class SeriesTab(val title: String, val noun: String) {
+    SERIES("Series", "series"), COLLECTIONS("Collections", "collection"), PLAYLISTS("Playlists", "playlist")
+}
 
 /** One row in the browse list, whether a series or a collection. */
 private data class Group(val name: String, val count: Int, val coverUrls: List<String>)
@@ -62,9 +64,10 @@ private data class Group(val name: String, val count: Int, val coverUrls: List<S
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SeriesScreen(onOpenBook: (String) -> Unit, onBack: () -> Unit) {
-    var tab by remember { mutableStateOf(SeriesTab.SERIES) }
+    var tab by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(SeriesTab.SERIES) }
     var series by remember { mutableStateOf<List<SeriesRow>>(emptyList()) }
     var collections by remember { mutableStateOf<Map<String, List<Book>>>(emptyMap()) }
+    var playlists by remember { mutableStateOf<Map<String, List<Book>>>(emptyMap()) }
     var search by remember { mutableStateOf("") }
     var expanded by remember { mutableStateOf<String?>(null) }
     var books by remember { mutableStateOf<List<Book>>(emptyList()) }
@@ -81,11 +84,18 @@ fun SeriesScreen(onOpenBook: (String) -> Unit, onBack: () -> Unit) {
         series = Services.books.seriesWithCovers(minBooks)
         collections = Services.books.collections()
         loading = false
+        // The server's real collections first (made in its web UI), then any grouping
+        // by a `collection` metadata field that isn't one of them. Offline: the latter.
+        Services.books.serverCollections()?.let { server ->
+            collections = server + collections.filterKeys { it !in server }
+        }
+        playlists = Services.books.playlists().orEmpty()
     }
     LaunchedEffect(expanded, tab) {
         books = when (tab) {
             SeriesTab.SERIES -> expanded?.let { Services.books.booksInSeries(it) }.orEmpty()
             SeriesTab.COLLECTIONS -> expanded?.let { collections[it] }.orEmpty()
+            SeriesTab.PLAYLISTS -> expanded?.let { playlists[it] }.orEmpty()
         }
         booksFor = expanded
     }
@@ -95,12 +105,15 @@ fun SeriesScreen(onOpenBook: (String) -> Unit, onBack: () -> Unit) {
         SeriesTab.COLLECTIONS -> collections.map { (name, items) ->
             Group(name, items.size, items.take(3).map { it.coverUrl })
         }
+        SeriesTab.PLAYLISTS -> playlists.map { (name, items) ->
+            Group(name, items.size, items.take(3).map { it.coverUrl })
+        }
     }.filter { it.name.contains(search, ignoreCase = true) }
 
     Column(Modifier.fillMaxSize()) {
         ScreenHeader(
             icon = if (tab == SeriesTab.SERIES) Icons.Default.AutoStories else Icons.Default.Collections,
-            title = if (tab == SeriesTab.SERIES) "Series" else "Collections",
+            title = tab.title,
             subtitle = "${groups.size} in library",
             onBack = onBack,
         )
@@ -110,14 +123,14 @@ fun SeriesScreen(onOpenBook: (String) -> Unit, onBack: () -> Unit) {
                 Tab(
                     selected = tab == t,
                     onClick = { tab = t; expanded = null },
-                    text = { Text(t.name.lowercase().replaceFirstChar { it.uppercase() }) },
+                    text = { Text(t.title) },
                 )
             }
         }
 
         KitziSearchField(
             search, { search = it },
-            if (tab == SeriesTab.SERIES) "Search series…" else "Search collections…",
+            "Search ${tab.title.lowercase()}…",
             Modifier.padding(vertical = 8.dp),
         )
 
@@ -129,11 +142,13 @@ fun SeriesScreen(onOpenBook: (String) -> Unit, onBack: () -> Unit) {
                 icon = if (tab == SeriesTab.SERIES) Icons.Default.LibraryBooks else Icons.Default.Collections,
                 title = when {
                     search.isNotBlank() -> "No matches"
-                    tab == SeriesTab.SERIES -> "No series yet"
-                    else -> "No collections yet"
+                    else -> "No ${tab.title.lowercase()} yet"
                 },
-                message = if (search.isNotBlank()) "Try adjusting your search terms"
-                else "${if (tab == SeriesTab.SERIES) "Series" else "Collections"} appear when books are grouped together",
+                message = when {
+                    search.isNotBlank() -> "Try adjusting your search terms"
+                    tab == SeriesTab.PLAYLISTS -> "Playlists you make on your server appear here"
+                    else -> "${tab.title} appear when books are grouped together"
+                },
             )
             else -> LazyColumn(
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(
@@ -202,7 +217,7 @@ fun SeriesScreen(onOpenBook: (String) -> Unit, onBack: () -> Unit) {
                                     verticalArrangement = Arrangement.spacedBy(10.dp),
                                 ) {
                                     Text(
-                                        "In this ${if (tab == SeriesTab.SERIES) "series" else "collection"}",
+                                        "In this ${tab.noun}",
                                         style = MaterialTheme.typography.labelMedium,
                                         color = MaterialTheme.colorScheme.primary,
                                         fontWeight = FontWeight.SemiBold,

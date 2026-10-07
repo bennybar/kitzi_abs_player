@@ -143,8 +143,14 @@ object Services {
      */
     suspend fun signOut() {
         runCatching { playback.stopAndAwait() }
+        // Positions saved offline belong to this account: last chance to push them.
+        runCatching { playback.flushPendingProgress() }
+        runCatching { books.flushPendingBookmarks() }
         withContext(Dispatchers.IO) { auth.logout() }
         runCatching { books.clearProgress() }
+        // ...and the local copies go, or they'd win the next account's resume.
+        playback.clearLocalPositions()
+        prefs.removeWithPrefixes("bookmarks_cache:", "kitzi_pending_bookmark_ops")
         books.clearCachedStats()
         books.closeLibrary()
         prefs.remove(PlaybackController.KEY_LAST_ITEM)

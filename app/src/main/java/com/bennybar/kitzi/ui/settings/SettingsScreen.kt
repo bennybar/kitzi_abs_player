@@ -132,6 +132,8 @@ fun SettingsScreen(onSignedOut: () -> Unit, onOpenProfile: () -> Unit = {}, onOp
                             // they would land in the NEW library's database. Stopping
                             // first also flushes a final sync for the outgoing book.
                             Services.playback.stopAndAwait()
+                            // Its book isn't in the new library: don't auto-load it there.
+                            Services.prefs.remove(com.bennybar.kitzi.playback.PlaybackController.KEY_LAST_ITEM)
                             Services.books.switchLibrary(id)
                             // The repository's flows follow the switch by themselves,
                             // but the home screen's shelves, counts and first sync were
@@ -169,9 +171,14 @@ fun SettingsScreen(onSignedOut: () -> Unit, onOpenProfile: () -> Unit = {}, onOp
         }
 
         // ---------- Appearance ----------
-        if (matches("appearance", "theme", "dark", "series", "author", "player", "font", "letter", "audible", "rating")) {
+        if (matches("appearance", "theme", "dark", "series", "author", "player", "font", "letter", "audible", "rating", "shelves", "home")) {
             Section("Appearance")
             TogglePref("ui_show_series_tab", false, "Show Series tab", "Enable the Series view")
+            TogglePref(
+                "ui_server_home_shelves", false,
+                "Server home shelves",
+                "Show the shelves your server suggests (Discover, Listen Again, …) on the home screen instead of Kitzi's own",
+            )
             TogglePref("ui_author_view_enabled", true, "Authors tab", "Show a dedicated Authors tab in the main navigation")
             TogglePref("ui_full_player_as_tab", true, "Full player as tab", "Show the full player as a bottom navigation tab instead of a popup card")
             TogglePref("ui_hide_series_when_same_as_author", true, "Hide duplicate series names", "Hide series name in books list when it matches the author name")

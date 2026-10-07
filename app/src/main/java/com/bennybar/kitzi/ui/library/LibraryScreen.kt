@@ -114,6 +114,7 @@ fun LibraryScreen(
     val continueListening by vm.continueListening.collectAsStateWithLifecycle()
     val recentlyAdded by vm.recentlyAdded.collectAsStateWithLifecycle()
     val continueSeries by vm.continueSeries.collectAsStateWithLifecycle()
+    val serverShelves by vm.serverShelves.collectAsStateWithLifecycle()
     val summary by vm.summary.collectAsStateWithLifecycle()
     val progressById by vm.progress.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
@@ -312,19 +313,29 @@ fun LibraryScreen(
                                 }
                             },
                         )
-                        if (continueListening.isNotEmpty()) {
+                        // The server's shelves, when chosen in Settings (and they loaded).
+                        serverShelves?.forEach { shelf ->
+                            val listening = shelf.id == "continue-listening"
+                            SectionHeader(
+                                if (listening) Icons.Default.PlayArrow else Icons.Default.AutoAwesome,
+                                shelf.label,
+                                Modifier.padding(horizontal = 16.dp),
+                            )
+                            Shelf(shelf.books, onOpenBook, progressById.takeIf { listening })
+                        }
+                        if (serverShelves == null && continueListening.isNotEmpty()) {
                             SectionHeader(Icons.Default.PlayArrow, "Continue Listening", Modifier.padding(horizontal = 16.dp))
                             Shelf(continueListening, onOpenBook, progressById)
                         }
                         // The next book in each series you've finished one of (#39).
-                        if (continueSeries.isNotEmpty()) {
+                        if (serverShelves == null && continueSeries.isNotEmpty()) {
                             SectionHeader(Icons.Default.AutoStories, "Continue Series", Modifier.padding(horizontal = 16.dp))
                             Shelf(continueSeries, onOpenBook, caption = { b ->
                                 val seq = b.seriesSequence?.let { s -> if (s % 1.0 == 0.0) "#${s.toInt()} · " else "#$s · " }.orEmpty()
                                 b.series?.let { "$seq$it" }
                             })
                         }
-                        if (recentlyAdded.isNotEmpty()) {
+                        if (serverShelves == null && recentlyAdded.isNotEmpty()) {
                             SectionHeader(Icons.Default.AutoAwesome, "Recently Added", Modifier.padding(horizontal = 16.dp))
                             Shelf(recentlyAdded, onOpenBook)
                         }

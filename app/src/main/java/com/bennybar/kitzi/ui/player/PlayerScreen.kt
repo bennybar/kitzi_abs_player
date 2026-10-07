@@ -82,7 +82,9 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
     val nowPlaying by controller.nowPlaying.collectAsStateWithLifecycle()
 
     var positionSec by remember { mutableStateOf(0.0) }
-    var isPlaying by remember { mutableStateOf(false) }
+    // Pushed by the player, so the icon flips the moment playback does (it was
+    // polled once a second).
+    val isPlaying by controller.isPlaying.collectAsStateWithLifecycle()
     val preparing by controller.preparing.collectAsStateWithLifecycle()
     var speed by remember { mutableStateOf(1.0) }
     var scrubbing by remember { mutableStateOf<Float?>(null) }
@@ -105,7 +107,6 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
         lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             while (true) {
                 positionSec = controller.globalPositionSec() ?: 0.0
-                isPlaying = runCatching { controller.player.isPlaying }.getOrDefault(false)
                 speed = runCatching { controller.player.playbackParameters.speed.toDouble() }
                     .getOrDefault(1.0).coerceAtLeast(0.1)
                 // Once a second: the labels show whole seconds, and each poll
@@ -204,12 +205,13 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
                         scope.launch {
                             // Say whether it worked: a failed add used to look the same
                             // as a successful one.
-                            val ok = kotlinx.coroutines.withContext(Dispatchers.IO) { Services.playbackApi.addBookmark(np.itemId, pos, label) }
-                            if (ok) {
-                                com.bennybar.kitzi.ui.common.Snackbars.show("Bookmark added at ${formatClock(pos.toLong())}", "View") { showBookmarks = true }
-                            } else {
-                                com.bennybar.kitzi.ui.common.Snackbars.show("Couldn't add bookmark")
-                            }
+                            // Offline it's saved here and pushed when the network is back.
+                            val sent = Services.books.addBookmark(np.itemId, pos, label)
+                            com.bennybar.kitzi.ui.common.Snackbars.show(
+                                if (sent) "Bookmark added at ${formatClock(pos.toLong())}"
+                                else "Bookmark saved at ${formatClock(pos.toLong())} — syncs when online",
+                                "View",
+                            ) { showBookmarks = true }
                         }
                     },
                 )
@@ -219,11 +221,12 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
                         label = "Last position",
                         iconColor = Color(0xFF7EE08A),
                         modifier = Modifier.align(Alignment.BottomStart).padding(12.dp),
-                        // Jump back to the last saved listening position (useful after
-                        // scrubbing around).
+                        // Back to where you were before the last jump (a scrub, a chapter
+                        // or bookmark pick) — the saved position had usually already
+                        // moved to the new spot. Without a jump, the last saved position.
                         onClick = {
                             scope.launch {
-                                Services.books.progressFor(np.itemId)?.currentTimeSec
+                                (controller.positionBeforeLastJump ?: Services.books.progressFor(np.itemId)?.currentTimeSec)
                                     ?.let { controller.seekGlobal(it, reportNow = true) }
                             }
                         },
@@ -531,7 +534,12 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
             // the user dismisses the sheet themselves (swipe down / tap outside).
             onDismiss = { showSleep = false },
             onDuration = { Services.sleepTimer.startDuration(it) },
-            onEndOfChapter = { Services.sleepTimer.startEndOfChapter() },
+            hasChapters = np.chapters.isNotEmpty(),
+            onEndOfChapter = {
+                if (!Services.sleepTimer.startEndOfChapter()) {
+                    com.bennybar.kitzi.ui.common.Snackbars.show("This book has no chapters")
+                }
+            },
             onCancel = { Services.sleepTimer.cancel() },
         )
     }
@@ -618,6 +626,10 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
             onMarkFinished = {
                 showMore = false
                 confirmFinished = true
+            },
+            onCloseBook = {
+                showMore = false
+                scope.launch { controller.closeBook() }
             },
             onDismiss = { showMore = false },
         )

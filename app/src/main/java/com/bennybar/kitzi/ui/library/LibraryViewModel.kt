@@ -70,6 +70,8 @@ class LibraryViewModel : ViewModel() {
     val continueListening = MutableStateFlow<List<Book>>(emptyList())
     val recentlyAdded = MutableStateFlow<List<Book>>(emptyList())
     val continueSeries = MutableStateFlow<List<Book>>(emptyList())
+    /** The server's own home shelves, when that setting is on and they loaded; else null (Kitzi's shelves). */
+    val serverShelves = MutableStateFlow<List<com.bennybar.kitzi.data.HomeShelf>?>(null)
     val summary = MutableStateFlow(LibrarySummary())
 
     val progress = books.watchProgress()
@@ -101,6 +103,12 @@ class LibraryViewModel : ViewModel() {
             // a half-cached library would only sort the half that is loaded.
             runCatching { books.fetchPage(page = 1, limit = 50, force = false) }
                 .onFailure { Log.w(TAG, "page warm-up failed", it) }
+            // Positions saved offline go up before progress comes down, so the pull
+            // below already reflects them.
+            runCatching { Services.playback.flushPendingProgress() }
+                .onFailure { Log.w(TAG, "pending progress push failed", it) }
+            runCatching { books.flushPendingBookmarks() }
+                .onFailure { Log.w(TAG, "pending bookmarks push failed", it) }
             runCatching { books.syncProgress() }
                 .onFailure { Log.w(TAG, "progress sync failed", it) }
             runCatching { loadShelves() }
@@ -141,6 +149,8 @@ class LibraryViewModel : ViewModel() {
         continueListening.value = books.continueListening()
         recentlyAdded.value = books.recentlyAdded()
         continueSeries.value = books.continueSeries()
+        if (!Services.prefs.getBoolean(KEY_SERVER_SHELVES, false)) serverShelves.value = null
+        else if (fetchStats) books.serverShelves()?.let { serverShelves.value = it } // offline: keep the last
 
         val fresh = if (fetchStats) runCatching { books.listeningStats() }.getOrNull()?.perDaySec else null
         val known = fresh ?: books.cachedPerDaySec()
@@ -268,6 +278,10 @@ class LibraryViewModel : ViewModel() {
      */
     fun refreshNewestQuietly() {
         if (quietSyncing || refreshing.value) return
+        // The server-shelves setting was just changed: apply it now, not at the next sync.
+        if (Services.prefs.getBoolean(KEY_SERVER_SHELVES, false) != (serverShelves.value != null)) {
+            viewModelScope.launch { runCatching { loadShelves() } }
+        }
         // Coming back to the list (from a book, a tab, the player) re-fires this.
         // Each run is 3 requests, two of them full downloads (/api/me and listening
         // stats), so opening and closing ten books cost thirty. Once every few
@@ -298,6 +312,7 @@ class LibraryViewModel : ViewModel() {
     private companion object {
         const val TAG = "LibraryViewModel"
         const val QUIET_MIN_INTERVAL_MS = 3 * 60 * 1000L
+        const val KEY_SERVER_SHELVES = "ui_server_home_shelves"
     }
 
     fun setSort(sort: BookSort) { query.value = query.value.copy(sort = sort, limit = 60) }

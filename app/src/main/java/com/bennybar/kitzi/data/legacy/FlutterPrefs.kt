@@ -57,6 +57,16 @@ class FlutterPrefs(context: Context) {
 
     fun contains(key: String): Boolean = prefs.contains(k(key))
 
+    /** The keys (as used with this class, without `flutter.`) starting with [prefix]. */
+    fun keysWithPrefix(prefix: String): List<String> =
+        prefs.all.keys.filter { it.startsWith(k(prefix)) }.map { it.removePrefix(KEY_PREFIX) }
+
+    /** Removes every key starting with any of [prefixes], in one write. */
+    fun removeWithPrefixes(vararg prefixes: String) {
+        val doomed = prefs.all.keys.filter { key -> prefixes.any { key.startsWith(k(it)) } }
+        if (doomed.isNotEmpty()) prefs.edit { doomed.forEach { remove(it) } }
+    }
+
     companion object {
         const val FILE_NAME = "FlutterSharedPreferences"
         const val KEY_PREFIX = "flutter."

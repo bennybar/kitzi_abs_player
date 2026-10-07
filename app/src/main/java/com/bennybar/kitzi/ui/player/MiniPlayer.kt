@@ -67,7 +67,8 @@ fun MiniPlayer(onExpand: () -> Unit) {
     val nowPlaying by controller.nowPlaying.collectAsStateWithLifecycle()
     val np = nowPlaying ?: return
 
-    var isPlaying by remember { mutableStateOf(false) }
+    // Pushed by the player, so the icon flips the moment playback does.
+    val isPlaying by controller.isPlaying.collectAsStateWithLifecycle()
     var fraction by remember { mutableStateOf(0f) }
     var leftSec by remember { mutableStateOf<Long?>(null) }
     var collapsed by remember { mutableStateOf(Services.prefs.getBoolean("ui_mini_player_collapsed", false)) }
@@ -79,7 +80,6 @@ fun MiniPlayer(onExpand: () -> Unit) {
     LaunchedEffect(np.itemId, lifecycleOwner) {
         lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             while (true) {
-                isPlaying = runCatching { controller.player.isPlaying }.getOrDefault(false)
                 val pos = controller.globalPositionSec() ?: 0.0
                 val total = controller.totalDurationSec() ?: 0.0
                 fraction = if (total > 0) (pos / total).toFloat().coerceIn(0f, 1f) else 0f

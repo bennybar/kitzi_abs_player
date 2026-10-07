@@ -161,6 +161,29 @@ class AbsApi(
         return itemsOf(parse(body2))
     }
 
+    /** The library's collections, each with its books (`books[]`, full library items). */
+    fun collections(libraryId: String): List<JsonObject> {
+        val (code, body) = get("/api/libraries/$libraryId/collections?limit=0")
+        if (code != 200) throw HttpError(code)
+        return itemsOf(parse(body))
+    }
+
+    /** The user's playlists across all libraries; items carry `libraryItem`. */
+    fun playlists(): List<JsonObject> {
+        val (code, body) = get("/api/playlists")
+        if (code != 200) throw HttpError(code)
+        val root = parse(body)
+        return ((root as? JsonObject)?.get("playlists") as? JsonArray ?: root as? JsonArray)
+            .orEmpty().mapNotNull { it as? JsonObject }
+    }
+
+    /** The server's home shelves (Continue Listening, Discover, Listen Again, …). */
+    fun personalized(libraryId: String): List<JsonObject> {
+        val (code, body) = get("/api/libraries/$libraryId/personalized?limit=12")
+        if (code != 200) throw HttpError(code)
+        return itemsOf(parse(body))
+    }
+
     fun libraryStats(libraryId: String): JsonObject? {
         val (code, body) = get("/api/libraries/$libraryId/stats")
         if (code != 200) return null

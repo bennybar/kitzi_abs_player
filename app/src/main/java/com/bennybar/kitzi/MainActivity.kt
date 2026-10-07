@@ -208,6 +208,35 @@ private sealed interface Overlay {
 }
 
 /**
+ * The overlay stack as strings, so it survives the activity being recreated
+ * (rotation, theme change, the process killed in the background) — it used to
+ * drop back to the tab underneath.
+ */
+private val OverlayStackSaver = androidx.compose.runtime.saveable.Saver<List<Overlay>, ArrayList<String>>(
+    save = { stack ->
+        ArrayList(stack.map {
+            when (it) {
+                is Overlay.BookDetail -> "book:${it.id}"
+                Overlay.Series -> "series"
+                Overlay.Stats -> "stats"
+                Overlay.Profile -> "profile"
+            }
+        })
+    },
+    restore = { saved ->
+        saved.mapNotNull {
+            when {
+                it.startsWith("book:") -> Overlay.BookDetail(it.removePrefix("book:"))
+                it == "series" -> Overlay.Series
+                it == "stats" -> Overlay.Stats
+                it == "profile" -> Overlay.Profile
+                else -> null
+            }
+        }
+    },
+)
+
+/**
  * A Samsung-style floating bottom navigation: a rounded capsule detached from the
  * screen edges, floating over the page content with a soft shadow. The selected
  * tab gets a filled pill behind its icon + label. Because the capsule floats, the
@@ -372,11 +401,11 @@ private fun App() {
     // LibraryViewModel that opens and syncs its library, not the last session's.
     val activity = androidx.activity.compose.LocalActivity.current as? ComponentActivity
     LaunchedEffect(signedIn) { if (!signedIn) activity?.viewModelStore?.clear() }
-    var tab by remember { mutableStateOf(Tab.BOOKS) }
+    var tab by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(Tab.BOOKS) }
     // Overlays stack: Series → a book → back returns to Series, not to the tab
     // underneath. Opening one pushes, back pops; switching tab or opening the
     // player clears the stack.
-    var overlays by remember { mutableStateOf(emptyList<Overlay>()) }
+    var overlays by androidx.compose.runtime.saveable.rememberSaveable(stateSaver = OverlayStackSaver) { mutableStateOf(emptyList<Overlay>()) }
     val overlay = overlays.lastOrNull()
     val pushOverlay: (Overlay) -> Unit = { overlays = overlays + it }
     val popOverlay: () -> Unit = { overlays = overlays.dropLast(1) }
@@ -421,7 +450,7 @@ private fun App() {
 
     // When the player isn't a bottom tab it opens as a card that slides up from
     // the mini-player (a full-height bottom sheet), matching the Flutter app.
-    var playerCard by remember { mutableStateOf(false) }
+    var playerCard by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     if (playerAsTab) playerCard = false
 
     val openPlayer = {

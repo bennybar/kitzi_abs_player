@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material.icons.filled.PlayArrow
@@ -88,6 +89,7 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
     var confirmFinished by remember { mutableStateOf(false) }
     var finishedFailed by remember { mutableStateOf(false) }
     var playFailed by remember { mutableStateOf(false) }
+    var renamingBookmark by remember { mutableStateOf<Bookmark?>(null) }
     var notFound by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
@@ -276,7 +278,12 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
                     // a different book, which reads as "it played the wrong thing".
                     onClick = {
                         scope.launch {
-                            if (Services.playback.playItem(itemId)) onPlay() else playFailed = true
+                            // Already the loaded book: just carry on. Loading it again
+                            // re-opened a session and jumped to the last SAVED position.
+                            if (Services.playback.nowPlaying.value?.itemId == itemId) {
+                                Services.playback.resume()
+                                onPlay()
+                            } else if (Services.playback.playItem(itemId)) onPlay() else playFailed = true
                         }
                     },
                     // A slow openSession + sync-before-play can take seconds; disabling
@@ -329,7 +336,7 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
                         modifier = Modifier.weight(1f),
                     ) {
                         Icon(Icons.Default.Download, null)
-                        Text("Download", modifier = Modifier.padding(start = 6.dp))
+                        Text(if (d?.status == DownloadStatus.FAILED) "Retry" else "Download", modifier = Modifier.padding(start = 6.dp))
                     }
                 }
             }
@@ -388,8 +395,20 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Column(Modifier.padding(16.dp)) {
+                        // What's actually happening: a failed or Wi-Fi-gated download used
+                        // to read "Downloading NN%" while nothing moved.
+                        val ctx = androidx.compose.ui.platform.LocalContext.current
+                        val onMetered = remember(d.status) {
+                            ctx.getSystemService(android.net.ConnectivityManager::class.java)?.isActiveNetworkMetered ?: true
+                        }
+                        val state = when {
+                            d.status == DownloadStatus.FAILED -> "Download failed"
+                            d.status == DownloadStatus.QUEUED && Services.downloads.wifiOnly && onMetered -> "Waiting for Wi-Fi"
+                            d.status == DownloadStatus.QUEUED -> "Waiting to download"
+                            else -> "Downloading"
+                        }
                         Text(
-                            "Downloading ${(d.progress * 100).toInt()}% · ${d.completedTracks}/${d.totalTracks} tracks",
+                            "$state ${(d.progress * 100).toInt()}% · ${d.completedTracks}/${d.totalTracks} tracks",
                             style = MaterialTheme.typography.bodyMedium,
                         )
                         LinearProgressIndicator(
@@ -434,24 +453,31 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
                         val loaded = Services.playback.nowPlaying.value?.itemId == itemId
                         if (loaded || Services.playback.playItem(itemId)) {
                             Services.playback.seekGlobal(bm.timeSec)
-                            if (!loaded) onPlay()
+                            // Open the player either way: on a loaded book the tap used
+                            // to seek with nothing on screen to show it.
+                            onPlay()
                         } else playFailed = true
                     }
                 },
+                onRename = { renamingBookmark = it },
                 onDelete = { bm ->
                     scope.launch {
-                        val ok = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                            Services.playbackApi.deleteBookmark(itemId, bm.timeSec)
-                        }
-                        if (ok) {
-                            bookmarks = bookmarks - bm
-                            com.bennybar.kitzi.ui.common.Snackbars.show("Bookmark deleted")
-                        } else {
-                            com.bennybar.kitzi.ui.common.Snackbars.show("Couldn't delete the bookmark")
-                        }
+                        // Offline it's queued and goes through later; gone here either way.
+                        val sent = Services.books.deleteBookmark(itemId, bm.timeSec)
+                        bookmarks = bookmarks - bm
+                        com.bennybar.kitzi.ui.common.Snackbars.show(if (sent) "Bookmark deleted" else "Bookmark deleted — syncs when online")
                     }
                 },
             )
+            renamingBookmark?.let { bm ->
+                com.bennybar.kitzi.ui.player.RenameBookmarkDialog(bm.title, onDismiss = { renamingBookmark = null }) { title ->
+                    renamingBookmark = null
+                    scope.launch {
+                        Services.books.renameBookmark(itemId, bm.timeSec, title)
+                        bookmarks = bookmarks.map { if (it.timeSec == bm.timeSec) it.copy(title = title) else it }
+                    }
+                }
+            }
 
             Spacer(Modifier.height(12.dp))
         }
@@ -606,6 +632,7 @@ private fun ProgressCard(progress: MediaProgressEntity?, bookDurationSec: Double
 private fun BookmarksCard(
     bookmarks: List<Bookmark>,
     onOpen: (Bookmark) -> Unit,
+    onRename: (Bookmark) -> Unit,
     onDelete: (Bookmark) -> Unit,
 ) {
     Surface(
@@ -662,6 +689,14 @@ private fun BookmarksCard(
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        IconButton(onClick = { onRename(bm) }) {
+                            Icon(
+                                Icons.Default.Edit,
+                                "Rename bookmark",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
                         IconButton(onClick = { onDelete(bm) }) {
                             Icon(
                                 Icons.Default.Delete, "Delete bookmark",

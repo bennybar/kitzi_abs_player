@@ -35,6 +35,8 @@ class LibrarySyncWorker(
             Services.books.ensureLibrary()
             Services.books.fetchPage(1, 50, BookSort.UPDATED_DESC)
             Services.books.fetchPage(2, 50, BookSort.UPDATED_DESC)
+            Services.playback.flushPendingProgress()
+            Services.books.flushPendingBookmarks()
             Result.success()
         }.getOrElse { e ->
             // Retry only what can fix itself (offline, a timeout). An HTTP error — a

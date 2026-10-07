@@ -49,6 +49,13 @@ data class Bookmark(
     val createdAt: Long,
 )
 
+/** A home shelf as the server suggests it (`id` like "continue-listening", "discover"). */
+data class HomeShelf(val id: String, val label: String, val books: List<Book>)
+
+/** A bookmark edit (kind: add / rename / delete), as queued while offline. */
+@kotlinx.serialization.Serializable
+data class BookmarkOp(val kind: String, val itemId: String, val timeSec: Double, val title: String)
+
 data class ListeningStats(
     val totalSec: Double,
     /** "yyyy-MM-dd" -> seconds listened that day. */
@@ -340,6 +347,54 @@ class BooksRepository(
             .toSortedMap()
     }
 
+    /**
+     * The server's real collections (name to books, in the collection's order), or
+     * null when they can't be fetched. Not the same as [collections], which groups
+     * books by a `collection` metadata field.
+     */
+    suspend fun serverCollections(): Map<String, List<Book>>? = withContext(Dispatchers.IO) {
+        val raw = runCatching { api.collections(libraryId) }.getOrNull() ?: return@withContext null
+        raw.mapNotNull { c ->
+            val name = c["name"].str() ?: return@mapNotNull null
+            name to booksFrom((c["books"] as? JsonArray).orEmpty().mapNotNull { it.obj() })
+        }.filter { it.second.isNotEmpty() }.toMap()
+    }
+
+    /** The user's playlists in this library (name to books, in playlist order), or null offline. */
+    suspend fun playlists(): Map<String, List<Book>>? = withContext(Dispatchers.IO) {
+        val raw = runCatching { api.playlists() }.getOrNull() ?: return@withContext null
+        raw.filter { it["libraryId"].str() == null || it["libraryId"].str() == libraryId }
+            .mapNotNull { p ->
+                val name = p["name"].str() ?: return@mapNotNull null
+                // Podcast episodes can be in a playlist too; only books are shown.
+                val items = (p["items"] as? JsonArray).orEmpty().mapNotNull { it.obj() }
+                    .filter { it["episodeId"].str() == null }
+                    .mapNotNull { it["libraryItem"].obj() }
+                name to booksFrom(items)
+            }.filter { it.second.isNotEmpty() }.toMap()
+    }
+
+    /** The server's own home shelves of books (authors / series shelves are skipped), or null offline. */
+    suspend fun serverShelves(): List<HomeShelf>? = withContext(Dispatchers.IO) {
+        val raw = runCatching { api.personalized(libraryId) }.getOrNull() ?: return@withContext null
+        raw.filter { it["type"].str() == "book" }.mapNotNull { s ->
+            val label = s["label"].str() ?: return@mapNotNull null
+            val books = booksFrom((s["entities"] as? JsonArray).orEmpty().mapNotNull { it.obj() })
+            HomeShelf(s["id"].str().orEmpty(), label, books).takeIf { books.isNotEmpty() }
+        }
+    }
+
+    /** Library items from the server as books — the cached copy when there is one (it has the offline cover). */
+    private suspend fun booksFrom(items: List<JsonObject>): List<Book> {
+        val base = session.baseUrl.orEmpty()
+        val ids = items.mapNotNull { it["id"].str() }
+        val local = dao.getBooks(ids).associateBy { it.id }
+        return items.mapNotNull { item ->
+            val id = item["id"].str() ?: return@mapNotNull null
+            local[id]?.toBook(base) ?: BookMapper.fromLibraryItem(item, base)?.takeIf { it.isAudioBook }
+        }
+    }
+
     suspend fun continueListening(limit: Int = 20): List<Book> = withContext(Dispatchers.IO) {
         dao.continueListening(limit).map { it.toBook(session.baseUrl.orEmpty()) }
     }
@@ -377,20 +432,95 @@ class BooksRepository(
         dao.recentlyAdded(limit).map { it.toBook(session.baseUrl.orEmpty()) }
     }
 
-    /** Bookmarks live on `/api/me`; there is no per-item endpoint. */
+    /**
+     * Bookmarks live on `/api/me`; there is no per-item endpoint. The last list seen
+     * is kept per book, so they show offline, and edits made offline (still queued,
+     * see [flushPendingBookmarks]) are applied on top.
+     */
     suspend fun bookmarks(itemId: String): List<Bookmark> = withContext(Dispatchers.IO) {
-        val me = runCatching { api.me() }.getOrNull() ?: return@withContext emptyList()
-        (me["bookmarks"] as? JsonArray).orEmpty().mapNotNull { el ->
-            val b = el.obj() ?: return@mapNotNull null
-            if (b["libraryItemId"].str() != itemId) return@mapNotNull null
-            Bookmark(
-                itemId = itemId,
-                timeSec = b["time"].num() ?: return@mapNotNull null,
-                title = b["title"].str() ?: "Bookmark",
-                createdAt = b["createdAt"].num()?.toLong() ?: 0L,
-            )
-        }.sortedBy { it.timeSec }
+        val fromServer = runCatching { api.me() }.getOrNull()?.let { me ->
+            (me["bookmarks"] as? JsonArray).orEmpty().mapNotNull { el ->
+                val b = el.obj() ?: return@mapNotNull null
+                if (b["libraryItemId"].str() != itemId) return@mapNotNull null
+                Bookmark(
+                    itemId = itemId,
+                    timeSec = b["time"].num() ?: return@mapNotNull null,
+                    title = b["title"].str() ?: "Bookmark",
+                    createdAt = b["createdAt"].num()?.toLong() ?: 0L,
+                )
+            }
+        }
+        val base = fromServer?.also { cacheBookmarks(itemId, it) } ?: cachedBookmarks(itemId)
+        pendingBookmarkOps().filter { it.itemId == itemId }
+            .fold(base) { list, op -> applyBookmarkOp(list, op) }
+            .sortedBy { it.timeSec }
     }
+
+    /** Adds a bookmark; offline it's queued and pushed later. True if the server has it already. */
+    suspend fun addBookmark(itemId: String, timeSec: Double, title: String): Boolean =
+        bookmarkOp(BookmarkOp("add", itemId, Math.round(timeSec * 1000) / 1000.0, title))
+
+    suspend fun renameBookmark(itemId: String, timeSec: Double, title: String): Boolean =
+        bookmarkOp(BookmarkOp("rename", itemId, timeSec, title))
+
+    suspend fun deleteBookmark(itemId: String, timeSec: Double): Boolean =
+        bookmarkOp(BookmarkOp("delete", itemId, timeSec, ""))
+
+    /** Sends [op] now, or queues it (behind anything already queued, to keep the order). */
+    private suspend fun bookmarkOp(op: BookmarkOp): Boolean = withContext(Dispatchers.IO) {
+        val sent = pendingBookmarkOps().isEmpty() && sendBookmarkOp(op)
+        if (sent) {
+            cacheBookmarks(op.itemId, applyBookmarkOp(cachedBookmarks(op.itemId), op))
+        } else {
+            savePendingBookmarkOps(pendingBookmarkOps() + op)
+            com.bennybar.kitzi.data.sync.ProgressPushWorker.enqueue(context)
+        }
+        sent
+    }
+
+    /** Sends bookmark edits made offline, oldest first; stops at the first that fails. */
+    suspend fun flushPendingBookmarks() = withContext(Dispatchers.IO) {
+        var ops = pendingBookmarkOps()
+        while (ops.isNotEmpty()) {
+            val op = ops.first()
+            if (!sendBookmarkOp(op)) return@withContext
+            cacheBookmarks(op.itemId, applyBookmarkOp(cachedBookmarks(op.itemId), op))
+            ops = ops.drop(1)
+            savePendingBookmarkOps(ops)
+        }
+    }
+
+    private fun sendBookmarkOp(op: BookmarkOp): Boolean = when (op.kind) {
+        "add" -> Services.playbackApi.addBookmark(op.itemId, op.timeSec, op.title)
+        "rename" -> Services.playbackApi.renameBookmark(op.itemId, op.timeSec, op.title)
+        else -> Services.playbackApi.deleteBookmark(op.itemId, op.timeSec)
+    }
+
+    private fun applyBookmarkOp(list: List<Bookmark>, op: BookmarkOp): List<Bookmark> = when (op.kind) {
+        "add" -> list.filter { it.timeSec != op.timeSec } + Bookmark(op.itemId, op.timeSec, op.title, System.currentTimeMillis())
+        "rename" -> list.map { if (it.timeSec == op.timeSec) it.copy(title = op.title) else it }
+        else -> list.filter { it.timeSec != op.timeSec }
+    }
+
+    private fun cachedBookmarks(itemId: String): List<Bookmark> =
+        prefs.getString("bookmarks_cache:$itemId")?.let {
+            runCatching { kotlinx.serialization.json.Json.decodeFromString(BOOKMARK_OPS, it) }.getOrNull()
+        }.orEmpty().map { Bookmark(itemId, it.timeSec, it.title, 0L) }
+
+    private fun cacheBookmarks(itemId: String, list: List<Bookmark>) =
+        prefs.putString(
+            "bookmarks_cache:$itemId",
+            kotlinx.serialization.json.Json.encodeToString(BOOKMARK_OPS, list.map { BookmarkOp("add", itemId, it.timeSec, it.title) }),
+        )
+
+    private fun pendingBookmarkOps(): List<BookmarkOp> =
+        prefs.getString(KEY_PENDING_BOOKMARKS)?.let {
+            runCatching { kotlinx.serialization.json.Json.decodeFromString(BOOKMARK_OPS, it) }.getOrNull()
+        }.orEmpty()
+
+    private fun savePendingBookmarkOps(ops: List<BookmarkOp>) =
+        if (ops.isEmpty()) prefs.remove(KEY_PENDING_BOOKMARKS)
+        else prefs.putString(KEY_PENDING_BOOKMARKS, kotlinx.serialization.json.Json.encodeToString(BOOKMARK_OPS, ops))
 
     /** The per-day listening from the last successful [listeningStats], or null if there's none. */
     fun cachedPerDaySec(): Map<String, Double>? =
@@ -914,12 +1044,37 @@ class BooksRepository(
      * One book's progress, for the sync before playing it — a single small request
      * instead of the whole /api/me (every book's progress plus all bookmarks).
      */
-    suspend fun syncProgressFor(itemId: String) = withContext(Dispatchers.IO) {
-        val m = api.mediaProgress(itemId) ?: return@withContext
-        progressEntity(m)?.let { row ->
+    suspend fun syncProgressFor(itemId: String): MediaProgressEntity? = withContext(Dispatchers.IO) {
+        val m = api.mediaProgress(itemId)
+        if (m == null) {
+            // None on the server (reset there, removed from Continue Listening): a
+            // lingering row would keep showing — and resuming — the old position.
+            if (dao.progressFor(itemId) != null) dao.deleteProgress(itemId)
+            return@withContext null
+        }
+        progressEntity(m)?.also { row ->
             if (row != dao.progressFor(row.itemId)) dao.upsertProgress(listOf(row))
         }
     }
+
+    /**
+     * What was just listened on this device, into the progress table the lists read
+     * (Continue Listening, the progress bars, the filters) — they used to wait for
+     * the next server pull, which offline never came.
+     */
+    suspend fun recordLocalProgress(itemId: String, currentSec: Double, totalSec: Double?, finished: Boolean, at: Long) =
+        withContext(Dispatchers.IO) {
+            val duration = totalSec?.takeIf { it > 0 }
+                ?: dao.progressFor(itemId)?.durationSec?.takeIf { it > 0 }
+                ?: dao.getBook(itemId)?.durationMs?.let { it / 1000.0 }
+                ?: 0.0
+            val progress = when {
+                finished -> 1.0
+                duration > 0 -> (currentSec / duration).coerceIn(0.0, 1.0)
+                else -> 0.0
+            }
+            dao.upsertProgress(listOf(MediaProgressEntity(itemId, progress, finished, currentSec, duration, at)))
+        }
 
     suspend fun progressFor(id: String): MediaProgressEntity? = withContext(Dispatchers.IO) {
         dao.progressFor(id)
@@ -964,22 +1119,21 @@ class BooksRepository(
         // of the result made a failed call look like it had worked, until the next
         // full resync quietly reverted it.
         if (!Services.playbackApi.setFinished(id, finished, duration.takeIf { it > 0 })) return false
-        dao.upsertProgress(
-            listOf(
-                MediaProgressEntity(
-                    itemId = id,
-                    progress = if (finished) 1.0 else 0.0,
-                    isFinished = finished,
-                    currentTimeSec = when {
-                        !finished -> 0.0
-                        duration > 0 -> duration
-                        else -> existing?.currentTimeSec ?: 0.0
-                    },
-                    durationSec = duration,
-                    lastUpdate = System.currentTimeMillis(),
-                )
-            )
+        val row = MediaProgressEntity(
+            itemId = id,
+            progress = if (finished) 1.0 else 0.0,
+            isFinished = finished,
+            currentTimeSec = when {
+                !finished -> 0.0
+                duration > 0 -> duration
+                else -> existing?.currentTimeSec ?: 0.0
+            },
+            durationSec = duration,
+            lastUpdate = System.currentTimeMillis(),
         )
+        dao.upsertProgress(listOf(row))
+        // The local copy follows, or an older local position would win the next resume.
+        Services.playback.recordConfirmedPosition(id, row.currentTimeSec, finished)
         return true
     }
 
@@ -1005,7 +1159,10 @@ class BooksRepository(
                 timeListenedSec = null,
             ),
         )
-        if (ok) dao.upsertProgress(listOf(prev.copy(lastUpdate = System.currentTimeMillis())))
+        if (ok) {
+            dao.upsertProgress(listOf(prev.copy(lastUpdate = System.currentTimeMillis())))
+            Services.playback.recordConfirmedPosition(itemId, prev.currentTimeSec, prev.isFinished)
+        }
         ok
     }
 
@@ -1033,6 +1190,8 @@ class BooksRepository(
         const val MAX_SYNC_PAGES = 200
         const val KEY_AUTHORS_SYNCED = "authors_last_synced"
         const val KEY_STATS_CACHE = "kitzi_listening_per_day_cache"
+        const val KEY_PENDING_BOOKMARKS = "kitzi_pending_bookmark_ops"
+        val BOOKMARK_OPS = kotlinx.serialization.builtins.ListSerializer(BookmarkOp.serializer())
         val STATS_SERIALIZER = kotlinx.serialization.serializer<Map<String, Double>>()
         /**
          * Bumped when BookMapper changes which items it keeps or how it maps them;

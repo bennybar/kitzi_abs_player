@@ -66,6 +66,23 @@ class PlaybackController(
     private val _preparing = MutableStateFlow(false)
     val preparing: StateFlow<Boolean> = _preparing.asStateFlow()
 
+    /** Whether audio is playing, pushed from the player as it changes — the UI used
+     *  to poll for it, so the play/pause icon lagged up to 2 s behind a tap. */
+    private val _isPlaying = MutableStateFlow(false)
+    val isPlaying: StateFlow<Boolean> = _isPlaying.asStateFlow()
+
+    /**
+     * Whether the position has moved since it was last saved: something played, or a
+     * seek. Only then is it saved and reported. Loading a book used to report (and
+     * re-stamp locally as "newest") the position it was loaded at — which could be
+     * stale, overwriting newer progress made on another device.
+     */
+    private var positionDirty = false
+
+    /** Where the last jump (a seek of more than a few seconds) started, for "Last position". */
+    @Volatile var positionBeforeLastJump: Double? = null
+        private set
+
     private var sessionId: String? = null
 
     /** Set while a DOWNLOADED book plays: its listening time is reported through a
@@ -164,17 +181,15 @@ class PlaybackController(
      */
     fun detach(released: ExoPlayer) {
         if (!::player.isInitialized || player !== released) return
+        val pos = if (_nowPlaying.value != null && detachedAtSec == null) globalPositionSec() else null
+        syncJob?.cancel()
+        // The final report (with its listening time) and the session close, in order,
+        // like a pause — it used to save the position but never send the interval.
+        syncThenClose()
         if (_nowPlaying.value != null && detachedAtSec == null) {
-            val pos = globalPositionSec()
-            buildSyncPayload(finished = false) // saves that position locally, timestamped
             detachedAtSec = pos ?: prefs.getDouble(progressKey(_nowPlaying.value!!.itemId), 0.0)
         }
-        syncJob?.cancel()
-        seekSyncJob?.cancel()
-        sessionId?.let { sid ->
-            sessionId = null
-            scope.launch(Dispatchers.IO) { syncMutex.withLock { runCatching { api.closeSession(sid) } } }
-        }
+        _isPlaying.value = false
         needsFreshLoad = true
         playerReady = kotlinx.coroutines.CompletableDeferred()
     }
@@ -219,8 +234,11 @@ class PlaybackController(
         val target = globalSec.coerceIn(0.0, total)
         val tp = PlaybackMath.mapGlobalToTrack(target, np.tracks)
 
+        val before = globalPositionSec()
+        if (before != null && kotlin.math.abs(target - before) > JUMP_MIN_SEC) positionBeforeLastJump = before
         player.seekTo(tp.trackIndex, (tp.offsetSec * 1000).toLong())
         seekGeneration++
+        positionDirty = true
         if (reportNow) {
             // Debounced: five quick +30 s taps (or a scrub) sent five requests.
             seekSyncJob?.cancel()
@@ -271,7 +289,7 @@ class PlaybackController(
         // next start, and falling back to the next file jumped mid-chapter in a
         // multi-file book.
         if (next != null) seekGlobal(next)
-        else if (np?.chapters.isNullOrEmpty() && player.hasNextMediaItem()) { player.seekToNextMediaItem(); seekGeneration++ }
+        else if (np?.chapters.isNullOrEmpty() && player.hasNextMediaItem()) { player.seekToNextMediaItem(); seekGeneration++; positionDirty = true }
     }
 
     fun previousChapter() {
@@ -285,7 +303,7 @@ class PlaybackController(
         // skip there jumped mid-chapter in a multi-file book).
         if (prev != null) seekGlobal(prev)
         else if (!np?.chapters.isNullOrEmpty()) seekGlobal(0.0)
-        else if (player.hasPreviousMediaItem()) { player.seekToPreviousMediaItem(); seekGeneration++ }
+        else if (player.hasPreviousMediaItem()) { player.seekToPreviousMediaItem(); seekGeneration++; positionDirty = true }
     }
 
     fun setSpeed(speed: Double) {
@@ -293,8 +311,13 @@ class PlaybackController(
         // rather than snapping to a fixed preset set.
         val v = kotlin.math.round(speed.coerceIn(MIN_SPEED, MAX_SPEED) * 20) / 20.0
         player.setPlaybackParameters(PlaybackParameters(v.toFloat()))
+        // Remembered for this book (narrators differ a lot), and as the default for
+        // books that don't have their own yet.
         prefs.putDouble(KEY_SPEED, v)
+        _nowPlaying.value?.let { prefs.putDouble(itemSpeedKey(it.itemId), v) }
     }
+
+    private fun itemSpeedKey(itemId: String) = "playback_speed:$itemId"
 
     private fun savedSpeed(): Float =
         prefs.getDouble(KEY_SPEED, 1.0).coerceIn(MIN_SPEED, MAX_SPEED).toFloat()
@@ -339,6 +362,9 @@ class PlaybackController(
         val notResumable = needsFreshLoad || detachedAtSec != null ||
             player.playerError != null ||
             player.playbackState == Player.STATE_IDLE ||
+            // Ended (a finished book): play() does nothing there, and a reload starts
+            // a finished book over (RESTART_WITHIN_SEC).
+            player.playbackState == Player.STATE_ENDED ||
             player.mediaItemCount == 0 ||
             // Pausing a STREAMED book closes its server session (that's what stops
             // the transcode). Nothing reopened it, so resuming reused track URLs the
@@ -572,6 +598,13 @@ class PlaybackController(
         player.setMediaItems(np.tracks.map { it.toMediaItem(np) }, tp.trackIndex, (tp.offsetSec * 1000).toLong())
         // The player holds the book again; positions come from it from here on.
         detachedAtSec = null
+        // Freshly loaded: nothing to report until it plays or seeks.
+        positionDirty = false
+        positionBeforeLastJump = null
+        // This book's own speed, if it has one; else the last speed used.
+        player.setPlaybackParameters(
+            PlaybackParameters(prefs.getDouble(itemSpeedKey(itemId), savedSpeed().toDouble()).coerceIn(MIN_SPEED, MAX_SPEED).toFloat())
+        )
         // A streamed book loaded paused (the last book, auto-loaded on launch) isn't
         // prepared, and its server session is given back now: preparing buffered
         // about a minute of audio for a book the user may never play, and the first
@@ -588,15 +621,16 @@ class PlaybackController(
         // Loaded-but-not-playing (auto-load) → the first play reloads it fresh.
         needsFreshLoad = !startPlaying
 
-        // A downloaded book with no cached chapters is playing on track-derived
-        // boundaries right now; fetch the real list off the critical path and swap it
-        // in if it arrives. Offline this simply fails and the fallback stands.
-        if (np.isLocal && loadCachedChapters(itemId).isEmpty()) {
+        // A downloaded book plays on its cached chapters (or track boundaries) so it
+        // starts offline. Refresh them off the critical path when online and swap in a
+        // changed list: chapters fixed on the server later (chapter editor, Audnexus)
+        // never reached a downloaded book before. Offline this simply fails.
+        if (np.isLocal) {
             scope.launch {
                 val real = withContext(Dispatchers.IO) {
                     runCatching { books.chapters(itemId) }.getOrDefault(emptyList())
                 }
-                if (real.isNotEmpty()) {
+                if (real.isNotEmpty() && real != loadCachedChapters(itemId)) {
                     cacheChapters(itemId, real)
                     _nowPlaying.value?.takeIf { it.itemId == itemId }?.let {
                         _nowPlaying.value = it.copy(chapters = real)
@@ -720,6 +754,8 @@ class PlaybackController(
     /** Everything that must be read on the caller's thread, at call time. */
     private fun buildSyncPayload(finished: Boolean): SyncPayload? {
         val np = _nowPlaying.value ?: return null
+        // Nothing moved since the last save: nothing to save or report (see positionDirty).
+        if (!finished && !positionDirty && !player.isPlaying) return null
         val pos = globalPositionSec()
 
         // Unknown book position: reporting the track-local value would overwrite
@@ -732,10 +768,8 @@ class PlaybackController(
             else -> return null
         }
 
-        prefs.putDouble(progressKey(np.itemId), current)
-        // Stamp WHEN this local position was saved, so resume can tell a fresh
-        // offline position from a stale server one (see resumePosition).
-        prefs.putDouble(progressTsKey(np.itemId), System.currentTimeMillis().toDouble())
+        saveLocalPosition(np.itemId, current, finished)
+        positionDirty = false
 
         // The session id and item id are captured HERE, on the caller's thread —
         // reading `sessionId` inside the coroutine could pick up a value changed by a
@@ -771,8 +805,11 @@ class PlaybackController(
                 if (listenedRecorded) p.localPlay.listenedSec += listened!!
                 ok = api.sync(null, report.copy(timeListenedSec = null))
             } else {
-                ok = api.sync(p.sessionId, report)
-                listenedRecorded = ok
+                // Only a session sync records listening time; the progress endpoint
+                // stores the position and drops it (see PlaybackApi.syncReport).
+                val out = api.syncReport(p.sessionId, report)
+                ok = out.positionSaved
+                listenedRecorded = out.listeningRecorded
             }
             // Only once the server has it — otherwise the time rolls into the next attempt.
             if (listenedRecorded && listened != null) {
@@ -780,8 +817,77 @@ class PlaybackController(
                 // Record the confirmed listened interval for local stats.
                 com.bennybar.kitzi.data.PlayHistoryStore.record(p.itemId, listened)
             }
-            if (ok) lastSyncedSec = p.current
+            if (ok) {
+                lastSyncedSec = p.current
+                markConfirmed(p.itemId, p.current)
+            } else {
+                // Pushed once the network is back (or by the next sync).
+                com.bennybar.kitzi.data.sync.ProgressPushWorker.enqueue(context)
+            }
             failedSyncs = if (ok) 0 else failedSyncs + 1
+            // The progress lists read Room rows, which only the server used to write:
+            // what was listened here didn't show until the next pull, or ever offline.
+            runCatching { books.recordLocalProgress(p.itemId, p.current, p.total, p.finished, System.currentTimeMillis()) }
+        }
+    }
+
+    /**
+     * The local copy of the position: stamped with WHEN it was saved (resume compares
+     * it with the server's lastUpdate), and "pending" until the server accepts it —
+     * a pending position is pushed when the network is back (flushPendingProgress).
+     */
+    private fun saveLocalPosition(itemId: String, sec: Double, finished: Boolean) {
+        prefs.putDouble(progressKey(itemId), sec)
+        prefs.putDouble(progressTsKey(itemId), System.currentTimeMillis().toDouble())
+        prefs.putBoolean(pendingKey(itemId), true)
+        prefs.putBoolean(finishedKey(itemId), finished)
+    }
+
+    /** The server accepted [sec] for [itemId]: no longer pending (unless a newer save happened since). */
+    private fun markConfirmed(itemId: String, sec: Double) {
+        if (prefs.getDouble(progressKey(itemId), -1.0) == sec) prefs.putBoolean(pendingKey(itemId), false)
+    }
+
+    /**
+     * A position the server already has (Mark as finished / unfinished, its Undo):
+     * the local copy follows it, so it can't win the next resume with an older value.
+     */
+    fun recordConfirmedPosition(itemId: String, sec: Double, finished: Boolean) {
+        prefs.putDouble(progressKey(itemId), sec)
+        prefs.putDouble(progressTsKey(itemId), System.currentTimeMillis().toDouble())
+        prefs.putBoolean(pendingKey(itemId), false)
+        prefs.putBoolean(finishedKey(itemId), finished)
+    }
+
+    /**
+     * Pushes positions saved while the server couldn't be reached (offline listening,
+     * a failed report) — they used to reach the server only the next time that book
+     * was played online. A server position newer than the local one wins: something
+     * was listened elsewhere since, and must not be overwritten. Skips the book
+     * that's playing (its own reports carry it) — not one that's loaded but paused,
+     * which sends nothing more until it plays. Safe to call any time.
+     */
+    suspend fun flushPendingProgress() = withContext(Dispatchers.IO) {
+        val loaded = _nowPlaying.value?.itemId?.takeIf { _isPlaying.value }
+        val pending = prefs.keysWithPrefix(PENDING_PREFIX)
+            .filter { prefs.getBoolean(it, false) }
+            .map { it.removePrefix(PENDING_PREFIX) }
+            .filter { it != loaded }
+        for (itemId in pending) {
+            val sec = prefs.getDouble(progressKey(itemId), -1.0).takeIf { it >= 0 } ?: continue
+            val ts = prefs.getDouble(progressTsKey(itemId), 0.0).toLong()
+            val server = runCatching { books.syncProgressFor(itemId) }.getOrElse { return@withContext } // offline: later
+            if (server != null && server.lastUpdate > ts) {
+                prefs.putBoolean(pendingKey(itemId), false) // newer elsewhere; keep theirs
+                continue
+            }
+            val total = server?.durationSec?.takeIf { it > 0 } ?: books.getBook(itemId)?.durationMs?.let { it / 1000.0 }
+            val finished = prefs.getBoolean(finishedKey(itemId), false)
+            val ok = api.sync(null, ProgressReport(itemId, sec, total, finished, true, null))
+            if (ok) {
+                markConfirmed(itemId, sec)
+                books.recordLocalProgress(itemId, sec, total, finished, System.currentTimeMillis())
+            } else return@withContext
         }
     }
 
@@ -825,22 +931,33 @@ class PlaybackController(
      * authoritative; otherwise the freshest write wins.
      */
     private suspend fun resumePosition(itemId: String): Double {
-        val local = prefs.getDouble(progressKey(itemId), 0.0)
+        val local = prefs.getDouble(progressKey(itemId), -1.0)
         val localTs = prefs.getDouble(progressTsKey(itemId), 0.0).toLong()
+        val pending = prefs.getBoolean(pendingKey(itemId), false)
         val serverEntity = books.progressFor(itemId)
-        val server = serverEntity?.currentTimeSec ?: 0.0
-        val serverTs = serverEntity?.lastUpdate ?: 0L
 
         return when {
-            local <= 0.0 -> server
-            server <= 0.0 -> local
-            localTs >= serverTs -> local
-            else -> server
+            local < 0.0 -> serverEntity?.currentTimeSec ?: 0.0
+            // The server has no progress for this book: it never got ours (pending —
+            // offline listening), or it was reset or removed (Mark unfinished, "remove
+            // from Continue Listening", another account) and then 0 is right. A local
+            // value used to win whenever the server said 0, undoing all of those.
+            serverEntity == null -> if (pending) local else 0.0
+            // Both known: the newer write wins, even when the server's is 0.
+            localTs > serverEntity.lastUpdate -> local
+            else -> serverEntity.currentTimeSec
         }
     }
 
     private fun progressKey(itemId: String) = "abs_progress:$itemId"
     private fun progressTsKey(itemId: String) = "abs_progress_ts:$itemId"
+    private fun pendingKey(itemId: String) = "$PENDING_PREFIX$itemId"
+    private fun finishedKey(itemId: String) = "abs_progress_fin:$itemId"
+
+    /** On logout: every local position belongs to the account that's leaving. */
+    fun clearLocalPositions() = prefs.removeWithPrefixes(
+        "abs_progress:", "abs_progress_ts:", PENDING_PREFIX, "abs_progress_fin:", "playback_speed:",
+    )
 
     /** Refreshes server-side progress into the local DB before resuming a book. */
     private suspend fun maybeSyncBeforePlay(itemId: String) {
@@ -885,21 +1002,34 @@ class PlaybackController(
     suspend fun stopAndAwait() {
         if (!::player.isInitialized) return
         tearingDown = true
+        // The payload is built BEFORE the session id is cleared: built after, the last
+        // interval went out without a session and its listening time was lost.
+        val payload = buildSyncPayload(finished = false)
         val sid = sessionId
         sessionId = null
         syncJob?.cancel()
+        seekSyncJob?.cancel()
         // Awaited, not fire-and-forget. syncNow() launches into scope and only the
         // mutex ordered it against the close below — nothing guaranteed the launched
         // report won the lock first. That let a stale report land AFTER whatever ran
         // next, which is how "Mark as Finished" on the playing book was reverted by
         // its own final isFinished=false sync moments later.
-        runCatching { syncNowAwaiting(finished = false) }
         withContext(Dispatchers.IO) {
+            payload?.let { runCatching { performSync(it) } }
             syncMutex.withLock { sid?.let { runCatching { api.closeSession(it) } } }
         }
         player.stop()
         _nowPlaying.value = null
         tearingDown = false
+    }
+
+    /**
+     * "Close book": stops it (sending the final position) and forgets it as the last
+     * book, so the mini-player goes away until something else is played.
+     */
+    suspend fun closeBook() {
+        stopAndAwait()
+        prefs.remove(KEY_LAST_ITEM)
     }
 
     private inner class PlayerEvents : Player.Listener {
@@ -909,7 +1039,9 @@ class PlaybackController(
          * audio-focus loss, so those don't get billed as listening time.
          */
         override fun onIsPlayingChanged(isPlaying: Boolean) {
+            _isPlaying.value = isPlaying
             if (isPlaying) {
+                positionDirty = true
                 needsFreshLoad = false
                 accrual.onPlaybackStarted()
                 applySmartRewindIfDue()
@@ -941,6 +1073,8 @@ class PlaybackController(
                         com.bennybar.kitzi.data.PlaybackJournal.record(np.itemId, pos, ch?.title, ch?.index)
                     }
                 }
+                // It was playing until now, so there's a position to save.
+                positionDirty = true
                 // A session is closed on pause and reopened on resume — that is what
                 // stops the server transcoding for a paused client.
                 syncThenClose()
@@ -967,7 +1101,11 @@ class PlaybackController(
             }
         }
 
-        override fun onMediaItemTransition(item: MediaItem?, reason: Int) = syncNow()
+        // A track change while playing. Not PLAYLIST_CHANGED: that's loading a book,
+        // which has nothing new to report (see positionDirty).
+        override fun onMediaItemTransition(item: MediaItem?, reason: Int) {
+            if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) syncNow()
+        }
     }
 
     private fun hydrateDurations() {
@@ -1007,6 +1145,9 @@ class PlaybackController(
         /** Backoff doubles the report interval up to 8x (12 minutes). */
         private const val MAX_BACKOFF_STEPS = 3
         private const val SEEK_SYNC_DEBOUNCE_MS = 2_500L
+        /** A seek further than this counts as a jump (see positionBeforeLastJump). */
+        private const val JUMP_MIN_SEC = 5.0
+        private const val PENDING_PREFIX = "abs_progress_pending:"
         /** How long a quick resume waits for the server's position before playing. */
         private const val QUICK_SYNC_WAIT_MS = 1_500L
         /** A server position closer than this to where we are isn't worth a jump. */

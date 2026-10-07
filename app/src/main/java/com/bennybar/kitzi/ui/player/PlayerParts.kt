@@ -4,7 +4,9 @@ import androidx.compose.foundation.layout.height
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -356,6 +358,7 @@ fun SleepTimerSheet(
     current: com.bennybar.kitzi.playback.SleepMode,
     onDismiss: () -> Unit,
     onDuration: (Int) -> Unit,
+    hasChapters: Boolean,
     onEndOfChapter: () -> Unit,
     onCancel: () -> Unit,
 ) {
@@ -452,7 +455,8 @@ fun SleepTimerSheet(
             FilterChip(
                 selected = current is com.bennybar.kitzi.playback.SleepMode.EndOfChapter,
                 onClick = { onEndOfChapter(); userMoved = false },
-                label = { Text("End of chapter") },
+                enabled = hasChapters,
+                label = { Text(if (hasChapters) "End of chapter" else "End of chapter (no chapters)") },
             )
         }
     }
@@ -634,6 +638,7 @@ fun PlayerMoreSheet(
     onToggleGradient: () -> Unit,
     onToggleChapterized: () -> Unit,
     onMarkFinished: () -> Unit,
+    onCloseBook: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -651,6 +656,8 @@ fun PlayerMoreSheet(
                 if (chapterized) "Chapter indicators: On" else "Chapter indicators: Off",
                 onToggleChapterized,
             )
+            // Stops the book and takes it off the mini-player until something is played.
+            MoreRow(Icons.Default.Close, "Close book", onCloseBook)
         }
     }
 }
@@ -805,13 +812,48 @@ fun ChapterSheet(
     }
 }
 
-/** The book's bookmarks, from the player: tap to jump, delete to remove. */
+/** Asks for a bookmark's new name. */
+@Composable
+fun RenameBookmarkDialog(current: String, onDismiss: () -> Unit, onRename: (String) -> Unit) {
+    var text by remember { mutableStateOf(current) }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Rename bookmark") },
+        text = {
+            androidx.compose.material3.OutlinedTextField(
+                value = text,
+                onValueChange = { text = it },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(
+                onClick = { onRename(text.trim()) },
+                enabled = text.isNotBlank(),
+            ) { Text("Save") }
+        },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+/** The book's bookmarks, from the player: tap to jump, rename or delete. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BookmarksSheet(itemId: String, onPick: (Double) -> Unit, onDismiss: () -> Unit) {
     var marks by remember { mutableStateOf<List<com.bennybar.kitzi.data.Bookmark>?>(null) }
     val scope = rememberCoroutineScope()
+    var renaming by remember { mutableStateOf<com.bennybar.kitzi.data.Bookmark?>(null) }
     LaunchedEffect(itemId) { marks = runCatching { Services.books.bookmarks(itemId) }.getOrDefault(emptyList()) }
+    renaming?.let { bm ->
+        RenameBookmarkDialog(bm.title, onDismiss = { renaming = null }) { title ->
+            renaming = null
+            scope.launch {
+                Services.books.renameBookmark(itemId, bm.timeSec, title)
+                marks = marks.orEmpty().map { if (it.timeSec == bm.timeSec) it.copy(title = title) else it }
+            }
+        }
+    }
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Text(
             "Bookmarks",
@@ -843,11 +885,15 @@ fun BookmarksSheet(itemId: String, onPick: (Double) -> Unit, onDismiss: () -> Un
                             modifier = Modifier.weight(1f).padding(start = 14.dp),
                         )
                         Text(formatClock(bm.timeSec.toLong()), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        IconButton(onClick = { renaming = bm }) {
+                            Icon(Icons.Default.Edit, "Rename bookmark", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                        }
                         IconButton(onClick = {
                             scope.launch {
-                                val ok = kotlinx.coroutines.withContext(Dispatchers.IO) { Services.playbackApi.deleteBookmark(itemId, bm.timeSec) }
-                                if (ok) marks = marks.orEmpty() - bm
-                                com.bennybar.kitzi.ui.common.Snackbars.show(if (ok) "Bookmark deleted" else "Couldn't delete the bookmark")
+                                // Offline it's queued and goes through later; gone here either way.
+                                val sent = Services.books.deleteBookmark(itemId, bm.timeSec)
+                                marks = marks.orEmpty() - bm
+                                com.bennybar.kitzi.ui.common.Snackbars.show(if (sent) "Bookmark deleted" else "Bookmark deleted — syncs when online")
                             }
                         }) {
                             Icon(Icons.Default.Delete, "Delete bookmark", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))

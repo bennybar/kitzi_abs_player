@@ -224,6 +224,20 @@ class PlaybackService : MediaLibraryService() {
         // just-auto-loaded or errored book reloads fresh instead of no-op playing.
         override fun play() = controller.resume()
 
+        // The controller owns the playlist. An empty list from any session path would
+        // end the loaded book (see onSetMediaItems), so it's ignored outright.
+        override fun setMediaItems(mediaItems: MutableList<MediaItem>) {
+            if (mediaItems.isNotEmpty()) super.setMediaItems(mediaItems)
+        }
+
+        override fun setMediaItems(mediaItems: MutableList<MediaItem>, resetPosition: Boolean) {
+            if (mediaItems.isNotEmpty()) super.setMediaItems(mediaItems, resetPosition)
+        }
+
+        override fun setMediaItems(mediaItems: MutableList<MediaItem>, startIndex: Int, startPositionMs: Long) {
+            if (mediaItems.isNotEmpty()) super.setMediaItems(mediaItems, startIndex, startPositionMs)
+        }
+
         override fun getCurrentPosition(): Long =
             controller.globalPositionSec()?.let { (it * 1000).toLong() } ?: super.getCurrentPosition()
 
@@ -413,10 +427,12 @@ class PlaybackService : MediaLibraryService() {
                     searchHits(query).firstOrNull()?.let { controller.playItem(it.id) }
                 }
             }
-            // The controller populates the playlist itself.
-            return Futures.immediateFuture(
-                MediaSession.MediaItemsWithStartPosition(emptyList(), startIndex, startPositionMs)
-            )
+            // The controller populates the playlist itself. A FAILED future, not an
+            // empty list: Media3 applies a returned list to the player, and emptying it
+            // while a book was loaded ended that book — reported finished at 0:00, its
+            // download auto-deleted, the queue advanced, and the old book reloaded over
+            // the one picked. On failure Media3 leaves the player alone.
+            return Futures.immediateFailedFuture(HandledByController())
         }
 
         /**
@@ -438,8 +454,9 @@ class PlaybackService : MediaLibraryService() {
             val lastId = Services.prefs.getString(PlaybackController.KEY_LAST_ITEM)
                 ?: throw UnsupportedOperationException("nothing to resume")
             if (isForPlayback) {
+                // As in onSetMediaItems: the controller loads it; nothing for Media3 to set.
                 scope.launch { controller.playItem(lastId, startPlaying = true) }
-                MediaSession.MediaItemsWithStartPosition(emptyList(), 0, C.TIME_UNSET)
+                throw HandledByController()
             } else {
                 val book = Services.books.getBook(lastId)
                     ?: throw UnsupportedOperationException("last book is gone")
@@ -519,3 +536,6 @@ class PlaybackService : MediaLibraryService() {
         const val ALL = "kitzi_all"
     }
 }
+
+/** A session request the controller has taken over (it loads the book itself). */
+private class HandledByController : UnsupportedOperationException("handled by PlaybackController")
