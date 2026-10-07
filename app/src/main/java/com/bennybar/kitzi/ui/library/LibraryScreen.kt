@@ -113,6 +113,7 @@ fun LibraryScreen(
     val refreshing by vm.refreshing.collectAsStateWithLifecycle()
     val continueListening by vm.continueListening.collectAsStateWithLifecycle()
     val recentlyAdded by vm.recentlyAdded.collectAsStateWithLifecycle()
+    val continueSeries by vm.continueSeries.collectAsStateWithLifecycle()
     val summary by vm.summary.collectAsStateWithLifecycle()
     val progressById by vm.progress.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
@@ -314,6 +315,14 @@ fun LibraryScreen(
                         if (continueListening.isNotEmpty()) {
                             SectionHeader(Icons.Default.PlayArrow, "Continue Listening", Modifier.padding(horizontal = 16.dp))
                             Shelf(continueListening, onOpenBook, progressById)
+                        }
+                        // The next book in each series you've finished one of (#39).
+                        if (continueSeries.isNotEmpty()) {
+                            SectionHeader(Icons.Default.AutoStories, "Continue Series", Modifier.padding(horizontal = 16.dp))
+                            Shelf(continueSeries, onOpenBook, caption = { b ->
+                                val seq = b.seriesSequence?.let { s -> if (s % 1.0 == 0.0) "#${s.toInt()} · " else "#$s · " }.orEmpty()
+                                b.series?.let { "$seq$it" }
+                            })
                         }
                         if (recentlyAdded.isNotEmpty()) {
                             SectionHeader(Icons.Default.AutoAwesome, "Recently Added", Modifier.padding(horizontal = 16.dp))
@@ -718,6 +727,8 @@ private fun Shelf(
     onOpenBook: (String) -> Unit,
     /** Set for Continue Listening: each card shows its progress and time left. */
     progressById: Map<String, MediaProgressEntity>? = null,
+    /** The card's second line, when it isn't the author (Continue Series: "#2 · Series"). */
+    caption: ((Book) -> String?)? = null,
 ) {
     val speed = com.bennybar.kitzi.data.Services.prefs.getDouble("playback_speed", 1.0).coerceAtLeast(0.1)
     Row(
@@ -755,7 +766,7 @@ private fun Shelf(
                         val d = it.durationSec.takeIf { d -> d > 0 } ?: (book.durationMs ?: 0L) / 1000.0
                         ((d - it.currentTimeSec).coerceAtLeast(0.0) / speed).takeIf { l -> l > 0 }
                     }
-                    (left?.let { "${formatHm(it.toLong())} left" } ?: book.author)?.let {
+                    (left?.let { "${formatHm(it.toLong())} left" } ?: caption?.invoke(book) ?: book.author)?.let {
                         Text(
                             it,
                             style = MaterialTheme.typography.bodyMedium,

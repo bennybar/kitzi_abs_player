@@ -5,11 +5,9 @@ import android.content.Intent
 import android.os.Bundle
 
 /**
- * Catches the `audiobookshelf://oauth?code=...&state=...` redirect the IdP sends
- * back at the end of SSO, hands it to whoever started the flow, and gets out of
- * the way. Replaces flutter_web_auth_2's CallbackActivity; the scheme is
- * unchanged, so IdP redirect-URI allowlists configured for the old app keep
- * working.
+ * Catches the `kitzi://oauth?code=...&state=...` redirect (or the legacy
+ * `audiobookshelf://oauth` one, see OidcClient) the IdP sends back at the end of
+ * SSO, hands it to whoever started the flow, and gets out of the way.
  */
 class OidcCallbackActivity : Activity() {
 

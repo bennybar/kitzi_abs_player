@@ -224,12 +224,40 @@ private fun AuthorSheet(author: Author, onDismiss: () -> Unit, onOpenBook: (Stri
                 }
                 androidx.compose.foundation.layout.Spacer(Modifier.size(12.dp))
             }
-            items(books, key = { it.id }) { book ->
-                AuthorBookTile(
-                    book = book,
-                    onOpen = { onOpenBook(book.id) },
-                    onPlay = { scope.launch { Services.playback.playItem(book.id) } },
-                )
+            // Grouped by series, in reading order, then the rest (#39) — only when the
+            // author actually has a series; otherwise one plain list.
+            val groups = books.filter { !it.series.isNullOrBlank() }.groupBy { it.series!! }.toSortedMap(String.CASE_INSENSITIVE_ORDER)
+            val standalone = books.filter { it.series.isNullOrBlank() }
+            if (groups.isEmpty()) {
+                items(books, key = { it.id }) { book ->
+                    AuthorBookTile(
+                        book = book,
+                        onOpen = { onOpenBook(book.id) },
+                        onPlay = { scope.launch { Services.playback.playItem(book.id) } },
+                    )
+                }
+            } else {
+                groups.forEach { (series, members) ->
+                    item(key = "series:$series") { AuthorGroupHeader(series, members.size) }
+                    val ordered = members.sortedWith(compareBy<Book> { it.seriesSequence == null }.thenBy { it.seriesSequence }.thenBy { it.title.lowercase() })
+                    items(ordered, key = { it.id }) { book ->
+                        AuthorBookTile(
+                            book = book,
+                            onOpen = { onOpenBook(book.id) },
+                            onPlay = { scope.launch { Services.playback.playItem(book.id) } },
+                        )
+                    }
+                }
+                if (standalone.isNotEmpty()) {
+                    item(key = "standalone") { AuthorGroupHeader("Other books", standalone.size) }
+                    items(standalone, key = { it.id }) { book ->
+                        AuthorBookTile(
+                            book = book,
+                            onOpen = { onOpenBook(book.id) },
+                            onPlay = { scope.launch { Services.playback.playItem(book.id) } },
+                        )
+                    }
+                }
             }
         }
     }
@@ -291,4 +319,15 @@ private fun AuthorBookTile(book: Book, onOpen: () -> Unit, onPlay: () -> Unit) {
             )
         }
     }
+}
+
+@Composable
+private fun AuthorGroupHeader(title: String, count: Int) {
+    Text(
+        "$title · ${com.bennybar.kitzi.ui.common.plural(count, "book")}",
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(top = 14.dp, bottom = 2.dp),
+    )
 }

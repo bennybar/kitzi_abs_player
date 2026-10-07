@@ -61,6 +61,13 @@ class BookMapperTest {
     }
 
     @Test
+    fun `an audiobook with an attached ebook is still an audiobook`() {
+        // Issue #52: these were dropped from the library entirely.
+        val both = map("""{"id":"1","media":{"duration":3600,"numAudioFiles":2,"ebookFormat":"pdf","metadata":{"title":"T"}}}""")!!
+        assertTrue(both.isAudioBook)
+    }
+
+    @Test
     fun `an ebook is not an audiobook`() {
         val ebook = map("""{"id":"1","media":{"duration":0,"ebookFormat":"epub","metadata":{"title":"T"}}}""")!!
         assertTrue(!ebook.isAudioBook)

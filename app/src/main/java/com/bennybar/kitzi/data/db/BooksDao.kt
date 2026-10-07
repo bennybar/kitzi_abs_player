@@ -90,6 +90,10 @@ interface BooksDao {
     )
     suspend fun booksInSeries(series: String): List<BookEntity>
 
+    /** Every audiobook that belongs to a series (for Continue Series). */
+    @Query("SELECT * FROM books WHERE series IS NOT NULL AND series != '' AND $AUDIOBOOK_PREDICATE")
+    suspend fun booksInAnySeries(): List<BookEntity>
+
     @Query(
         """
         SELECT author AS name, COUNT(*) AS bookCount FROM books

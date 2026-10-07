@@ -521,8 +521,9 @@ private fun InfoDialog(title: String, message: String, onDismiss: () -> Unit) {
     )
 }
 
+/** Also opened from the sign-in screen (issue #41): see LoginScreen. */
 @Composable
-private fun HeadersDialog(onDismiss: () -> Unit) {
+fun HeadersDialog(onDismiss: () -> Unit) {
     var text by remember {
         mutableStateOf(Services.session.customHeaders.entries.joinToString("\n") { "${it.key}: ${it.value}" })
     }
@@ -531,7 +532,7 @@ private fun HeadersDialog(onDismiss: () -> Unit) {
         title = { Text("Custom HTTP headers") },
         text = {
             Column {
-                Text("One per line, as Name: value. Sent on every request.",
+                Text("One per line, as Name: value. Sent on every request, including sign-in and audio streams — for Cloudflare Access service tokens and similar.",
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 OutlinedTextField(
                     value = text, onValueChange = { text = it },

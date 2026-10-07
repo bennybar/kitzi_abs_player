@@ -47,6 +47,10 @@ fun LoginScreen(onSignedIn: () -> Unit) {
     var error by remember { mutableStateOf<String?>(null) }
     var ssoAvailable by remember { mutableStateOf(false) }
     var showPassword by remember { mutableStateOf(false) }
+    var showHeaders by remember { mutableStateOf(false) }
+    var headerCount by remember { mutableStateOf(Services.session.customHeaders.size) }
+    // Bumped when headers change, so the SSO probe below runs again with them.
+    var headersVersion by remember { mutableStateOf(0) }
 
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -65,7 +69,16 @@ fun LoginScreen(onSignedIn: () -> Unit) {
                         runCatching { Services.auth.oidc.finish(server, callbackUrl) }.getOrDefault(false)
                     }
                     busy = false
-                    if (ok) onSignedIn() else error = "SSO sign in failed. Please try again."
+                    if (ok) {
+                        onSignedIn()
+                        // Signed in through the shared redirect URI: worth telling
+                        // whoever runs the server (it keeps working for now).
+                        if (Services.auth.oidc.usedLegacyRedirect) {
+                            com.bennybar.kitzi.ui.common.Snackbars.show(
+                                "For your server admin: add kitzi://oauth to Allowed Mobile Redirect URIs",
+                            )
+                        }
+                    } else error = "SSO sign in failed. Please try again."
                 }
             }
         }
@@ -121,7 +134,7 @@ fun LoginScreen(onSignedIn: () -> Unit) {
     // typed URL settles. It used to be probed only from the Sign in button, which
     // requires a username and tries a password login at the same time, so someone
     // whose server is SSO-only had no way to make the SSO button appear at all.
-    LaunchedEffect(server) {
+    LaunchedEffect(server, headersVersion) {
         ssoAvailable = false
         if (server.isBlank()) return@LaunchedEffect
         delay(600)   // don't probe on every keystroke
@@ -198,6 +211,17 @@ fun LoginScreen(onSignedIn: () -> Unit) {
                     modifier = Modifier.fillMaxWidth(),
                 )
 
+                // Behind Cloudflare Access (or similar), sign-in itself needs these
+                // headers — so they're set here, not only in Settings, which can't
+                // be reached before signing in (issue #41).
+                androidx.compose.material3.TextButton(
+                    onClick = { showHeaders = true },
+                    enabled = !busy,
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 0.dp),
+                ) {
+                    Text(if (headerCount == 0) "Custom headers (for Cloudflare Access etc.)" else "Custom headers: $headerCount set")
+                }
+
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 
                 if (busy) {
@@ -220,6 +244,13 @@ fun LoginScreen(onSignedIn: () -> Unit) {
                     }
                 }
             }
+        }
+    }
+    if (showHeaders) {
+        com.bennybar.kitzi.ui.settings.HeadersDialog {
+            showHeaders = false
+            headerCount = Services.session.customHeaders.size
+            headersVersion++
         }
     }
 }

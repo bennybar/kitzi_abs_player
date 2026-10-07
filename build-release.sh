@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+ #!/usr/bin/env bash
 #
 # Builds a signed release of Kitzi and copies the artifact(s) to ~/Downloads.
 #
@@ -22,17 +22,33 @@ for arg in "$@"; do
   esac
 done
 
-# AGP rejects the system JDK (Java 23 here); use Android Studio's bundled JBR.
-if [[ -z "${JAVA_HOME:-}" || ! -x "${JAVA_HOME}/bin/java" ]]; then
-  STUDIO_JBR="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
-  if [[ -x "$STUDIO_JBR/bin/java" ]]; then
-    export JAVA_HOME="$STUDIO_JBR"
-  else
-    echo "No usable JAVA_HOME and Android Studio JBR not found." >&2
-    echo "Set JAVA_HOME to a JDK 17–21 and re-run." >&2
-    exit 1
-  fi
+# Gradle 8.11.1 runs on Java 17–23 only. Android Studio's bundled JBR moved to
+# Java 25, and the system default may be anything, so pick the first JDK in range
+# rather than trusting either: $JAVA_HOME, then an installed 23/21/17, then the
+# Studio JBR (if it's ever back in range).
+jdk_major() {
+  "$1/bin/java" -version 2>&1 | head -1 | sed -E 's/.*version "([0-9]+)(\.[0-9]+)*.*/\1/;s/^1$/8/'
+}
+pick_jdk() {
+  local candidates=("${JAVA_HOME:-}")
+  for v in 23 22 21 20 19 18 17; do
+    candidates+=("$(/usr/libexec/java_home -v "$v" 2>/dev/null || true)")
+  done
+  candidates+=("/Applications/Android Studio.app/Contents/jbr/Contents/Home")
+  for home in "${candidates[@]}"; do
+    [[ -n "$home" && -x "$home/bin/java" ]] || continue
+    local major; major="$(jdk_major "$home")"
+    if [[ "$major" =~ ^[0-9]+$ ]] && (( major >= 17 && major <= 23 )); then
+      echo "$home"; return 0
+    fi
+  done
+  return 1
+}
+if ! JAVA_HOME="$(pick_jdk)"; then
+  echo "No JDK 17–23 found (Gradle 8.11.1 can't run on newer). Install one, or set JAVA_HOME to it." >&2
+  exit 1
 fi
+export JAVA_HOME
 echo "Using JAVA_HOME=$JAVA_HOME"
 
 DEST="$HOME/Downloads"

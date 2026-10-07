@@ -156,8 +156,10 @@ object BookMapper {
         else coverUrl.replace(Regex("""width=\d+"""), "width=$width")
 
     /**
-     * Strictly: has audio AND is not an ebook (book.dart:234). A book with both
-     * is treated as an ebook, and ebooks are dropped from the library entirely.
+     * Has audio. An attached ebook doesn't change that: a book with both audio and
+     * an ebook (a PDF companion, say) is an audiobook — treating it as an ebook
+     * dropped it from the library entirely (issue #52, which the Flutter app fixed
+     * and the rewrite brought back). Ebook-only items are still left out.
      */
     private fun isAudioBook(media: JsonObject?): Boolean {
         if (media == null) return false
@@ -166,15 +168,7 @@ object BookMapper {
             !media["tracks"].arr().isNullOrEmpty() ||
             (media["audioTrackCount"].int() ?: 0) > 0
 
-        // A JSON `null` value must count as ABSENT, exactly like Dart's `??`
-        // (book.dart:229). `media["ebook"]` returns JsonNull — not Kotlin null —
-        // when the key is present-but-null, so a plain `!= null` check wrongly
-        // flagged real audiobooks as ebooks and DROPPED them from the library.
-        fun present(key: String): Boolean =
-            media[key]?.let { it !is kotlinx.serialization.json.JsonNull } == true
-        val hasEbook = present("ebook") || present("ebookFile") || present("ebookFormat")
-
-        return hasAudio && !hasEbook
+        return hasAudio
     }
 
     /**

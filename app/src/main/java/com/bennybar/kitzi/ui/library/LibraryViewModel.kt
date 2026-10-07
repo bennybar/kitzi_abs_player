@@ -69,6 +69,7 @@ class LibraryViewModel : ViewModel() {
 
     val continueListening = MutableStateFlow<List<Book>>(emptyList())
     val recentlyAdded = MutableStateFlow<List<Book>>(emptyList())
+    val continueSeries = MutableStateFlow<List<Book>>(emptyList())
     val summary = MutableStateFlow(LibrarySummary())
 
     val progress = books.watchProgress()
@@ -139,6 +140,7 @@ class LibraryViewModel : ViewModel() {
     private suspend fun loadShelves(fetchStats: Boolean = true) {
         continueListening.value = books.continueListening()
         recentlyAdded.value = books.recentlyAdded()
+        continueSeries.value = books.continueSeries()
 
         val fresh = if (fetchStats) runCatching { books.listeningStats() }.getOrNull()?.perDaySec else null
         val known = fresh ?: books.cachedPerDaySec()

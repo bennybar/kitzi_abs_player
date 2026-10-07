@@ -92,8 +92,9 @@
                 android:value="true" />
         </service>
 
-        <!-- OIDC / SSO redirect capture. The audiobookshelf:// scheme is unchanged
-             from the Flutter app so IdP redirect-URI allowlists keep working. -->
+        <!-- OIDC / SSO redirect capture. kitzi:// is Kitzi's own redirect URI (issue
+             #54); audiobookshelf:// is still accepted for servers whose admins
+             haven't allowed kitzi://oauth yet (OidcClient falls back to it). -->
         <activity
             android:name=".ui.login.OidcCallbackActivity"
             android:exported="true"
@@ -105,6 +106,7 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="kitzi" />
                 <data android:scheme="audiobookshelf" />
             </intent-filter>
         </activity>

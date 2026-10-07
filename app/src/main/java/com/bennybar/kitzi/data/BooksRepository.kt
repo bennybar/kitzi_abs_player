@@ -344,6 +344,35 @@ class BooksRepository(
         dao.continueListening(limit).map { it.toBook(session.baseUrl.orEmpty()) }
     }
 
+    /**
+     * "Continue Series" (issue #39): for each series where you've finished a book, the
+     * next one after the last you finished, in series order — skipping books you've
+     * also finished, and leaving out a next book you've already started (that one
+     * is in Continue Listening). Most recently finished series first. Local only.
+     */
+    suspend fun continueSeries(limit: Int = 20): List<Book> = withContext(Dispatchers.IO) {
+        val progress = dao.allProgress().associateBy { it.itemId }
+        val base = session.baseUrl.orEmpty()
+        dao.booksInAnySeries()
+            .groupBy { it.series!!.trim().lowercase() }
+            .mapNotNull { (_, members) ->
+                val ordered = members.sortedWith(
+                    compareBy<com.bennybar.kitzi.data.db.BookEntity> { it.seriesSequence == null }
+                        .thenBy { it.seriesSequence }
+                        .thenBy { it.title.lowercase() }
+                )
+                val lastFinished = ordered.indexOfLast { progress[it.id]?.isFinished == true }
+                if (lastFinished < 0) return@mapNotNull null
+                val next = ordered.drop(lastFinished + 1)
+                    .firstOrNull { progress[it.id]?.isFinished != true } ?: return@mapNotNull null
+                if ((progress[next.id]?.progress ?: 0.0) > 0) return@mapNotNull null
+                progress[ordered[lastFinished].id]!!.lastUpdate to next
+            }
+            .sortedByDescending { it.first }
+            .take(limit)
+            .map { it.second.toBook(base) }
+    }
+
     suspend fun recentlyAdded(limit: Int = 20): List<Book> = withContext(Dispatchers.IO) {
         dao.recentlyAdded(limit).map { it.toBook(session.baseUrl.orEmpty()) }
     }
@@ -571,8 +600,15 @@ class BooksRepository(
      */
     suspend fun syncAllIfStale(maxAgeMs: Long = AUTO_SWEEP_MAX_AGE_MS): Int {
         val last = prefs.getDouble(sweptKey(libraryId), 0.0).toLong()
-        if (System.currentTimeMillis() - last < maxAgeMs) return 0
-        return syncAll()
+        // A mapping change (which items count as books) needs every item re-read
+        // once, so it doesn't wait for the 12-hour sweep.
+        val mapperCurrent = prefs.getInt(KEY_MAPPER_VERSION, 0) >= MAPPER_VERSION
+        if (mapperCurrent && System.currentTimeMillis() - last < maxAgeMs) return 0
+        val count = syncAll()
+        if (prefs.getDouble(sweptKey(libraryId), 0.0).toLong() > last) {
+            prefs.putInt(KEY_MAPPER_VERSION, MAPPER_VERSION)
+        }
+        return count
     }
 
     private fun sweptKey(lib: String) = "kitzi_last_full_sweep_$lib"
@@ -998,6 +1034,13 @@ class BooksRepository(
         const val KEY_AUTHORS_SYNCED = "authors_last_synced"
         const val KEY_STATS_CACHE = "kitzi_listening_per_day_cache"
         val STATS_SERIALIZER = kotlinx.serialization.serializer<Map<String, Double>>()
+        /**
+         * Bumped when BookMapper changes which items it keeps or how it maps them;
+         * the next launch then sweeps the whole library once. 1: audiobooks with an
+         * attached ebook are kept (issue #52).
+         */
+        const val MAPPER_VERSION = 1
+        const val KEY_MAPPER_VERSION = "kitzi_book_mapper_version"
         /** The automatic (launch) full sweep runs at most this often. */
         const val AUTO_SWEEP_MAX_AGE_MS = 12 * 3600 * 1000L
         /** The server [FlutterPrefs.KEY_LIBRARY_ID] was chosen on. */
