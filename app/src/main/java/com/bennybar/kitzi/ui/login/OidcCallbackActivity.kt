@@ -5,9 +5,8 @@ import android.content.Intent
 import android.os.Bundle
 
 /**
- * Catches the `kitzi://oauth?code=...&state=...` redirect (or the legacy
- * `audiobookshelf://oauth` one, see OidcClient) the IdP sends back at the end of
- * SSO, hands it to whoever started the flow, and gets out of the way.
+ * Catches the `kitzi://oauth?code=...&state=...` redirect the IdP sends back at
+ * the end of SSO, hands it to whoever started the flow, and gets out of the way.
  */
 class OidcCallbackActivity : Activity() {
 

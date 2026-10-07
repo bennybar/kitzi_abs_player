@@ -69,16 +69,7 @@ fun LoginScreen(onSignedIn: () -> Unit) {
                         runCatching { Services.auth.oidc.finish(server, callbackUrl) }.getOrDefault(false)
                     }
                     busy = false
-                    if (ok) {
-                        onSignedIn()
-                        // Signed in through the shared redirect URI: worth telling
-                        // whoever runs the server (it keeps working for now).
-                        if (Services.auth.oidc.usedLegacyRedirect) {
-                            com.bennybar.kitzi.ui.common.Snackbars.show(
-                                "For your server admin: add kitzi://oauth to Allowed Mobile Redirect URIs",
-                            )
-                        }
-                    } else error = "SSO sign in failed. Please try again."
+                    if (ok) onSignedIn() else error = "SSO sign in failed. Please try again."
                 }
             }
         }
@@ -96,7 +87,11 @@ fun LoginScreen(onSignedIn: () -> Unit) {
             }
             busy = false
             if (authorizeUrl == null) {
-                error = "Couldn't start SSO for this server."
+                error = if (Services.auth.oidc.redirectNotAllowed) {
+                    "This server doesn't allow Kitzi's SSO sign-in yet. Ask the server admin to add kitzi://oauth under Authentication → Allowed Mobile Redirect URIs."
+                } else {
+                    "Couldn't start SSO for this server."
+                }
                 return@launch
             }
             runCatching {

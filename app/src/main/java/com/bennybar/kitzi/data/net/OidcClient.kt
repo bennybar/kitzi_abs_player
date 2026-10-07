@@ -19,7 +19,7 @@ import java.time.Instant
  *  1. GET /auth/openid WITHOUT following the redirect, so we can read both the
  *     IdP authorize URL (the Location header) and the session cookies ABS sets.
  *     Following the redirect would consume them and the callback would fail.
- *  2. After the browser returns to `kitzi://oauth` (or the legacy URI), GET
+ *  2. After the browser returns to `kitzi://oauth`, GET
  *     /auth/openid/callback replaying those cookies, which returns the tokens.
  */
 class OidcClient(
@@ -35,10 +35,11 @@ class OidcClient(
     private val json = Json { ignoreUnknownKeys = true }
 
     /**
-     * True when the last [begin] had to fall back to the official app's redirect
-     * URI because the server doesn't allow Kitzi's own yet (see [REDIRECT_URI]).
+     * True when the last [begin] failed because the server refused Kitzi's redirect
+     * URI (its admin hasn't added [REDIRECT_URI] to the allowed list), so the sign-in
+     * screen can say exactly what's missing.
      */
-    @Volatile var usedLegacyRedirect = false
+    @Volatile var redirectNotAllowed = false
         private set
 
     /** PKCE + state, held between [begin] and [finish]. */
@@ -49,17 +50,13 @@ class OidcClient(
     /**
      * Returns the IdP authorize URL to open in a browser, or null on failure.
      *
-     * Kitzi's own redirect URI first. Audiobookshelf only redirects to URIs its admin
-     * has allowed, and rejects any other before reaching the IdP — so a server set
-     * up for the old shared URI gets one retry with it, keeping existing SSO setups
-     * working until the admin adds Kitzi's.
+     * Only ever Kitzi's own redirect URI. Audiobookshelf redirects only to URIs its
+     * admin has allowed and refuses any other before reaching the IdP; that refusal
+     * is the server's decision, so there's deliberately no fallback to the official
+     * app's `audiobookshelf://oauth` (issue #54) — see [redirectNotAllowed].
      */
     fun begin(baseUrl: String): String? {
-        begin(baseUrl, REDIRECT_URI)?.let { usedLegacyRedirect = false; return it }
-        return begin(baseUrl, LEGACY_REDIRECT_URI)?.also { usedLegacyRedirect = true }
-    }
-
-    private fun begin(baseUrl: String, redirectUri: String): String? {
+        redirectNotAllowed = false
         val base = SessionStore.normalizeBaseUrl(baseUrl)
         val codeVerifier = randomUrlSafe(64)
         val challenge = base64Url(sha256(codeVerifier.toByteArray(Charsets.US_ASCII)))
@@ -68,7 +65,7 @@ class OidcClient(
         val url = Uri.parse("$base/auth/openid").buildUpon()
             .appendQueryParameter("response_type", "code")
             .appendQueryParameter("client_id", CLIENT_ID)
-            .appendQueryParameter("redirect_uri", redirectUri)
+            .appendQueryParameter("redirect_uri", REDIRECT_URI)
             .appendQueryParameter("code_challenge", challenge)
             .appendQueryParameter("code_challenge_method", "S256")
             .appendQueryParameter("state", requestState)
@@ -83,7 +80,12 @@ class OidcClient(
 
         return runCatching {
             client.newCall(request).execute().use { resp ->
-                val location = resp.header("Location")?.takeIf { it.isNotEmpty() } ?: return null
+                val location = resp.header("Location")?.takeIf { it.isNotEmpty() } ?: run {
+                    // A 4xx here, before any IdP redirect, is the server rejecting the
+                    // redirect URI (or the request): say so rather than "failed".
+                    redirectNotAllowed = resp.code in 400..499
+                    return null
+                }
                 verifier = codeVerifier
                 state = requestState
                 cookies = resp.headers("Set-Cookie")
@@ -94,7 +96,7 @@ class OidcClient(
         }.getOrNull()
     }
 
-    /** Completes SSO from the `kitzi://oauth?...` (or legacy) callback. */
+    /** Completes SSO from the `kitzi://oauth?...` callback. */
     fun finish(baseUrl: String, callbackUrl: String): Boolean {
         val codeVerifier = verifier
         val expectedState = state
@@ -164,11 +166,9 @@ class OidcClient(
         const val CLIENT_ID = "Audiobookshelf"
         /**
          * Kitzi's own redirect URI. It used the official app's `audiobookshelf://oauth`,
-         * which the Audiobookshelf docs ask third-party apps not to (issue #54). Server
-         * admins add this one under "Allowed Mobile Redirect URIs".
+         * which the Audiobookshelf docs ask third-party apps not to use (issue #54).
+         * Server admins add this one under "Allowed Mobile Redirect URIs".
          */
         const val REDIRECT_URI = "kitzi://oauth"
-        /** The shared URI, still tried when a server doesn't allow [REDIRECT_URI] yet. */
-        const val LEGACY_REDIRECT_URI = "audiobookshelf://oauth"
     }
 }
