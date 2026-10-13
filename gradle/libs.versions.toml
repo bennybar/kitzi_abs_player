@@ -19,6 +19,8 @@ work = "2.11.2"
 datastore = "1.2.1"
 securityCrypto = "1.1.0-alpha06"
 desugar = "2.1.4"
+wearCompose = "1.5.6"
+playServicesWearable = "19.0.0"
 junit = "4.13.2"
 androidxJunit = "1.2.1"
 robolectric = "4.16.1"
@@ -62,6 +64,13 @@ androidx-datastore-preferences = { group = "androidx.datastore", name = "datasto
 androidx-security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "securityCrypto" }
 androidx-browser = { group = "androidx.browser", name = "browser", version = "1.10.0" }
 androidx-palette = { group = "androidx.palette", name = "palette-ktx", version = "1.0.0" }
+
+play-services-wearable = { group = "com.google.android.gms", name = "play-services-wearable", version.ref = "playServicesWearable" }
+kotlinx-coroutines-play-services = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-play-services", version = "1.9.0" }
+wear-compose-material3 = { group = "androidx.wear.compose", name = "compose-material3", version.ref = "wearCompose" }
+wear-compose-foundation = { group = "androidx.wear.compose", name = "compose-foundation", version.ref = "wearCompose" }
+wear-compose-navigation = { group = "androidx.wear.compose", name = "compose-navigation", version.ref = "wearCompose" }
+wear-input = { group = "androidx.wear", name = "wear-input", version = "1.2.0" }
 
 desugar-jdk-libs = { group = "com.android.tools", name = "desugar_jdk_libs", version.ref = "desugar" }
 

@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "Kitzi"
 include(":app")
+include(":wear")

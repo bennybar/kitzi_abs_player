@@ -78,12 +78,13 @@ if [ "${SKIP_CHECKS:-0}" != "1" ]; then
   }
 fi
 
-TASKS=(assembleRelease)
-$WANT_AAB && TASKS+=(bundleRelease)
+# The phone app and the Wear OS app (same app id and key; see wear/build.gradle.kts).
+TASKS=(:app:assembleRelease :wear:assembleRelease)
+$WANT_AAB && TASKS+=(:app:bundleRelease :wear:bundleRelease)
 
 echo "Building: ${TASKS[*]}"
 # Nothing left over from a previous build can be mistaken for this one.
-rm -rf app/build/outputs/apk/release app/build/outputs/bundle/release app/build/outputs/mapping/release
+rm -rf {app,wear}/build/outputs/apk/release {app,wear}/build/outputs/bundle/release {app,wear}/build/outputs/mapping/release
 ./gradlew --no-daemon "${TASKS[@]}"
 
 APK_SRC="app/build/outputs/apk/release/app-release.apk"
@@ -105,6 +106,16 @@ MAP_OUT="$DEST/kitzi-${STAMP}-mapping.txt"
 cp "$MAP_SRC" "$MAP_OUT"
 echo "Mapping -> $MAP_OUT"
 
+WEAR_APK_SRC="wear/build/outputs/apk/release/wear-release.apk"
+cp "$WEAR_APK_SRC" "$DEST/kitzi-wear-${STAMP}.apk"
+echo "Wear APK -> $DEST/kitzi-wear-${STAMP}.apk"
+if $WANT_AAB; then
+  WEAR_AAB_SRC="wear/build/outputs/bundle/release/wear-release.aab"
+  cp "$WEAR_AAB_SRC" "$DEST/kitzi-wear-${STAMP}.aab"
+  echo "Wear AAB -> $DEST/kitzi-wear-${STAMP}.aab"
+fi
+cp "wear/build/outputs/mapping/release/mapping.txt" "$DEST/kitzi-wear-${STAMP}-mapping.txt"
+
 # Confirm the signer is the expected upload key before anyone uploads it.
 BT="$(ls -d "$HOME/Library/Android/sdk/build-tools/"*/ 2>/dev/null | sort -V | tail -1)"
 EXPECTED="4ed3d9ff3193adafba37b2e13a39d0d3c93e85f018800c6cce87fc991d1daef3"
@@ -115,8 +126,11 @@ if [[ -z "$BT" || ! -x "${BT}apksigner" ]]; then
 fi
 ACTUAL="$("${BT}apksigner" verify --print-certs "$APK_SRC" 2>/dev/null \
   | grep -i "SHA-256 digest" | head -1 | awk '{print $NF}')"
-if [[ "$ACTUAL" == "$EXPECTED" ]]; then
-  echo "Signer OK: matches the Play upload key."
+WEAR_ACTUAL="$("${BT}apksigner" verify --print-certs "$WEAR_APK_SRC" 2>/dev/null \
+  | grep -i "SHA-256 digest" | head -1 | awk '{print $NF}')"
+# The watch app must share the phone's key, or the phone sign-in can't connect.
+if [[ "$ACTUAL" == "$EXPECTED" && "$WEAR_ACTUAL" == "$EXPECTED" ]]; then
+  echo "Signer OK: phone and watch both match the Play upload key."
 else
   echo "Signer $ACTUAL does not match the expected upload key ($EXPECTED)." >&2
   echo "Do not upload this build until the keystore is fixed." >&2
@@ -130,7 +144,8 @@ fi
 # jarsigner -verify exits 0 even for an UNSIGNED jar ("jar is unsigned."), so the
 # exit code proves nothing; only its "jar verified." line does.
 if $WANT_AAB; then
-  if "${JAVA_HOME}/bin/jarsigner" -verify "$AAB_SRC" 2>&1 | grep -q "jar verified."; then
+  if "${JAVA_HOME}/bin/jarsigner" -verify "$AAB_SRC" 2>&1 | grep -q "jar verified." &&
+     "${JAVA_HOME}/bin/jarsigner" -verify "$WEAR_AAB_SRC" 2>&1 | grep -q "jar verified."; then
     echo "AAB signed OK."
   else
     echo "The AAB is not signed — Play will reject it." >&2
