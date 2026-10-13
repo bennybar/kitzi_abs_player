@@ -196,6 +196,14 @@ fun HomeScreen(k: Kitzi, onOpenBook: (String) -> Unit, onOpenPlayer: () -> Unit,
     val scope = rememberCoroutineScope()
     var syncResult by remember { mutableStateOf<String?>(null) }
     var syncing by remember { mutableStateOf(false) }
+    // Downloaded books that aren't on Continue Listening (not started yet, or off the
+    // server's list): still reachable here, to play or remove.
+    val onWatch = remember(downloads, shelf) {
+        val listed = shelf.map { it.id }.toSet()
+        downloads.filterValues { it == DownloadState.Done }.keys
+            .filter { it !in listed }
+            .mapNotNull { downloadedBook(k, it) }
+    }
 
     val listState = rememberScalingLazyListState()
     ScreenScaffold(scrollState = listState) { padding ->
@@ -236,6 +244,20 @@ fun HomeScreen(k: Kitzi, onOpenBook: (String) -> Unit, onOpenPlayer: () -> Unit,
                     )
                 }
             }
+            if (onWatch.isNotEmpty()) {
+                item { ListHeader { Text("On watch") } }
+                onWatch.forEach { book ->
+                    item(key = "watch:" + book.id) {
+                        FilledTonalButton(
+                            onClick = { onOpenBook(book.id) },
+                            icon = { Cover(k, book.id, 32) },
+                            label = { Text(book.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                            secondaryLabel = { Text(bookLine(book, DownloadState.Done)) },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
+            }
             item {
                 Button(
                     onClick = {
@@ -268,6 +290,12 @@ fun HomeScreen(k: Kitzi, onOpenBook: (String) -> Unit, onOpenPlayer: () -> Unit,
     }
 }
 
+/** A downloaded book, at the position last saved on the watch. */
+private fun downloadedBook(k: Kitzi, itemId: String): Book? =
+    k.downloads.downloaded(itemId)?.book?.let { b ->
+        b.copy(currentTimeSec = k.store.position(itemId)?.sec ?: b.currentTimeSec)
+    }
+
 private fun bookLine(book: Book, download: DownloadState?): String {
     val pct = if (book.durationSec > 0) "${(book.currentTimeSec / book.durationSec * 100).toInt()}%" else ""
     val dl = when (download) {
@@ -297,7 +325,7 @@ fun BookScreen(k: Kitzi, itemId: String, onPlaying: () -> Unit) {
     val shelf by k.shelf.collectAsState()
     val downloads by k.downloads.states.collectAsState()
     val loading by k.player.loading.collectAsState()
-    val book = shelf.firstOrNull { it.id == itemId } ?: k.downloads.downloaded(itemId)?.book ?: return
+    val book = shelf.firstOrNull { it.id == itemId } ?: remember(itemId) { downloadedBook(k, itemId) } ?: return
     val download = downloads[itemId] ?: DownloadState.None
     val scope = rememberCoroutineScope()
     var error by remember { mutableStateOf<String?>(null) }

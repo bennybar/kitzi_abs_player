@@ -35,9 +35,14 @@ class Kitzi private constructor(context: Context) {
         if (!store.signedIn) return false
         refreshing.value = true
         try {
-            val books = withContext(Dispatchers.IO) { api.continueListening() }
-            online.value = books != null
-            if (books == null) return false
+            val (books, finished) = withContext(Dispatchers.IO) { api.continueListening() }
+                ?: run { online.value = false; return false }
+            online.value = true
+            // Finished anywhere (here, the phone, the web): its download goes, so the
+            // watch doesn't fill up with books that are done. Not the loaded one.
+            val loaded = player.nowPlaying.value?.book?.id
+            finished.filter { it != loaded && downloads.state(it) == DownloadState.Done }
+                .forEach { downloads.delete(it) }
             val merged = books.map { b ->
                 val local = store.position(b.id)
                 if (local != null && local.savedAt > b.lastUpdate) b.copy(currentTimeSec = local.sec) else b
@@ -48,6 +53,13 @@ class Kitzi private constructor(context: Context) {
         } finally {
             refreshing.value = false
         }
+    }
+
+    /** A book finished on the watch leaves the shelf at once (the server agrees on the next refresh). */
+    fun removeFromShelf(itemId: String) {
+        val updated = shelf.value.filter { it.id != itemId }
+        shelf.value = updated
+        store.shelf = updated
     }
 
     /** The watch's own newer position for a book on the shelf (after listening here). */

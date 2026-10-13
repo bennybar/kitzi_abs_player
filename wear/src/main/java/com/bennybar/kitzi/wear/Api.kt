@@ -125,16 +125,19 @@ class Api(private val store: Store) {
 
     /**
      * Continue Listening: the books in progress, most recent first, with their
-     * positions. Null when the server can't be reached.
+     * positions, plus the ids of every finished book. Null when the server can't
+     * be reached.
      */
-    fun continueListening(): List<Book>? {
+    fun continueListening(): Pair<List<Book>, Set<String>>? {
         val items = get("/api/me/items-in-progress?limit=25") as? JsonObject ?: return null
         val me = get("/api/me") as? JsonObject ?: return null
         val progress = (me["mediaProgress"] as? JsonArray).orEmpty()
             .mapNotNull { it as? JsonObject }
             .filter { it.str("episodeId") == null }
             .associateBy { it.str("libraryItemId") }
-        return (items["libraryItems"] as? JsonArray).orEmpty().mapNotNull { el ->
+        val finished = progress.filterValues { (it["isFinished"] as? JsonPrimitive)?.contentOrNull == "true" }
+            .keys.filterNotNull().toSet()
+        val books = (items["libraryItems"] as? JsonArray).orEmpty().mapNotNull { el ->
             val item = el as? JsonObject ?: return@mapNotNull null
             if (item.str("mediaType") != "book") return@mapNotNull null
             val id = item.str("id") ?: return@mapNotNull null
@@ -153,6 +156,7 @@ class Api(private val store: Store) {
         }
             // Like the phone's Continue Listening: only books actually started.
             .filter { it.currentTimeSec > 0 }
+        return books to finished
     }
 
     /** The server's position for one book: (seconds, lastUpdate), or null if it has none. */

@@ -112,9 +112,7 @@ class WearPlayer(private val context: Context, private val k: Kitzi) {
     suspend fun play(book: Book): String? {
         val current = _nowPlaying.value
         if (current?.book?.id == book.id && exo.mediaItemCount > 0 && exo.playerError == null) {
-            if (exo.playbackState == Player.STATE_ENDED) seekTo(0.0)
-            exo.prepare()
-            exo.play()
+            resumeLoaded()
             return null
         }
         if (current != null) stop()
@@ -190,11 +188,30 @@ class WearPlayer(private val context: Context, private val k: Kitzi) {
 
     fun togglePlay() {
         if (exo.isPlaying) exo.pause()
-        else if (_nowPlaying.value != null) {
-            if (exo.playbackState == Player.STATE_ENDED) seekTo(0.0)
-            if (exo.playbackState == Player.STATE_IDLE) exo.prepare()
-            exo.play()
+        else if (_nowPlaying.value != null) scope.launch { resumeLoaded() }
+    }
+
+    /**
+     * Resumes the loaded book — from the server's position if that's newer (listened
+     * on the phone during the pause), like a fresh start does. Media buttons and the
+     * system controls come through here too (see PlaybackService).
+     */
+    suspend fun resumeLoaded() {
+        val np = _nowPlaying.value ?: return
+        if (_loading.value) return
+        _loading.value = true
+        try {
+            val target = startPosition(np.book)
+            val here = positionSec()
+            if (_nowPlaying.value?.book?.id == np.book.id && here != null &&
+                kotlin.math.abs(target - here) > 3 && target < np.totalSec - 5
+            ) seekTo(target)
+        } finally {
+            _loading.value = false
         }
+        if (exo.playbackState == Player.STATE_ENDED) seekTo(0.0)
+        if (exo.playbackState == Player.STATE_IDLE) exo.prepare()
+        exo.play()
     }
 
     fun skip(deltaSec: Double) {
@@ -269,11 +286,11 @@ class WearPlayer(private val context: Context, private val k: Kitzi) {
         return saved
     }
 
-    /** Stops the book: a final report, then the session closes. */
-    suspend fun stop() {
+    /** Stops the book: a final report (unless it was just sent), then the session closes. */
+    suspend fun stop(report: Boolean = true) {
         if (_nowPlaying.value == null) return
         exo.pause()
-        reportNow()
+        if (report) reportNow()
         _nowPlaying.value?.sessionId?.let { sid -> withContext(Dispatchers.IO) { runCatching { k.api.closeSession(sid) } } }
         exo.stop()
         exo.clearMediaItems()
@@ -301,7 +318,17 @@ class WearPlayer(private val context: Context, private val k: Kitzi) {
         }
 
         override fun onPlaybackStateChanged(state: Int) {
-            if (state == Player.STATE_ENDED) scope.launch { reportNow(finished = true) }
+            if (state != Player.STATE_ENDED) return
+            scope.launch {
+                val np = _nowPlaying.value ?: return@launch
+                reportNow(finished = true)
+                k.removeFromShelf(np.book.id)
+                // Done with it: free the space a downloaded book takes on the watch.
+                if (np.local) {
+                    stop(report = false)
+                    k.downloads.delete(np.book.id)
+                }
+            }
         }
 
         // A release build won't play through the watch speaker (see the builder):

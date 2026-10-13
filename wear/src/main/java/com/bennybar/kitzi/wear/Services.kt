@@ -12,6 +12,8 @@ import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.Wearable
 import com.google.android.gms.wearable.WearableListenerService
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -20,7 +22,9 @@ import kotlinx.serialization.json.contentOrNull
 /** The media session: system media controls, headphone buttons, the ongoing-media chip. */
 class PlaybackService : MediaSessionService() {
     private var session: MediaSession? = null
+    private val scope = kotlinx.coroutines.MainScope()
 
+    @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
     override fun onCreate() {
         super.onCreate()
         val k = Kitzi.init(this)
@@ -28,7 +32,14 @@ class PlaybackService : MediaSessionService() {
             this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        session = MediaSession.Builder(this, k.player.exo).setSessionActivity(open).build()
+        // Play from headphones or the system controls resumes through the same
+        // server check as the app's play button.
+        val player = object : androidx.media3.common.ForwardingPlayer(k.player.exo) {
+            override fun play() {
+                scope.launch { k.player.resumeLoaded() }
+            }
+        }
+        session = MediaSession.Builder(this, player).setSessionActivity(open).build()
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
@@ -38,6 +49,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        scope.cancel()
         session?.release() // the player lives on in Kitzi
         session = null
         super.onDestroy()
