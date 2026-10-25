@@ -1,6 +1,7 @@
 package com.bennybar.kitzi.ui.theme
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -57,6 +58,8 @@ fun KitziTheme(
     MaterialTheme(
         colorScheme = if (darkTheme) KitziDarkColors else KitziLightColors,
         typography = KitziTypography,
+        // Material 3 Expressive motion: springier sheets, buttons and transitions.
+        motionScheme = MotionScheme.expressive(),
         content = content,
     )
 }

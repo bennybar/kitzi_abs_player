@@ -81,7 +81,7 @@ fun AuthorsScreen(onOpenBook: (String) -> Unit) {
 
         when {
             loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
+                com.bennybar.kitzi.ui.common.KitziLoading()
             }
             visible.isEmpty() -> BrowseEmptyState(
                 icon = Icons.Default.Person,

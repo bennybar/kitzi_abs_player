@@ -1,13 +1,16 @@
 [versions]
-agp = "8.9.1"
-kotlin = "2.1.0"
-ksp = "2.1.0-1.0.29"
+agp = "9.1.1"
+kotlin = "2.3.21"
+ksp = "2.3.12"
 # core 1.18+ and lifecycle 2.10+ require AGP 9.1 / compileSdk 37; capped here to the
 # newest versions that build on the current AGP 8.9 / compileSdk 36 toolchain.
 coreKtx = "1.17.0"
 lifecycle = "2.9.4"
 activityCompose = "1.13.0"
-composeBom = "2026.06.01"
+composeBom = "2026.09.00"
+# Material 3 Expressive (shape morphing, loading indicator, button groups) is 1.5+,
+# which needs compileSdk 37 / AGP 9.1; the BOM still pins 1.4.
+material3 = "1.5.0-beta02"
 navigation = "2.9.8"
 media3 = "1.10.1"
 room = "2.8.4"
@@ -37,7 +40,7 @@ compose-ui = { group = "androidx.compose.ui", name = "ui" }
 compose-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
 compose-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
 compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
+compose-material3 = { group = "androidx.compose.material3", name = "material3", version.ref = "material3" }
 compose-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended" }
 
 media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3" }
@@ -81,7 +84,6 @@ robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }

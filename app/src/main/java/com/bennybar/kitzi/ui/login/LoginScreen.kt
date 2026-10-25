@@ -221,7 +221,7 @@ fun LoginScreen(onSignedIn: () -> Unit) {
 
                 if (busy) {
                     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(Modifier.size(28.dp))
+                        com.bennybar.kitzi.ui.common.KitziLoading(Modifier.size(40.dp))
                     }
                 } else {
                     Button(

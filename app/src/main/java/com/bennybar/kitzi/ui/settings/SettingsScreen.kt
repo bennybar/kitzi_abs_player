@@ -171,7 +171,7 @@ fun SettingsScreen(onSignedOut: () -> Unit, onOpenProfile: () -> Unit = {}, onOp
         }
 
         // ---------- Appearance ----------
-        if (matches("appearance", "theme", "dark", "series", "author", "player", "font", "letter", "audible", "rating", "shelves", "home")) {
+        if (matches("appearance", "theme", "dark", "series", "author", "player", "font", "letter", "audible", "rating", "shelves", "home", "play button", "shape", "expressive")) {
             Section("Appearance")
             TogglePref("ui_show_series_tab", false, "Show Series tab", "Enable the Series view")
             TogglePref(
@@ -182,6 +182,7 @@ fun SettingsScreen(onSignedOut: () -> Unit, onOpenProfile: () -> Unit = {}, onOp
             TogglePref("ui_author_view_enabled", true, "Authors tab", "Show a dedicated Authors tab in the main navigation")
             TogglePref("ui_full_player_as_tab", true, "Full player as tab", "Show the full player as a bottom navigation tab instead of a popup card")
             TogglePref("ui_hide_series_when_same_as_author", true, "Hide duplicate series names", "Hide series name in books list when it matches the author name")
+            TogglePref("ui_expressive_play_button", true, "Shape-shifting play button", "Play and pause morph between shapes (Material 3 Expressive)")
             TogglePref("ui_player_gradient_background", true, "Gradient background in player", "Apply a gradient surface to the full screen player", Icons.Default.Gradient)
             TogglePref("ui_player_scrolling_single_line_title", false, "Single-line scrolling player title", "Show one title line that continuously scrolls left in full player")
             TogglePref("ui_audible_link_enabled", true, "Tap ratings to open Audible", "Open the book's Audible page in your browser when you tap its star rating")

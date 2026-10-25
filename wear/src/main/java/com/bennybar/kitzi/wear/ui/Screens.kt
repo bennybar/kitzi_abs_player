@@ -462,11 +462,15 @@ fun PlayerScreen(k: Kitzi) {
             if (fraction > 0f) drawArc(fill, -90f, 360f * fraction, useCenter = false, style = stroke)
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(horizontal = 22.dp)) {
+            // Inset further than the controls: near the top the round screen is
+            // narrower, and a long title ran into its edge.
             Text(book.book.title, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.titleSmall, textAlign = TextAlign.Center)
+                style = MaterialTheme.typography.titleSmall, textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 26.dp))
             chapter?.let {
                 Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
+                    style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 18.dp))
             }
             Spacer(Modifier.height(6.dp))
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {

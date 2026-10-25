@@ -6,6 +6,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.material3.IconButton
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Bookmarks
@@ -250,6 +251,45 @@ fun ControlButton(icon: ImageVector, contentDescription: String, size: androidx.
             tint = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.size(size * 0.55f),
         )
+    }
+}
+
+/**
+ * A transport button inside the player's Material 3 button group: a tonal button
+ * that widens while pressed (its neighbours make room) and whose corners tighten on
+ * press. If the row ever doesn't fit, it moves into the overflow menu.
+ */
+fun androidx.compose.material3.ButtonGroupScope.transportItem(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+) = customItem(
+    buttonGroupContent = {
+        val interaction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+        androidx.compose.material3.FilledTonalIconButton(
+            onClick = onClick,
+            shapes = androidx.compose.material3.IconButtonDefaults.shapes(),
+            interactionSource = interaction,
+            // animateWidth outermost: a size() outside it would pin the width.
+            modifier = Modifier.animateWidth(interaction).size(56.dp),
+        ) {
+            Icon(icon, label, modifier = Modifier.size(30.dp))
+        }
+    },
+    menuContent = { menu ->
+        androidx.compose.material3.DropdownMenuItem(
+            text = { Text(label) },
+            leadingIcon = { Icon(icon, null) },
+            onClick = { onClick(); menu.dismiss() },
+        )
+    },
+)
+
+/** The button group's overflow: only shown on screens too narrow for the whole row. */
+@Composable
+fun TransportOverflow(menu: androidx.compose.material3.ButtonGroupMenuState) {
+    androidx.compose.material3.IconButton(onClick = { if (menu.isShowing) menu.dismiss() else menu.show() }) {
+        Icon(Icons.Default.MoreVert, "More controls")
     }
 }
 
@@ -564,7 +604,7 @@ fun PlayerInfoSheet(itemId: String, onDismiss: () -> Unit) {
                 }
             }
             if (data == null) {
-                item { Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() } }
+                item { Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { com.bennybar.kitzi.ui.common.KitziLoading() } }
             } else {
                 items(facts.orEmpty()) { fact -> FactRow(fact) }
                 b?.description?.takeIf { it.isNotBlank() }?.let { desc ->
@@ -689,7 +729,7 @@ fun PlayHistorySheet(
         val e = entries
         when {
             e == null -> Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
+                com.bennybar.kitzi.ui.common.KitziLoading()
             }
             e.isEmpty() -> Text(
                 "No recent pauses recorded.",
@@ -863,7 +903,7 @@ fun BookmarksSheet(itemId: String, onPick: (Double) -> Unit, onDismiss: () -> Un
         )
         val m = marks
         when {
-            m == null -> Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            m == null -> Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { com.bennybar.kitzi.ui.common.KitziLoading() }
             m.isEmpty() -> Text(
                 "No bookmarks yet. Use the bookmark button on the cover to save your spot.",
                 style = MaterialTheme.typography.bodyMedium,

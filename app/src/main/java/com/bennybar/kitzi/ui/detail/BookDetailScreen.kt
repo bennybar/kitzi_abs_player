@@ -124,7 +124,7 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
                 )
                 TextButton(onClick = onBack, modifier = Modifier.padding(top = 8.dp)) { Text("Go back") }
             } else {
-                CircularProgressIndicator()
+                com.bennybar.kitzi.ui.common.KitziLoading()
             }
         }
         return
@@ -292,10 +292,10 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
                     modifier = Modifier.weight(1f),
                 ) {
                     if (preparing) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(18.dp),
-                            color = MaterialTheme.colorScheme.onPrimary,
-                            strokeWidth = 2.dp,
+                        // The (disabled) button's own content colour, like the text.
+                        com.bennybar.kitzi.ui.common.KitziLoading(
+                            modifier = Modifier.size(24.dp),
+                            color = androidx.compose.material3.LocalContentColor.current,
                         )
                         Text("Starting…", modifier = Modifier.padding(start = 8.dp))
                     } else {

@@ -55,7 +55,7 @@ fun ProfileScreen(onBack: () -> Unit, onOpenStats: () -> Unit = {}) {
         ) {
             ScreenHeader(icon = Icons.Default.Person, title = "Profile", onBack = onBack)
             Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
+                com.bennybar.kitzi.ui.common.KitziLoading()
             }
         }
         return

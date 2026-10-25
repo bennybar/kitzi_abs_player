@@ -136,7 +136,7 @@ fun SeriesScreen(onOpenBook: (String) -> Unit, onBack: () -> Unit) {
 
         when {
             loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
+                com.bennybar.kitzi.ui.common.KitziLoading()
             }
             groups.isEmpty() -> BrowseEmptyState(
                 icon = if (tab == SeriesTab.SERIES) Icons.Default.LibraryBooks else Icons.Default.Collections,
@@ -223,7 +223,7 @@ fun SeriesScreen(onOpenBook: (String) -> Unit, onBack: () -> Unit) {
                                         fontWeight = FontWeight.SemiBold,
                                     )
                                     if (booksFor != group.name) {
-                                        CircularProgressIndicator(Modifier.size(20.dp).align(Alignment.CenterHorizontally), strokeWidth = 2.dp)
+                                        com.bennybar.kitzi.ui.common.KitziLoading(Modifier.size(32.dp).align(Alignment.CenterHorizontally))
                                     }
                                     books.takeIf { booksFor == group.name }.orEmpty().forEach { book ->
                                         BookCard(book, progress = progressById[book.id]) { onOpenBook(book.id) }

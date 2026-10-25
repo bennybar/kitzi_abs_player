@@ -3,7 +3,6 @@ import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
@@ -20,15 +19,15 @@ if (hasKeystore) {
 
 android {
     namespace = "com.bennybar.kitzi"
-    // Media3 1.10.x requires compiling against API 36, and Play requires app updates
-    // to target 36 from 31 August 2026 — so compile and target now match.
+    // Compiled against 37 for Material 3 Expressive (material3 1.5 requires it);
+    // still TARGETING 36, so no Android 17 behaviour changes are opted into.
     //
     // The API 36 behaviours this opts into were checked against an Android 16 device:
     // edge-to-edge is already enabled explicitly (enableEdgeToEdge + inset padding),
     // predictive back is already opted in via enableOnBackInvokedCallback, no
     // activity pins its orientation or aspect ratio, and both bundled native
     // libraries are 16KB-page aligned.
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.bennybar.kitzi"
@@ -49,9 +48,6 @@ android {
         isCoreLibraryDesugaringEnabled = true
     }
 
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_11.toString()
-    }
 
     signingConfigs {
         create("release") {
@@ -85,6 +81,18 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
+        // Material 3 Expressive (carousels, shape morphing, loading indicator, button
+        // groups) is still marked experimental in material3 1.5.
+        freeCompilerArgs.addAll(
+            "-opt-in=androidx.compose.material3.ExperimentalMaterial3ExpressiveApi",
+            "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api",
+        )
     }
 }
 

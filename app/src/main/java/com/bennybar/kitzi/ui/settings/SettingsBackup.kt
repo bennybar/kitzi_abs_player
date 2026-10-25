@@ -25,6 +25,7 @@ object SettingsBackup {
     private val booleanKeys = listOf(
         "ui_show_series_tab",
         "ui_server_home_shelves",
+        "ui_expressive_play_button",
         "ui_author_view_enabled",
         "ui_letter_scroll_enabled",
         "ui_letter_scroll_books_alpha",

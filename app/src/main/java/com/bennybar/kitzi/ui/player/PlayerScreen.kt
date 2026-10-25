@@ -408,41 +408,39 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
             androidx.compose.runtime.CompositionLocalProvider(
                 androidx.compose.ui.platform.LocalLayoutDirection provides androidx.compose.ui.unit.LayoutDirection.Ltr,
             ) {
+            // Material 3 Expressive button groups either side of play: a pressed button
+            // widens and its partner makes room. Play stands apart — squeezing it would
+            // distort its morphing shape.
             Row(
                 Modifier.fillMaxWidth().padding(top = 14.dp),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                ControlButton(Icons.Default.SkipPrevious, "Previous chapter", 60.dp) { controller.previousChapter() }
-                // The rewind/forward glyphs follow the configured seek interval.
-                ControlButton(replayIcon(seekBackwardSec), "Back ${seekBackwardSec}s", 60.dp) { controller.seekBackward() }
-                // primary filled play/pause
-                Box(
-                    Modifier
-                        .padding(horizontal = 10.dp)
-                        .size(76.dp)
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(MaterialTheme.colorScheme.primary)
-                        .clickable { controller.playPause() },
-                    contentAlignment = Alignment.Center,
+                androidx.compose.material3.ButtonGroup(
+                    overflowIndicator = { menu -> TransportOverflow(menu) },
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    if (preparing) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(34.dp),
-                            color = MaterialTheme.colorScheme.onPrimary,
-                            strokeWidth = 3.dp,
-                        )
-                    } else {
-                        Icon(
-                            if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            if (isPlaying) "Pause" else "Play",
-                            tint = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.size(40.dp),
-                        )
-                    }
+                    transportItem(Icons.Default.SkipPrevious, "Previous chapter") { controller.previousChapter() }
+                    // The rewind/forward glyphs follow the configured seek interval.
+                    transportItem(replayIcon(seekBackwardSec), "Back ${seekBackwardSec}s") { controller.seekBackward() }
                 }
-                ControlButton(forwardIcon(seekForwardSec), "Forward ${seekForwardSec}s", 60.dp) { controller.seekForward() }
-                ControlButton(Icons.Default.SkipNext, "Next chapter", 60.dp) { controller.nextChapter() }
+                com.bennybar.kitzi.ui.common.PlayPauseButton(
+                    isPlaying = isPlaying,
+                    preparing = preparing,
+                    size = 76.dp,
+                    iconSize = 40.dp,
+                    background = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    plainShape = RoundedCornerShape(24.dp),
+                    modifier = Modifier.padding(horizontal = 10.dp),
+                ) { controller.playPause() }
+                androidx.compose.material3.ButtonGroup(
+                    overflowIndicator = { menu -> TransportOverflow(menu) },
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    transportItem(forwardIcon(seekForwardSec), "Forward ${seekForwardSec}s") { controller.seekForward() }
+                    transportItem(Icons.Default.SkipNext, "Next chapter") { controller.nextChapter() }
+                }
             }
             }
 

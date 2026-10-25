@@ -76,6 +76,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -321,11 +322,11 @@ fun LibraryScreen(
                                 shelf.label,
                                 Modifier.padding(horizontal = 16.dp),
                             )
-                            Shelf(shelf.books, onOpenBook, progressById.takeIf { listening })
+                            Shelf(shelf.books, onOpenBook, progressById.takeIf { listening }, hero = listening)
                         }
                         if (serverShelves == null && continueListening.isNotEmpty()) {
                             SectionHeader(Icons.Default.PlayArrow, "Continue Listening", Modifier.padding(horizontal = 16.dp))
-                            Shelf(continueListening, onOpenBook, progressById)
+                            Shelf(continueListening, onOpenBook, progressById, hero = true)
                         }
                         // The next book in each series you've finished one of (#39).
                         if (serverShelves == null && continueSeries.isNotEmpty()) {
@@ -726,11 +727,13 @@ private fun SummaryTile(
 }
 
 /**
- * A horizontally scrolling shelf of cover cards.
+ * A shelf of covers as a Material 3 carousel: [hero] (Continue Listening) puts one
+ * large cover in the middle with the others peeking at the sides; the other shelves
+ * are multi-browse (one large cover, then smaller ones). Titles sit on the cover and
+ * fade out as an item shrinks, so nothing is clipped mid-word.
  *
- * A plain scrolling Row, not a LazyRow: this can sit inside a LazyVerticalGrid
- * item, and a lazy list nested in a lazy layout on the cross axis measures to
- * zero height and silently disappears.
+ * Carousels are lazy but take a fixed height, so they can sit inside the library's
+ * lazy grid/list (a plain LazyRow there measured to zero height).
  */
 @Composable
 private fun Shelf(
@@ -740,55 +743,89 @@ private fun Shelf(
     progressById: Map<String, MediaProgressEntity>? = null,
     /** The card's second line, when it isn't the author (Continue Series: "#2 · Series"). */
     caption: ((Book) -> String?)? = null,
+    hero: Boolean = false,
 ) {
     val speed = com.bennybar.kitzi.data.Services.prefs.getDouble("playback_speed", 1.0).coerceAtLeast(0.1)
-    Row(
-        Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        books.forEach { book ->
-            Surface(
-                color = MaterialTheme.colorScheme.surfaceContainer,
-                shape = RoundedCornerShape(18.dp),
-                modifier = Modifier.width(150.dp).clickable { onOpenBook(book.id) },
-            ) {
-                Column(Modifier.padding(10.dp)) {
-                    val p = progressById?.get(book.id)
-                    Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(12.dp))) {
-                        AsyncImage(
-                            model = book.coverUrl,
-                            contentDescription = book.title,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize(),
+    val state = androidx.compose.material3.carousel.rememberCarouselState { books.size }
+    val padding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp)
+    val item: @Composable androidx.compose.material3.carousel.CarouselItemScope.(Int) -> Unit = { i ->
+        val book = books[i]
+        val p = progressById?.get(book.id)
+        val left = p?.takeIf { !it.isFinished }?.let {
+            val d = it.durationSec.takeIf { d -> d > 0 } ?: (book.durationMs ?: 0L) / 1000.0
+            ((d - it.currentTimeSec).coerceAtLeast(0.0) / speed).takeIf { l -> l > 0 }
+        }
+        // Continue Listening: time left at your speed, where the author would be.
+        val second = left?.let { "${formatHm(it.toLong())} left" } ?: caption?.invoke(book) ?: book.author
+        // 1 when the item is at full size, 0 when it's squeezed to its smallest.
+        val info = carouselItemDrawInfo
+        val textAlpha = if (info.maxSize > info.minSize) {
+            ((info.size - info.minSize) / (info.maxSize - info.minSize) * 1.6f - 0.6f).coerceIn(0f, 1f)
+        } else 1f
+        Box(
+            Modifier
+                .fillMaxSize()
+                .maskClip(MaterialTheme.shapes.extraLarge)
+                .clickable { onOpenBook(book.id) },
+        ) {
+            AsyncImage(
+                model = book.coverUrl,
+                contentDescription = book.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+            Column(
+                Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth()
+                    .graphicsLayer { alpha = textAlpha }
+                    .background(
+                        androidx.compose.ui.graphics.Brush.verticalGradient(
+                            listOf(Color.Transparent, Color.Black.copy(alpha = 0.78f)),
                         )
-                        p?.progress?.toFloat()?.takeIf { it > 0f && !p.isFinished }?.let { CoverProgressBar(it) }
-                    }
+                    )
+                    .padding(start = 12.dp, end = 12.dp, top = 28.dp, bottom = 12.dp),
+            ) {
+                Text(
+                    book.title,
+                    style = if (hero) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                second?.let {
                     Text(
-                        book.title,
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.SemiBold,
+                        it,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White.copy(alpha = 0.8f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = 8.dp),
                     )
-                    // Continue Listening: time left at your speed, where the author
-                    // would be (the author is already on the cover for most books).
-                    val left = p?.takeIf { !it.isFinished }?.let {
-                        val d = it.durationSec.takeIf { d -> d > 0 } ?: (book.durationMs ?: 0L) / 1000.0
-                        ((d - it.currentTimeSec).coerceAtLeast(0.0) / speed).takeIf { l -> l > 0 }
-                    }
-                    (left?.let { "${formatHm(it.toLong())} left" } ?: caption?.invoke(book) ?: book.author)?.let {
-                        Text(
-                            it,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
                 }
             }
+            p?.progress?.toFloat()?.takeIf { it > 0f && !p.isFinished }?.let { CoverProgressBar(it) }
         }
+    }
+    if (hero) {
+        androidx.compose.material3.carousel.HorizontalCenteredHeroCarousel(
+            state = state,
+            modifier = Modifier.fillMaxWidth().height(240.dp),
+            // Near-square, like the covers: wider cropped the art (and its title) away.
+            preferredItemWidth = 270.dp,
+            itemSpacing = 8.dp,
+            contentPadding = padding,
+            content = item,
+        )
+    } else {
+        androidx.compose.material3.carousel.HorizontalMultiBrowseCarousel(
+            state = state,
+            preferredItemWidth = 170.dp,
+            modifier = Modifier.fillMaxWidth().height(190.dp),
+            itemSpacing = 8.dp,
+            contentPadding = padding,
+            content = item,
+        )
     }
 }
 

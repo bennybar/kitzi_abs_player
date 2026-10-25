@@ -168,7 +168,7 @@ object LegacyBooksImport {
                             sizeBytes,updatedAt,addedAt,series,seriesSequence,collection,collectionSequence,
                             isAudioBook,mediaKind,libraryId,authors,narrators,publisher,publishYear,genres)
                            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                        arrayOf(
+                        arrayOf<Any?>(
                             b.id, b.title, b.author, b.coverUrl, b.coverPath, b.coverUpdatedAt,
                             b.description, b.durationMs, b.sizeBytes, b.updatedAt, b.addedAt,
                             b.series, b.seriesSequence, b.collection, b.collectionSequence,

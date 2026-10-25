@@ -3,7 +3,6 @@ import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
 }
@@ -19,7 +18,7 @@ if (hasKeystore) {
 
 android {
     namespace = "com.bennybar.kitzi.wear"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         // The same application id as the phone app (see the signing note above).
@@ -43,9 +42,6 @@ android {
         isCoreLibraryDesugaringEnabled = true
     }
 
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_11.toString()
-    }
 
     signingConfigs {
         create("release") {
@@ -73,6 +69,12 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
     }
 }
 

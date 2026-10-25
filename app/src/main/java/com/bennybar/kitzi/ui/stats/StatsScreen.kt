@@ -64,7 +64,7 @@ fun StatsScreen(onBack: () -> Unit = {}) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 } else {
-                    CircularProgressIndicator()
+                    com.bennybar.kitzi.ui.common.KitziLoading()
                 }
             }
         }

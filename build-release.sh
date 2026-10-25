@@ -1,3 +1,4 @@
+
  #!/usr/bin/env bash
 #
 # Builds a signed release of Kitzi and copies the artifact(s) to ~/Downloads.
@@ -22,7 +23,7 @@ for arg in "$@"; do
   esac
 done
 
-# Gradle 8.11.1 runs on Java 17–23 only. Android Studio's bundled JBR moved to
+# Gradle 9.3 runs on Java 17–25. Android Studio's bundled JBR moved to
 # Java 25, and the system default may be anything, so pick the first JDK in range
 # rather than trusting either: $JAVA_HOME, then an installed 23/21/17, then the
 # Studio JBR (if it's ever back in range).
@@ -31,21 +32,21 @@ jdk_major() {
 }
 pick_jdk() {
   local candidates=("${JAVA_HOME:-}")
-  for v in 23 22 21 20 19 18 17; do
+  for v in 25 24 23 22 21 20 19 18 17; do
     candidates+=("$(/usr/libexec/java_home -v "$v" 2>/dev/null || true)")
   done
   candidates+=("/Applications/Android Studio.app/Contents/jbr/Contents/Home")
   for home in "${candidates[@]}"; do
     [[ -n "$home" && -x "$home/bin/java" ]] || continue
     local major; major="$(jdk_major "$home")"
-    if [[ "$major" =~ ^[0-9]+$ ]] && (( major >= 17 && major <= 23 )); then
+    if [[ "$major" =~ ^[0-9]+$ ]] && (( major >= 17 && major <= 25 )); then
       echo "$home"; return 0
     fi
   done
   return 1
 }
 if ! JAVA_HOME="$(pick_jdk)"; then
-  echo "No JDK 17–23 found (Gradle 8.11.1 can't run on newer). Install one, or set JAVA_HOME to it." >&2
+  echo "No JDK 17–25 found (Gradle 9.3 can't run on newer). Install one, or set JAVA_HOME to it." >&2
   exit 1
 fi
 export JAVA_HOME

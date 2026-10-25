@@ -254,29 +254,17 @@ private fun RoundPlayButton(
 ) {
     val primary = MaterialTheme.colorScheme.primary
     val grad = Brush.linearGradient(listOf(primary, blend(primary, Color.Black, 0.72f)))
-    Box(
-        modifier
-            .size(46.dp)
-            .clip(CircleShape)
-            .background(grad)
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (preparing) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(22.dp),
-                color = MaterialTheme.colorScheme.onPrimary,
-                strokeWidth = 2.5.dp,
-            )
-        } else {
-            Icon(
-                if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                if (isPlaying) "Pause" else "Play",
-                tint = MaterialTheme.colorScheme.onPrimary,
-                modifier = Modifier.size(24.dp),
-            )
-        }
-    }
+    com.bennybar.kitzi.ui.common.PlayPauseButton(
+        isPlaying = isPlaying,
+        preparing = preparing,
+        size = 46.dp,
+        iconSize = 24.dp,
+        background = grad,
+        contentColor = MaterialTheme.colorScheme.onPrimary,
+        plainShape = CircleShape,
+        modifier = modifier,
+        onClick = onClick,
+    )
 }
 
 @Composable
