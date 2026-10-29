@@ -4,6 +4,7 @@ import SwiftUI
 /// cover, title, chapter or time left, and play/pause. Tapping it opens the player.
 /// With nothing loaded it shows the last book; play resumes it.
 struct MiniPlayer: View {
+    var zoom: Namespace.ID
     var onExpand: () -> Void
     @Environment(Player.self) private var player
     @Environment(LibraryStore.self) private var library
@@ -33,6 +34,7 @@ struct MiniPlayer: View {
                         CoverImage(book: book)
                             .frame(width: 34, height: 34)
                             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .matchedTransitionSource(id: "np", in: zoom)
                         VStack(alignment: .leading, spacing: 1) {
                             Text(book.title).font(.subheadline.weight(.semibold)).lineLimit(1)
                             Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
@@ -59,8 +61,11 @@ struct MiniPlayer: View {
                         }
                     }
                     .frame(width: 34, height: 34)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .sensoryFeedback(.impact(weight: .light), trigger: player.isPlaying)
                 .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
             }
             .padding(.horizontal, 12)

@@ -29,6 +29,7 @@ nonisolated struct MorphShape: Shape {
 
 /// Play/pause: morphing Liquid Glass (setting on, the default) or a plain circle.
 struct PlayPauseButton: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var size: CGFloat
     @Environment(AppSettings.self) private var settings
     @Environment(Player.self) private var player
@@ -57,13 +58,16 @@ struct PlayPauseButton: View {
             .glassEffect(.regular.interactive(), in: morph ? AnyShape(MorphShape(t: player.isPlaying ? 1 : 0)) : AnyShape(Circle()))
         }
         .buttonStyle(.plain)
-        .animation(.spring(response: 0.5, dampingFraction: 0.6), value: player.isPlaying)
+        // No bouncy morph with Reduce Motion.
+        .animation(reduceMotion ? .easeInOut(duration: 0.15) : .spring(response: 0.5, dampingFraction: 0.6), value: player.isPlaying)
+        .sensoryFeedback(.impact(weight: .light), trigger: player.isPlaying)
         .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
     }
 }
 
 struct ToastView: View {
     @Environment(Toast.self) private var toast
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         if let t = toast.current {
             HStack(spacing: 12) {
@@ -77,7 +81,7 @@ struct ToastView: View {
             .padding(.horizontal, 18).padding(.vertical, 14)
             .glassEffect(.regular, in: Capsule())
             .padding(.horizontal, 16)
-            .transition(.move(edge: .bottom).combined(with: .opacity))
+            .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
             .id(t.id)
         }
     }

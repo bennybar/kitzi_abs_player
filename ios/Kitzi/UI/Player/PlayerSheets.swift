@@ -55,12 +55,13 @@ struct PlayerChaptersSheet: View {
 // MARK: speed
 
 struct PlayerSpeedSheet: View {
+    @Environment(\.dynamicTypeSize) private var dynamicType
     @Environment(Player.self) private var player
     @State private var value: Double = Player.shared.speed
 
     var body: some View {
         VStack(spacing: 20) {
-            Text("Playback speed").font(.headline).padding(.top, 20)
+            Text("Playback Speed").font(.headline).padding(.top, 20)
             Text(playerSpeedLabel(value)).font(.system(size: 44, weight: .bold).monospacedDigit())
             Slider(value: $value, in: 0.5...3.5, step: 0.05) {
                 Text("Speed")
@@ -80,20 +81,22 @@ struct PlayerSpeedSheet: View {
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 24)
-        .presentationDetents([.height(330)])
+        // Large accessibility text needs more room than the compact height.
+        .presentationDetents(dynamicType.isAccessibilitySize ? [.large] : [.height(330)])
     }
 }
 
 // MARK: sleep
 
 struct PlayerSleepSheet: View {
+    @Environment(\.dynamicTypeSize) private var dynamicType
     @Environment(SleepTimer.self) private var sleep
     @Environment(Player.self) private var player
     @State private var minutes: Double = Store.double("sleep_minutes") ?? 30
 
     var body: some View {
         VStack(spacing: 18) {
-            Text("Sleep timer").font(.headline).padding(.top, 20)
+            Text("Sleep Timer").font(.headline).padding(.top, 20)
             switch sleep.mode {
             case .off:
                 Text("\(Int(minutes)) min").font(.system(size: 44, weight: .bold).monospacedDigit())
@@ -118,6 +121,8 @@ struct PlayerSleepSheet: View {
                 Text(sleep.mode == .endOfChapter ? "Until the end of the chapter" : "Pausing in")
                     .foregroundStyle(.secondary)
                 Text(Format.clock(sleep.remainingSec)).font(.system(size: 44, weight: .bold).monospacedDigit())
+                    .contentTransition(.numericText(countsDown: true))
+                    .animation(.default, value: Int(sleep.remainingSec))
                 if case .duration = sleep.mode {
                     Button { sleep.addMinutes(5) } label: { Label("+5 min", systemImage: "plus") }
                         .buttonStyle(.glass)
@@ -130,7 +135,8 @@ struct PlayerSleepSheet: View {
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 24)
-        .presentationDetents([.height(380)])
+        .sensoryFeedback(.success, trigger: sleep.mode != .off) { _, on in on }
+        .presentationDetents(dynamicType.isAccessibilitySize ? [.large] : [.height(380)])
     }
 }
 
@@ -253,7 +259,7 @@ struct PlayerHistorySheet: View {
                     .listStyle(.plain)
                 }
             }
-            .navigationTitle("Play history")
+            .navigationTitle("Play History")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }
@@ -277,7 +283,7 @@ struct PlayerMoreSheet: View {
             List {
                 Button { confirmFinished = true } label: { Label("Mark as finished", systemImage: "checkmark.circle") }
                 Button { open(.bookmarks) } label: { Label("Bookmarks", systemImage: "bookmark") }
-                Button { open(.history) } label: { Label("Play history", systemImage: "clock.arrow.circlepath") }
+                Button { open(.history) } label: { Label("Play History", systemImage: "clock.arrow.circlepath") }
                 Toggle(isOn: $settings.playerGradient) { Label("Gradient background", systemImage: "circle.lefthalf.filled") }
                 Toggle(isOn: $settings.chapterTicks) { Label("Chapter indicators", systemImage: "line.3.horizontal.decrease") }
                 Button(role: .destructive) {
@@ -350,7 +356,7 @@ struct PlayerBookInfoSheet: View {
                         }
                     }
                 }
-                .navigationTitle("Book info")
+                .navigationTitle("Book Info")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
             }

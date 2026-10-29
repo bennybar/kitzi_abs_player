@@ -81,9 +81,9 @@ struct SettingsView: View {
             }
 
             if show("appearance", "series", "author", "shelves", "home", "play button", "shape", "gradient", "chapter",
-                    "audible", "rating", "grid", "theme", "dark", "light", "carousel", "next in series") {
+                    "audible", "rating", "grid", "theme", "dark", "light", "carousel", "next in series", "full screen", "player") {
                 Section("Appearance") {
-                    Toggle("Show Series tab", isOn: $s.showSeriesTab)
+                    Toggle("Series tab", isOn: $s.showSeriesTab)
                     Toggle("Authors tab", isOn: $s.showAuthorsTab)
                     Toggle("Queue tab", isOn: $s.showQueueTab)
                     Toggle(isOn: $s.serverHomeShelves) {
@@ -103,6 +103,10 @@ struct SettingsView: View {
                     Toggle(isOn: $s.expressivePlayButton) {
                         Text("Shape-shifting play button")
                         Text("Play and pause morph between shapes")
+                    }
+                    Toggle(isOn: $s.fullScreenPlayer) {
+                        Text("Full-screen player")
+                        Text("The player covers the whole screen; pull down to close it")
                     }
                     Toggle("Gradient background in player", isOn: $s.playerGradient)
                     Toggle("Chapter indicators", isOn: $s.chapterTicks)
@@ -163,7 +167,7 @@ struct SettingsView: View {
                     Toggle("Book + chapter progress in player", isOn: $s.dualProgress)
                     Toggle(isOn: $s.resumeFromHistory) {
                         Text("Resume previous position button")
-                        Text("Show \"Last position\" under the cover")
+                        Text("Show \"Back to …\" on the cover after a jump")
                     }
                     Toggle(isOn: $s.detailedHistory) {
                         Text("Detailed listening history")

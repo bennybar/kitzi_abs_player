@@ -68,7 +68,7 @@ struct AuthorDetailView: View {
                 }
             }
             if !others.isEmpty {
-                Section(bySeries.isEmpty ? "Books" : "Other books") {
+                Section(bySeries.isEmpty ? "Books" : "Other Books") {
                     ForEach(others.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }) { b in
                         NavigationLink { BookDetailView(book: b) } label: { BookRow(book: b) }
                     }

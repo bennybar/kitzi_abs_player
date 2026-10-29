@@ -26,7 +26,7 @@ struct DownloadsView: View {
     var body: some View {
         List {
             if !active.isEmpty {
-                Section("In progress") {
+                Section("In Progress") {
                     ForEach(active, id: \.0) { id, state in
                         HStack(spacing: 12) {
                             CoverImage(book: book(id))
@@ -38,6 +38,7 @@ struct DownloadsView: View {
                                 case .running(let f):
                                     ProgressView(value: f).tint(.accentColor)
                                     Text("\(Int(f * 100))%").font(.caption).foregroundStyle(.secondary)
+                                        .contentTransition(.numericText(value: f))
                                 case .queued:
                                     ProgressView().progressViewStyle(.linear)
                                     Text(settings.wifiOnlyDownloads ? "Waiting (Wi-Fi only)" : "Waiting to download")
@@ -87,7 +88,7 @@ struct DownloadsView: View {
                     }
                 }
             } header: {
-                if !done.isEmpty { Text("On this device") }
+                if !done.isEmpty { Text("On This Device") }
             } footer: {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Using \(Format.size(downloads.totalBytes)).")
@@ -95,6 +96,9 @@ struct DownloadsView: View {
                 }
             }
         }
+        // A finished download moves between sections instead of jumping.
+        .animation(.default, value: downloads.downloadedIds)
+        .animation(.default, value: active.map(\.0))
         .navigationTitle("Downloads")
         .toolbar {
             if !done.isEmpty {

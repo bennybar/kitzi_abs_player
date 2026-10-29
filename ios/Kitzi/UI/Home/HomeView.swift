@@ -12,6 +12,7 @@ struct HomeView: View {
     @State private var serverResults: [Book] = []
     @State private var path = NavigationPath()
     @State private var loaded = false
+    @Namespace private var zoom
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -28,7 +29,9 @@ struct HomeView: View {
                     if settings.gridLayout {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 16)], spacing: 20) {
                             ForEach(list) { b in
-                                Button { path.append(b) } label: { CoverTile(book: b, size: nil, progress: library.progress[b.id]) }
+                                Button { path.append(BookFrom(book: b, source: "all-\(b.id)")) } label: {
+                                    CoverTile(book: b, size: nil, progress: library.progress[b.id], zoomID: "all-\(b.id)")
+                                }
                                     .buttonStyle(.plain)
                                     .bookContextMenu(b)
                             }
@@ -37,7 +40,9 @@ struct HomeView: View {
                     } else {
                         LazyVStack(spacing: 0) {
                             ForEach(list) { b in
-                                Button { path.append(b) } label: { ListBookRow(book: b).padding(.vertical, 8) }
+                                Button { path.append(BookFrom(book: b, source: "all-\(b.id)")) } label: {
+                                    ListBookRow(book: b, zoomID: "all-\(b.id)").padding(.vertical, 8)
+                                }
                                     .buttonStyle(.plain)
                                     .bookContextMenu(b)
                                 Divider().padding(.leading, 64)
@@ -59,6 +64,10 @@ struct HomeView: View {
             }
             .navigationTitle("Library")
             .navigationDestination(for: Book.self) { BookDetailView(book: $0) }
+            .navigationDestination(for: BookFrom.self) { r in
+                BookDetailView(book: r.book).navigationTransition(.zoom(sourceID: r.source, in: zoom))
+            }
+            .environment(\.coverZoom, zoom)
             .navigationDestination(for: ShelfRoute.self) { r in
                 BookListView(title: r.title, books: r.books)
             }
@@ -123,12 +132,12 @@ struct HomeView: View {
         } else if !books.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
                 ShelfHeader(title: title) { path.append(ShelfRoute(title: title, books: books)) }
-                carousel(books, hero: hero, showProgress: showProgress, caption: caption)
+                carousel(books, key: key, hero: hero, showProgress: showProgress, caption: caption)
             }
         }
     }
 
-    private func carousel(_ books: [Book], hero: Bool, showProgress: Bool, caption: ((Book) -> String?)?) -> some View {
+    private func carousel(_ books: [Book], key: String, hero: Bool, showProgress: Bool, caption: ((Book) -> String?)?) -> some View {
         let speed = max(Store.double("playback_speed") ?? 1, 0.1)
         return KeylineCarousel(
             items: books,
@@ -138,7 +147,9 @@ struct HomeView: View {
                 let small: CGFloat = 40, medium = w * 0.2
                 return [w - medium - small - 16, medium, small]
             },
-            onTap: { path.append($0) }
+            onTap: { path.append(BookFrom(book: $0, source: "\(key)-\($0.id)")) },
+            label: { $0.title },
+            menuBook: { $0 }
         ) { b, fullness in
             let p = library.progress[b.id]
             let left = p.flatMap { p -> String? in
@@ -149,6 +160,7 @@ struct HomeView: View {
             }
             CarouselCover(book: b, caption: left ?? caption?(b) ?? b.author,
                           progress: showProgress ? p?.progress : nil, fullness: fullness, hero: hero)
+                .coverZoomSource("\(key)-\(b.id)", zoom, radius: 28)
         }
     }
 

@@ -49,7 +49,7 @@ struct BookDetailView: View {
 
     var body: some View {
         layout
-        .navigationTitle("Book details")
+        .navigationTitle("Book Details")
         .navigationBarTitleDisplayMode(.inline)
         .confirmationDialog(
             progress?.isFinished == true ? "Mark as unfinished?" : "Mark as finished?",
@@ -114,7 +114,7 @@ struct BookDetailView: View {
                     }
                     .overlay(alignment: .bottomTrailing) {
                         Button { cropping = true } label: {
-                            Image(systemName: "crop").font(.headline).frame(width: 40, height: 40)
+                            Image(systemName: "crop").font(.headline).frame(width: 44, height: 44)
                         }
                         .buttonStyle(.plain)
                         .glassEffect(.regular.interactive(), in: .circle)
@@ -222,11 +222,11 @@ struct BookDetailView: View {
                 iconAction("text.line.first.and.arrowtriangle.forward", "Play Next") {
                     queue.addNext(book.id); Toast.show("Plays next", action: "Undo") { PlayQueue.shared.remove(book.id) }
                 }
-                iconAction("text.badge.plus", "Queue") {
+                iconAction("text.badge.plus", "Add to Queue") {
                     queue.add(book.id); Toast.show("Added to queue", action: "Undo") { PlayQueue.shared.remove(book.id) }
                 }
                 iconAction(progress?.isFinished == true ? "arrow.uturn.backward" : "checkmark.circle",
-                           progress?.isFinished == true ? "Unfinish" : "Finished") { confirmFinished = true }
+                           progress?.isFinished == true ? "Mark Unfinished" : "Mark Finished") { confirmFinished = true }
             }
         }
     }
@@ -236,7 +236,7 @@ struct BookDetailView: View {
             VStack(spacing: 6) {
                 Image(systemName: icon).font(.title3).frame(width: 54, height: 54)
                     .glassEffect(.regular.interactive(), in: .circle)
-                Text(label).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                Text(label).font(.caption).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
             }
             .frame(maxWidth: .infinity)
         }
@@ -347,7 +347,7 @@ struct BookDetailView: View {
                     Button { showMoreInfo = true } label: {
                         HStack {
                             Image(systemName: "info.circle").foregroundStyle(Color.accentColor).frame(width: 22)
-                            Text("More info").fontWeight(.semibold)
+                            Text("Technical Info").fontWeight(.semibold)
                             Spacer()
                             Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
                         }
@@ -392,7 +392,7 @@ struct BookDetailView: View {
                                 Button { renameText = bm.title; renaming = bm } label: { Label("Rename", systemImage: "pencil") }
                                 Button(role: .destructive) { Task { await delete(bm) } } label: { Label("Delete", systemImage: "trash") }
                             } label: {
-                                Image(systemName: "ellipsis").frame(width: 30, height: 30)
+                                Image(systemName: "ellipsis").frame(width: 44, height: 44)
                             }
                         }
                         .font(.subheadline)
@@ -489,7 +489,7 @@ struct BookMoreInfoSheet: View {
                     ProgressView()
                 }
             }
-            .navigationTitle("More info")
+            .navigationTitle("Technical Info")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }

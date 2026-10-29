@@ -37,12 +37,13 @@ struct MainView: View {
     @Environment(Player.self) private var player
     @Environment(LibraryStore.self) private var library
     @Environment(\.scenePhase) private var phase
+    @Namespace private var playerZoom
     @State private var showPlayer = false
     @State private var tab = "books"
 
     var body: some View {
         TabView(selection: $tab) {
-            Tab("Books", systemImage: "books.vertical", value: "books") { HomeView() }
+            Tab("Library", systemImage: "books.vertical", value: "books") { HomeView() }
             if settings.showSeriesTab {
                 Tab("Series", systemImage: "rectangle.stack", value: "series") { NavigationStack { SeriesView().kitziDestinations() } }
             }
@@ -58,14 +59,22 @@ struct MainView: View {
         .tabBarMinimizeBehavior(.onScrollDown)
         // Only with a book: an accessory that's merely empty still shows its glass bar.
         .tabViewBottomAccessory(isEnabled: player.nowPlaying != nil || Store.string(Store.lastItemKey) != nil) {
-            MiniPlayer { showPlayer = true }
+            MiniPlayer(zoom: playerZoom) { showPlayer = true }
         }
-        // A full-height sheet: pull down anywhere above the controls to close it.
-        .sheet(isPresented: $showPlayer) {
+        // A full-height sheet, or (setting) the whole screen, zooming out of the
+        // mini-player's cover: either way, pull down to close it.
+        .sheet(isPresented: Binding(get: { showPlayer && !settings.fullScreenPlayer }, set: { showPlayer = $0 })) {
             PlayerView()
+                .navigationTransition(.zoom(sourceID: "np", in: playerZoom))
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
                 .presentationCornerRadius(32)
+        }
+        .fullScreenCover(isPresented: Binding(get: { showPlayer && settings.fullScreenPlayer }, set: { showPlayer = $0 })) {
+            // The zoom also gives the full-screen player iOS's own interactive
+            // pull-down to close.
+            PlayerView()
+                .navigationTransition(.zoom(sourceID: "np", in: playerZoom))
         }
         .environment(\.openPlayer, OpenPlayerAction { showPlayer = true })
         .task {
@@ -282,7 +291,7 @@ struct HeadersView: View {
                 Text("Sent with every request to your server, e.g. Cloudflare Access service tokens.")
             }
         }
-        .navigationTitle("Custom headers")
+        .navigationTitle("Custom Headers")
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("Save") {

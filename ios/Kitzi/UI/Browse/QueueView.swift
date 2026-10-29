@@ -12,7 +12,7 @@ struct QueueView: View {
         Group {
             if queue.books.isEmpty {
                 ContentUnavailableView("Queue is empty", systemImage: "list.bullet",
-                                       description: Text("Use Play next or Add to queue on a book to line it up after the current one."))
+                                       description: Text("Use Play Next or Add to Queue on a book to line it up after the current one."))
             } else {
                 List {
                     ForEach(queue.books) { b in
@@ -35,7 +35,7 @@ struct QueueView: View {
                         .swipeActions(edge: .leading) {
                             if queue.books.first?.id != b.id {
                                 Button { withAnimation { queue.addNext(b.id) } } label: {
-                                    Label("Up Next", systemImage: "text.line.first.and.arrowtriangle.forward")
+                                    Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
                                 }
                                 .tint(.accentColor)
                             }

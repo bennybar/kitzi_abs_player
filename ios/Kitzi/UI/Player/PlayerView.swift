@@ -10,6 +10,8 @@ enum PlayerSheetKind: String, Identifiable {
 /// The full-screen player: cover (with bookmark / last position / info buttons),
 /// title, rating, scrubber with chapter ticks, transport, and action tiles.
 struct PlayerView: View {
+    @State private var bookmarkAdded = 0
+    @State private var glyphTaps = 0
     @Environment(\.dismiss) private var dismiss
     @Environment(Player.self) private var player
     @Environment(LibraryStore.self) private var library
@@ -44,6 +46,7 @@ struct PlayerView: View {
         // system appearance (as in Apple Music).
         .environment(\.colorScheme, settings.playerGradient ? .dark : colorScheme)
         .sheet(item: $sheet) { kind in sheetView(kind) }
+        .sensoryFeedback(.success, trigger: bookmarkAdded)
         // Toasts from the player (Undo, bookmark added, sleep timer) — the root's toast
         // layer sits underneath this full-screen cover.
         .overlay(alignment: .bottom) { ToastView().padding(.bottom, 24) }
@@ -110,7 +113,7 @@ struct PlayerView: View {
             }
             Spacer()
             AirPlayButton()
-                .frame(width: 40, height: 40)
+                .frame(width: 44, height: 44)
                 .glassEffect(.regular.interactive(), in: .circle)
         }
         .padding(.top, 8)
@@ -118,7 +121,7 @@ struct PlayerView: View {
 
     private func glassIcon(_ icon: String, _ label: String, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: icon).font(.headline).frame(width: 40, height: 40).contentShape(Circle())
+            Image(systemName: icon).font(.headline).frame(width: 44, height: 44).contentShape(Circle())
         }
         .buttonStyle(.plain)
         .glassEffect(.regular.interactive(), in: .circle)
@@ -142,7 +145,7 @@ struct PlayerView: View {
                             .transition(.scale.combined(with: .opacity))
                     }
                     Spacer()
-                    glassPill("info.circle", "More info") { sheet = .info }
+                    glassPill("info.circle", "Book Info") { sheet = .info }
                 }
                 .padding(12)
                 .animation(.spring(response: 0.35), value: player.positionBeforeLastJump)
@@ -171,6 +174,7 @@ struct PlayerView: View {
         let label = player.currentChapter()?.title ?? "Bookmark"
         Task {
             let sent = await library.bookmarkOp(.init(kind: "add", itemId: np.book.id, timeSec: (pos * 1000).rounded() / 1000, title: label))
+            bookmarkAdded += 1
             Toast.show(sent ? "Bookmark added at \(Format.clock(pos))" : "Bookmark saved at \(Format.clock(pos)) — syncs when online",
                        action: "View") { sheet = .bookmarks }
         }
@@ -239,8 +243,12 @@ struct PlayerView: View {
                     }
                 }
                 .frame(height: 24)
+                .padding(.vertical, 10)
                 .contentShape(Rectangle())
+                .padding(.vertical, -10)
                 .animation(.spring(response: 0.25), value: scrub == nil)
+                // A tick each time the scrub crosses into another chapter.
+                .sensoryFeedback(.selection, trigger: scrub.flatMap { s in np.chapters.lastIndex { $0.startSec <= start + s } })
                 .gesture(
                     DragGesture(minimumDistance: 0)
                         .onChanged { v in scrub = min(max(v.location.x / w, 0), 1) * length }
@@ -309,6 +317,7 @@ struct PlayerView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .sensoryFeedback(.impact(weight: .light), trigger: player.isPlaying)
                 .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
             }
             Spacer()
@@ -327,13 +336,14 @@ struct PlayerView: View {
     }
 
     private func glyph(_ icon: String, _ label: String, _ size: CGFloat, _ action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+        Button { glyphTaps += 1; action() } label: {
             Image(systemName: icon)
                 .font(.system(size: size, weight: .medium))
                 .frame(width: 50, height: 50)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .sensoryFeedback(.impact(weight: .light), trigger: glyphTaps)
         .accessibilityLabel(label)
     }
 
@@ -349,7 +359,7 @@ struct PlayerView: View {
                           text: sleep.mode == .off ? nil : Format.clock(sleep.remainingSec),
                           highlighted: sleep.mode != .off, label: "Sleep timer") { sheet = .sleep }
                 barButton(icon: "list.bullet", label: "Chapters", enabled: np.chapters.count > 1) { sheet = .chapters }
-                barButton(icon: "clock.arrow.circlepath", label: "Play history") { sheet = .history }
+                barButton(icon: "bookmark.square", label: "Bookmarks") { sheet = .bookmarks }
                 switch dl {
                 case .queued, .running, .waiting:
                     barButton(icon: "arrow.down.circle.dotted", text: downloadLabel(dl), highlighted: true, label: "Cancel download") {

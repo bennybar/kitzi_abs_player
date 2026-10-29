@@ -63,9 +63,9 @@ struct StatsView: View {
                 .padding(16)
                 .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
 
-                topSection("Top books", top.books, icon: "book.closed")
-                topSection("Top authors", top.authors, icon: "person")
-                topSection("Top narrators", top.narrators, icon: "mic")
+                topSection("Top Books", top.books, icon: "book.closed")
+                topSection("Top Authors", top.authors, icon: "person")
+                topSection("Top Narrators", top.narrators, icon: "mic")
 
                 if top.books.isEmpty {
                     Text("Top books, authors and narrators come from listening on this device (Settings → Detailed listening history).")
@@ -74,7 +74,7 @@ struct StatsView: View {
             }
             .padding(16)
         }
-        .navigationTitle("Listening stats")
+        .navigationTitle("Listening Stats")
         .overlay { if loading && library.perDaySec.isEmpty { ProgressView() } }
         .refreshable { await reload() }
         .task { await reload() }

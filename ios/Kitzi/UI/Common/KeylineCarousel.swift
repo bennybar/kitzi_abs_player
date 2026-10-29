@@ -11,6 +11,9 @@ struct KeylineCarousel<Item, Content: View>: View {
     var keylines: (CGFloat) -> [CGFloat]
     var spacing: CGFloat = 8
     var onTap: (Item) -> Void = { _ in }
+    /// VoiceOver name of an item, and the book whose long-press menu it gets.
+    var label: (Item) -> String = { _ in "" }
+    var menuBook: (Item) -> Book? = { _ in nil }
     @ViewBuilder var content: (Item, _ fullness: CGFloat) -> Content
 
     /// Scroll position in points, from a real (invisible) horizontal ScrollView:
@@ -38,29 +41,44 @@ struct KeylineCarousel<Item, Content: View>: View {
             }
             .frame(width: width, height: height, alignment: .topLeading)
             .allowsHitTesting(false)
+            .accessibilityHidden(true)
             .padding(.horizontal, 16)
             .overlay {
                 // The touch surface: one invisible page per keyline step, snapping.
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 0) {
-                        ForEach(0...Int(maxOffset), id: \.self) { _ in
-                            Color.clear.frame(width: stride, height: height)
+                    ZStack(alignment: .topLeading) {
+                        HStack(spacing: 0) {
+                            ForEach(0...Int(maxOffset), id: \.self) { _ in
+                                Color.clear.frame(width: stride, height: height)
+                            }
+                            Color.clear.frame(width: max(geo.size.width - stride, 0), height: height)
                         }
-                        Color.clear.frame(width: max(geo.size.width - stride, 0), height: height)
+                        .scrollTargetLayout()
+                        // One touch target per visible cover, over where it's drawn (it
+                        // scrolls with the content, so the drawn x plus the scroll):
+                        // taps, the long-press menu and VoiceOver all land on the book.
+                        // Inside the ScrollView, so swiping still scrolls.
+                        ForEach(Array(items.enumerated()), id: \.offset) { i, item in
+                            let f = frame(CGFloat(i) - current, k)
+                            if f.width > 1 && f.x < width + 40 && f.x + f.width > -40 {
+                                let hit = Color.clear
+                                    .frame(width: f.width, height: height)
+                                    .contentShape(.interaction, Rectangle())
+                                    .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 28, style: .continuous))
+                                    .onTapGesture { onTap(item) }
+                                    .accessibilityElement()
+                                    .accessibilityLabel(label(item))
+                                    .accessibilityAddTraits(.isButton)
+                                    .accessibilityAction { onTap(item) }
+                                    .offset(x: 16 + f.x + scrollX)
+                                if let b = menuBook(item) { hit.bookContextMenu(b) } else { hit }
+                            }
+                        }
                     }
-                    .scrollTargetLayout()
                 }
                 .scrollTargetBehavior(.viewAligned)
                 .onScrollGeometryChange(for: CGFloat.self, of: { $0.contentOffset.x }) { _, x in scrollX = x }
-                .contentShape(Rectangle())
-                .onTapGesture { loc in
-                    // Which cover is under the finger (positions are drawn, not laid out).
-                    let x = loc.x - 16
-                    for (i, item) in items.enumerated() {
-                        let f = frame(CGFloat(i) - current, k)
-                        if f.width > 1, x >= f.x, x <= f.x + f.width { onTap(item); return }
-                    }
-                }
+
             }
         }
         .frame(height: height)

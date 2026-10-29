@@ -2,6 +2,26 @@ import SwiftUI
 
 // MARK: - pieces
 
+/// A book opened from one particular cover on Home, so its page can zoom out of
+/// that cover (the same book can be on several shelves at once).
+struct BookFrom: Hashable { var book: Book; var source: String }
+
+extension EnvironmentValues {
+    /// Home's namespace for the cover → book page zoom.
+    @Entry var coverZoom: Namespace.ID? = nil
+}
+
+extension View {
+    /// Marks a cover as where its book page zooms out of (on Home only).
+    @ViewBuilder func coverZoomSource(_ id: String, _ ns: Namespace.ID?, radius: CGFloat) -> some View {
+        if let ns {
+            matchedTransitionSource(id: id, in: ns) { $0.clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous)) }
+        } else {
+            self
+        }
+    }
+}
+
 /// Where a "See All" goes.
 struct ShelfRoute: Hashable { var title: String; var books: [Book] }
 
@@ -37,8 +57,9 @@ struct CoverShelf: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(alignment: .top, spacing: 14) {
                         ForEach(books) { b in
-                            Button { path.append(b) } label: {
-                                CoverTile(book: b, size: big ? 170 : 130, progress: showProgress ? library.progress[b.id] : nil)
+                            Button { path.append(BookFrom(book: b, source: "\(title)-\(b.id)")) } label: {
+                                CoverTile(book: b, size: big ? 170 : 130, progress: showProgress ? library.progress[b.id] : nil,
+                                          zoomID: "\(title)-\(b.id)")
                             }
                             .buttonStyle(.plain)
                             .bookContextMenu(b)
@@ -59,6 +80,8 @@ struct CoverTile: View {
     let book: Book
     var size: CGFloat?
     var progress: Progress?
+    var zoomID: String? = nil
+    @Environment(\.coverZoom) private var zoom
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -66,6 +89,7 @@ struct CoverTile: View {
                 .aspectRatio(1, contentMode: .fit)
                 .frame(width: size)
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .coverZoomSource(zoomID ?? "", zoomID == nil ? nil : zoom, radius: 10)
                 .shadow(color: .black.opacity(0.18), radius: 6, y: 3)
             if let p = progress, p.progress > 0 {
                 ProgressView(value: p.progress).tint(.accentColor).frame(width: size)
@@ -109,11 +133,14 @@ struct GoalCard: View {
 /// A native list row: small cover, title, author, time.
 struct ListBookRow: View {
     let book: Book
+    var zoomID: String? = nil
     @Environment(LibraryStore.self) private var library
+    @Environment(\.coverZoom) private var zoom
     var body: some View {
         HStack(spacing: 12) {
             CoverImage(book: book).frame(width: 52, height: 52)
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .coverZoomSource(zoomID ?? "", zoomID == nil ? nil : zoom, radius: 8)
             VStack(alignment: .leading, spacing: 2) {
                 Text(book.title).font(.body).lineLimit(1)
                 Text(book.author ?? "").font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
