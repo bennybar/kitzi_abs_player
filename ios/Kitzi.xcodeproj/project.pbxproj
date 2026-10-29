@@ -26,6 +26,7 @@
 		7B4E8094A86BB299F5408A47 /* Session.swift in Sources */ = {isa = PBXBuildFile; fileRef = 034A50630D7868E0CEFCAF5B /* Session.swift */; };
 		85586B3B6F576BB56B6612E2 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D57DFA7606FCFCD1336528F2 /* SettingsView.swift */; };
 		8888E8A7A69E876875B53B6B /* API.swift in Sources */ = {isa = PBXBuildFile; fileRef = AACA4CF87524A94015FDE07E /* API.swift */; };
+		8A7C89F38C06ED712E917469 /* AllBooksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F7706AD4E40CB542C11463 /* AllBooksView.swift */; };
 		915648314CBA6945A870AC44 /* StatsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17A0E1E15E4218180F58F704 /* StatsView.swift */; };
 		942B24EC862D0AB724D35AF8 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 72EA634FE4E5BA8EACDC6323 /* Assets.xcassets */; };
 		9513780700AE8AA8DDB22999 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77E45E9E1878E74D874D3EA7 /* HomeView.swift */; };
@@ -92,6 +93,7 @@
 		93623BA5626015A8C58ABFA5 /* KeylineCarousel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeylineCarousel.swift; sourceTree = "<group>"; };
 		9364BC11E163DFAD03E24C7A /* Player.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Player.swift; sourceTree = "<group>"; };
 		988CAFBBF66EBE29B8D924FD /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		A1F7706AD4E40CB542C11463 /* AllBooksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AllBooksView.swift; sourceTree = "<group>"; };
 		A5B2958CC2E28E4B8AE0D681 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		A70E7E175B0FC011DF4E7A7E /* SeriesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SeriesView.swift; sourceTree = "<group>"; };
 		AACA4CF87524A94015FDE07E /* API.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = API.swift; sourceTree = "<group>"; };
@@ -134,6 +136,7 @@
 		1C2F6F21592017DCF3EFFB43 /* Home */ = {
 			isa = PBXGroup;
 			children = (
+				A1F7706AD4E40CB542C11463 /* AllBooksView.swift */,
 				77E45E9E1878E74D874D3EA7 /* HomeView.swift */,
 				8318A010BEF0ED02A60BE699 /* LibraryPieces.swift */,
 			);
@@ -391,6 +394,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				8888E8A7A69E876875B53B6B /* API.swift in Sources */,
+				8A7C89F38C06ED712E917469 /* AllBooksView.swift in Sources */,
 				2FAA57D13F60125E6522B23C /* AudibleRating.swift in Sources */,
 				33BB27110FA4E401BC5D3701 /* AuthorsView.swift in Sources */,
 				975699FDCEBAC503DE05FD76 /* BookDetailView.swift in Sources */,
@@ -508,7 +512,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 350;
+				CURRENT_PROJECT_VERSION = 351;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 57L2ULXB7Z;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -529,7 +533,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
-				MARKETING_VERSION = 2.0.350;
+				MARKETING_VERSION = 2.0.351;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -612,7 +616,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 350;
+				CURRENT_PROJECT_VERSION = 351;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 57L2ULXB7Z;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -627,7 +631,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
-				MARKETING_VERSION = 2.0.350;
+				MARKETING_VERSION = 2.0.351;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";

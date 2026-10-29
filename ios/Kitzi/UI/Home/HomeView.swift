@@ -16,15 +16,19 @@ struct HomeView: View {
 
     var body: some View {
         NavigationStack(path: $path) {
+            ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 26) {
                     if search.isEmpty {
                         GoalCard().padding(.horizontal, 20)
                         shelves
                     }
+                    if search.isEmpty {
+                        browseCard.id("allbooks")
+                    } else {
                     // Filtered once per render (it sorts the whole library).
                     let list = library.filtered(sort: sort, filter: filter, search: search)
-                    libraryHeader(count: list.count)
+                    libraryHeader(count: list.count).id("allbooks")
                     if list.isEmpty && library.books.isEmpty { emptyState }
                     if settings.gridLayout {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 16)], spacing: 20) {
@@ -50,6 +54,7 @@ struct HomeView: View {
                         }
                         .padding(.horizontal, 20)
                     }
+                    }
                     // Not in the local cache yet (just added on the server): server search.
                     let extra = serverResults.filter { library.byId[$0.id] == nil }
                     if !search.isEmpty && !extra.isEmpty {
@@ -62,12 +67,28 @@ struct HomeView: View {
                 .padding(.vertical, 8)
                 .padding(.bottom, 90)
             }
+            #if DEBUG
+            .task {
+                // Test hook (simulator screenshots): scroll to the All Books part.
+                guard ProcessInfo.processInfo.environment["KITZI_SCROLL_ALL"] != nil else { return }
+                try? await Task.sleep(for: .seconds(8))
+                proxy.scrollTo("allbooks", anchor: .top)
+            }
+            #endif
+            }
             .navigationTitle("Library")
             .navigationDestination(for: Book.self) { BookDetailView(book: $0) }
             .navigationDestination(for: BookFrom.self) { r in
                 BookDetailView(book: r.book).navigationTransition(.zoom(sourceID: r.source, in: zoom))
             }
             .environment(\.coverZoom, zoom)
+            .navigationDestination(for: AllBooksRoute.self) { AllBooksView(filter: $0.filter) }
+            .navigationDestination(for: BrowseRoute.self) { r in
+                switch r {
+                case .genres: GenresView(path: $path)
+                case .authors: AuthorsView()
+                }
+            }
             .navigationDestination(for: ShelfRoute.self) { r in
                 BookListView(title: r.title, books: r.books)
             }
@@ -90,6 +111,12 @@ struct HomeView: View {
                    let b = library.books.first(where: { $0.title.localizedCaseInsensitiveContains(w) }) {
                     path.append(b)
                 }
+                if ProcessInfo.processInfo.environment["KITZI_TEST_OPEN"] == "allbooks" {
+                    path.append(AllBooksRoute(filter: .all))
+                }
+                if ProcessInfo.processInfo.environment["KITZI_TEST_OPEN"] == "genres" {
+                    path.append(BrowseRoute.genres)
+                }
                 #endif
             }
             .toolbar {
@@ -103,6 +130,56 @@ struct HomeView: View {
     private func refresh(full: Bool) async {
         await library.refreshAll(full: full)
         if full && !library.lastSyncReachedServer { Toast.show("Couldn't reach the server — showing your offline library") }
+    }
+
+    // MARK: browse
+
+    /// The end of Home: All Books and its filters, by genre, and by author when
+    /// there's no Authors tab — each its own screen (the whole library was one
+    /// long list here).
+    private var browseCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Browse").font(.title2.bold()).padding(.horizontal, 20)
+            VStack(spacing: 0) {
+                ForEach(BookFilter.allCases) { f in
+                    let count = library.filtered(sort: .addedDesc, filter: f, search: "").count
+                    browseRow(f == .all ? "All Books" : f.label, Self.icon(f), count: count) { path.append(AllBooksRoute(filter: f)) }
+                    Divider().padding(.leading, 58)
+                }
+                browseRow("By Genre", "tag") { path.append(BrowseRoute.genres) }
+                if !settings.showAuthorsTab {
+                    Divider().padding(.leading, 58)
+                    browseRow("By Author", "person.2") { path.append(BrowseRoute.authors) }
+                }
+            }
+            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .padding(.horizontal, 16)
+        }
+    }
+
+    private static func icon(_ f: BookFilter) -> String {
+        switch f {
+        case .all: "books.vertical"
+        case .inProgress: "play.circle"
+        case .notStarted: "circle.dashed"
+        case .finished: "checkmark.circle"
+        case .downloaded: "arrow.down.circle"
+        }
+    }
+
+    private func browseRow(_ title: String, _ icon: String, count: Int? = nil, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                Image(systemName: icon).font(.title3).foregroundStyle(Color.accentColor).frame(width: 28)
+                Text(title).font(.body)
+                Spacer()
+                if let count { Text("\(count)").foregroundStyle(.secondary) }
+                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 16).padding(.vertical, 14)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: shelves (M3E carousels under iOS headers)

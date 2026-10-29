@@ -192,8 +192,8 @@ enum BookFilter: String, CaseIterable, Identifiable {
     var label: String {
         switch self {
         case .all: "All"
-        case .inProgress: "In progress"
-        case .notStarted: "Not started"
+        case .inProgress: "In Progress"
+        case .notStarted: "Not Started"
         case .finished: "Finished"
         case .downloaded: "Downloaded"
         }

@@ -281,26 +281,36 @@ struct PlayerMoreSheet: View {
         @Bindable var settings = settings
         NavigationStack {
             List {
-                Button { confirmFinished = true } label: { Label("Mark as finished", systemImage: "checkmark.circle") }
-                Button { open(.bookmarks) } label: { Label("Bookmarks", systemImage: "bookmark") }
-                Button { open(.history) } label: { Label("Play History", systemImage: "clock.arrow.circlepath") }
-                Toggle(isOn: $settings.playerGradient) { Label("Gradient background", systemImage: "circle.lefthalf.filled") }
-                Toggle(isOn: $settings.chapterTicks) { Label("Chapter indicators", systemImage: "line.3.horizontal.decrease") }
+                Button { confirmFinished = true } label: { row("Mark Finished", "checkmark.circle") }
+                Button { open(.bookmarks) } label: { row("Bookmarks", "bookmark") }
+                Button { open(.history) } label: { row("Play History", "clock.arrow.circlepath") }
+                Toggle(isOn: $settings.playerGradient) { row("Gradient Background", "circle.lefthalf.filled") }
+                Toggle(isOn: $settings.chapterTicks) { row("Chapter Indicators", "line.3.horizontal.decrease") }
                 Button(role: .destructive) {
                     open(nil)
                     Task { await player.closeBook() }
-                } label: { Label("Close book", systemImage: "xmark.circle") }
+                } label: { Label("Close Book", systemImage: "xmark.circle") }
             }
             .navigationTitle("More")
             .navigationBarTitleDisplayMode(.inline)
             .confirmationDialog("Mark as finished?", isPresented: $confirmFinished, titleVisibility: .visible) {
-                Button("Mark as finished") { markFinished() }
+                Button("Mark Finished") { markFinished() }
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text("This marks the book finished here and on the server, and stops playback.")
             }
         }
         .presentationDetents([.medium])
+    }
+
+    /// Readable over the player's cover: the text in the normal colour, only the
+    /// icon in the accent (a tinted label on glass over a dark cover was too faint).
+    private func row(_ title: String, _ icon: String) -> some View {
+        Label {
+            Text(title).foregroundStyle(.primary)
+        } icon: {
+            Image(systemName: icon).foregroundStyle(Color.accentColor)
+        }
     }
 
     private func markFinished() {

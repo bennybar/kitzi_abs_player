@@ -82,6 +82,23 @@ struct SettingsView: View {
 
             if show("appearance", "series", "author", "shelves", "home", "play button", "shape", "gradient", "chapter",
                     "audible", "rating", "grid", "theme", "dark", "light", "carousel", "next in series", "full screen", "player") {
+                // One choice per Home shelf: carousel, plain row of covers, or (Next in
+                // Series) not shown at all.
+                Section("Home Shelves") {
+                    ForEach([("continue", "Continue Listening"), ("recent", "Recently Added"),
+                             ("series", "Next in Series"), ("other", "Other Server Shelves")], id: \.0) { key, label in
+                        Picker(label, selection: Binding(
+                            get: { key == "series" && !s.showNextInSeries ? "off" : (s.carouselOff.contains(key) ? "row" : "carousel") },
+                            set: { v in
+                                if key == "series" { s.showNextInSeries = v != "off" }
+                                if v == "row" { s.carouselOff.insert(key) } else if v == "carousel" { s.carouselOff.remove(key) }
+                            })) {
+                            Text("Carousel").tag("carousel")
+                            Text("Row").tag("row")
+                            if key == "series" { Text("Off").tag("off") }
+                        }
+                    }
+                }
                 Section("Appearance") {
                     Toggle("Series tab", isOn: $s.showSeriesTab)
                     Toggle("Authors tab", isOn: $s.showAuthorsTab)
@@ -89,12 +106,6 @@ struct SettingsView: View {
                     Toggle(isOn: $s.serverHomeShelves) {
                         Text("Server home shelves")
                         Text("Show the shelves your server suggests (Discover, Listen Again, …) instead of Kitzi's own")
-                    }
-                    Toggle("Show Next in Series", isOn: $s.showNextInSeries)
-                    ForEach([("continue", "Continue Listening carousel"), ("recent", "Recently Added carousel"),
-                             ("series", "Next in Series carousel"), ("other", "Other server shelves carousel")], id: \.0) { key, label in
-                        Toggle(label, isOn: Binding(get: { !s.carouselOff.contains(key) },
-                                                    set: { if $0 { s.carouselOff.remove(key) } else { s.carouselOff.insert(key) } }))
                     }
                     Toggle(isOn: $s.hideSeriesWhenSameAsAuthor) {
                         Text("Hide duplicate series names")

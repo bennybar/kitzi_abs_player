@@ -426,16 +426,20 @@ struct PlayerView: View {
 
     // MARK: sheets
 
-    @ViewBuilder private func sheetView(_ kind: PlayerSheetKind) -> some View {
-        switch kind {
-        case .chapters: PlayerChaptersSheet()
-        case .speed: PlayerSpeedSheet()
-        case .sleep: PlayerSleepSheet()
-        case .bookmarks: PlayerBookmarksSheet()
-        case .history: PlayerHistorySheet()
-        case .info: PlayerBookInfoSheet()
-        case .more: PlayerMoreSheet { next in switchSheet(to: next) }
+    private func sheetView(_ kind: PlayerSheetKind) -> some View {
+        Group {
+            switch kind {
+            case .chapters: PlayerChaptersSheet()
+            case .speed: PlayerSpeedSheet()
+            case .sleep: PlayerSleepSheet()
+            case .bookmarks: PlayerBookmarksSheet()
+            case .history: PlayerHistorySheet()
+            case .info: PlayerBookInfoSheet()
+            case .more: PlayerMoreSheet { next in switchSheet(to: next) }
+            }
         }
+        // Frosted enough that the busy cover behind doesn't wash out the text.
+        .presentationBackground(.thickMaterial)
     }
 
     /// From one sheet to another: close, then open the next once the first is gone.
