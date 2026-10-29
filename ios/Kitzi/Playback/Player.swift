@@ -228,8 +228,11 @@ final class Player {
         c.togglePlayPauseCommand.addTarget { [weak self] _ in self?.togglePlay(); return .success }
         c.skipForwardCommand.addTarget { [weak self] _ in self?.skip(Double(AppSettings.shared.seekForwardSec)); return .success }
         c.skipBackwardCommand.addTarget { [weak self] _ in self?.skip(-Double(AppSettings.shared.seekBackSec)); return .success }
-        c.nextTrackCommand.addTarget { [weak self] _ in self?.nextChapter(); return .success }
-        c.previousTrackCommand.addTarget { [weak self] _ in self?.previousChapter(); return .success }
+        // Car and headphone next/previous buttons arrive as "track" commands: they
+        // skip the configured seconds, as on Android (chapter skip stays on the
+        // player's own buttons; the lock screen shows the ± seconds buttons).
+        c.nextTrackCommand.addTarget { [weak self] _ in self?.skip(Double(AppSettings.shared.seekForwardSec)); return .success }
+        c.previousTrackCommand.addTarget { [weak self] _ in self?.skip(-Double(AppSettings.shared.seekBackSec)); return .success }
         c.changePlaybackPositionCommand.addTarget { [weak self] e in
             guard let e = e as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
             self?.seek(to: e.positionTime, report: true)
