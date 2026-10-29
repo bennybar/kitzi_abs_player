@@ -122,6 +122,7 @@ struct MainView: View {
                 BackgroundTasks.scheduleRefresh()
             case .active:
                 // Back in the app: listening on another device shows up at once.
+                player.appForegrounded()
                 Task { await library.quietRefresh() }
             default: break
             }

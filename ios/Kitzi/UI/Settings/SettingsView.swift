@@ -81,7 +81,7 @@ struct SettingsView: View {
             }
 
             if show("appearance", "series", "author", "shelves", "home", "play button", "shape", "gradient", "chapter",
-                    "audible", "rating", "grid", "theme", "dark", "light", "carousel") {
+                    "audible", "rating", "grid", "theme", "dark", "light", "carousel", "next in series") {
                 Section("Appearance") {
                     Toggle("Show Series tab", isOn: $s.showSeriesTab)
                     Toggle("Authors tab", isOn: $s.showAuthorsTab)
@@ -90,6 +90,7 @@ struct SettingsView: View {
                         Text("Server home shelves")
                         Text("Show the shelves your server suggests (Discover, Listen Again, …) instead of Kitzi's own")
                     }
+                    Toggle("Show Next in Series", isOn: $s.showNextInSeries)
                     ForEach([("continue", "Continue Listening carousel"), ("recent", "Recently Added carousel"),
                              ("series", "Next in Series carousel"), ("other", "Other server shelves carousel")], id: \.0) { key, label in
                         Toggle(label, isOn: Binding(get: { !s.carouselOff.contains(key) },

@@ -38,6 +38,8 @@ final class SleepTimer {
     func addMinutes(_ m: Int) {
         if case .duration(let ends) = mode {
             mode = .duration(endsAt: ends.addingTimeInterval(Double(m) * 60))
+            // Back on in the last minute again.
+            stopShake()
         }
     }
 
@@ -72,6 +74,7 @@ final class SleepTimer {
                     }
                     if remainingSec <= 60 && AppSettings.shared.shakeExtendsSleep { startShake() }
                 case .endOfChapter:
+                    p.refreshPosition()
                     if p.seekGeneration != seenSeeks {
                         seenSeeks = p.seekGeneration
                         targetEnd = p.currentChapter()?.endSec

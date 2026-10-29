@@ -462,6 +462,7 @@ final class LiveActivity {
     static let shared = LiveActivity()
     private var activityId: String?
     private var lastUpdate = Date.distantPast
+    private var lastState: DownloadActivityAttributes.ContentState?
     private var endTask: Task<Void, Never>?
 
     private init() {
@@ -485,9 +486,12 @@ final class LiveActivity {
             title: s.waiting ? "\(s.title) · waiting for Wi-Fi" : s.title,
             fraction: s.fraction, queued: s.queued, done: false, failed: false)
         if let id = activityId, Activity<DownloadActivityAttributes>.activities.contains(where: { $0.id == id }) {
-            // At most once a second: Live Activity updates are budgeted.
-            guard Date().timeIntervalSince(lastUpdate) > 1 else { return }
+            // Every 5 s, or sooner for 3% more or a change of title/queue: each
+            // update re-renders the Live Activity (and they're budgeted).
+            let moved = lastState.map { abs(state.fraction - $0.fraction) >= 0.03 || state.title != $0.title || state.queued != $0.queued } ?? true
+            guard Date().timeIntervalSince(lastUpdate) > 5 || (moved && Date().timeIntervalSince(lastUpdate) > 1) else { return }
             lastUpdate = Date()
+            lastState = state
             let stale = staleDate
             Task {
                 for act in Activity<DownloadActivityAttributes>.activities where act.id == id {

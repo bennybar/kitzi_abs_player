@@ -107,6 +107,8 @@ struct Progress: Codable, Hashable {
     var durationSec: Double
     var lastUpdate: Int64
     var hideFromContinueListening: Bool = false
+    /// When the server marked it finished (ms), if it says.
+    var finishedAt: Int64? = nil
 
     static func from(_ m: JSON) -> Progress? {
         guard let id = m.str("libraryItemId") ?? m.str("id") else { return nil }
@@ -121,7 +123,8 @@ struct Progress: Codable, Hashable {
             itemId: id, progress: min(max(p, 0), 1), isFinished: finished,
             currentTimeSec: current, durationSec: duration,
             lastUpdate: m.epochMs("lastUpdate") ?? Int64(Date().timeIntervalSince1970 * 1000),
-            hideFromContinueListening: m.bool("hideFromContinueListening") == true
+            hideFromContinueListening: m.bool("hideFromContinueListening") == true,
+            finishedAt: finished ? m.epochMs("finishedAt") : nil
         )
     }
 }

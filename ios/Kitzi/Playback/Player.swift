@@ -112,9 +112,7 @@ final class Player {
         av.automaticallyWaitsToMinimizeStalling = true
         configureAudioSession()
         configureRemoteCommands()
-        timeObserver = av.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.5, preferredTimescale: 600), queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.tick() }
-        }
+        tickEvery(0.5)
         kvo.append(Self.observeTimeControl(av))
         Self.watchNetwork(pathMonitor)
     }
@@ -252,9 +250,13 @@ final class Player {
     }
 
     @ObservationIgnored private var artwork: MPMediaItemArtwork?
+    @ObservationIgnored private var nowPlayingChapter: String?
+    @ObservationIgnored private var nowPlayingSyncedAt: CFTimeInterval = 0
 
     private func updateNowPlayingInfo() {
         guard let np = nowPlaying else { MPNowPlayingInfoCenter.default().nowPlayingInfo = nil; return }
+        nowPlayingChapter = currentChapter()?.title
+        nowPlayingSyncedAt = CACurrentMediaTime()
         var info: [String: Any] = [
             MPMediaItemPropertyTitle: np.book.title,
             MPMediaItemPropertyArtist: currentChapter()?.title ?? np.book.author ?? "",
@@ -556,6 +558,7 @@ final class Player {
     }
 
     private func markPaused(intentional: Bool) {
+        refreshPosition()
         guard isPlaying else { return }
         isPlaying = false
         accrue(stopping: true)
@@ -583,6 +586,7 @@ final class Player {
     }
 
     func skip(_ delta: Double) {
+        refreshPosition()
         guard let np = nowPlaying else { return }
         seek(to: min(max(position + delta, 0), np.totalSec), report: false, isJump: false)
         scheduleSeekReport()
@@ -620,11 +624,13 @@ final class Player {
     }
 
     func nextChapter() {
+        refreshPosition()
         guard let c = currentChapter(), let np = nowPlaying, c.index + 1 < np.chapters.count else { return }
         seek(to: np.chapters[c.index + 1].startSec)
     }
 
     func previousChapter() {
+        refreshPosition()
         guard let c = currentChapter(), let np = nowPlaying else { return }
         // Within the first few seconds of a chapter, go to the previous one.
         if c.elapsedSec < 3, c.index > 0 { seek(to: np.chapters[c.index - 1].startSec) } else { seek(to: c.startSec) }
@@ -684,12 +690,33 @@ final class Player {
 
     // MARK: position
 
+    /// How often [position] follows the player: twice a second on screen, every
+    /// 2 s in the background (nothing is drawn; readers call refreshPosition()).
+    private func tickEvery(_ sec: Double) {
+        if let t = timeObserver { av.removeTimeObserver(t) }
+        timeObserver = av.addPeriodicTimeObserver(forInterval: CMTime(seconds: sec, preferredTimescale: 600), queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.tick() }
+        }
+    }
+
+    func appForegrounded() { tickEvery(0.5); refreshPosition() }
+
     private func tick() {
+        refreshPosition()
+        // The lock screen advances the elapsed time by itself (from the rate): it's
+        // told again only when the chapter (shown as the artist) changes, and once a
+        // minute to stay exact.
+        if currentChapter()?.title != nowPlayingChapter || CACurrentMediaTime() - nowPlayingSyncedAt > 60 {
+            updateNowPlayingInfo()
+        }
+    }
+
+    /// Brings [position] up to date with the player, between ticks.
+    func refreshPosition() {
         guard let np = nowPlaying, av.currentItem != nil, itemReady, pendingSeek == nil else { return }
         let local = av.currentTime().seconds
         guard local.isFinite else { return }
         position = np.tracks.prefix(trackIndex).reduce(0) { $0 + $1.durationSec } + local
-        if Int(position * 2) % 10 == 0 { updateNowPlayingInfo() }
     }
 
     static func locate(_ sec: Double, _ tracks: [Track]) -> (Int, Double) {
@@ -758,6 +785,7 @@ final class Player {
         // Until the server check answers, nothing is saved or sent (dirty stays set,
         // so the next report carries it).
         if serverCheckPending && !finished { return true }
+        refreshPosition()
         accrue(stopping: false)
         let gen = loadGeneration
         let id = np.book.id
@@ -816,6 +844,8 @@ final class Player {
 
     /// The app is going to the background: report now, with time to finish.
     func appBackgrounded() {
+        refreshPosition()
+        tickEvery(2)
         if let np = nowPlaying, dirty || isPlaying, !serverCheckPending { saveLocal(np.book.id, position, finished: false) }
         accrue(stopping: !isPlaying)
         persistUnsent()

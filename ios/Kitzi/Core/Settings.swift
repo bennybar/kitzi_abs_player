@@ -29,6 +29,7 @@ final class AppSettings {
     /// ("continue", "recent", "series", "other").
     var carouselOff: Set<String> { didSet { d.set(Array(carouselOff), forKey: "ui_carousel_off") } }
     var authorsList: Bool { didSet { d.set(authorsList, forKey: "ui_authors_list") } }
+    var showNextInSeries: Bool { didSet { d.set(showNextInSeries, forKey: "ui_next_in_series") } }
     /// "system" | "dark" | "light"
     var themeMode: String { didSet { d.set(themeMode, forKey: "ui_theme_mode") } }
 
@@ -66,6 +67,7 @@ final class AppSettings {
         gridLayout = b("ui_library_grid", false)
         carouselOff = Set(d.stringArray(forKey: "ui_carousel_off") ?? [])
         authorsList = b("ui_authors_list", false)
+        showNextInSeries = b("ui_next_in_series", true)
         themeMode = d.string(forKey: "ui_theme_mode") ?? "system"
         wifiOnlyDownloads = b("downloads_wifi_only", false)
         autoDeleteOnFinish = b("downloads_auto_delete_on_finish", false)

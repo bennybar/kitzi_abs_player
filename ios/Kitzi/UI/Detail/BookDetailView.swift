@@ -39,6 +39,8 @@ struct BookDetailView: View {
     @State private var descriptionExpanded = false
     @State private var showMoreInfo = false
     @State private var cropping = false
+    @State private var chapters: [Chapter] = []
+    @State private var showChapters = false
 
     /// The cached copy when there is one (fresher metadata), else what was passed in.
     private var b: Book { library.byId[book.id] ?? book }
@@ -46,30 +48,9 @@ struct BookDetailView: View {
     private var isLoaded: Bool { player.nowPlaying?.book.id == book.id }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                header
-                actions
-                queueRow
-                if let p = progress, p.progress > 0 || p.isFinished { progressCard(p) }
-                if let d = b.description.map(Self.stripHTML), !d.isEmpty { descriptionCard(d) }
-                detailsCard
-                bookmarksCard
-            }
-            .padding(16)
-            .padding(.bottom, 80)
-        }
+        layout
         .navigationTitle("Book details")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button { cropping = true } label: { Image(systemName: "crop") }
-                    .accessibilityLabel("Crop cover")
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button(progress?.isFinished == true ? "Mark as unfinished" : "Mark as finished") { confirmFinished = true }
-            }
-        }
         .confirmationDialog(
             progress?.isFinished == true ? "Mark as unfinished?" : "Mark as finished?",
             isPresented: $confirmFinished, titleVisibility: .visible
@@ -99,39 +80,167 @@ struct BookDetailView: View {
             Button("Cancel", role: .cancel) {}
         }
         .task(id: book.id) { bookmarks = await library.bookmarks(book.id) }
+        .task(id: book.id) {
+            // The downloaded copy's chapters work offline; else ask the server.
+            if let saved = downloads.downloaded(book.id) {
+                chapters = saved.chapters
+            } else if let item = try? await API.shared.item(book.id, expanded: true) {
+                chapters = API.chapters(item.obj("media")?.arr("chapters") ?? [])
+            }
+        }
+        .sheet(isPresented: $showChapters) {
+            BookChaptersSheet(chapters: chapters, totalSec: b.durationSec ?? 0,
+                              currentSec: progress.flatMap { $0.isFinished ? nil : $0.currentTimeSec }) { c in
+                showChapters = false
+                Task { await play(from: c) }
+            }
+        }
         .sheet(isPresented: $showMoreInfo) { BookMoreInfoSheet(book: b) }
         .sheet(isPresented: $cropping) { CoverCropSheet(book: b) }
     }
 
-    // MARK: header
-
-    private var header: some View {
-        HStack(alignment: .top, spacing: 16) {
-            CoverImage(book: b)
-                .frame(width: 130, height: 130)
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .shadow(color: .black.opacity(0.25), radius: 12, y: 6)
-            VStack(alignment: .leading, spacing: 6) {
-                Text(b.title).font(.title2.weight(.bold)).lineLimit(4)
-                if let author = b.author {
-                    let first = author.split(separator: ",").first.map { $0.trimmingCharacters(in: .whitespaces) } ?? author
-                    NavigationLink(value: b.authors.first ?? first) {
-                        Text(author).font(.headline).foregroundStyle(Color.accentColor).lineLimit(2)
+    /// The cover edge to edge at the top, then title, one big play button,
+    /// round actions, and the about / details / bookmarks cards.
+    private var layout: some View {
+        ScrollView {
+            VStack(spacing: 18) {
+                Color.clear
+                    .aspectRatio(1, contentMode: .fit)
+                    .overlay { CoverImage(book: b, width: 900) }
+                    .clipped()
+                    .overlay(alignment: .bottom) {
+                        LinearGradient(colors: [.clear, Color(.systemBackground)], startPoint: .top, endPoint: .bottom)
+                            .frame(height: 70)
                     }
-                    .buttonStyle(.plain)
+                    .overlay(alignment: .bottomTrailing) {
+                        Button { cropping = true } label: {
+                            Image(systemName: "crop").font(.headline).frame(width: 40, height: 40)
+                        }
+                        .buttonStyle(.plain)
+                        .glassEffect(.regular.interactive(), in: .circle)
+                        .accessibilityLabel("Crop cover")
+                        .padding(.trailing, 16).padding(.bottom, 34)
+                    }
+                VStack(spacing: 8) {
+                    Text(b.title).font(.title2.bold()).multilineTextAlignment(.center)
+                    authorLink.font(.headline)
+                    if let n = b.narrators.first {
+                        Text("Narrated by \(n)").font(.subheadline).foregroundStyle(.secondary)
+                    }
+                    StarsView(book: b).font(.subheadline)
+                    metaChips.padding(.top, 4)
                 }
-                if let n = b.narrators.first {
-                    Text("Narrated by \(n)").font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+                .padding(.horizontal, 16)
+                .padding(.top, -20)
+                VStack(spacing: 18) {
+                    VStack(spacing: 8) {
+                        bigPlayButton
+                        if let line = progressLine {
+                            Text(line).font(.footnote).foregroundStyle(.secondary)
+                        }
+                    }
+                    iconActions
+                    if let d = b.description.map(Self.stripHTML), !d.isEmpty { descriptionCard(d) }
+                    detailsCard
+                    bookmarksCard
                 }
-                StarsView(book: b).font(.subheadline)
-                HStack(spacing: 8) {
-                    if let d = b.durationSec { chip("clock", Format.hm(d)) }
-                    if let s = b.sizeBytes, s > 0 { chip("internaldrive", Format.size(s)) }
-                }
-                .padding(.top, 2)
+                .padding(.horizontal, 16)
             }
-            Spacer(minLength: 0)
+            .padding(.bottom, 80)
         }
+        .ignoresSafeArea(edges: .top)
+    }
+
+
+    @ViewBuilder private var authorLink: some View {
+        if let author = b.author {
+            let first = author.split(separator: ",").first.map { $0.trimmingCharacters(in: .whitespaces) } ?? author
+            NavigationLink(value: b.authors.first ?? first) {
+                Text(author).foregroundStyle(Color.accentColor).lineLimit(2).multilineTextAlignment(.center)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private var metaChips: some View {
+        HStack(spacing: 8) {
+            if let d = b.durationSec { chip("clock", Format.hm(d)) }
+            if let y = b.publishYear { chip("calendar", String(y)) }
+            if let s = b.sizeBytes, s > 0 { chip("internaldrive", Format.size(s)) }
+        }
+    }
+
+    /// "35% · last listened 2 days ago", or "Finished on 12 Oct 2026".
+    private var progressLine: String? {
+        guard let p = progress else { return nil }
+        if p.isFinished {
+            let at = Date(timeIntervalSince1970: Double(p.finishedAt ?? p.lastUpdate) / 1000)
+            return "Finished on \(at.formatted(date: .abbreviated, time: .omitted))"
+        }
+        guard p.progress > 0 else { return nil }
+        let at = Date(timeIntervalSince1970: Double(p.lastUpdate) / 1000)
+        let ago = at.timeIntervalSinceNow > -60 ? "just now" : RelativeDateTimeFormatter().localizedString(for: at, relativeTo: Date())
+        return "\(Int(p.progress * 100))% · last listened \(ago)"
+    }
+
+    private var bigPlayButton: some View {
+        let p = progress
+        let started = (p?.progress ?? 0) > 0 && p?.isFinished != true
+        let total = (p?.durationSec ?? 0) > 0 ? p!.durationSec : (b.durationSec ?? 0)
+        return Button { Task { await play() } } label: {
+            VStack(spacing: 6) {
+                HStack(spacing: 8) {
+                    Image(systemName: isLoaded && player.isPlaying ? "waveform" : "play.fill")
+                    Text(started ? "Resume" : "Play")
+                    if started { Text("· \(Format.hm(max(total - (p?.currentTimeSec ?? 0), 0))) left").opacity(0.8) }
+                }
+                .font(.headline)
+                if started {
+                    ProgressView(value: p?.progress ?? 0).tint(.white).frame(width: 180)
+                }
+            }
+            .frame(maxWidth: .infinity).frame(height: started ? 58 : 50)
+        }
+        .buttonStyle(.glassProminent)
+        .disabled(player.preparing)
+    }
+
+    private var iconActions: some View {
+        let state = downloads.state(book.id)
+        let dl: (String, String) = {
+            switch state {
+            case Downloads.State.none: ("arrow.down", "Download")
+            case .queued, .waiting: ("hourglass", "Waiting")
+            case .running(let f): ("xmark", "\(Int(f * 100))%")
+            case .failed: ("arrow.clockwise", "Retry")
+            case .done: ("checkmark", "Downloaded")
+            }
+        }()
+        return GlassEffectContainer(spacing: 14) {
+            HStack(spacing: 0) {
+                iconAction(dl.0, dl.1) { downloadTapped(state) }
+                iconAction("text.line.first.and.arrowtriangle.forward", "Play Next") {
+                    queue.addNext(book.id); Toast.show("Plays next", action: "Undo") { PlayQueue.shared.remove(book.id) }
+                }
+                iconAction("text.badge.plus", "Queue") {
+                    queue.add(book.id); Toast.show("Added to queue", action: "Undo") { PlayQueue.shared.remove(book.id) }
+                }
+                iconAction(progress?.isFinished == true ? "arrow.uturn.backward" : "checkmark.circle",
+                           progress?.isFinished == true ? "Unfinish" : "Finished") { confirmFinished = true }
+            }
+        }
+    }
+
+    private func iconAction(_ icon: String, _ label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 6) {
+                Image(systemName: icon).font(.title3).frame(width: 54, height: 54)
+                    .glassEffect(.regular.interactive(), in: .circle)
+                Text(label).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.plain)
     }
 
     private func chip(_ icon: String, _ text: String) -> some View {
@@ -141,83 +250,29 @@ struct BookDetailView: View {
             .glassEffect(.regular, in: Capsule())
     }
 
-    // MARK: actions
-
-    private var actions: some View {
-        HStack(spacing: 12) {
-            Button {
-                Task { await play() }
-            } label: {
-                HStack(spacing: 8) {
-                    if player.preparing && !isLoaded {
-                        ProgressView().tint(.white)
-                        Text("Starting…")
-                    } else {
-                        Image(systemName: isLoaded && player.isPlaying ? "waveform" : "play.fill")
-                        Text((progress?.progress ?? 0) > 0 && progress?.isFinished != true ? "Resume" : "Play")
-                    }
+    private func downloadTapped(_ state: Downloads.State) {
+        switch state {
+        case .queued, .running, .waiting: confirmCancelDownload = true
+        case .done: confirmRemoveDownload = true
+        case .failed, Downloads.State.none:
+            Task {
+                if !(await downloads.start(book.id)) {
+                    Toast.show("Nothing to download: the server lists no audio files for this book")
                 }
-                .font(.headline)
-                .frame(maxWidth: .infinity).frame(height: 44)
             }
-            .buttonStyle(.glassProminent)
-            .disabled(player.preparing)
-
-            downloadButton
         }
     }
 
-    @ViewBuilder private var downloadButton: some View {
-        let state = downloads.state(book.id)
-        Button {
-            switch state {
-            case .queued, .running, .waiting: confirmCancelDownload = true
-            case .done: confirmRemoveDownload = true
-            case .failed, Downloads.State.none:
-                Task {
-                    if !(await downloads.start(book.id)) {
-                        Toast.show("Nothing to download: the server lists no audio files for this book")
-                    }
-                }
-            }
-        } label: {
-            Group {
-                switch state {
-                case Downloads.State.none: Label("Download", systemImage: "arrow.down.circle")
-                case .queued: Label("Waiting", systemImage: "hourglass")
-                case .running(let f): Label("Downloading \(Int(f * 100))%", systemImage: "xmark.circle")
-                case .waiting: Label("Waiting for Wi-Fi", systemImage: "wifi")
-                case .failed: Label("Retry", systemImage: "arrow.clockwise")
-                case .done: Label("Remove", systemImage: "trash")
-                }
-            }
-            .font(.headline)
-            .lineLimit(1).minimumScaleFactor(0.75)
-            .frame(maxWidth: .infinity).frame(height: 44)
+    /// Starts (or carries on with) this book at [c].
+    private func play(from c: Chapter) async {
+        if isLoaded {
+            player.resume()
+        } else if let err = await player.play(b) {
+            playError = err
+            return
         }
-        .buttonStyle(.glass)
-    }
-
-    private var queueRow: some View {
-        HStack(spacing: 12) {
-            Button {
-                queue.addNext(book.id)
-                Toast.show("Plays next", action: "Undo") { PlayQueue.shared.remove(book.id) }
-            } label: {
-                Label("Play next", systemImage: "text.line.first.and.arrowtriangle.forward")
-                    .frame(maxWidth: .infinity).frame(height: 38)
-            }
-            .buttonStyle(.glass)
-            Button {
-                queue.add(book.id)
-                Toast.show("Added to queue", action: "Undo") { PlayQueue.shared.remove(book.id) }
-            } label: {
-                Label("Add to queue", systemImage: "text.badge.plus")
-                    .frame(maxWidth: .infinity).frame(height: 38)
-            }
-            .buttonStyle(.glass)
-        }
-        .font(.subheadline.weight(.semibold))
+        player.seek(to: c.startSec)
+        openPlayer()
     }
 
     private func play() async {
@@ -235,22 +290,6 @@ struct BookDetailView: View {
     }
 
     // MARK: cards
-
-    private func progressCard(_ p: Progress) -> some View {
-        let total = p.durationSec > 0 ? p.durationSec : (b.durationSec ?? 0)
-        let left = max(total - p.currentTimeSec, 0)
-        return card {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(p.isFinished ? "Finished" : "\(Int(p.progress * 100))% complete")
-                    .font(.headline)
-                if !p.isFinished {
-                    Text("\(Format.hm(p.currentTimeSec)) in · \(Format.hm(left)) left")
-                        .font(.subheadline).foregroundStyle(.secondary)
-                }
-                ProgressView(value: p.isFinished ? 1 : p.progress).tint(.accentColor)
-            }
-        }
-    }
 
     private func descriptionCard(_ text: String) -> some View {
         card {
@@ -283,6 +322,19 @@ struct BookDetailView: View {
                                 Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
                             }
                             .font(.subheadline)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    if !chapters.isEmpty {
+                        Button { showChapters = true } label: {
+                            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                                Image(systemName: "list.bullet").foregroundStyle(Color.accentColor).frame(width: 22)
+                                Text("Chapters").foregroundStyle(.secondary).frame(width: 84, alignment: .leading)
+                                Text("\(chapters.count)").foregroundStyle(Color.accentColor).frame(maxWidth: .infinity, alignment: .leading)
+                                Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
+                            }
+                            .font(.subheadline)
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                     }
@@ -472,5 +524,44 @@ struct BookMoreInfoSheet: View {
         if let d = media?.num("duration"), d > 0 { add("Duration", Format.hm(d)) }
         if let p = item.str("relPath") ?? item.str("path") { add("Path", p) }
         return out
+    }
+}
+
+/// A book's chapters before (or without) playing it; tap one to start there.
+struct BookChaptersSheet: View {
+    let chapters: [Chapter]
+    let totalSec: Double
+    /// Where the listener is (nil: not started or finished).
+    let currentSec: Double?
+    var onPick: (Chapter) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List(Array(chapters.enumerated()), id: \.offset) { i, c in
+                let end = i + 1 < chapters.count ? chapters[i + 1].startSec : totalSec
+                let current = currentSec.map { $0 >= c.startSec && $0 < end } ?? false
+                Button { onPick(c) } label: {
+                    HStack(spacing: 12) {
+                        Text("\(i + 1)").font(.footnote.monospacedDigit()).foregroundStyle(.secondary).frame(width: 26, alignment: .trailing)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(c.title).font(.body.weight(current ? .semibold : .regular))
+                                .foregroundStyle(current ? Color.accentColor : .primary)
+                            Text(Format.clock(c.startSec)).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        if current { Image(systemName: "waveform").foregroundStyle(Color.accentColor) }
+                        Text(Format.hm(max(end - c.startSec, 0))).font(.footnote).foregroundStyle(.secondary)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+            .listStyle(.plain)
+            .navigationTitle("\(chapters.count) Chapters")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+        }
+        .presentationDetents([.medium, .large])
     }
 }

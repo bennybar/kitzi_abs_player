@@ -74,6 +74,14 @@ struct HomeView: View {
                 guard !loaded else { return }
                 loaded = true
                 await refresh(full: false)
+                #if DEBUG
+                // Test hook (simulator screenshots): open a book's page.
+                if ProcessInfo.processInfo.environment["KITZI_TEST_OPEN"] == "detail",
+                   let w = ProcessInfo.processInfo.environment["KITZI_TEST_BOOK"],
+                   let b = library.books.first(where: { $0.title.localizedCaseInsensitiveContains(w) }) {
+                    path.append(b)
+                }
+                #endif
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -92,7 +100,7 @@ struct HomeView: View {
 
     @ViewBuilder private var shelves: some View {
         if let server = library.serverShelves, settings.serverHomeShelves {
-            ForEach(server) { s in
+            ForEach(server.filter { settings.showNextInSeries || $0.id != "continue-series" }) { s in
                 let listening = s.id == "continue-listening"
                 let key = ["continue-listening": "continue", "recently-added": "recent", "continue-series": "series"][s.id] ?? "other"
                 shelfSection(s.label, s.books, key: key, hero: listening, showProgress: listening)
@@ -100,7 +108,9 @@ struct HomeView: View {
         } else {
             shelfSection("Continue", library.continueListening, key: "continue", hero: true, showProgress: true)
             shelfSection("Recently Added", library.recentlyAdded, key: "recent", hero: false, showProgress: false)
-            shelfSection("Next in Series", library.continueSeries, key: "series", hero: false, showProgress: false) { $0.seriesLabel }
+            if settings.showNextInSeries {
+                shelfSection("Next in Series", library.continueSeries, key: "series", hero: false, showProgress: false) { $0.seriesLabel }
+            }
         }
     }
 
