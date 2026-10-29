@@ -1,0 +1,676 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0972478805318EF004EE268E /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1506F8FD3774749ABBC8D069 /* Models.swift */; };
+		0C4EAA6654FE964BF603D5BA /* MiniPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FCE7A967C606B0616C70C2B /* MiniPlayer.swift */; };
+		113EE29D0450325B872533CA /* KitziActivity.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 07B2C8062C86CEC6C172CBFF /* KitziActivity.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		12094FC8DBF6263568FBB34D /* DownloadsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB533F742C08D4E2A95E25AE /* DownloadsView.swift */; };
+		17353BF7AD11E1525197070C /* PlayHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EE197386AEF6FD4A9746C10 /* PlayHistory.swift */; };
+		2CCEBB134E698CB6643FADD3 /* PlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77136F6DDD2678D2B1D0A3ED /* PlayerView.swift */; };
+		2FAA57D13F60125E6522B23C /* AudibleRating.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4FC1DAA5AA2D97D229DA5CB /* AudibleRating.swift */; };
+		33BB27110FA4E401BC5D3701 /* AuthorsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3D5349321CA8D9E2110D505 /* AuthorsView.swift */; };
+		37DD9738554B1A1BADCCED91 /* OIDC.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CF150B1EDE911F1CA04A8FF /* OIDC.swift */; };
+		417D7D7092F934B44E78EE59 /* ImageLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAF0BAB7454F6516BCF5E96E /* ImageLoader.swift */; };
+		438BEA020349E93F5D1D87AC /* DownloadActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00FA8F090CE27F24C9AB6741 /* DownloadActivityAttributes.swift */; };
+		44A50B1BBA2BC8CB1D42B0FD /* DownloadActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00FA8F090CE27F24C9AB6741 /* DownloadActivityAttributes.swift */; };
+		56EAD44C5DB685C75FD0F7E0 /* LibraryPieces.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8318A010BEF0ED02A60BE699 /* LibraryPieces.swift */; };
+		57905EFD7CBD92380812884C /* Navigation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 892F557B897B3F86C076F4AD /* Navigation.swift */; };
+		5CEBFC4C339D23A0A261AA4F /* SleepTimer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA0E8F1BF82B2C5858D9DF3B /* SleepTimer.swift */; };
+		742CF2052333F40E8E36AEA5 /* LibraryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B30500DE3FF2BAE76405E0B3 /* LibraryStore.swift */; };
+		7B4E8094A86BB299F5408A47 /* Session.swift in Sources */ = {isa = PBXBuildFile; fileRef = 034A50630D7868E0CEFCAF5B /* Session.swift */; };
+		85586B3B6F576BB56B6612E2 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D57DFA7606FCFCD1336528F2 /* SettingsView.swift */; };
+		8888E8A7A69E876875B53B6B /* API.swift in Sources */ = {isa = PBXBuildFile; fileRef = AACA4CF87524A94015FDE07E /* API.swift */; };
+		915648314CBA6945A870AC44 /* StatsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17A0E1E15E4218180F58F704 /* StatsView.swift */; };
+		942B24EC862D0AB724D35AF8 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 72EA634FE4E5BA8EACDC6323 /* Assets.xcassets */; };
+		9513780700AE8AA8DDB22999 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77E45E9E1878E74D874D3EA7 /* HomeView.swift */; };
+		96410AB4E89AE715FD17CED8 /* QueueView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B09076244F132CA075772AC8 /* QueueView.swift */; };
+		975699FDCEBAC503DE05FD76 /* BookDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E01E59579F9B77BC3368F25C /* BookDetailView.swift */; };
+		B86422852832FD947D2C1A7C /* Downloads.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AEB4014F2DCFEB8056640A8 /* Downloads.swift */; };
+		B907DF2152729D520D9B3B28 /* SeriesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A70E7E175B0FC011DF4E7A7E /* SeriesView.swift */; };
+		C500AD369826D8BA8893639A /* KeylineCarousel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93623BA5626015A8C58ABFA5 /* KeylineCarousel.swift */; };
+		C8AA9F21999C70CF09AB60B0 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5B2958CC2E28E4B8AE0D681 /* ProfileView.swift */; };
+		CB5F7E9AFEE6B364AE806C43 /* Settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC2A07F9A2FC99873C99F726 /* Settings.swift */; };
+		D190768769F36BC9D83945D0 /* KitziApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 321B9D9C495BA1EA3140D7F2 /* KitziApp.swift */; };
+		D5A4FF6EF126CD8ECFDCD346 /* PlayerSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0671E81FDAEF507A6570C66 /* PlayerSheets.swift */; };
+		D8B9F73D69EF981460224591 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6C5C51DF500712E2947DD67 /* RootView.swift */; };
+		DDFC358F94712AD5B6D534D1 /* KitziActivityBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA068AF3BCFF8330FEF0A045 /* KitziActivityBundle.swift */; };
+		E1BC14469B70C6FCAEC64C1A /* JSON.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA017E8671702DE6E2FE5AF8 /* JSON.swift */; };
+		E87C4815381D6B1152B5BECE /* Player.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9364BC11E163DFAD03E24C7A /* Player.swift */; };
+		EFD2ACB9BA178AFE16F1D2F5 /* CoverCrops.swift in Sources */ = {isa = PBXBuildFile; fileRef = 870493EDF14EC8348736B15D /* CoverCrops.swift */; };
+		F79C3A0437E740B3C1CF6ACB /* Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CB7B10BB52873F6629FAEF3 /* Components.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		7C02642FAD811074868EEDAA /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 942D3AF016707DB1FC723425 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 464B62CFFD933B947A37B1F9;
+			remoteInfo = KitziActivity;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		568F45720B5802546F91765D /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				113EE29D0450325B872533CA /* KitziActivity.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		00FA8F090CE27F24C9AB6741 /* DownloadActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadActivityAttributes.swift; sourceTree = "<group>"; };
+		034A50630D7868E0CEFCAF5B /* Session.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Session.swift; sourceTree = "<group>"; };
+		07B2C8062C86CEC6C172CBFF /* KitziActivity.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = KitziActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		1506F8FD3774749ABBC8D069 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		17A0E1E15E4218180F58F704 /* StatsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatsView.swift; sourceTree = "<group>"; };
+		1AEB4014F2DCFEB8056640A8 /* Downloads.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Downloads.swift; sourceTree = "<group>"; };
+		1F3D409F49D8DE31A247416A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		321B9D9C495BA1EA3140D7F2 /* KitziApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KitziApp.swift; sourceTree = "<group>"; };
+		5CF150B1EDE911F1CA04A8FF /* OIDC.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OIDC.swift; sourceTree = "<group>"; };
+		6EE197386AEF6FD4A9746C10 /* PlayHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayHistory.swift; sourceTree = "<group>"; };
+		72EA634FE4E5BA8EACDC6323 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		77136F6DDD2678D2B1D0A3ED /* PlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerView.swift; sourceTree = "<group>"; };
+		77E45E9E1878E74D874D3EA7 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
+		7CB7B10BB52873F6629FAEF3 /* Components.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Components.swift; sourceTree = "<group>"; };
+		8318A010BEF0ED02A60BE699 /* LibraryPieces.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryPieces.swift; sourceTree = "<group>"; };
+		870493EDF14EC8348736B15D /* CoverCrops.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverCrops.swift; sourceTree = "<group>"; };
+		892F557B897B3F86C076F4AD /* Navigation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Navigation.swift; sourceTree = "<group>"; };
+		8FCE7A967C606B0616C70C2B /* MiniPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniPlayer.swift; sourceTree = "<group>"; };
+		93623BA5626015A8C58ABFA5 /* KeylineCarousel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeylineCarousel.swift; sourceTree = "<group>"; };
+		9364BC11E163DFAD03E24C7A /* Player.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Player.swift; sourceTree = "<group>"; };
+		988CAFBBF66EBE29B8D924FD /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		A5B2958CC2E28E4B8AE0D681 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
+		A70E7E175B0FC011DF4E7A7E /* SeriesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SeriesView.swift; sourceTree = "<group>"; };
+		AACA4CF87524A94015FDE07E /* API.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = API.swift; sourceTree = "<group>"; };
+		B09076244F132CA075772AC8 /* QueueView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QueueView.swift; sourceTree = "<group>"; };
+		B30500DE3FF2BAE76405E0B3 /* LibraryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryStore.swift; sourceTree = "<group>"; };
+		B7A689890CA587095E45AB4C /* Kitzi.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Kitzi.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		BA068AF3BCFF8330FEF0A045 /* KitziActivityBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KitziActivityBundle.swift; sourceTree = "<group>"; };
+		BA0E8F1BF82B2C5858D9DF3B /* SleepTimer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SleepTimer.swift; sourceTree = "<group>"; };
+		BC2A07F9A2FC99873C99F726 /* Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Settings.swift; sourceTree = "<group>"; };
+		C0671E81FDAEF507A6570C66 /* PlayerSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerSheets.swift; sourceTree = "<group>"; };
+		C4FC1DAA5AA2D97D229DA5CB /* AudibleRating.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudibleRating.swift; sourceTree = "<group>"; };
+		D57DFA7606FCFCD1336528F2 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		DA017E8671702DE6E2FE5AF8 /* JSON.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSON.swift; sourceTree = "<group>"; };
+		DAF0BAB7454F6516BCF5E96E /* ImageLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageLoader.swift; sourceTree = "<group>"; };
+		E01E59579F9B77BC3368F25C /* BookDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookDetailView.swift; sourceTree = "<group>"; };
+		E6C5C51DF500712E2947DD67 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		EB533F742C08D4E2A95E25AE /* DownloadsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadsView.swift; sourceTree = "<group>"; };
+		F3D5349321CA8D9E2110D505 /* AuthorsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthorsView.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		0FADBA0D4D74EF4AFE3DD43E /* Common */ = {
+			isa = PBXGroup;
+			children = (
+				7CB7B10BB52873F6629FAEF3 /* Components.swift */,
+				93623BA5626015A8C58ABFA5 /* KeylineCarousel.swift */,
+				892F557B897B3F86C076F4AD /* Navigation.swift */,
+			);
+			path = Common;
+			sourceTree = "<group>";
+		};
+		18058642CD4F3E3FF1AF6B0A /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				72EA634FE4E5BA8EACDC6323 /* Assets.xcassets */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		1C2F6F21592017DCF3EFFB43 /* Home */ = {
+			isa = PBXGroup;
+			children = (
+				77E45E9E1878E74D874D3EA7 /* HomeView.swift */,
+				8318A010BEF0ED02A60BE699 /* LibraryPieces.swift */,
+			);
+			path = Home;
+			sourceTree = "<group>";
+		};
+		1CBB593FE7EB11346DB668B5 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				321B9D9C495BA1EA3140D7F2 /* KitziApp.swift */,
+				E6C5C51DF500712E2947DD67 /* RootView.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		292741E06BF2D7D38EB9360A /* Detail */ = {
+			isa = PBXGroup;
+			children = (
+				E01E59579F9B77BC3368F25C /* BookDetailView.swift */,
+			);
+			path = Detail;
+			sourceTree = "<group>";
+		};
+		3C3667CAF33F0AE76D28DB7C /* Playback */ = {
+			isa = PBXGroup;
+			children = (
+				9364BC11E163DFAD03E24C7A /* Player.swift */,
+				6EE197386AEF6FD4A9746C10 /* PlayHistory.swift */,
+				BA0E8F1BF82B2C5858D9DF3B /* SleepTimer.swift */,
+			);
+			path = Playback;
+			sourceTree = "<group>";
+		};
+		3CC441563A9FD0BC332714AF /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				AACA4CF87524A94015FDE07E /* API.swift */,
+				C4FC1DAA5AA2D97D229DA5CB /* AudibleRating.swift */,
+				870493EDF14EC8348736B15D /* CoverCrops.swift */,
+				DAF0BAB7454F6516BCF5E96E /* ImageLoader.swift */,
+				DA017E8671702DE6E2FE5AF8 /* JSON.swift */,
+				B30500DE3FF2BAE76405E0B3 /* LibraryStore.swift */,
+				1506F8FD3774749ABBC8D069 /* Models.swift */,
+				5CF150B1EDE911F1CA04A8FF /* OIDC.swift */,
+				034A50630D7868E0CEFCAF5B /* Session.swift */,
+				BC2A07F9A2FC99873C99F726 /* Settings.swift */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+		471D676D17FA7F1F957C62F6 /* Downloads */ = {
+			isa = PBXGroup;
+			children = (
+				1AEB4014F2DCFEB8056640A8 /* Downloads.swift */,
+			);
+			path = Downloads;
+			sourceTree = "<group>";
+		};
+		5103F7A77B93F223A0C4795F /* Kitzi */ = {
+			isa = PBXGroup;
+			children = (
+				988CAFBBF66EBE29B8D924FD /* Info.plist */,
+				1CBB593FE7EB11346DB668B5 /* App */,
+				3CC441563A9FD0BC332714AF /* Core */,
+				471D676D17FA7F1F957C62F6 /* Downloads */,
+				3C3667CAF33F0AE76D28DB7C /* Playback */,
+				18058642CD4F3E3FF1AF6B0A /* Resources */,
+				B504962F2098B8FA233CA6CF /* UI */,
+			);
+			path = Kitzi;
+			sourceTree = "<group>";
+		};
+		69886584B6F024B8CDD3F669 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				00FA8F090CE27F24C9AB6741 /* DownloadActivityAttributes.swift */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		880B2F6966A664DE7592D2EB /* Player */ = {
+			isa = PBXGroup;
+			children = (
+				8FCE7A967C606B0616C70C2B /* MiniPlayer.swift */,
+				C0671E81FDAEF507A6570C66 /* PlayerSheets.swift */,
+				77136F6DDD2678D2B1D0A3ED /* PlayerView.swift */,
+			);
+			path = Player;
+			sourceTree = "<group>";
+		};
+		8DEA914057223A142784B268 /* Browse */ = {
+			isa = PBXGroup;
+			children = (
+				F3D5349321CA8D9E2110D505 /* AuthorsView.swift */,
+				EB533F742C08D4E2A95E25AE /* DownloadsView.swift */,
+				B09076244F132CA075772AC8 /* QueueView.swift */,
+				A70E7E175B0FC011DF4E7A7E /* SeriesView.swift */,
+			);
+			path = Browse;
+			sourceTree = "<group>";
+		};
+		9C26EF757113D3931BD02B30 /* KitziActivity */ = {
+			isa = PBXGroup;
+			children = (
+				1F3D409F49D8DE31A247416A /* Info.plist */,
+				BA068AF3BCFF8330FEF0A045 /* KitziActivityBundle.swift */,
+			);
+			path = KitziActivity;
+			sourceTree = "<group>";
+		};
+		A3182A47339EF37A99B372D6 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				B7A689890CA587095E45AB4C /* Kitzi.app */,
+				07B2C8062C86CEC6C172CBFF /* KitziActivity.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		B504962F2098B8FA233CA6CF /* UI */ = {
+			isa = PBXGroup;
+			children = (
+				8DEA914057223A142784B268 /* Browse */,
+				0FADBA0D4D74EF4AFE3DD43E /* Common */,
+				292741E06BF2D7D38EB9360A /* Detail */,
+				1C2F6F21592017DCF3EFFB43 /* Home */,
+				880B2F6966A664DE7592D2EB /* Player */,
+				E180AF095804F08F275634A6 /* Settings */,
+			);
+			path = UI;
+			sourceTree = "<group>";
+		};
+		CB35096C5B65EA505A75BC89 = {
+			isa = PBXGroup;
+			children = (
+				5103F7A77B93F223A0C4795F /* Kitzi */,
+				9C26EF757113D3931BD02B30 /* KitziActivity */,
+				69886584B6F024B8CDD3F669 /* Shared */,
+				A3182A47339EF37A99B372D6 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		E180AF095804F08F275634A6 /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				A5B2958CC2E28E4B8AE0D681 /* ProfileView.swift */,
+				D57DFA7606FCFCD1336528F2 /* SettingsView.swift */,
+				17A0E1E15E4218180F58F704 /* StatsView.swift */,
+			);
+			path = Settings;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		464B62CFFD933B947A37B1F9 /* KitziActivity */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1FD00A8D6393F91851B9DF84 /* Build configuration list for PBXNativeTarget "KitziActivity" */;
+			buildPhases = (
+				ACB357559F88255162FC6D82 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = KitziActivity;
+			packageProductDependencies = (
+			);
+			productName = KitziActivity;
+			productReference = 07B2C8062C86CEC6C172CBFF /* KitziActivity.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		5AE9B47269EE2863602D1A22 /* Kitzi */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 56CB0205ED94E80A292C8407 /* Build configuration list for PBXNativeTarget "Kitzi" */;
+			buildPhases = (
+				AD756462DE3B1C5CE2088F4F /* Sources */,
+				C292E7C92C6BC039B8C5D326 /* Resources */,
+				568F45720B5802546F91765D /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				640A4159569C2E6DBCC3402D /* PBXTargetDependency */,
+			);
+			name = Kitzi;
+			packageProductDependencies = (
+			);
+			productName = Kitzi;
+			productReference = B7A689890CA587095E45AB4C /* Kitzi.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		942D3AF016707DB1FC723425 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					464B62CFFD933B947A37B1F9 = {
+						DevelopmentTeam = 57L2ULXB7Z;
+						ProvisioningStyle = Automatic;
+					};
+					5AE9B47269EE2863602D1A22 = {
+						DevelopmentTeam = 57L2ULXB7Z;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 12071699F656615CAE95E999 /* Build configuration list for PBXProject "Kitzi" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = CB35096C5B65EA505A75BC89;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = A3182A47339EF37A99B372D6 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				5AE9B47269EE2863602D1A22 /* Kitzi */,
+				464B62CFFD933B947A37B1F9 /* KitziActivity */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		C292E7C92C6BC039B8C5D326 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				942B24EC862D0AB724D35AF8 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		ACB357559F88255162FC6D82 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				438BEA020349E93F5D1D87AC /* DownloadActivityAttributes.swift in Sources */,
+				DDFC358F94712AD5B6D534D1 /* KitziActivityBundle.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AD756462DE3B1C5CE2088F4F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8888E8A7A69E876875B53B6B /* API.swift in Sources */,
+				2FAA57D13F60125E6522B23C /* AudibleRating.swift in Sources */,
+				33BB27110FA4E401BC5D3701 /* AuthorsView.swift in Sources */,
+				975699FDCEBAC503DE05FD76 /* BookDetailView.swift in Sources */,
+				F79C3A0437E740B3C1CF6ACB /* Components.swift in Sources */,
+				EFD2ACB9BA178AFE16F1D2F5 /* CoverCrops.swift in Sources */,
+				44A50B1BBA2BC8CB1D42B0FD /* DownloadActivityAttributes.swift in Sources */,
+				B86422852832FD947D2C1A7C /* Downloads.swift in Sources */,
+				12094FC8DBF6263568FBB34D /* DownloadsView.swift in Sources */,
+				9513780700AE8AA8DDB22999 /* HomeView.swift in Sources */,
+				417D7D7092F934B44E78EE59 /* ImageLoader.swift in Sources */,
+				E1BC14469B70C6FCAEC64C1A /* JSON.swift in Sources */,
+				C500AD369826D8BA8893639A /* KeylineCarousel.swift in Sources */,
+				D190768769F36BC9D83945D0 /* KitziApp.swift in Sources */,
+				56EAD44C5DB685C75FD0F7E0 /* LibraryPieces.swift in Sources */,
+				742CF2052333F40E8E36AEA5 /* LibraryStore.swift in Sources */,
+				0C4EAA6654FE964BF603D5BA /* MiniPlayer.swift in Sources */,
+				0972478805318EF004EE268E /* Models.swift in Sources */,
+				57905EFD7CBD92380812884C /* Navigation.swift in Sources */,
+				37DD9738554B1A1BADCCED91 /* OIDC.swift in Sources */,
+				17353BF7AD11E1525197070C /* PlayHistory.swift in Sources */,
+				E87C4815381D6B1152B5BECE /* Player.swift in Sources */,
+				D5A4FF6EF126CD8ECFDCD346 /* PlayerSheets.swift in Sources */,
+				2CCEBB134E698CB6643FADD3 /* PlayerView.swift in Sources */,
+				C8AA9F21999C70CF09AB60B0 /* ProfileView.swift in Sources */,
+				96410AB4E89AE715FD17CED8 /* QueueView.swift in Sources */,
+				D8B9F73D69EF981460224591 /* RootView.swift in Sources */,
+				B907DF2152729D520D9B3B28 /* SeriesView.swift in Sources */,
+				7B4E8094A86BB299F5408A47 /* Session.swift in Sources */,
+				CB5F7E9AFEE6B364AE806C43 /* Settings.swift in Sources */,
+				85586B3B6F576BB56B6612E2 /* SettingsView.swift in Sources */,
+				5CEBFC4C339D23A0A261AA4F /* SleepTimer.swift in Sources */,
+				915648314CBA6945A870AC44 /* StatsView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		640A4159569C2E6DBCC3402D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 464B62CFFD933B947A37B1F9 /* KitziActivity */;
+			targetProxy = 7C02642FAD811074868EEDAA /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		1406A73EA558A966D47D4B4F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = Kitzi/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.bennybar.kitzi;
+				PRODUCT_NAME = Kitzi;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		6441DBD12B15CB825D9615BF /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = Kitzi/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.bennybar.kitzi;
+				PRODUCT_NAME = Kitzi;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		86AC0C92F38C7FCF427717C6 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 349;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 57L2ULXB7Z;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
+				MARKETING_VERSION = 2.0.349;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		B56361F25520AAF11823D9B1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				INFOPLIST_FILE = KitziActivity/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.bennybar.kitzi.activity;
+				PRODUCT_NAME = KitziActivity;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		BE2DD01B988764F747497D95 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				INFOPLIST_FILE = KitziActivity/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.bennybar.kitzi.activity;
+				PRODUCT_NAME = KitziActivity;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		E25F16467AF2206982D7AB67 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 349;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 57L2ULXB7Z;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
+				MARKETING_VERSION = 2.0.349;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		12071699F656615CAE95E999 /* Build configuration list for PBXProject "Kitzi" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				86AC0C92F38C7FCF427717C6 /* Debug */,
+				E25F16467AF2206982D7AB67 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		1FD00A8D6393F91851B9DF84 /* Build configuration list for PBXNativeTarget "KitziActivity" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B56361F25520AAF11823D9B1 /* Debug */,
+				BE2DD01B988764F747497D95 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		56CB0205ED94E80A292C8407 /* Build configuration list for PBXNativeTarget "Kitzi" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1406A73EA558A966D47D4B4F /* Debug */,
+				6441DBD12B15CB825D9615BF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 942D3AF016707DB1FC723425 /* Project object */;
+}

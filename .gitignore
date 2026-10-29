@@ -42,3 +42,8 @@ key.properties
 upload-keystore.jks
 *.jks
 *.keystore
+
+# iOS
+ios/build/
+ios/Kitzi.xcodeproj/xcuserdata/
+ios/Kitzi.xcodeproj/project.xcworkspace/xcuserdata/

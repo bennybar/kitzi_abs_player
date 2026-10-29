@@ -1,0 +1,76 @@
+name: Kitzi
+options:
+  bundleIdPrefix: com.bennybar
+  deploymentTarget:
+    iOS: "26.1"
+  createIntermediateGroups: true
+  developmentLanguage: en
+settings:
+  base:
+    # Same Apple team and signing as the Luli (Reddit) app.
+    DEVELOPMENT_TEAM: 57L2ULXB7Z
+    CODE_SIGN_STYLE: Automatic
+    SWIFT_VERSION: "6.0"
+    SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+    SWIFT_APPROACHABLE_CONCURRENCY: YES
+    MARKETING_VERSION: "2.0.349"
+    CURRENT_PROJECT_VERSION: "349"
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+targets:
+  Kitzi:
+    type: application
+    platform: iOS
+    sources:
+      - path: Kitzi
+      - path: Shared
+    dependencies:
+      - target: KitziActivity
+    info:
+      path: Kitzi/Info.plist
+      properties:
+        CFBundleDisplayName: Kitzi
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        UIBackgroundModes: [audio, fetch, processing]
+        BGTaskSchedulerPermittedIdentifiers: [com.bennybar.kitzi.progress-push, com.bennybar.kitzi.library-refresh]
+        NSSupportsLiveActivities: true
+        ITSAppUsesNonExemptEncryption: false
+        # Self-hosted Audiobookshelf servers are often plain http on a LAN.
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+        NSLocalNetworkUsageDescription: Kitzi connects to your Audiobookshelf server on your local network.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.bennybar.kitzi.oauth
+            CFBundleURLSchemes: [kitzi]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bennybar.kitzi
+        PRODUCT_NAME: Kitzi
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+  KitziActivity:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: KitziActivity
+      - path: Shared
+    info:
+      path: KitziActivity/Info.plist
+      properties:
+        CFBundleDisplayName: Kitzi Downloads
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bennybar.kitzi.activity
+        PRODUCT_NAME: KitziActivity
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SKIP_INSTALL: YES
