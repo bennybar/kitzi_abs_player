@@ -60,7 +60,7 @@ struct HomeView: View {
             .navigationTitle("Library")
             .navigationDestination(for: Book.self) { BookDetailView(book: $0) }
             .navigationDestination(for: ShelfRoute.self) { r in
-                BookListView(title: r.title, books: r.ids.compactMap { library.byId[$0] })
+                BookListView(title: r.title, books: r.books)
             }
             .kitziDestinations()
             .searchable(text: $search, prompt: "Title, author, series, narrator")
@@ -112,7 +112,7 @@ struct HomeView: View {
             CoverShelf(title: title, books: books, showProgress: showProgress, path: $path, big: hero)
         } else if !books.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
-                ShelfHeader(title: title) { path.append(ShelfRoute(title: title, ids: books.map(\.id))) }
+                ShelfHeader(title: title) { path.append(ShelfRoute(title: title, books: books)) }
                 carousel(books, hero: hero, showProgress: showProgress, caption: caption)
             }
         }

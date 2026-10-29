@@ -3,7 +3,7 @@ import SwiftUI
 // MARK: - pieces
 
 /// Where a "See All" goes.
-struct ShelfRoute: Hashable { var title: String; var ids: [String] }
+struct ShelfRoute: Hashable { var title: String; var books: [Book] }
 
 /// "Title ›" — the iOS section header that opens the full list.
 struct ShelfHeader: View {
@@ -33,7 +33,7 @@ struct CoverShelf: View {
     var body: some View {
         if !books.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
-                ShelfHeader(title: title) { path.append(ShelfRoute(title: title, ids: books.map(\.id))) }
+                ShelfHeader(title: title) { path.append(ShelfRoute(title: title, books: books)) }
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(alignment: .top, spacing: 14) {
                         ForEach(books) { b in
@@ -134,11 +134,32 @@ struct ListBookRow: View {
 
 extension View {
     /// Long-press actions, as everywhere in iOS: play, queue, download.
-    func bookContextMenu(_ b: Book) -> some View {
-        contextMenu {
-            Button { Task { await Player.shared.play(b) } } label: { Label("Play", systemImage: "play.fill") }
-            Button { PlayQueue.shared.addNext(b.id) } label: { Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") }
-            Button { PlayQueue.shared.add(b.id) } label: { Label("Add to Queue", systemImage: "text.badge.plus") }
+    func bookContextMenu(_ b: Book) -> some View { modifier(BookContextMenu(book: b)) }
+}
+
+private struct BookContextMenu: ViewModifier {
+    let book: Book
+    @Environment(\.openPlayer) private var openPlayer
+
+    func body(content: Content) -> some View {
+        let b = book
+        let playing = Player.shared.nowPlaying?.book.id == b.id
+        content.contextMenu {
+            Button {
+                Task {
+                    if let error = await Player.shared.play(b) { Toast.show(error) } else { openPlayer() }
+                }
+            } label: { Label("Play", systemImage: "play.fill") }
+            if !playing {
+                Button {
+                    PlayQueue.shared.addNext(b.id)
+                    Toast.show("Plays next", action: "Undo") { PlayQueue.shared.remove(b.id) }
+                } label: { Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") }
+                Button {
+                    PlayQueue.shared.add(b.id)
+                    Toast.show("Added to queue", action: "Undo") { PlayQueue.shared.remove(b.id) }
+                } label: { Label("Add to Queue", systemImage: "text.badge.plus") }
+            }
             if !Downloads.shared.isDownloaded(b.id) {
                 Button { Task { await Downloads.shared.start(b.id) } } label: { Label("Download", systemImage: "arrow.down.circle") }
             }

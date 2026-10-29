@@ -179,11 +179,13 @@ struct StarsView: View {
                         Text(String(format: "%.1f", r.stars)).fontWeight(.semibold)
                         Text("(\(r.count.formatted(.number.notation(.compactName))))").foregroundStyle(.secondary)
                     }
-                    .font(.subheadline)
                 }
                 .buttonStyle(.plain)
             }
         }
-        .task(id: book.id) { rating = await AudibleRating.shared.rating(for: book) }
+        .task(id: book.id) {
+            rating = nil
+            rating = await AudibleRating.shared.rating(for: book)
+        }
     }
 }

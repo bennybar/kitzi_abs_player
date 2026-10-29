@@ -270,7 +270,7 @@ final class Player {
         MPNowPlayingInfoCenter.default().playbackState = isPlaying ? .playing : .paused
     }
 
-    private func loadArtwork(_ book: Book) {
+    func loadArtwork(_ book: Book) {
         artwork = nil
         Task {
             let url = Downloads.shared.localCover(book.id) ?? book.coverURL(width: 1000)

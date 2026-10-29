@@ -22,20 +22,19 @@ final class ImageLoader {
     func image(_ url: URL) async -> UIImage? {
         let key = url.absoluteString as NSString
         if let m = memory.object(forKey: key) { return m }
-        if url.isFileURL {
-            let img = UIImage(contentsOfFile: url.path)
-            if let img { memory.setObject(img, forKey: key) }
-            return img
-        }
         if let t = inflight[url] { return await t.value }
         let file = dir.appendingPathComponent(Self.hash(url.absoluteString))
-        let t = Task { () -> UIImage? in
-            if let data = try? Data(contentsOf: file), let img = UIImage(data: data) { return img }
-            let req = API.shared.authorized(url)
-            guard let (data, resp) = try? await URLSession.shared.data(for: req),
+        let req = url.isFileURL ? nil : API.shared.authorized(url)
+        // Disk, network and decoding happen off the main thread (scrolling stays smooth).
+        let t = Task.detached { () -> UIImage? in
+            if url.isFileURL { return await UIImage(contentsOfFile: url.path)?.byPreparingForDisplay() }
+            if let data = try? Data(contentsOf: file), let img = UIImage(data: data) {
+                return await img.byPreparingForDisplay() ?? img
+            }
+            guard let req, let (data, resp) = try? await URLSession.shared.data(for: req),
                   (resp as? HTTPURLResponse)?.statusCode == 200, let img = UIImage(data: data) else { return nil }
             try? data.write(to: file)
-            return img
+            return await img.byPreparingForDisplay() ?? img
         }
         inflight[url] = t
         let img = await t.value
@@ -82,10 +81,14 @@ struct CoverImage: View {
                     if url == nil, let id = book?.id, let c = CoverCrops.shared.crops[id] {
                         // The book's own crop (set on its page).
                         GeometryReader { g in
+                            // x/y are fractions of the picture's short side as filled
+                            // into this frame (in a square frame: the frame's side).
+                            let fill = max(g.size.width / max(image.size.width, 1), g.size.height / max(image.size.height, 1))
+                            let unit = min(image.size.width, image.size.height) * fill
                             Image(uiImage: image).resizable().scaledToFill()
                                 .frame(width: g.size.width, height: g.size.height)
                                 .scaleEffect(c.scale)
-                                .offset(x: c.x * g.size.width, y: c.y * g.size.height)
+                                .offset(x: c.x * unit, y: c.y * unit)
                         }
                     } else {
                         Image(uiImage: image).resizable().scaledToFill()

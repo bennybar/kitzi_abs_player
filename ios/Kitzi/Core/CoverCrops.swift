@@ -28,14 +28,17 @@ final class CoverCrops {
     }
 
     /// The square part of [img] the crop shows (for the lock screen artwork).
-    nonisolated static func apply(_ c: Crop, to img: UIImage) -> UIImage {
-        guard let cg = img.cgImage else { return img }
+    nonisolated static func apply(_ c: Crop, to original: UIImage) -> UIImage {
+        // Crop in the picture as shown (EXIF rotation applied), not the raw pixels.
+        let img = original.imageOrientation == .up ? original
+            : UIGraphicsImageRenderer(size: original.size).image { _ in original.draw(at: .zero) }
+        guard let cg = img.cgImage else { return original }
         let w = Double(cg.width), h = Double(cg.height), m = min(w, h)
         let side = m / c.scale
         let cx = w / 2 - c.x * m / c.scale, cy = h / 2 - c.y * m / c.scale
         let r = CGRect(x: cx - side / 2, y: cy - side / 2, width: side, height: side).integral
         guard let out = cg.cropping(to: r) else { return img }
-        return UIImage(cgImage: out, scale: img.scale, orientation: img.imageOrientation)
+        return UIImage(cgImage: out, scale: img.scale, orientation: .up)
     }
 }
 
@@ -45,7 +48,8 @@ struct CoverCropSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var image: UIImage?
     @State private var crop = CoverCrops.Crop()
-    @State private var base = CoverCrops.Crop()
+    @State private var baseScale = 1.0
+    @State private var baseOffset = CGPoint.zero
     private let side: CGFloat = 300
 
     var body: some View {
@@ -68,17 +72,17 @@ struct CoverCropSheet: View {
                     .contentShape(Rectangle())
                     .gesture(SimultaneousGesture(
                         MagnifyGesture()
-                            .onChanged { v in crop.scale = min(max(base.scale * v.magnification, 1), 4); clamp() }
-                            .onEnded { _ in base = crop },
+                            .onChanged { v in crop.scale = min(max(baseScale * v.magnification, 1), 4); clamp() }
+                            .onEnded { _ in baseScale = crop.scale; baseOffset = CGPoint(x: crop.x, y: crop.y) },
                         DragGesture()
                             .onChanged { v in
-                                crop.x = base.x + v.translation.width / side
-                                crop.y = base.y + v.translation.height / side
+                                crop.x = baseOffset.x + v.translation.width / side
+                                crop.y = baseOffset.y + v.translation.height / side
                                 clamp()
                             }
-                            .onEnded { _ in base = crop }
+                            .onEnded { _ in baseOffset = CGPoint(x: crop.x, y: crop.y) }
                     ))
-                Button("Reset") { crop = .init(); base = crop }
+                Button("Reset") { crop = .init(); baseScale = 1; baseOffset = .zero }
                     .buttonStyle(.glass)
                     .disabled(crop == .init())
                 Spacer()
@@ -89,17 +93,22 @@ struct CoverCropSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { CoverCrops.shared.set(book.id, crop); dismiss() }
+                    Button("Save") {
+                        CoverCrops.shared.set(book.id, crop)
+                        // The lock screen shows the new crop at once.
+                        if Player.shared.nowPlaying?.book.id == book.id { Player.shared.loadArtwork(book) }
+                        dismiss()
+                    }
                 }
             }
         }
         .task {
             crop = CoverCrops.shared.crops[book.id] ?? .init()
-            base = crop
             if let u = Downloads.shared.localCover(book.id) ?? book.coverURL(width: 600) {
                 image = await ImageLoader.shared.image(u)
-                clamp(); base = crop
+                clamp()
             }
+            baseScale = crop.scale; baseOffset = CGPoint(x: crop.x, y: crop.y)
         }
     }
 

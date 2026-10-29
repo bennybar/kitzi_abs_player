@@ -6,6 +6,7 @@ final class AudibleRating {
     static let shared = AudibleRating()
     struct Result: Codable { var asin: String; var stars: Double; var count: Int; var at: Double }
     private var memory: [String: Result?] = [:]
+    private var inflight: [String: Task<Result?, Never>] = [:]
 
     func rating(for book: Book) async -> Result? {
         if let m = memory[book.id] { return m }
@@ -14,17 +15,28 @@ final class AudibleRating {
             memory[book.id] = r.stars > 0 ? r : nil
             return memory[book.id] ?? nil
         }
-        let r = await fetch(book)
-        memory[book.id] = r
-        let toStore = r ?? Result(asin: "", stars: 0, count: 0, at: Date().timeIntervalSince1970)
-        Store.set(try? JSONEncoder().encode(toStore), "audible2:\(book.id)")
+        if let t = inflight[book.id] { return await t.value }
+        let t = Task { () -> Result? in
+            // A failed lookup (offline, Audible unreachable) isn't remembered: only
+            // a real answer, rating or no match, is cached.
+            let r: Result?
+            do { r = try await fetch(book) } catch { return nil }
+            memory[book.id] = r
+            let toStore = r ?? Result(asin: "", stars: 0, count: 0, at: Date().timeIntervalSince1970)
+            Store.set(try? JSONEncoder().encode(toStore), "audible2:\(book.id)")
+            return r
+        }
+        inflight[book.id] = t
+        let r = await t.value
+        inflight[book.id] = nil
         return r
     }
 
-    private func fetch(_ book: Book) async -> Result? {
+    /// Nil when Audible has no match; throws when it couldn't be asked.
+    private func fetch(_ book: Book) async throws -> Result? {
         // The server's ASIN is the reliable match.
         if let item = try? await API.shared.item(book.id), let asin = item.obj("media")?.obj("metadata")?.str("asin"),
-           let p = await product("https://api.audible.com/1.0/catalog/products/\(asin)?response_groups=rating")?.obj("product") {
+           let p = try await product("https://api.audible.com/1.0/catalog/products/\(asin)?response_groups=rating")?.obj("product") {
             return result(p)
         }
         // Else a search, as the Android app does: title variants, with the first
@@ -32,8 +44,8 @@ final class AudibleRating {
         let author = (book.authors.first ?? book.author?.components(separatedBy: ",").first)?
             .trimmingCharacters(in: .whitespaces)
         for q in Self.titleVariants(book.title) {
-            var found = await search(q, author: author)
-            if found.isEmpty, author != nil { found = await search(q, author: nil) }
+            var found = try await search(q, author: author)
+            if found.isEmpty, author != nil { found = try await search(q, author: nil) }
             if let best = pick(found, titles: Self.titleVariants(book.title).map(Self.norm), author: author, durationSec: book.durationSec) {
                 return result(best)
             }
@@ -41,13 +53,13 @@ final class AudibleRating {
         return nil
     }
 
-    private func search(_ title: String, author: String?) async -> [JSON] {
+    private func search(_ title: String, author: String?) async throws -> [JSON] {
         var c = URLComponents(string: "https://api.audible.com/1.0/catalog/products")!
         c.queryItems = [.init(name: "title", value: title), .init(name: "num_results", value: "10"),
                         .init(name: "products_sort_by", value: "Relevance"),
                         .init(name: "response_groups", value: "rating,product_attrs,product_desc,contributors")]
         if let author { c.queryItems?.append(.init(name: "author", value: author)) }
-        guard let url = c.url?.absoluteString, let root = await product(url) else { return [] }
+        guard let url = c.url?.absoluteString, let root = try await product(url) else { return [] }
         return root.objs("products")
     }
 
@@ -103,9 +115,13 @@ final class AudibleRating {
         a == b || (a.count >= 6 && b.hasPrefix(a)) || (b.count >= 6 && a.hasPrefix(b))
     }
 
-    private func product(_ url: String) async -> JSON? {
-        guard let u = URL(string: url), let (data, resp) = try? await URLSession.shared.data(from: u),
-              (resp as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+    /// Nil for "not found"; throws when Audible couldn't be reached or failed.
+    private func product(_ url: String) async throws -> JSON? {
+        guard let u = URL(string: url) else { return nil }
+        let (data, resp) = try await URLSession.shared.data(from: u)
+        let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        if code == 404 { return nil }
+        guard code == 200 else { throw URLError(.badServerResponse) }
         return JSONUtil.parse(data) as? JSON
     }
 

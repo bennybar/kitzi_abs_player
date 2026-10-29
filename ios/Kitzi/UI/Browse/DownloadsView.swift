@@ -60,7 +60,7 @@ struct DownloadsView: View {
                                 .buttonStyle(.glass)
                         }
                         .swipeActions {
-                            Button(role: .destructive) { cancelling = id } label: { Label("Cancel", systemImage: "xmark") }
+                            Button { cancelling = id } label: { Label("Cancel", systemImage: "xmark") }.tint(.red)
                         }
                     }
                 }
@@ -82,7 +82,7 @@ struct DownloadsView: View {
                             }
                         }
                         .swipeActions {
-                            Button(role: .destructive) { removing = b.id } label: { Label("Remove", systemImage: "trash") }
+                            Button { removing = b.id } label: { Label("Remove", systemImage: "trash") }.tint(.red)
                         }
                     }
                 }

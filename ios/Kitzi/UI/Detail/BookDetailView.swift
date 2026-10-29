@@ -123,7 +123,7 @@ struct BookDetailView: View {
                 if let n = b.narrators.first {
                     Text("Narrated by \(n)").font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
                 }
-                StarsView(book: b)
+                StarsView(book: b).font(.subheadline)
                 HStack(spacing: 8) {
                     if let d = b.durationSec { chip("clock", Format.hm(d)) }
                     if let s = b.sizeBytes, s > 0 { chip("internaldrive", Format.size(s)) }

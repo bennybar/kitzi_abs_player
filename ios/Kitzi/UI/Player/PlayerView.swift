@@ -137,7 +137,7 @@ struct PlayerView: View {
             }
             .overlay(alignment: .bottom) {
                 HStack {
-                    if settings.resumeFromHistory, let back = player.positionBeforeLastJump {
+                    if settings.resumeFromHistory, let back = player.positionBeforeLastJump, abs(back - player.position) > 5 {
                         glassPill("arrow.uturn.backward", "Back to \(Format.clock(back))") { jumpBack(back) }
                             .transition(.scale.combined(with: .opacity))
                     }
@@ -161,10 +161,9 @@ struct PlayerView: View {
     }
 
     /// Back to where you were before the last jump (scrub, chapter, bookmark).
+    /// The jump is a jump too, so the pill then offers the way back again.
     private func jumpBack(_ t: Double) {
-        let from = player.position
-        player.seek(to: t, isJump: false)
-        Toast.show("Back to \(Format.clock(t))", action: "Undo") { Player.shared.seek(to: from) }
+        player.seek(to: t)
     }
 
     private func addBookmark(_ np: NowPlaying) {
@@ -252,7 +251,7 @@ struct PlayerView: View {
                             scrub = nil
                             // A stray tap can jump hours: offer the way back.
                             if abs(target - before) > 30 {
-                                Toast.show("Jumped to \(Format.clock(target))", action: "Undo") { Player.shared.seek(to: before) }
+                                Toast.show("Jumped to \(Format.clock(target))", action: "Undo") { Player.shared.seek(to: before, isJump: false) }
                             }
                         }
                 )

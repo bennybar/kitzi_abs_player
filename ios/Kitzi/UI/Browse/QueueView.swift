@@ -4,6 +4,7 @@ import SwiftUI
 struct QueueView: View {
     @Environment(PlayQueue.self) private var queue
     @Environment(Player.self) private var player
+    @Environment(\.openPlayer) private var openPlayer
     @State private var confirmClear = false
     @State private var removing: Book?
 
@@ -17,15 +18,19 @@ struct QueueView: View {
                     ForEach(queue.books) { b in
                         Button {
                             Task {
-                                queue.remove(b.id)
-                                await player.play(b)
+                                if let error = await player.play(b) {
+                                    Toast.show(error)
+                                } else {
+                                    queue.remove(b.id)
+                                    openPlayer()
+                                }
                             }
                         } label: {
                             BookRow(book: b)
                         }
                         .buttonStyle(.plain)
                         .swipeActions {
-                            Button(role: .destructive) { removing = b } label: { Label("Remove", systemImage: "trash") }
+                            Button { removing = b } label: { Label("Remove", systemImage: "trash") }.tint(.red)
                         }
                         .swipeActions(edge: .leading) {
                             if queue.books.first?.id != b.id {
