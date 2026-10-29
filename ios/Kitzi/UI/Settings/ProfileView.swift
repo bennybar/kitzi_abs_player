@@ -49,6 +49,7 @@ struct ProfileView: View {
                 }
             }
         }
+        .kitziBackground(grouped: true)
         .navigationTitle("Profile")
         .task {
             if let me = try? await API.shared.me() {

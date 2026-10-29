@@ -75,6 +75,7 @@ struct AuthorDetailView: View {
                 }
             }
         }
+        .kitziBackground(grouped: true)
         .navigationTitle(name)
         .navigationBarTitleDisplayMode(.inline)
         .task(id: name) { info = await library.authorInfo(name) }

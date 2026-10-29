@@ -51,6 +51,7 @@ struct QueueView: View {
                 .listStyle(.plain)
             }
         }
+        .kitziBackground()
         .navigationTitle("Queue")
         .toolbar {
             if !queue.books.isEmpty {

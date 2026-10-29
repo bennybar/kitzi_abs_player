@@ -81,10 +81,16 @@ struct SettingsView: View {
             }
 
             if show("appearance", "series", "author", "shelves", "home", "play button", "shape", "gradient", "chapter",
-                    "audible", "rating", "grid", "theme", "dark", "light", "carousel", "next in series", "full screen", "player") {
+                    "audible", "rating", "grid", "theme", "dark", "light", "carousel", "next in series", "full screen", "player",
+                    "top", "resume", "stats", "gradient", "background") {
                 // One choice per Home shelf: carousel, plain row of covers, or (Next in
                 // Series) not shown at all.
                 Section("Home Shelves") {
+                    Picker("Top of Library", selection: $s.homeTop) {
+                        Text("Today's Listening").tag("goal")
+                        Text("Resume").tag("resume")
+                        Text("Stats").tag("stats")
+                    }
                     ForEach([("continue", "Continue Listening"), ("recent", "Recently Added"),
                              ("series", "Next in Series"), ("other", "Other Server Shelves")], id: \.0) { key, label in
                         Picker(label, selection: Binding(
@@ -100,6 +106,10 @@ struct SettingsView: View {
                     }
                 }
                 Section("Appearance") {
+                    Toggle(isOn: $s.homeGradient) {
+                        Text("Background Gradient")
+                        Text("A soft colour wash behind the top of each screen")
+                    }
                     Toggle("Series tab", isOn: $s.showSeriesTab)
                     Toggle("Authors tab", isOn: $s.showAuthorsTab)
                     Toggle("Queue tab", isOn: $s.showQueueTab)
@@ -233,6 +243,7 @@ struct SettingsView: View {
                 Text(versionText).frame(maxWidth: .infinity, alignment: .center)
             }
         }
+        .kitziBackground(grouped: true)
         .navigationTitle("Settings")
         .searchable(text: $query, prompt: "Search settings")
         .confirmationDialog("Log out?", isPresented: $confirmLogout, titleVisibility: .visible) {

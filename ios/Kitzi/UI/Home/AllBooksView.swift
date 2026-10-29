@@ -21,6 +21,7 @@ struct AllBooksView: View {
             if settings.gridLayout { grid(list) } else { listView(list) }
         }
         .searchable(text: $search, prompt: "Title, author, series, narrator")
+        .kitziBackground()
         .navigationTitle(filter == .all ? "All Books" : filter.label)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -125,6 +126,7 @@ struct GenresView: View {
             .padding(.vertical, 8)
             .padding(.bottom, 90)
         }
+        .kitziBackground()
         .navigationTitle("Genres")
     }
 }

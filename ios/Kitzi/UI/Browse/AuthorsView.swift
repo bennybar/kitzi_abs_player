@@ -59,6 +59,7 @@ struct AuthorsView: View {
                 .padding(.bottom, 80)
             }
         }
+        .kitziBackground()
         .navigationTitle("Authors")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {

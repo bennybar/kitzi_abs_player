@@ -195,3 +195,92 @@ private struct BookContextMenu: ViewModifier {
         }
     }
 }
+
+// MARK: - top of Home (Settings → Top of Library)
+
+/// One-tap resume: the book you're on, with its progress and a big play button.
+struct ResumeCard: View {
+    var play: (Book) -> Void
+    /// The rest of the card opens the book's page.
+    var open: (Book) -> Void
+    @Environment(LibraryStore.self) private var library
+    @Environment(Player.self) private var player
+    @Environment(\.coverZoom) private var zoom
+
+    var body: some View {
+        if let b = player.nowPlaying?.book ?? library.continueListening.first {
+            let p = library.progress[b.id]
+            let total = (p?.durationSec ?? 0) > 0 ? p!.durationSec : (b.durationSec ?? 0)
+            let left = max(total - (p?.currentTimeSec ?? 0), 0)
+            HStack(spacing: 14) {
+                Button { open(b) } label: {
+                    HStack(spacing: 14) {
+                        CoverImage(book: b).frame(width: 76, height: 76)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .coverZoomSource("resume-\(b.id)", zoom, radius: 14)
+                            .shadow(color: .black.opacity(0.2), radius: 8, y: 4)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("CONTINUE LISTENING").font(.caption2.weight(.bold)).foregroundStyle(.secondary)
+                            Text(b.title).font(.headline).lineLimit(1)
+                            ProgressView(value: p?.progress ?? 0).tint(.accentColor)
+                            Text("\(Format.hm(left)) left").font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .bookContextMenu(b)
+                Button { play(b) } label: {
+                    Image(systemName: player.isPlaying && player.nowPlaying?.book.id == b.id ? "waveform" : "play.fill")
+                        .font(.title2).frame(width: 54, height: 54)
+                }
+                .buttonStyle(.glassProminent)
+                .buttonBorderShape(.circle)
+            }
+            .padding(14)
+            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+        }
+    }
+}
+
+/// The listening numbers as one compact row: today (ring), streak, this week.
+struct StatsStrip: View {
+    @Environment(LibraryStore.self) private var library
+
+    var body: some View {
+        GlassEffectContainer(spacing: 10) {
+            HStack(spacing: 10) {
+                pill {
+                    ZStack {
+                        Circle().stroke(Color.accentColor.opacity(0.2), lineWidth: 4)
+                        Circle().trim(from: 0, to: min(library.todaySec / 1800, 1))
+                            .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                            .rotationEffect(.degrees(-90))
+                    }
+                    .frame(width: 22, height: 22)
+                } text: { stat(Format.hm(library.todaySec), "today") }
+                pill { Image(systemName: "flame.fill").foregroundStyle(.orange) } text: {
+                    stat("\(library.streakDays)", library.streakDays == 1 ? "day streak" : "day streak")
+                }
+                pill { Image(systemName: "calendar").foregroundStyle(Color.accentColor) } text: {
+                    stat(Format.hm(library.weekSec), "this week")
+                }
+            }
+        }
+    }
+
+    private func stat(_ value: String, _ label: String) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(value).font(.subheadline.weight(.bold)).lineLimit(1).minimumScaleFactor(0.8)
+            Text(label).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+        }
+    }
+
+    private func pill<I: View, T: View>(@ViewBuilder icon: () -> I, @ViewBuilder text: () -> T) -> some View {
+        HStack(spacing: 8) { icon(); text() }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 12).padding(.vertical, 10)
+            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+}

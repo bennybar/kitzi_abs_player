@@ -193,3 +193,32 @@ struct StarsView: View {
         }
     }
 }
+
+/// The app's screen background: the system one, with the soft accent wash at the
+/// top when Settings → Background Gradient is on (fainter in dark mode).
+struct KitziBackground: ViewModifier {
+    var grouped = false
+    @Environment(AppSettings.self) private var settings
+    @Environment(\.colorScheme) private var scheme
+
+    func body(content: Content) -> some View {
+        content
+            .scrollContentBackground(.hidden)
+            .background {
+                ZStack(alignment: .top) {
+                    (grouped ? Color(.systemGroupedBackground) : Color(.systemBackground))
+                    if settings.homeGradient {
+                        LinearGradient(colors: [Color.accentColor.opacity(scheme == .dark ? 0.16 : 0.22),
+                                                Color.accentColor.opacity(scheme == .dark ? 0.04 : 0.06), .clear],
+                                       startPoint: .top, endPoint: .bottom)
+                            .frame(height: 460)
+                    }
+                }
+                .ignoresSafeArea()
+            }
+    }
+}
+
+extension View {
+    func kitziBackground(grouped: Bool = false) -> some View { modifier(KitziBackground(grouped: grouped)) }
+}

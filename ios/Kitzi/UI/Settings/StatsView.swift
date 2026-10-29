@@ -74,6 +74,7 @@ struct StatsView: View {
             }
             .padding(16)
         }
+        .kitziBackground()
         .navigationTitle("Listening Stats")
         .overlay { if loading && library.perDaySec.isEmpty { ProgressView() } }
         .refreshable { await reload() }

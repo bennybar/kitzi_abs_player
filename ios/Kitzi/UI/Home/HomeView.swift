@@ -20,7 +20,7 @@ struct HomeView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 26) {
                     if search.isEmpty {
-                        GoalCard().padding(.horizontal, 20)
+                        topCard.padding(.horizontal, 20)
                         shelves
                     }
                     if search.isEmpty {
@@ -76,6 +76,7 @@ struct HomeView: View {
             }
             #endif
             }
+            .kitziBackground()
             .navigationTitle("Library")
             .navigationDestination(for: Book.self) { BookDetailView(book: $0) }
             .navigationDestination(for: BookFrom.self) { r in
@@ -130,6 +131,20 @@ struct HomeView: View {
     private func refresh(full: Bool) async {
         await library.refreshAll(full: full)
         if full && !library.lastSyncReachedServer { Toast.show("Couldn't reach the server — showing your offline library") }
+    }
+
+    // MARK: top card (Settings → Home Shelves → Top of Library)
+
+    @Environment(\.openPlayer) private var openPlayer
+
+    @ViewBuilder private var topCard: some View {
+        switch settings.homeTop {
+        case "resume":
+            ResumeCard(play: { b in Task { if await Player.shared.play(b) == nil { openPlayer() } } },
+                       open: { b in path.append(BookFrom(book: b, source: "resume-\(b.id)")) })
+        case "stats": StatsStrip()
+        default: GoalCard()
+        }
     }
 
     // MARK: browse
@@ -283,6 +298,7 @@ struct BookListView: View {
                 .bookContextMenu(b)
         }
         .listStyle(.plain)
+        .kitziBackground()
         .navigationTitle(title)
     }
 }

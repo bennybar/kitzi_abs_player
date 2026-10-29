@@ -31,6 +31,9 @@ final class AppSettings {
     var authorsList: Bool { didSet { d.set(authorsList, forKey: "ui_authors_list") } }
     var showNextInSeries: Bool { didSet { d.set(showNextInSeries, forKey: "ui_next_in_series") } }
     var fullScreenPlayer: Bool { didSet { d.set(fullScreenPlayer, forKey: "ui_full_screen_player") } }
+    /// What sits at the top of the Library: "goal" (Today's Listening), "resume", "stats".
+    var homeTop: String { didSet { d.set(homeTop, forKey: "ui_home_top") } }
+    var homeGradient: Bool { didSet { d.set(homeGradient, forKey: "ui_home_gradient") } }
     /// "system" | "dark" | "light"
     var themeMode: String { didSet { d.set(themeMode, forKey: "ui_theme_mode") } }
 
@@ -70,6 +73,8 @@ final class AppSettings {
         authorsList = b("ui_authors_list", false)
         showNextInSeries = b("ui_next_in_series", true)
         fullScreenPlayer = b("ui_full_screen_player", false)
+        homeTop = d.string(forKey: "ui_home_top") ?? "goal"
+        homeGradient = b("ui_home_gradient", true)
         themeMode = d.string(forKey: "ui_theme_mode") ?? "system"
         wifiOnlyDownloads = b("downloads_wifi_only", false)
         autoDeleteOnFinish = b("downloads_auto_delete_on_finish", false)

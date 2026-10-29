@@ -99,6 +99,7 @@ struct DownloadsView: View {
         // A finished download moves between sections instead of jumping.
         .animation(.default, value: downloads.downloadedIds)
         .animation(.default, value: active.map(\.0))
+        .kitziBackground(grouped: true)
         .navigationTitle("Downloads")
         .toolbar {
             if !done.isEmpty {

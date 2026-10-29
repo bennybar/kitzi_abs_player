@@ -59,6 +59,7 @@ struct SeriesView: View {
             }
         }
         .listStyle(.plain)
+        .kitziBackground()
         .navigationTitle(kind.rawValue)
         .searchable(text: $search, prompt: "Search \(kind.rawValue.lowercased())")
         .task(id: kind) { await load() }

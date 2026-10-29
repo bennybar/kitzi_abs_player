@@ -39,7 +39,13 @@ struct MainView: View {
     @Environment(\.scenePhase) private var phase
     @Namespace private var playerZoom
     @State private var showPlayer = false
-    @State private var tab = "books"
+    @State private var tab: String = {
+        #if DEBUG
+        // Test hook (simulator screenshots): start on a given tab.
+        if let t = ProcessInfo.processInfo.environment["KITZI_TAB"] { return t }
+        #endif
+        return "books"
+    }()
 
     var body: some View {
         TabView(selection: $tab) {
