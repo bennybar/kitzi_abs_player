@@ -19,6 +19,11 @@ struct ShelfarrRequest: Identifiable {
     let bookType: String?
     let workId: String?
     let issue: String?
+    let createdMs: Int64?
+    let updatedMs: Int64?
+    let requestedBy: String?
+    let createdVia: String?
+    let externalSource: String?
 
     var isCompleted: Bool { status == "completed" }
     /// Still moving on the server: worth checking again soon.
@@ -32,11 +37,44 @@ struct ShelfarrRequest: Identifiable {
         }
     }
 
+    /// What the status means, in a sentence.
+    var statusDetail: String {
+        switch status {
+        case "pending": return "Waiting in Shelfarr's queue."
+        case "searching": return "Shelfarr is looking for a release."
+        case "not_found": return "No release found yet. Shelfarr will try again later."
+        case "awaiting_purchase": return "Only available to buy from a store."
+        case "downloading": return "Downloading now."
+        case "processing": return "Downloaded, and being added to your library."
+        case "completed": return "Delivered to your library."
+        case "failed": return "This request failed or was cancelled."
+        default: return ""
+        }
+    }
+
+    /// Where the request was made.
+    var source: String? {
+        if externalSource == "kitzi" { return "Kitzi" }
+        switch createdVia {
+        case "web": return "Shelfarr website"
+        case "api": return externalSource.map { $0 == "api" ? "API" : $0.capitalized } ?? "API"
+        default: return createdVia?.capitalized
+        }
+    }
+
     /// The list doesn't carry covers, but an Open Library work id gives one.
     var coverURL: URL? {
         guard let w = workId, w.hasPrefix("openlibrary:") else { return nil }
         return URL(string: "https://covers.openlibrary.org/w/olid/\(w.dropFirst(12))-M.jpg?default=false")
     }
+}
+
+/// What Open Library knows about a requested book (Shelfarr's API only has its title and author).
+struct ShelfarrBookInfo {
+    let description: String?
+    let subjects: [String]
+    let firstPublished: String?
+    let coverURL: URL?
 }
 
 /// The optional Shelfarr server (https://github.com/Pedro-Revez-Silva/shelfarr):
@@ -123,8 +161,39 @@ final class Shelfarr {
         requests = ((answer as? JSON)?.objs("requests") ?? []).compactMap { r in
             guard let id = r.int("id"), let status = r.str("status"), let book = r.obj("book"), let title = book.str("title") else { return nil }
             return ShelfarrRequest(id: id, status: status, title: title, author: book.str("author"), bookType: book.str("book_type"),
-                                   workId: book.str("work_id"), issue: r.str("issue_description"))
+                                   workId: book.str("work_id"), issue: r.str("issue_description"),
+                                   createdMs: r.epochMs("created_at"), updatedMs: r.epochMs("updated_at"),
+                                   requestedBy: r.obj("user")?.str("username"),
+                                   createdVia: r.obj("request")?.str("created_via"), externalSource: r.obj("request")?.str("external_source"))
         }
+    }
+
+    /// Nil if Open Library doesn't have the book or can't be reached.
+    func bookInfo(for request: ShelfarrRequest) async -> ShelfarrBookInfo? {
+        var work = request.workId.flatMap { $0.hasPrefix("openlibrary:") ? String($0.dropFirst(12)) : nil }
+        if work == nil {
+            // Other sources' ids (Hardcover) mean nothing there: find it by title and author.
+            var c = URLComponents(string: "https://openlibrary.org/search.json")
+            c?.queryItems = [URLQueryItem(name: "title", value: request.title), URLQueryItem(name: "author", value: request.author),
+                             URLQueryItem(name: "limit", value: "1"), URLQueryItem(name: "fields", value: "key")]
+            guard let url = c?.url, let found = await openLibrary(url) else { return nil }
+            work = found.objs("docs").first?.str("key")?.replacingOccurrences(of: "/works/", with: "")
+        }
+        guard let work, let url = URL(string: "https://openlibrary.org/works/\(work).json"), let w = await openLibrary(url) else { return nil }
+        // The description is a string or {type, value}; anything after a rule is links and credits.
+        let text = (w.str("description") ?? w.obj("description")?.str("value"))?.components(separatedBy: "\n----").first
+        var seen = Set<String>()
+        let subjects = w.arr("subjects").compactMap { $0 as? String }
+            .filter { !$0.contains(":") && !$0.contains(",") && seen.insert($0.lowercased()).inserted }
+        let cover = w.arr("covers").compactMap { ($0 as? NSNumber)?.intValue }.first { $0 > 0 }
+        return ShelfarrBookInfo(description: text?.trimmingCharacters(in: .whitespacesAndNewlines),
+                                subjects: Array(subjects.prefix(6)), firstPublished: w.str("first_publish_date"),
+                                coverURL: cover.flatMap { URL(string: "https://covers.openlibrary.org/b/id/\($0)-L.jpg") })
+    }
+
+    private func openLibrary(_ url: URL) async -> JSON? {
+        guard let (data, _) = try? await URLSession.shared.data(for: URLRequest(url: url, timeoutInterval: 20)) else { return nil }
+        return JSONUtil.parse(data) as? JSON
     }
 
     /// Starts a real search and download on the server.
