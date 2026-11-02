@@ -67,7 +67,7 @@ struct SettingsView: View {
                 }
             }
 
-            if show("server access", "custom http headers", "header", "cloudflare") {
+            if show("server access", "custom http headers", "header", "cloudflare", "shelfarr", "request") {
                 Section("Server access") {
                     NavigationLink { HeadersView() } label: {
                         HStack {
@@ -75,6 +75,13 @@ struct SettingsView: View {
                             Spacer()
                             Text(session.customHeaders.isEmpty ? "Off" : "\(session.customHeaders.count) active")
                                 .foregroundStyle(.secondary)
+                        }
+                    }
+                    NavigationLink { ShelfarrSettingsView() } label: {
+                        HStack {
+                            Label("Shelfarr", systemImage: "tray.and.arrow.down")
+                            Spacer()
+                            Text(Shelfarr.shared.configured ? "Connected" : "Off").foregroundStyle(.secondary)
                         }
                     }
                 }

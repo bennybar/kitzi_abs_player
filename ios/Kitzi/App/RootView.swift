@@ -59,6 +59,9 @@ struct MainView: View {
             if settings.showQueueTab {
                 Tab("Queue", systemImage: "list.bullet", value: "queue") { NavigationStack { QueueView().kitziDestinations() } }
             }
+            if settings.showShelfarrTab && Shelfarr.shared.configured {
+                Tab("Shelfarr", systemImage: "tray.and.arrow.down", value: "shelfarr") { NavigationStack { ShelfarrView().kitziDestinations() } }
+            }
             Tab("Downloads", systemImage: "arrow.down.circle", value: "downloads") { NavigationStack { DownloadsView().kitziDestinations() } }
             Tab("Settings", systemImage: "gearshape", value: "settings") { NavigationStack { SettingsView().kitziDestinations() } }
         }
@@ -266,6 +269,7 @@ struct LoginView: View {
             LibraryStore.shared.clearPendingEdits()
             PlayHistory.shared.clear()
             PlayQueue.shared.clear()
+            Shelfarr.shared.clear()
         }
         Store.set(account, "last_account")
         await LibraryStore.shared.ensureLibrary()

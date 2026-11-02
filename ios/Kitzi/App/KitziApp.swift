@@ -20,6 +20,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         if let server = env["KITZI_TEST_SERVER"], let user = env["KITZI_TEST_USER"], let pass = env["KITZI_TEST_PASS"], !Session.shared.signedIn {
             Task { _ = await API.shared.login(base: server, username: user, password: pass) }
         }
+        if let url = env["KITZI_SHELFARR_URL"], let token = env["KITZI_SHELFARR_TOKEN"] {
+            Task { try? await Shelfarr.shared.connect(url: url, token: token); AppSettings.shared.showShelfarrTab = true }
+        }
         #endif
         _ = Downloads.shared
         _ = Player.shared
