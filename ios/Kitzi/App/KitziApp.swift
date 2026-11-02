@@ -21,7 +21,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
             Task { _ = await API.shared.login(base: server, username: user, password: pass) }
         }
         if let url = env["KITZI_SHELFARR_URL"], let token = env["KITZI_SHELFARR_TOKEN"] {
-            Task { try? await Shelfarr.shared.connect(url: url, token: token); AppSettings.shared.showShelfarrTab = true }
+            Task {
+                try? await Shelfarr.shared.connect(url: url, token: token, username: env["KITZI_SHELFARR_USER"] ?? "", password: env["KITZI_SHELFARR_PASS"] ?? "")
+                AppSettings.shared.showShelfarrTab = true
+            }
         }
         #endif
         _ = Downloads.shared

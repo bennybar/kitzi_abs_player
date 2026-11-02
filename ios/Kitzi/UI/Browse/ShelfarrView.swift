@@ -11,7 +11,7 @@ struct ShelfarrView: View {
     @State private var loaded = false
     @State private var loadError: String?
     @State private var requesting: ShelfarrBook?
-    @State private var cancelling: ShelfarrRequest?
+    @State private var deleting: ShelfarrRequest?
 
     private var isWorking: Bool { shelfarr.requests.contains(where: \.isWorking) }
 
@@ -57,6 +57,17 @@ struct ShelfarrView: View {
                     query = ""
                 }
             }
+            // And delete the request with this id.
+            if let d = ProcessInfo.processInfo.environment["KITZI_SHELFARR_DELETE"], let r = shelfarr.requests.first(where: { String($0.id) == d }) {
+                // (The launch hook's connect has to finish saving the login first.)
+                try? await Task.sleep(for: .seconds(5))
+                do {
+                    try await shelfarr.delete(r)
+                    print("KITZITEST deleted \(d)")
+                } catch {
+                    print("KITZITEST delete failed: \(error.localizedDescription)")
+                }
+            }
             #endif
         }
         // While something is in progress and this tab is on screen, keep its status current.
@@ -81,19 +92,19 @@ struct ShelfarrView: View {
         } message: { book in
             Text("Shelfarr will search for \(book.title) and download it.")
         }
-        .confirmationDialog("Cancel this request?", isPresented: Binding(get: { cancelling != nil }, set: { if !$0 { cancelling = nil } }),
-                            titleVisibility: .visible, presenting: cancelling) { request in
-            Button("Cancel Request", role: .destructive) {
+        .confirmationDialog("Delete this request?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
+                            titleVisibility: .visible, presenting: deleting) { request in
+            Button("Delete Request", role: .destructive) {
                 Task {
                     do {
-                        try await shelfarr.cancel(request)
+                        try await shelfarr.delete(request)
                     } catch {
                         Toast.show(error.localizedDescription)
                     }
                 }
             }
         } message: { request in
-            Text(request.title)
+            Text("\(request.title) will be removed from Shelfarr. Files in your library are kept.")
         }
     }
 
@@ -103,18 +114,12 @@ struct ShelfarrView: View {
         return List {
             if !open.isEmpty {
                 Section("In Progress") {
-                    ForEach(open) { r in
-                        requestRow(r)
-                            .listRowBackground(Color.clear)
-                            .swipeActions {
-                                Button { cancelling = r } label: { Label("Cancel", systemImage: "xmark") }.tint(.red)
-                            }
-                    }
+                    ForEach(open) { requestRow($0) }
                 }
             }
             if !completed.isEmpty {
                 Section("Completed") {
-                    ForEach(completed) { requestRow($0).listRowBackground(Color.clear) }
+                    ForEach(completed) { requestRow($0) }
                 }
             }
         }
@@ -135,6 +140,10 @@ struct ShelfarrView: View {
             statusBadge(r)
         }
         .accessibilityElement(children: .combine)
+        .listRowBackground(Color.clear)
+        .swipeActions {
+            Button { deleting = r } label: { Label("Delete", systemImage: "trash") }.tint(.red)
+        }
     }
 
     private func resultsList(_ books: [ShelfarrBook]) -> some View {
@@ -222,6 +231,8 @@ struct ShelfarrSettingsView: View {
     private let shelfarr = Shelfarr.shared
     @State private var url = Shelfarr.shared.baseURL ?? ""
     @State private var token = Shelfarr.shared.token ?? ""
+    @State private var username = Shelfarr.shared.username ?? ""
+    @State private var password = Shelfarr.shared.password ?? ""
     @State private var busy = false
     @State private var error: String?
     @State private var connected = false
@@ -237,6 +248,22 @@ struct ShelfarrSettingsView: View {
                 SecureField("API token", text: $token)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+            } footer: {
+                Text("In Shelfarr, open Profile → API tokens and create a token with search:read, requests:read and requests:write.")
+            }
+            Section {
+                TextField("Username", text: $username)
+                    .textContentType(.username)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                SecureField("Password", text: $password)
+                    .textContentType(.password)
+            } header: {
+                Text("To Delete Requests")
+            } footer: {
+                Text("Optional. Shelfarr's API can't delete requests, so Kitzi signs in to its website for that. Kept in the Keychain. Doesn't work with two-factor sign-in.")
+            }
+            Section {
                 Button {
                     Task { await connect() }
                 } label: {
@@ -252,11 +279,7 @@ struct ShelfarrSettingsView: View {
                 }
                 .disabled(busy || url.isEmpty || token.isEmpty)
             } footer: {
-                if let error {
-                    Text(error).foregroundStyle(.red)
-                } else {
-                    Text("In Shelfarr, open Profile → API tokens and create a token with search:read, requests:read and requests:write.")
-                }
+                if let error { Text(error).foregroundStyle(.red) }
             }
             if shelfarr.configured {
                 Section {
@@ -268,6 +291,8 @@ struct ShelfarrSettingsView: View {
                         s.showShelfarrTab = false
                         url = ""
                         token = ""
+                        username = ""
+                        password = ""
                         connected = false
                     }
                 }
@@ -281,7 +306,7 @@ struct ShelfarrSettingsView: View {
         busy = true; error = nil; connected = false
         defer { busy = false }
         do {
-            try await shelfarr.connect(url: url, token: token)
+            try await shelfarr.connect(url: url, token: token, username: username, password: password)
             connected = true
             settings.showShelfarrTab = true
         } catch {

@@ -53,35 +53,58 @@ final class Shelfarr {
 
     private(set) var baseURL: String?
     private(set) var token: String?
+    private(set) var username: String?
+    private(set) var password: String?
     private(set) var requests: [ShelfarrRequest] = []
+    /// Holds the website's login cookie, for deleting (see `delete`).
+    private var web = URLSession(configuration: .ephemeral)
 
     var configured: Bool { baseURL != nil && token != nil }
 
     private init() {
         baseURL = Keychain.get("shelfarr_url")
         token = Keychain.get("shelfarr_token")
+        username = Keychain.get("shelfarr_username")
+        password = Keychain.get("shelfarr_password")
     }
 
-    /// Checks the address and token against the server, and keeps them if they work.
-    func connect(url: String, token: String) async throws {
+    /// Checks the address and token (and the login, if given) against the server,
+    /// and keeps them if they work.
+    func connect(url: String, token: String, username: String = "", password: String = "") async throws {
         let base = Session.normalize(url)
         let token = token.trimmingCharacters(in: .whitespacesAndNewlines)
         let answer = try await call("/api/v1/requests?limit=1", base: base, token: token)
         guard (answer as? JSON)?["requests"] != nil else {
             throw Failure(message: "That doesn't look like a Shelfarr server.")
         }
+        let username = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasLogin = !username.isEmpty && !password.isEmpty
+        web = URLSession(configuration: .ephemeral)
+        if hasLogin, try await !webLogin(base: base, username: username, password: password) {
+            throw Failure(message: "Shelfarr rejected the username or password.")
+        }
         baseURL = base
         self.token = token
         Keychain.set(base, "shelfarr_url")
         Keychain.set(token, "shelfarr_token")
+        setLogin(hasLogin ? username : nil, hasLogin ? password : nil)
     }
 
     func clear() {
         baseURL = nil
         token = nil
         requests = []
+        web = URLSession(configuration: .ephemeral)
         Keychain.set(nil, "shelfarr_url")
         Keychain.set(nil, "shelfarr_token")
+        setLogin(nil, nil)
+    }
+
+    private func setLogin(_ username: String?, _ password: String?) {
+        self.username = username
+        self.password = password
+        Keychain.set(username, "shelfarr_username")
+        Keychain.set(password, "shelfarr_password")
     }
 
     func search(_ query: String) async throws -> [ShelfarrBook] {
@@ -114,9 +137,72 @@ final class Shelfarr {
         try await refresh()
     }
 
-    func cancel(_ request: ShelfarrRequest) async throws {
-        _ = try await call("/api/v1/requests/\(request.id)", method: "DELETE")
+    /// Removes the request from Shelfarr. Library files are kept. The API can only
+    /// mark a request failed, so this goes through the website, signed in.
+    func delete(_ request: ShelfarrRequest) async throws {
+        guard let base = baseURL, let username, let password else {
+            throw Failure(message: "Add your Shelfarr username and password in Settings to delete requests.")
+        }
+        let page = base + "/requests/\(request.id)"
+        var (html, final) = try await fetch(page)
+        if final?.path == "/session/new" {
+            guard try await webLogin(base: base, username: username, password: password) else {
+                // Trying a bad password again would lock the account.
+                setLogin(username, nil)
+                throw Failure(message: "Shelfarr rejected the password. Enter it again in Settings.")
+            }
+            (html, final) = try await fetch(page)
+        }
+        guard let csrf = value(in: html, after: "name=\"csrf-token\" content=\"") else {
+            throw Failure(message: "Couldn't delete: Shelfarr's website didn't answer as expected.")
+        }
+        _ = try await fetch(page, method: "DELETE", csrf: csrf)
+        // Only the server's own list says whether it's really gone.
         try await refresh()
+        if requests.contains(where: { $0.id == request.id }) {
+            throw Failure(message: "Shelfarr didn't delete this request. It may be busy; try again later.")
+        }
+    }
+
+    /// False if the website turned down the username or password.
+    private func webLogin(base: String, username: String, password: String) async throws -> Bool {
+        let (html, _) = try await fetch(base + "/session/new")
+        guard let token = value(in: html, after: "name=\"authenticity_token\" value=\"") else {
+            throw Failure(message: "Couldn't sign in: Shelfarr's website didn't answer as expected.")
+        }
+        let (_, final) = try await fetch(base + "/session", method: "POST",
+                                         form: ["authenticity_token": token, "username": username, "password": password])
+        if final?.path.contains("verify_otp") == true {
+            throw Failure(message: "Deleting requests doesn't work with two-factor sign-in on the Shelfarr account.")
+        }
+        return final?.path != "/session/new"
+    }
+
+    /// A page of the website, following redirects: its text and where it ended up.
+    private func fetch(_ url: String, method: String = "GET", form: [String: String]? = nil, csrf: String? = nil) async throws -> (String, URL?) {
+        guard let u = URL(string: url) else { throw Failure(message: "Shelfarr's address isn't valid.") }
+        var req = URLRequest(url: u, timeoutInterval: 30)
+        req.httpMethod = method
+        req.setValue("text/html", forHTTPHeaderField: "Accept")
+        if let csrf { req.setValue(csrf, forHTTPHeaderField: "X-CSRF-Token") }
+        if let form {
+            let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-._~"))
+            let body = form.map { "\($0.key)=\($0.value.addingPercentEncoding(withAllowedCharacters: allowed) ?? "")" }.joined(separator: "&")
+            req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+            req.httpBody = Data(body.utf8)
+        }
+        do {
+            let (data, response) = try await web.data(for: req)
+            return (String(decoding: data, as: UTF8.self), response.url)
+        } catch {
+            throw Failure(message: "Couldn't reach Shelfarr. Check the address and your connection.")
+        }
+    }
+
+    /// The text from just after `marker` up to the next quote.
+    private func value(in html: String, after marker: String) -> String? {
+        guard let start = html.range(of: marker)?.upperBound, let end = html[start...].firstIndex(of: "\"") else { return nil }
+        return String(html[start..<end])
     }
 
     private func call(_ path: String, method: String = "GET", body: JSON? = nil, base: String? = nil, token: String? = nil) async throws -> Any? {
