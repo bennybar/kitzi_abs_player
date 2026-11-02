@@ -270,6 +270,7 @@ struct LoginView: View {
             PlayHistory.shared.clear()
             PlayQueue.shared.clear()
             Shelfarr.shared.clear()
+            Achew.shared.clear()
         }
         Store.set(account, "last_account")
         await LibraryStore.shared.ensureLibrary()

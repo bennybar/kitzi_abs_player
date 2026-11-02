@@ -23,8 +23,10 @@
 		56EAD44C5DB685C75FD0F7E0 /* LibraryPieces.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8318A010BEF0ED02A60BE699 /* LibraryPieces.swift */; };
 		57905EFD7CBD92380812884C /* Navigation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 892F557B897B3F86C076F4AD /* Navigation.swift */; };
 		5CEBFC4C339D23A0A261AA4F /* SleepTimer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA0E8F1BF82B2C5858D9DF3B /* SleepTimer.swift */; };
+		5D54E9A99E1829EA59B36DEC /* AchewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E653004BB025D3831DAE047 /* AchewView.swift */; };
 		742CF2052333F40E8E36AEA5 /* LibraryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B30500DE3FF2BAE76405E0B3 /* LibraryStore.swift */; };
 		7B4E8094A86BB299F5408A47 /* Session.swift in Sources */ = {isa = PBXBuildFile; fileRef = 034A50630D7868E0CEFCAF5B /* Session.swift */; };
+		84E5786901AC308F90A50BAD /* Achew.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CA997A1E9955DBC2F020A59 /* Achew.swift */; };
 		85586B3B6F576BB56B6612E2 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D57DFA7606FCFCD1336528F2 /* SettingsView.swift */; };
 		8888E8A7A69E876875B53B6B /* API.swift in Sources */ = {isa = PBXBuildFile; fileRef = AACA4CF87524A94015FDE07E /* API.swift */; };
 		8A7C89F38C06ED712E917469 /* AllBooksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F7706AD4E40CB542C11463 /* AllBooksView.swift */; };
@@ -84,7 +86,9 @@
 		1AEB4014F2DCFEB8056640A8 /* Downloads.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Downloads.swift; sourceTree = "<group>"; };
 		1F3D409F49D8DE31A247416A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		321B9D9C495BA1EA3140D7F2 /* KitziApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KitziApp.swift; sourceTree = "<group>"; };
+		3CA997A1E9955DBC2F020A59 /* Achew.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Achew.swift; sourceTree = "<group>"; };
 		5CF150B1EDE911F1CA04A8FF /* OIDC.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OIDC.swift; sourceTree = "<group>"; };
+		6E653004BB025D3831DAE047 /* AchewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AchewView.swift; sourceTree = "<group>"; };
 		6EE197386AEF6FD4A9746C10 /* PlayHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayHistory.swift; sourceTree = "<group>"; };
 		72EA634FE4E5BA8EACDC6323 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		77136F6DDD2678D2B1D0A3ED /* PlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerView.swift; sourceTree = "<group>"; };
@@ -159,6 +163,7 @@
 		292741E06BF2D7D38EB9360A /* Detail */ = {
 			isa = PBXGroup;
 			children = (
+				6E653004BB025D3831DAE047 /* AchewView.swift */,
 				E01E59579F9B77BC3368F25C /* BookDetailView.swift */,
 			);
 			path = Detail;
@@ -177,6 +182,7 @@
 		3CC441563A9FD0BC332714AF /* Core */ = {
 			isa = PBXGroup;
 			children = (
+				3CA997A1E9955DBC2F020A59 /* Achew.swift */,
 				AACA4CF87524A94015FDE07E /* API.swift */,
 				C4FC1DAA5AA2D97D229DA5CB /* AudibleRating.swift */,
 				870493EDF14EC8348736B15D /* CoverCrops.swift */,
@@ -400,6 +406,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				8888E8A7A69E876875B53B6B /* API.swift in Sources */,
+				84E5786901AC308F90A50BAD /* Achew.swift in Sources */,
+				5D54E9A99E1829EA59B36DEC /* AchewView.swift in Sources */,
 				8A7C89F38C06ED712E917469 /* AllBooksView.swift in Sources */,
 				2FAA57D13F60125E6522B23C /* AudibleRating.swift in Sources */,
 				33BB27110FA4E401BC5D3701 /* AuthorsView.swift in Sources */,
@@ -520,7 +528,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 358;
+				CURRENT_PROJECT_VERSION = 359;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 57L2ULXB7Z;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -541,7 +549,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
-				MARKETING_VERSION = 2.0.358;
+				MARKETING_VERSION = 2.0.359;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -624,7 +632,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 358;
+				CURRENT_PROJECT_VERSION = 359;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 57L2ULXB7Z;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -639,7 +647,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
-				MARKETING_VERSION = 2.0.358;
+				MARKETING_VERSION = 2.0.359;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";

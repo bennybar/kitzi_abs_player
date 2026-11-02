@@ -28,7 +28,11 @@ struct BookDetailView: View {
     @Environment(Downloads.self) private var downloads
     @Environment(PlayQueue.self) private var queue
     @Environment(\.openPlayer) private var openPlayer
+    @Environment(AppSettings.self) private var settings
 
+    @State private var showAchew = false
+    @State private var achewReplacing: String?
+    @State private var chaptersVersion = 0
     @State private var playError: String?
     @State private var confirmFinished = false
     @State private var confirmCancelDownload = false
@@ -80,7 +84,7 @@ struct BookDetailView: View {
             Button("Cancel", role: .cancel) {}
         }
         .task(id: book.id) { bookmarks = await library.bookmarks(book.id) }
-        .task(id: book.id) {
+        .task(id: "\(book.id)#\(chaptersVersion)") {
             // The downloaded copy's chapters work offline; else ask the server.
             if let saved = downloads.downloaded(book.id) {
                 chapters = saved.chapters
@@ -97,6 +101,52 @@ struct BookDetailView: View {
         }
         .sheet(isPresented: $showMoreInfo) { BookMoreInfoSheet(book: b) }
         .sheet(isPresented: $cropping) { CoverCropSheet(book: b) }
+        .toolbar {
+            if settings.achewEnabled && Achew.shared.configured {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button { Task { await fixChapters() } } label: { Label("Fix Chapters in Achew", systemImage: "wand.and.stars") }
+                    } label: {
+                        Image(systemName: "ellipsis").accessibilityLabel("More")
+                    }
+                }
+            }
+        }
+        // Back from Achew: it may have saved new chapters.
+        .fullScreenCover(isPresented: $showAchew, onDismiss: { chaptersVersion += 1 }) { AchewView() }
+        .confirmationDialog("Achew is working on another book", isPresented: Binding(get: { achewReplacing != nil }, set: { if !$0 { achewReplacing = nil } }),
+                            titleVisibility: .visible, presenting: achewReplacing) { _ in
+            Button("Fix This Book Instead", role: .destructive) { Task { await startAchew() } }
+            Button("Open Achew") { showAchew = true }
+        } message: { title in
+            Text("Starting this book replaces your work on \(title).")
+        }
+        #if DEBUG
+        // Test hook (simulator screenshots): open Achew as it is, without starting this book.
+        .task { if ProcessInfo.processInfo.environment["KITZI_ACHEW_OPEN"] != nil { showAchew = true } }
+        #endif
+    }
+
+    /// Achew works on one book at a time: don't silently replace another.
+    private func fixChapters() async {
+        do {
+            if let job = try await Achew.shared.currentJob() {
+                if job.itemId == book.id { showAchew = true } else { achewReplacing = job.title }
+            } else {
+                await startAchew()
+            }
+        } catch {
+            Toast.show(error.localizedDescription)
+        }
+    }
+
+    private func startAchew() async {
+        do {
+            try await Achew.shared.start(itemId: book.id)
+            showAchew = true
+        } catch {
+            Toast.show(error.localizedDescription)
+        }
     }
 
     /// The cover edge to edge at the top, then title, one big play button,

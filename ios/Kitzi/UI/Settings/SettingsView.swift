@@ -67,7 +67,7 @@ struct SettingsView: View {
                 }
             }
 
-            if show("server access", "custom http headers", "header", "cloudflare", "shelfarr", "request") {
+            if show("server access", "custom http headers", "header", "cloudflare", "shelfarr", "request", "achew", "chapters") {
                 Section("Server access") {
                     NavigationLink { HeadersView() } label: {
                         HStack {
@@ -75,6 +75,13 @@ struct SettingsView: View {
                             Spacer()
                             Text(session.customHeaders.isEmpty ? "Off" : "\(session.customHeaders.count) active")
                                 .foregroundStyle(.secondary)
+                        }
+                    }
+                    NavigationLink { AchewSettingsView() } label: {
+                        HStack {
+                            Label("Achew", systemImage: "wand.and.stars")
+                            Spacer()
+                            Text(Achew.shared.configured ? "Connected" : "Off").foregroundStyle(.secondary)
                         }
                     }
                     NavigationLink { ShelfarrSettingsView() } label: {

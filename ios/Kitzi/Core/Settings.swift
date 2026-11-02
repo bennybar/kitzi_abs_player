@@ -18,6 +18,7 @@ final class AppSettings {
     var showAuthorsTab: Bool { didSet { d.set(showAuthorsTab, forKey: "ui_author_view_enabled") } }
     var showQueueTab: Bool { didSet { d.set(showQueueTab, forKey: "ui_queue_tab_enabled") } }
     var showShelfarrTab: Bool { didSet { d.set(showShelfarrTab, forKey: "ui_shelfarr_tab") } }
+    var achewEnabled: Bool { didSet { d.set(achewEnabled, forKey: "ui_achew_enabled") } }
     var serverHomeShelves: Bool { didSet { d.set(serverHomeShelves, forKey: "ui_server_home_shelves") } }
     var hideSeriesWhenSameAsAuthor: Bool { didSet { d.set(hideSeriesWhenSameAsAuthor, forKey: "ui_hide_series_when_same_as_author") } }
     var expressivePlayButton: Bool { didSet { d.set(expressivePlayButton, forKey: "ui_expressive_play_button") } }
@@ -63,6 +64,7 @@ final class AppSettings {
         showAuthorsTab = b("ui_author_view_enabled", true)
         showQueueTab = b("ui_queue_tab_enabled", true)
         showShelfarrTab = b("ui_shelfarr_tab", false)
+        achewEnabled = b("ui_achew_enabled", false)
         serverHomeShelves = b("ui_server_home_shelves", false)
         hideSeriesWhenSameAsAuthor = b("ui_hide_series_when_same_as_author", true)
         expressivePlayButton = b("ui_expressive_play_button", false)
