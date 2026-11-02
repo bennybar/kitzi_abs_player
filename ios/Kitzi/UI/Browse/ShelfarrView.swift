@@ -140,7 +140,14 @@ struct ShelfarrView: View {
             ShelfarrRequestView(request: r)
         } label: {
             HStack(spacing: 14) {
-                cover(r.coverURL)
+                // Your library's cover when the book is there: most requests' ids have no Open Library cover.
+                if let b = library.matching(title: r.title, author: r.author) {
+                    CoverImage(book: b)
+                        .frame(width: 60, height: 60)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                } else {
+                    cover(r.coverURL)
+                }
                 VStack(alignment: .leading, spacing: 3) {
                     Text(r.title).font(.headline).lineLimit(2)
                     if let a = r.author { Text(a).font(.subheadline).foregroundStyle(.secondary).lineLimit(1) }
@@ -235,13 +242,24 @@ private struct ShelfarrStatusBadge: View {
 }
 
 extension LibraryStore {
-    /// The library's copy of a book known only by title and author. Without subtitles:
-    /// "World War Z: An Oral History…" is the same book as "World War Z".
+    /// The library's copy of a book known only by title and author. Files are named many
+    /// ways: "Revelation Space (Unabridged)", "Infinite Book 2 - Infinite2", "World War Z:
+    /// An Oral History…", or with the narrator as a second author, so this compares the
+    /// title's parts and the first author's surname.
     func matching(title: String, author: String?) -> Book? {
-        let main = { (t: String) in t.split(separator: ":").first.map(String.init) ?? t }
-        return books.first {
-            main($0.title).localizedCaseInsensitiveCompare(main(title)) == .orderedSame
-                && (author == nil || $0.author?.localizedCaseInsensitiveCompare(author ?? "") == .orderedSame)
+        let parts = { (t: String) -> [String] in
+            t.replacingOccurrences(of: #"\s*\([^)]*\)"#, with: "", options: .regularExpression)
+                .replacingOccurrences(of: "’", with: "'")
+                .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+                .replacingOccurrences(of: " - ", with: ":")
+                .split(separator: ":")
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+        }
+        guard let wanted = parts(title).first else { return nil }
+        let surname = author?.split(separator: ",").first?.split(separator: " ").last.map(String.init)
+        return books.first { b in
+            guard surname == nil || b.author?.range(of: surname ?? "", options: [.caseInsensitive, .diacriticInsensitive]) != nil else { return false }
+            return parts(b.title).contains(wanted)
         }
     }
 }
