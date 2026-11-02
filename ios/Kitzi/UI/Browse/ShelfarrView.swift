@@ -218,6 +218,8 @@ struct ShelfarrView: View {
         searching = true
         defer { searching = false }
         do {
+            // The badges on the results come from the requests list: it may have changed on the server.
+            try? await shelfarr.refresh()
             results = try await shelfarr.search(q)
         } catch {
             Toast.show(error.localizedDescription)
