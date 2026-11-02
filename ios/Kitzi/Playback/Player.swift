@@ -345,6 +345,7 @@ final class Player {
         load(trackAt: start)
         loadArtwork(book)
         startSyncLoop()
+        if np.isLocal { Task { _ = await Downloads.shared.refreshChapters(book.id) } }
         if startPlaying {
             needsServerCheck = false
             // A downloaded book starts at once and the server is checked meanwhile
@@ -359,6 +360,13 @@ final class Player {
         }
         updateNowPlayingInfo()
         return nil
+    }
+
+    /// The loaded book's chapters changed on the server.
+    func chaptersChanged(_ id: String, _ chapters: [Chapter]) {
+        guard nowPlaying?.book.id == id else { return }
+        nowPlaying?.chapters = chapters
+        updateNowPlayingInfo()
     }
 
     /// Chapters from track boundaries when the book has none.

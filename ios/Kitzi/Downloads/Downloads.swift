@@ -118,6 +118,19 @@ final class Downloads {
         return try? JSONDecoder().decode(DownloadedBook.self, from: d)
     }
 
+    /// Chapters can change on the server after the download (e.g. fixed in Achew):
+    /// saves the new ones over the downloaded copy, and tells the player if the book
+    /// is loaded. Nil when nothing changed or the server can't be reached.
+    func refreshChapters(_ id: String) async -> [Chapter]? {
+        guard let item = try? await API.shared.item(id, expanded: true), var saved = downloaded(id) else { return nil }
+        let chapters = API.chapters(item.obj("media")?.arr("chapters") ?? [])
+        guard !chapters.isEmpty, chapters != saved.chapters else { return nil }
+        saved.chapters = chapters
+        try? JSONEncoder().encode(saved).write(to: Self.booksDir.appendingPathComponent("\(id)/book.json"), options: .atomic)
+        Player.shared.chaptersChanged(id, chapters)
+        return chapters
+    }
+
     func fileURL(for t: Track) -> URL { Self.booksDir.appendingPathComponent(t.url) }
 
     func localCover(_ id: String) -> URL? {

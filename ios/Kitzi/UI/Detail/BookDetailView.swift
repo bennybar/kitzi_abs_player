@@ -85,9 +85,11 @@ struct BookDetailView: View {
         }
         .task(id: book.id) { bookmarks = await library.bookmarks(book.id) }
         .task(id: "\(book.id)#\(chaptersVersion)") {
-            // The downloaded copy's chapters work offline; else ask the server.
+            // The downloaded copy's chapters work offline, and catch up with the
+            // server when it can be reached; else just ask the server.
             if let saved = downloads.downloaded(book.id) {
                 chapters = saved.chapters
+                if let fresh = await downloads.refreshChapters(book.id) { chapters = fresh }
             } else if let item = try? await API.shared.item(book.id, expanded: true) {
                 chapters = API.chapters(item.obj("media")?.arr("chapters") ?? [])
             }
