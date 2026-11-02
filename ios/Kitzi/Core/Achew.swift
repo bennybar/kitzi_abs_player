@@ -59,20 +59,25 @@ final class Achew {
         return (id, title)
     }
 
-    /// Makes this the book Achew is working on, replacing any other.
+    /// Makes this the book Achew is working on, replacing any other: it refuses a new
+    /// book while it holds one, even a finished one.
     func start(itemId: String) async throws {
         let check = try await call("/api/validate-item", body: ["item_id": itemId])
         guard check?.bool("valid") == true else {
             throw Failure(message: check?.str("error_message") ?? "Achew can't find this book.")
         }
+        if try await call("/api/status")?.bool("has_pipeline") == true {
+            _ = try await call("/api/pipeline", method: "DELETE")
+        }
         _ = try await call("/api/pipeline", body: ["item_id": itemId])
     }
 
-    private func call(_ path: String, body: JSON? = nil, base: String? = nil, username: String? = nil, password: String? = nil) async throws -> JSON? {
+    private func call(_ path: String, method: String? = nil, body: JSON? = nil, base: String? = nil, username: String? = nil, password: String? = nil) async throws -> JSON? {
         guard let b = base ?? baseURL, let url = URL(string: b + path) else { throw Failure(message: "Achew isn't set up.") }
         var req = URLRequest(url: url, timeoutInterval: 30)
         let login = Data("\(username ?? self.username ?? ""):\(password ?? self.password ?? "")".utf8).base64EncodedString()
         req.setValue("Basic \(login)", forHTTPHeaderField: "Authorization")
+        if let method { req.httpMethod = method }
         if let body {
             req.httpMethod = "POST"
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")

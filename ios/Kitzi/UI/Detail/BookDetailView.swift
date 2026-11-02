@@ -124,6 +124,18 @@ struct BookDetailView: View {
         #if DEBUG
         // Test hook (simulator screenshots): open Achew as it is, without starting this book.
         .task { if ProcessInfo.processInfo.environment["KITZI_ACHEW_OPEN"] != nil { showAchew = true } }
+        // Or start this book id there first, after the launch hook has connected.
+        .task {
+            if let id = ProcessInfo.processInfo.environment["KITZI_ACHEW_START"] {
+                try? await Task.sleep(for: .seconds(3))
+                do {
+                    try await Achew.shared.start(itemId: id)
+                    showAchew = true
+                } catch {
+                    print("KITZITEST achew start failed: \(error.localizedDescription)")
+                }
+            }
+        }
         #endif
     }
 
