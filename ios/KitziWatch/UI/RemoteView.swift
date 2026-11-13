@@ -12,16 +12,33 @@ struct RemoteView: View {
     var body: some View {
         Group {
             if let s = state {
-                TabView {
-                    controls(s)
-                    more(s)
+                PlayerFace(
+                    coverId: s.itemId, title: s.title, chapter: note ?? s.chapter,
+                    position: s.positionSec, total: s.durationSec, isPlaying: s.isPlaying,
+                    speed: s.speed,
+                    sleepLabel: s.sleepEndOfChapter ? "Chapter end" : s.sleepRemainingSec.map { Format.clock($0) },
+                    busy: busy, skipBack: s.skipBackSec, skipForward: s.skipForwardSec,
+                    back: { send(.back) }, toggle: { send(.toggle) }, forward: { send(.forward) }
+                )
+                .toolbar {
+                    ToolbarItemGroup(placement: .bottomBar) {
+                        if s.chapter != nil {
+                            Button { send(.previousChapter) } label: { Image(systemName: "backward.end.fill") }
+                                .accessibilityLabel("Previous chapter")
+                            Button { send(.nextChapter) } label: { Image(systemName: "forward.end.fill") }
+                                .accessibilityLabel("Next chapter")
+                        } else {
+                            Spacer()
+                        }
+                        NavigationLink { more(s) } label: { Image(systemName: "ellipsis") }
+                            .accessibilityLabel("More")
+                    }
                 }
-                .tabViewStyle(.verticalPage)
             } else if !loaded {
                 ProgressView()
             } else {
                 VStack(spacing: 8) {
-                    Image(systemName: "iphone.slash").font(.title2).foregroundStyle(.secondary)
+                    Image(systemName: "iphone.slash").font(.largeTitle).foregroundStyle(.secondary)
                     Text(link.reachable ? "Nothing is playing in Kitzi on your iPhone." : "Can't reach your iPhone. Open Kitzi on it and keep it nearby.")
                         .font(.footnote).multilineTextAlignment(.center).foregroundStyle(.secondary)
                 }
@@ -50,51 +67,8 @@ struct RemoteView: View {
         }
     }
 
-    private func controls(_ s: PhoneState) -> some View {
-        VStack(spacing: 6) {
-            Text(s.title).font(.headline).lineLimit(1)
-            if let c = s.chapter { Text(c).font(.caption2).foregroundStyle(.secondary).lineLimit(1) }
-            ProgressView(value: s.durationSec > 0 ? min(s.positionSec / s.durationSec, 1) : 0)
-            HStack {
-                Text(Format.clock(s.positionSec))
-                Spacer()
-                Text("-" + Format.clock(max(s.durationSec - s.positionSec, 0)))
-            }
-            .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
-            HStack(spacing: 6) {
-                Button { send(.back) } label: { Image(systemName: "gobackward.\(s.skipBackSec)").font(.title3) }
-                    .accessibilityLabel("Back \(s.skipBackSec) seconds")
-                Button { send(.toggle) } label: {
-                    Image(systemName: s.isPlaying ? "pause.fill" : "play.fill").font(.title2).frame(width: 52, height: 52)
-                }
-                .buttonStyle(.borderedProminent)
-                .clipShape(Circle())
-                .handGestureShortcut(.primaryAction)
-                .accessibilityLabel(s.isPlaying ? "Pause" : "Play")
-                Button { send(.forward) } label: { Image(systemName: "goforward.\(s.skipForwardSec)").font(.title3) }
-                    .accessibilityLabel("Forward \(s.skipForwardSec) seconds")
-            }
-            .buttonStyle(.plain)
-            .disabled(busy)
-            if let note { Text(note).font(.caption2).foregroundStyle(.secondary) }
-        }
-        .padding(.horizontal, 4)
-    }
-
     private func more(_ s: PhoneState) -> some View {
         List {
-            if s.chapter != nil {
-                HStack {
-                    Button { send(.previousChapter) } label: { Image(systemName: "backward.end.fill") }
-                        .accessibilityLabel("Previous chapter")
-                    Spacer()
-                    Text("Chapter").font(.footnote).foregroundStyle(.secondary)
-                    Spacer()
-                    Button { send(.nextChapter) } label: { Image(systemName: "forward.end.fill") }
-                        .accessibilityLabel("Next chapter")
-                }
-                .buttonStyle(.plain)
-            }
             NavigationLink { SpeedList(speed: s.speed) { send(.speed, $0) } } label: {
                 LabeledContent { Text(SpeedList.label(s.speed)) } label: { Label("Speed", systemImage: "gauge.with.dots.needle.67percent") }
             }
@@ -106,5 +80,6 @@ struct RemoteView: View {
             Button { send(.bookmark) } label: { Label("Add Bookmark", systemImage: "bookmark") }
             if let note { Text(note).font(.caption2).foregroundStyle(.secondary) }
         }
+        .navigationTitle("More")
     }
 }

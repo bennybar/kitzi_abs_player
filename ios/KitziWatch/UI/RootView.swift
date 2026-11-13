@@ -63,6 +63,36 @@ struct CoverView: View {
     }
 }
 
+/// A screen's background: its book's cover, blurred and dimmed.
+private struct CoverBackground: ViewModifier {
+    let id: String
+    @State private var image: UIImage?
+
+    func body(content: Content) -> some View {
+        content
+            .containerBackground(for: .navigation) {
+                ZStack {
+                    Color.black
+                    if let image {
+                        Image(uiImage: image).resizable().scaledToFill()
+                            .blur(radius: 24).opacity(0.75)
+                            .transition(.opacity)
+                    }
+                    LinearGradient(colors: [.black.opacity(0.15), .black.opacity(0.65)], startPoint: .top, endPoint: .bottom)
+                }
+                .ignoresSafeArea()
+            }
+            .task(id: id) {
+                let img = await Covers.load(id)
+                withAnimation(.easeIn(duration: 0.3)) { image = img }
+            }
+    }
+}
+
+extension View {
+    func coverBackground(_ id: String) -> some View { modifier(CoverBackground(id: id)) }
+}
+
 enum Covers {
     private static var memory: [String: UIImage] = [:]
 

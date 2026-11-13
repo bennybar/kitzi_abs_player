@@ -1,73 +1,135 @@
 import SwiftUI
 import WatchKit
 
-/// The player, in three vertical pages: Kitzi's controls, the system's Now
-/// Playing (the crown sets the volume, and the headphone picker is there), and more.
+/// The player: one screen with the controls, and a toolbar for the chapters,
+/// the system's Now Playing (the crown sets the volume, and the headphone
+/// picker is there) and everything else.
 struct PlayerView: View {
-    @Environment(WatchPlayer.self) private var player
-
-    var body: some View {
-        if player.nowPlaying != nil {
-            TabView {
-                ControlsPage()
-                NowPlayingView()
-                MorePage()
-            }
-            .tabViewStyle(.verticalPage)
-        } else {
-            Text("Nothing playing").foregroundStyle(.secondary)
-        }
-    }
-}
-
-private struct ControlsPage: View {
     @Environment(WatchPlayer.self) private var player
     @State private var error: String?
 
     var body: some View {
         if let np = player.nowPlaying {
-            VStack(spacing: 6) {
-                Text(np.book.title).font(.headline).lineLimit(1)
-                if let c = player.chapterTitle {
-                    Text(c).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
-                }
-                ProgressView(value: np.totalSec > 0 ? min(player.position / np.totalSec, 1) : 0)
-                HStack {
-                    Text(Format.clock(player.position))
-                    Spacer()
-                    Text("-" + Format.clock(max(np.totalSec - player.position, 0)))
-                }
-                .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
-                HStack(spacing: 6) {
-                    Button { player.skip(-30) } label: { Image(systemName: "gobackward.30").font(.title3) }
-                        .accessibilityLabel("Back 30 seconds")
-                    Button { toggle() } label: {
-                        Image(systemName: player.isPlaying ? "pause.fill" : "play.fill").font(.title2)
-                            .frame(width: 52, height: 52)
+            PlayerFace(
+                coverId: np.book.id, title: np.book.title, chapter: player.chapterTitle,
+                position: player.position, total: np.totalSec, isPlaying: player.isPlaying,
+                speed: player.speed, sleepLabel: sleepLabel, busy: player.loading,
+                skipBack: 30, skipForward: 30,
+                back: { player.skip(-30) }, toggle: toggle, forward: { player.skip(30) }
+            )
+            .toolbar {
+                ToolbarItemGroup(placement: .bottomBar) {
+                    if np.chapters.count > 1 {
+                        NavigationLink { ChaptersList() } label: { Image(systemName: "list.bullet") }
+                            .accessibilityLabel("Chapters")
+                    } else {
+                        Spacer()
                     }
-                    .buttonStyle(.borderedProminent)
-                    .clipShape(Circle())
-                    .handGestureShortcut(.primaryAction)
-                    .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
-                    .disabled(player.loading)
-                    Button { player.skip(30) } label: { Image(systemName: "goforward.30").font(.title3) }
-                        .accessibilityLabel("Forward 30 seconds")
-                }
-                .buttonStyle(.plain)
-                if let s = player.status {
-                    Text(s).font(.caption2).foregroundStyle(.tertiary)
+                    NavigationLink { NowPlayingView() } label: { Image(systemName: "speaker.wave.2.fill") }
+                        .accessibilityLabel("Volume and headphones")
+                    NavigationLink { MorePage() } label: { Image(systemName: "ellipsis") }
+                        .accessibilityLabel("More")
                 }
             }
-            .padding(.horizontal, 4)
             .alert("Can't play", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
                 Button("OK", role: .cancel) {}
             } message: { Text(error ?? "") }
+        } else {
+            Text("Nothing playing").foregroundStyle(.secondary)
         }
+    }
+
+    private var sleepLabel: String? {
+        if player.sleepEndOfChapter { return "Chapter end" }
+        if let at = player.sleepAt { return Format.clock(max(at.timeIntervalSinceNow, 0)) }
+        return nil
     }
 
     private func toggle() {
         if player.isPlaying { player.pause(); return }
         Task { if let why = await player.resume() { error = why } }
+    }
+}
+
+/// A thin progress line.
+struct Bar: View {
+    let value: Double
+    var color: Color = .accentColor
+
+    var body: some View {
+        GeometryReader { g in
+            ZStack(alignment: .leading) {
+                Capsule().fill(.white.opacity(0.2))
+                Capsule().fill(color).frame(width: g.size.width * min(max(value, 0), 1))
+            }
+        }
+        .frame(height: 4)
+        .accessibilityElement()
+        .accessibilityValue("\(Int(min(max(value, 0), 1) * 100)) percent")
+    }
+}
+
+/// The face shared by the watch's player and the iPhone remote: the book over
+/// its cover's colours, where you are, and the three big controls.
+struct PlayerFace: View {
+    let coverId: String
+    let title: String
+    let chapter: String?
+    let position: Double
+    let total: Double
+    let isPlaying: Bool
+    let speed: Double
+    let sleepLabel: String?
+    let busy: Bool
+    let skipBack: Int
+    let skipForward: Int
+    let back: () -> Void
+    let toggle: () -> Void
+    let forward: () -> Void
+
+    var body: some View {
+        VStack(spacing: 4) {
+            VStack(spacing: 1) {
+                Text(title).font(.headline).lineLimit(1)
+                if let chapter { Text(chapter).font(.caption2).foregroundStyle(.secondary).lineLimit(1) }
+            }
+            VStack(spacing: 1) {
+                Bar(value: total > 0 ? position / total : 0, color: .white)
+                HStack {
+                    Text(Format.clock(position))
+                    Spacer()
+                    if abs(speed - 1) > 0.001 { Text(SpeedList.label(speed)).foregroundStyle(.primary) }
+                    if let sleepLabel { Label(sleepLabel, systemImage: "moon.zzz.fill").labelStyle(.titleAndIcon).foregroundStyle(.primary) }
+                    Spacer()
+                    Text("-" + Format.clock(max(total - position, 0)))
+                }
+                .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+            }
+            .padding(.top, 2)
+            HStack(spacing: 14) {
+                Button(action: back) { Image(systemName: "gobackward.\(skipBack)").font(.title3).frame(width: 38, height: 38)
+                    .glassEffect(.regular.interactive(), in: Circle()) }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Back \(skipBack) seconds")
+                Button(action: toggle) {
+                    Image(systemName: isPlaying ? "pause.fill" : "play.fill").font(.title2)
+                        .contentTransition(.symbolEffect(.replace))
+                        .frame(width: 50, height: 50)
+                        .glassEffect(.regular.tint(.accentColor).interactive(), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .handGestureShortcut(.primaryAction)
+                .accessibilityLabel(isPlaying ? "Pause" : "Play")
+                Button(action: forward) { Image(systemName: "goforward.\(skipForward)").font(.title3).frame(width: 38, height: 38)
+                    .glassEffect(.regular.interactive(), in: Circle()) }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Forward \(skipForward) seconds")
+            }
+            .disabled(busy)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 6)
+        .coverBackground(coverId)
     }
 }
 
@@ -79,15 +141,8 @@ private struct MorePage: View {
     var body: some View {
         List {
             if let np = player.nowPlaying, np.chapters.count > 1 {
-                NavigationLink { ChaptersList() } label: { Label("Chapters", systemImage: "list.bullet") }
-                HStack {
-                    Button { player.previousChapter() } label: { Image(systemName: "backward.end.fill") }
-                        .accessibilityLabel("Previous chapter")
-                    Spacer()
-                    Button { player.nextChapter() } label: { Image(systemName: "forward.end.fill") }
-                        .accessibilityLabel("Next chapter")
-                }
-                .buttonStyle(.plain)
+                Button { player.previousChapter() } label: { Label("Previous Chapter", systemImage: "backward.end.fill") }
+                Button { player.nextChapter() } label: { Label("Next Chapter", systemImage: "forward.end.fill") }
             }
             NavigationLink { SpeedList(speed: player.speed) { player.setSpeed($0) } } label: {
                 LabeledContent { Text(SpeedList.label(player.speed)) } label: { Label("Speed", systemImage: "gauge.with.dots.needle.67percent") }
@@ -101,7 +156,7 @@ private struct MorePage: View {
             Button {
                 Task { note = await model.syncNow() ? "Synced" : "Saved on watch. It syncs when there's a connection." }
             } label: { Label("Sync Now", systemImage: "arrow.triangle.2.circlepath") }
-            if let note { Text(note).font(.caption2).foregroundStyle(.secondary) }
+            if let note = note ?? player.status { Text(note).font(.caption2).foregroundStyle(.secondary) }
             Button(role: .destructive) {
                 Task {
                     await player.stop()
@@ -109,6 +164,7 @@ private struct MorePage: View {
                 }
             } label: { Label("Close Book", systemImage: "xmark") }
         }
+        .navigationTitle("More")
     }
 
     private var sleepLabel: String {

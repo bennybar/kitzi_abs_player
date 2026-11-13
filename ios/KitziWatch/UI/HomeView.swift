@@ -21,15 +21,17 @@ struct HomeView: View {
             if let np = player.nowPlaying {
                 NavigationLink(value: WatchRoute.player) {
                     HStack(spacing: 10) {
-                        CoverView(id: np.book.id, size: 36)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(np.book.title).font(.headline).lineLimit(1)
-                            Label(player.isPlaying ? "Playing" : "Paused", systemImage: player.isPlaying ? "waveform" : "pause.fill")
-                                .font(.caption2).foregroundStyle(.secondary)
+                        CoverView(id: np.book.id, size: 44)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Label(player.isPlaying ? "Now Playing" : "Paused", systemImage: player.isPlaying ? "waveform" : "pause.fill")
+                                .symbolEffect(.variableColor.iterative, isActive: player.isPlaying)
+                                .font(.caption2.weight(.semibold)).foregroundStyle(Color.accentColor)
+                            Text(np.book.title).font(.headline).lineLimit(2)
+                            Bar(value: np.totalSec > 0 ? player.position / np.totalSec : 0).padding(.top, 2)
                         }
                     }
+                    .padding(.vertical, 4)
                 }
-                .listItemTint(.accentColor)
             }
 
             Section("Continue Listening") {
@@ -40,7 +42,8 @@ struct HomeView: View {
                 ForEach(model.shelf) { s in
                     NavigationLink(value: WatchRoute.book(s.id)) {
                         BookRow(id: s.id, title: s.book.title,
-                                line: line(s.id, Format.left(s.currentTimeSec, of: s.durationSec)))
+                                line: line(s.id, Format.left(s.currentTimeSec, of: s.durationSec)),
+                                progress: s.durationSec > 0 ? min(s.currentTimeSec / s.durationSec, 1) : nil)
                     }
                 }
             }
@@ -49,14 +52,13 @@ struct HomeView: View {
                 Section("On Watch") {
                     ForEach(onWatchOnly, id: \.book.id) { m in
                         NavigationLink(value: WatchRoute.book(m.book.id)) {
-                            BookRow(id: m.book.id, title: m.book.title, line: m.book.author)
+                            BookRow(id: m.book.id, title: m.book.title, line: m.book.author, progress: nil)
                         }
                     }
                 }
             }
 
             Section {
-                NavigationLink(value: WatchRoute.remote) { Label("iPhone Remote", systemImage: "iphone") }
                 Button {
                     Task {
                         syncing = true
@@ -72,10 +74,19 @@ struct HomeView: View {
                     }
                 }
                 .disabled(syncing)
-                NavigationLink(value: WatchRoute.settings) { Label("Settings", systemImage: "gear") }
             }
         }
         .navigationTitle("Kitzi")
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                NavigationLink(value: WatchRoute.settings) { Image(systemName: "gearshape.fill") }
+                    .accessibilityLabel("Settings")
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                NavigationLink(value: WatchRoute.remote) { Image(systemName: "iphone") }
+                    .accessibilityLabel("iPhone Remote")
+            }
+        }
     }
 
     /// The download state when there is one, else the time left.
@@ -94,14 +105,17 @@ struct BookRow: View {
     let id: String
     let title: String
     let line: String?
+    let progress: Double?
 
     var body: some View {
         HStack(spacing: 10) {
-            CoverView(id: id, size: 36)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.body).lineLimit(2)
+            CoverView(id: id, size: 40)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.body.weight(.medium)).lineLimit(2)
                 if let line { Text(line).font(.caption2).foregroundStyle(.secondary).lineLimit(1) }
+                if let progress { Bar(value: progress).padding(.top, 2) }
             }
         }
+        .padding(.vertical, 2)
     }
 }

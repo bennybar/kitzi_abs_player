@@ -16,11 +16,11 @@ struct BookView: View {
         ScrollView {
             if let book {
                 VStack(spacing: 8) {
-                    CoverView(id: id, size: 80)
+                    CoverView(id: id, size: 96).shadow(radius: 8)
                     Text(book.title).font(.headline).multilineTextAlignment(.center)
                     if let a = book.author { Text(a).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center) }
                     if let s = shelf, s.durationSec > 0 {
-                        ProgressView(value: min(s.currentTimeSec / s.durationSec, 1)).padding(.horizontal, 8)
+                        Bar(value: s.currentTimeSec / s.durationSec).padding(.horizontal, 12)
                         Text("\(Format.clock(s.currentTimeSec)) of \(Format.clock(s.durationSec))")
                             .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
                     }
@@ -35,17 +35,20 @@ struct BookView: View {
                     } label: {
                         Label(player.nowPlaying?.book.id == id || (shelf?.currentTimeSec ?? 0) > 0 ? "Resume" : "Play",
                               systemImage: "play.fill")
+                            .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.glassProminent)
                     .disabled(player.loading)
+                    .padding(.top, 4)
                     downloadButton
+                        .buttonStyle(.glass)
                 }
                 .padding(.horizontal, 4)
             } else {
                 Text("This book isn't on your shelf any more.").foregroundStyle(.secondary)
             }
         }
-        .navigationTitle("Book")
+        .coverBackground(id)
         .alert("Kitzi", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
             Button("OK", role: .cancel) {}
         } message: { Text(error ?? "") }
@@ -57,10 +60,11 @@ struct BookView: View {
     @ViewBuilder private var downloadButton: some View {
         switch downloads.state(id) {
         case .done:
-            Button(role: .destructive) { confirmRemove = true } label: { Label("Remove Download", systemImage: "trash") }
+            Button(role: .destructive) { confirmRemove = true } label: { Label("Remove Download", systemImage: "trash").frame(maxWidth: .infinity) }
         case .running(let f):
             Button { downloads.cancel(id) } label: {
                 VStack(spacing: 4) {
+                    ProgressView(value: f).tint(.accentColor)
                     Label("Downloading \(Int(f * 100))%", systemImage: "arrow.down.circle")
                     Text("Tap to cancel").font(.caption2).foregroundStyle(.secondary)
                 }
@@ -77,6 +81,7 @@ struct BookView: View {
                 Task { error = await downloads.start(id) }
             } label: {
                 Label(downloads.state(id) == .failed ? "Retry Download" : "Download", systemImage: "arrow.down.circle")
+                    .frame(maxWidth: .infinity)
             }
         }
     }
