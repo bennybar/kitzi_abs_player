@@ -26,6 +26,9 @@ final class WatchDownloads {
     private var attempts: [String: Int] = [:]
 
     nonisolated static let sessionId = "com.bennybar.kitzi.watch.downloads"
+    /// Per track. Generous: big books over a watch's connection drop often, and
+    /// each try resumes where the last one stopped.
+    private static let maxAttempts = 8
     @ObservationIgnored private lazy var session: URLSession = {
         let c = URLSessionConfiguration.background(withIdentifier: Self.sessionId)
         c.sessionSendsLaunchEvents = true
@@ -45,6 +48,33 @@ final class WatchDownloads {
             for id in p.keys { states[id] = .queued }
         }
         _ = session // reconnect to the background session's tasks
+        Task { await reconcile() }
+    }
+
+    /// After a relaunch: tracks that arrived while the app wasn't running count
+    /// as done, and any the system no longer has are queued again.
+    private func reconcile() async {
+        let tasks = await session.allTasks
+        var live: [String: Set<Int>] = [:]
+        for t in tasks {
+            guard let p = t.taskDescription?.split(separator: "|"), p.count >= 2, let i = Int(p[1]) else { continue }
+            live[String(p[0]), default: []].insert(i)
+        }
+        for id in Array(plans.keys) {
+            guard var plan = plans[id] else { continue }
+            for (i, t) in plan.manifest.tracks.enumerated() where FileManager.default.fileExists(atPath: fileURL(for: t).path) {
+                plan.doneTracks.insert(i)
+            }
+            plans[id] = plan
+            if plan.doneTracks.count == plan.manifest.tracks.count { complete(id); continue }
+            states[id] = .running(Double(plan.doneTracks.count) / Double(plan.manifest.tracks.count))
+            // A book from the iPhone: the rest is still on its way from there.
+            guard let remote = plan.remote else { continue }
+            await API.shared.ensureFreshToken()
+            for i in remote.indices where !plan.doneTracks.contains(i) && !(live[id]?.contains(i) ?? false) {
+                queueTrack(id, i, resumeData: nil)
+            }
+        }
     }
 
     nonisolated static var booksDir: URL {
@@ -78,13 +108,16 @@ final class WatchDownloads {
 
     // MARK: from the server
 
-    /// Plans and starts a book's download. False if the server can't be reached or lists no audio.
+    /// Plans and starts a book's download. Nil, or why it can't.
     @discardableResult
-    func start(_ id: String) async -> Bool {
-        guard plans[id] == nil, states[id] != .done else { return true }
+    func start(_ id: String) async -> String? {
+        guard plans[id] == nil, states[id] != .done else { return nil }
         states[id] = .queued
         guard let item = try? await API.shared.item(id, expanded: true), let base = API.shared.base,
-              let media = item.obj("media"), let book = Book.from(item) else { states[id] = .failed; return false }
+              let media = item.obj("media"), let book = Book.from(item) else {
+            states[id] = .failed
+            return "Couldn't reach the server. Check the connection."
+        }
         let trackJson = media.objs("tracks").sorted { ($0.int("index") ?? 0) < ($1.int("index") ?? 0) }
         var sizes: [Int: Int64] = [:]
         for f in media.objs("audioFiles") { sizes[f.int("index") ?? -1] = Int64(f.obj("metadata")?.num("size") ?? 0) }
@@ -96,7 +129,13 @@ final class WatchDownloads {
                                 durationSec: t.num("duration") ?? 0, isLocal: true))
             remote.append(content.hasPrefix("http") ? content : base + content)
         }
-        guard !tracks.isEmpty else { states[id] = State.none; return false }
+        guard !tracks.isEmpty else { states[id] = State.none; return "The server lists no audio for this book." }
+        // Room for it, with some to spare for the system.
+        let total = sizes.values.reduce(0, +)
+        if let free = Self.freeBytes, total > 0, total + 300_000_000 > free {
+            states[id] = State.none
+            return "Not enough space on the watch: the book needs \(Format.size(total)) and \(Format.size(max(free - 300_000_000, 0))) is free."
+        }
         var chapters = API.chapters(media.arr("chapters"))
         if chapters.isEmpty, tracks.count > 1 {
             var t = 0.0
@@ -104,13 +143,18 @@ final class WatchDownloads {
         }
         try? FileManager.default.createDirectory(at: Self.booksDir.appendingPathComponent(id), withIntermediateDirectories: true)
         plans[id] = Plan(manifest: WatchBookManifest(book: book, tracks: tracks, chapters: chapters), remote: remote,
-                         totalBytes: max(sizes.values.reduce(0, +), 1))
+                         totalBytes: max(total, 1))
         await API.shared.ensureFreshToken()
         for i in remote.indices { queueTrack(id, i, resumeData: nil) }
         states[id] = .running(0)
         // The cover now, while there's a connection.
         Task { await fetchCover(id) }
-        return true
+        return nil
+    }
+
+    /// Space the watch can give the app for big files.
+    static var freeBytes: Int64? {
+        ((try? FileManager.default.attributesOfFileSystem(forPath: NSHomeDirectory()))?[.systemFreeSize] as? NSNumber)?.int64Value
     }
 
     /// JPEG: watchOS can't decode the WebP the server sends by default.
@@ -123,12 +167,15 @@ final class WatchDownloads {
         try? data.write(to: dir.appendingPathComponent("cover.jpg"))
     }
 
-    private func queueTrack(_ id: String, _ i: Int, resumeData: Data?) {
+    /// `after`: the retry backoff, kept by the system (it holds while the app is
+    /// suspended or closed, where a timer in the app wouldn't run).
+    private func queueTrack(_ id: String, _ i: Int, resumeData: Data?, after delay: Double = 0) {
         guard let plan = plans[id], let remote = plan.remote, remote.indices.contains(i), let u = URL(string: remote[i]) else { return }
         var req = API.shared.authorized(u)
         req.allowsCellularAccess = Store.downloadsUseCellular
         let task = resumeData.map { session.downloadTask(withResumeData: $0) } ?? session.downloadTask(with: req)
         task.taskDescription = "\(id)|\(i)|\(plan.manifest.tracks[i].url)"
+        if delay > 0 { task.earliestBeginDate = Date().addingTimeInterval(delay) }
         task.resume()
     }
 
@@ -172,12 +219,18 @@ final class WatchDownloads {
         let key = "\(id)|\(track)"
         let n = (attempts[key] ?? 0) + 1
         attempts[key] = n
-        if let code = httpCode, (400..<500).contains(code), code != 408, code != 429 { failed(id); return }
-        guard n <= 4 else { failed(id); return }
-        Task {
-            try? await Task.sleep(for: .seconds(Double(1 << n) * 5))
-            queueTrack(id, track, resumeData: resumeData)
+        guard n <= Self.maxAttempts else { failed(id); return }
+        if httpCode == 401 {
+            // An expired sign-in (the watch's own session): renew it, then again.
+            Task {
+                _ = await API.shared.refresh()
+                queueTrack(id, track, resumeData: nil)
+            }
+            return
         }
+        if let code = httpCode, (400..<500).contains(code), code != 408, code != 429 { failed(id); return }
+        // A dropped connection carries on from where it stopped (resume data).
+        queueTrack(id, track, resumeData: resumeData, after: min(Double(1 << n) * 5, 300))
     }
 
     private func failed(_ id: String) {

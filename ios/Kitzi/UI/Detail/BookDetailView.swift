@@ -110,8 +110,8 @@ struct BookDetailView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         if watch {
-                            if PhoneLink.shared.sending[book.id] != nil {
-                                Label("Sending to Apple Watch…", systemImage: "applewatch").disabled(true)
+                            if let f = PhoneLink.shared.sendProgress(book.id) {
+                                Label("Sending to Apple Watch… \(Int(f * 100))%", systemImage: "applewatch").disabled(true)
                             } else {
                                 Button {
                                     Toast.show(PhoneLink.shared.send(book.id)

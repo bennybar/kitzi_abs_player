@@ -74,7 +74,7 @@ struct BookView: View {
             }
         case .failed, .none:
             Button {
-                Task { if !(await downloads.start(id)) { error = "Couldn't start the download. Check the connection." } }
+                Task { error = await downloads.start(id) }
             } label: {
                 Label(downloads.state(id) == .failed ? "Retry Download" : "Download", systemImage: "arrow.down.circle")
             }

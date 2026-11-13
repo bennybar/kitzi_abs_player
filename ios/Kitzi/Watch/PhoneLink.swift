@@ -22,6 +22,24 @@ final class PhoneLink: NSObject {
     private func updateReady() {
         let s = WCSession.default
         watchReady = s.activationState == .activated && s.isPaired && s.isWatchAppInstalled
+        // Transfers carry on while Kitzi is closed: pick up the ones still going.
+        guard s.activationState == .activated else { return }
+        var left: [String: Int] = [:]
+        for t in s.outstandingFileTransfers {
+            if let id = t.file.metadata?["itemId"] as? String { left[id, default: 0] += 1 }
+        }
+        sending = left
+    }
+
+    /// How far the book's files have got to the watch (0…1), while it's sending.
+    func sendProgress(_ id: String) -> Double? {
+        guard sending[id] != nil else { return nil }
+        var done: Int64 = 0, total: Int64 = 0
+        for t in WCSession.default.outstandingFileTransfers where t.file.metadata?["itemId"] as? String == id {
+            done += t.progress.completedUnitCount
+            total += t.progress.totalUnitCount
+        }
+        return total > 0 ? Double(done) / Double(total) : 0
     }
 
     // MARK: send a downloaded book

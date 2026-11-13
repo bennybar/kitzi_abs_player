@@ -27,6 +27,8 @@ enum DebugHooks {
             case "download": await download()
             case "receive": await receive()
             case "receivefake": await receiveFake()
+            case "dlkill": await downloadThenDie()
+            case "dlresume": await downloadResumed()
             case "remote": await remote()
             case "signout": await WatchModel.shared.signOut(); log("signout signedIn=\(WatchModel.shared.signedIn)")
             default: break
@@ -123,7 +125,7 @@ enum DebugHooks {
               let book = Book.from(item) else { log("download skipped: no library"); return }
         let had = await serverPos(book.id)
         let d = WatchDownloads.shared
-        log("download start \(book.title) \(Int(book.durationSec ?? 0))s ok=\(await d.start(book.id))")
+        log("download start \(book.title) \(Int(book.durationSec ?? 0))s error=\(await d.start(book.id) ?? "-")")
         var last = ""
         for _ in 0..<600 {
             if d.isDownloaded(book.id) || d.state(book.id) == .failed { break }
@@ -150,6 +152,43 @@ enum DebugHooks {
             log("download progress cleaned code=\(code ?? -1)")
         }
         await WatchModel.shared.refreshShelf()
+    }
+
+    /// Starts a big download and kills the app part way through, as watchOS might.
+    private static func downloadThenDie() async {
+        guard let lib = try? await API.shared.libraries().first(where: { $0.mediaType == "book" }),
+              let item = try? await API.shared.libraryItems(library: lib.id, page: 1, limit: 1, sort: "media.duration", desc: true).items.first,
+              let book = Book.from(item) else { log("dlkill skipped"); return }
+        let d = WatchDownloads.shared
+        log("dlkill free=\(Format.size(WatchDownloads.freeBytes ?? -1)) start \(book.title) size=\(Format.size(book.sizeBytes ?? 0)) error=\(await d.start(book.id) ?? "-")")
+        for _ in 0..<240 {
+            if case .running(let f) = d.state(book.id), f > 0.05 { break }
+            try? await Task.sleep(for: .seconds(0.5))
+        }
+        log("dlkill killing at \(d.state(book.id))")
+        Store.set(book.id, "debug_dl_book")
+        Store.d.synchronize()
+        exit(0)
+    }
+
+    /// After the kill: the download must carry on and finish (then it's removed).
+    private static func downloadResumed() async {
+        guard let id = Store.string("debug_dl_book") else { log("dlresume nothing"); return }
+        let d = WatchDownloads.shared
+        try? await Task.sleep(for: .seconds(2))
+        log("dlresume relaunched state=\(d.state(id))")
+        var last = -1
+        for _ in 0..<1200 {
+            if d.isDownloaded(id) || d.state(id) == .failed { break }
+            if case .running(let f) = d.state(id), Int(f * 10) != last { last = Int(f * 10); log("dlresume \(last * 10)%") }
+            try? await Task.sleep(for: .seconds(0.5))
+        }
+        let m = d.downloaded(id)
+        log("dlresume final state=\(d.state(id)) tracks=\(m?.tracks.count ?? 0) files=\(m?.tracks.allSatisfy { FileManager.default.fileExists(atPath: d.fileURL(for: $0).path) } ?? false)")
+        d.delete(id)
+        Store.set(nil, "debug_dl_book")
+        try? await Task.sleep(for: .seconds(1))
+        log("dlresume removed state=\(d.state(id))")
     }
 
     /// Waits for a book the iPhone sends (its test hook seeds and sends one).
