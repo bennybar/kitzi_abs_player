@@ -3,6 +3,7 @@ options:
   bundleIdPrefix: com.bennybar
   deploymentTarget:
     iOS: "26.1"
+    watchOS: "26.0"
   createIntermediateGroups: true
   developmentLanguage: en
 settings:
@@ -13,8 +14,8 @@ settings:
     SWIFT_VERSION: "6.0"
     SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
     SWIFT_APPROACHABLE_CONCURRENCY: YES
-    MARKETING_VERSION: "2.0.361"
-    CURRENT_PROJECT_VERSION: "361"
+    MARKETING_VERSION: "2.0.362"
+    CURRENT_PROJECT_VERSION: "362"
     ENABLE_USER_SCRIPT_SANDBOXING: YES
 targets:
   Kitzi:
@@ -23,8 +24,10 @@ targets:
     sources:
       - path: Kitzi
       - path: Shared
+      - path: WatchLink
     dependencies:
       - target: KitziActivity
+      - target: KitziWatch
     info:
       path: Kitzi/Info.plist
       properties:
@@ -73,4 +76,66 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.bennybar.kitzi.activity
         PRODUCT_NAME: KitziActivity
         TARGETED_DEVICE_FAMILY: "1,2"
+        SKIP_INSTALL: YES
+  KitziWatch:
+    type: application
+    platform: watchOS
+    sources:
+      - path: KitziWatch
+      - path: WatchLink
+      - path: KitziWatchWidget/WidgetBook.swift
+      # The iPhone app's server, sign-in and model code, shared as is.
+      - path: Kitzi/Core/JSON.swift
+      - path: Kitzi/Core/Models.swift
+      - path: Kitzi/Core/API.swift
+      - path: Kitzi/Core/Session.swift
+    dependencies:
+      - target: KitziWatchWidget
+      - sdk: AppIntents.framework
+    entitlements:
+      path: KitziWatch/KitziWatch.entitlements
+      properties:
+        com.apple.security.application-groups: [group.com.bennybar.kitzi]
+    info:
+      path: KitziWatch/Info.plist
+      properties:
+        CFBundleDisplayName: Kitzi
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        WKApplication: true
+        WKCompanionAppBundleIdentifier: com.bennybar.kitzi
+        WKRunsIndependentlyOfCompanionApp: true
+        UIBackgroundModes: [audio]
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bennybar.kitzi.watchkitapp
+        PRODUCT_NAME: KitziWatch
+        TARGETED_DEVICE_FAMILY: "4"
+        SKIP_INSTALL: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+  KitziWatchWidget:
+    type: app-extension
+    platform: watchOS
+    sources:
+      - path: KitziWatchWidget
+    entitlements:
+      path: KitziWatchWidget/KitziWatchWidget.entitlements
+      properties:
+        com.apple.security.application-groups: [group.com.bennybar.kitzi]
+    info:
+      path: KitziWatchWidget/Info.plist
+      properties:
+        CFBundleDisplayName: Kitzi
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bennybar.kitzi.watchkitapp.widget
+        PRODUCT_NAME: KitziWatchWidget
+        TARGETED_DEVICE_FAMILY: "4"
         SKIP_INSTALL: YES

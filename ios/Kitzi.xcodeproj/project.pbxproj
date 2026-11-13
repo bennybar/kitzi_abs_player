@@ -7,51 +7,93 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		040360A532BDB3B8BFA26482 /* KitziWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20FBF7E7C2175EFA483390F /* KitziWatchApp.swift */; };
 		0972478805318EF004EE268E /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1506F8FD3774749ABBC8D069 /* Models.swift */; };
 		0C4EAA6654FE964BF603D5BA /* MiniPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FCE7A967C606B0616C70C2B /* MiniPlayer.swift */; };
+		0D0C2276CDBDDAC626519977 /* SettingsAndLogin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1602C4CC1D323B914C6B3B63 /* SettingsAndLogin.swift */; };
 		113EE29D0450325B872533CA /* KitziActivity.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 07B2C8062C86CEC6C172CBFF /* KitziActivity.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		12094FC8DBF6263568FBB34D /* DownloadsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB533F742C08D4E2A95E25AE /* DownloadsView.swift */; };
+		12D320EA9BCB6071F1765E5C /* BookView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D37E012EE7F1864BAA6FB0B /* BookView.swift */; };
 		17353BF7AD11E1525197070C /* PlayHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EE197386AEF6FD4A9746C10 /* PlayHistory.swift */; };
+		1BBFA1921E40BA6FC09A1411 /* WidgetBook.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4055C5012EBE849B48915BE4 /* WidgetBook.swift */; };
+		2603169ACCDE8858165A6AB6 /* WatchStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A376D28A1869341B65DDA68E /* WatchStore.swift */; };
 		2CCEBB134E698CB6643FADD3 /* PlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77136F6DDD2678D2B1D0A3ED /* PlayerView.swift */; };
 		2FAA57D13F60125E6522B23C /* AudibleRating.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4FC1DAA5AA2D97D229DA5CB /* AudibleRating.swift */; };
 		33BB27110FA4E401BC5D3701 /* AuthorsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3D5349321CA8D9E2110D505 /* AuthorsView.swift */; };
+		37D8B7D899EBC635E3DACD0A /* WatchPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D0B8E50E21FA7BFF6DA7D81 /* WatchPlayer.swift */; };
 		37DD9738554B1A1BADCCED91 /* OIDC.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CF150B1EDE911F1CA04A8FF /* OIDC.swift */; };
 		3CBD574C01DA0F23483A4D74 /* ShelfarrView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06464A9F9F55C1CD4421F0C8 /* ShelfarrView.swift */; };
+		3DA7352EF89E430244DF191C /* RemoteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92EB25215C661578C3701CE2 /* RemoteView.swift */; };
 		417D7D7092F934B44E78EE59 /* ImageLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAF0BAB7454F6516BCF5E96E /* ImageLoader.swift */; };
 		438BEA020349E93F5D1D87AC /* DownloadActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00FA8F090CE27F24C9AB6741 /* DownloadActivityAttributes.swift */; };
 		44A50B1BBA2BC8CB1D42B0FD /* DownloadActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00FA8F090CE27F24C9AB6741 /* DownloadActivityAttributes.swift */; };
+		4AAEBFECDE03E13CA03F0AFB /* Intents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06C5854B5DC1DFDACA78CC80 /* Intents.swift */; };
 		56EAD44C5DB685C75FD0F7E0 /* LibraryPieces.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8318A010BEF0ED02A60BE699 /* LibraryPieces.swift */; };
+		578A6DCAF9DDBEAA49A96223 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A91943083F646B1418412D70 /* HomeView.swift */; };
 		57905EFD7CBD92380812884C /* Navigation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 892F557B897B3F86C076F4AD /* Navigation.swift */; };
 		5CEBFC4C339D23A0A261AA4F /* SleepTimer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA0E8F1BF82B2C5858D9DF3B /* SleepTimer.swift */; };
 		5D54E9A99E1829EA59B36DEC /* AchewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E653004BB025D3831DAE047 /* AchewView.swift */; };
+		6AB03F4B24DD9B19833908A9 /* JSON.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA017E8671702DE6E2FE5AF8 /* JSON.swift */; };
 		742CF2052333F40E8E36AEA5 /* LibraryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B30500DE3FF2BAE76405E0B3 /* LibraryStore.swift */; };
+		775DEB3B1EAD48860B3839EF /* WatchDownloads.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B7EBEAB245D281C3B4A1BD5 /* WatchDownloads.swift */; };
+		77B1DF66C371D263D82D1DD6 /* KitziWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 097C53D5A070F33826C7489B /* KitziWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		787F646FAB5FF04CB3F5F447 /* KitziWatchWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = BE3F4673E5CD40B74C890734 /* KitziWatchWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		7B4E8094A86BB299F5408A47 /* Session.swift in Sources */ = {isa = PBXBuildFile; fileRef = 034A50630D7868E0CEFCAF5B /* Session.swift */; };
+		7D57B4DC9159AAC864645B72 /* WatchModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DCB33DBEBD7B5195B020780 /* WatchModel.swift */; };
+		7DAAE99566AD7AEFDB9B04D9 /* PlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9BC4DADB9655E6359A596EC /* PlayerView.swift */; };
 		84E5786901AC308F90A50BAD /* Achew.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CA997A1E9955DBC2F020A59 /* Achew.swift */; };
 		85586B3B6F576BB56B6612E2 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D57DFA7606FCFCD1336528F2 /* SettingsView.swift */; };
 		8888E8A7A69E876875B53B6B /* API.swift in Sources */ = {isa = PBXBuildFile; fileRef = AACA4CF87524A94015FDE07E /* API.swift */; };
+		892A0A76E0A7AD5CAB9B5D45 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9FB4E6151559C078DD50E35F /* Assets.xcassets */; };
 		8A7C89F38C06ED712E917469 /* AllBooksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F7706AD4E40CB542C11463 /* AllBooksView.swift */; };
+		8F7F294E4056563EAFA2578B /* API.swift in Sources */ = {isa = PBXBuildFile; fileRef = AACA4CF87524A94015FDE07E /* API.swift */; };
 		915648314CBA6945A870AC44 /* StatsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17A0E1E15E4218180F58F704 /* StatsView.swift */; };
 		919BD506F1ED7348ECC56FAB /* Shelfarr.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17B8E3566C7DFDF5D9E4D479 /* Shelfarr.swift */; };
 		942B24EC862D0AB724D35AF8 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 72EA634FE4E5BA8EACDC6323 /* Assets.xcassets */; };
 		9513780700AE8AA8DDB22999 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77E45E9E1878E74D874D3EA7 /* HomeView.swift */; };
 		96410AB4E89AE715FD17CED8 /* QueueView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B09076244F132CA075772AC8 /* QueueView.swift */; };
 		975699FDCEBAC503DE05FD76 /* BookDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E01E59579F9B77BC3368F25C /* BookDetailView.swift */; };
+		AA4ED67B7334A4AA33458EA1 /* PhoneLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9724F1B6025BC99B2DE18ADD /* PhoneLink.swift */; };
+		AEBF0B2BBFC41E3E38E8E00A /* WatchLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72D70CC98E81A746D4BAAFF8 /* WatchLink.swift */; };
+		B1E14F1FCF166042BB4D9EA6 /* DebugHooks.swift in Sources */ = {isa = PBXBuildFile; fileRef = D24784A8851E233C398361E4 /* DebugHooks.swift */; };
 		B86422852832FD947D2C1A7C /* Downloads.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AEB4014F2DCFEB8056640A8 /* Downloads.swift */; };
+		B88879D4128A943121C793FC /* NowListeningWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE85099BDA54EBDF25F852DD /* NowListeningWidget.swift */; };
 		B907DF2152729D520D9B3B28 /* SeriesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A70E7E175B0FC011DF4E7A7E /* SeriesView.swift */; };
+		BE8918AA87F538F836747059 /* Session.swift in Sources */ = {isa = PBXBuildFile; fileRef = 034A50630D7868E0CEFCAF5B /* Session.swift */; };
+		BFCEF7469C2593AC5871FCF3 /* WidgetBook.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4055C5012EBE849B48915BE4 /* WidgetBook.swift */; };
+		C317A826E1229435696438D5 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1506F8FD3774749ABBC8D069 /* Models.swift */; };
 		C500AD369826D8BA8893639A /* KeylineCarousel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93623BA5626015A8C58ABFA5 /* KeylineCarousel.swift */; };
 		C8AA9F21999C70CF09AB60B0 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5B2958CC2E28E4B8AE0D681 /* ProfileView.swift */; };
 		CB5F7E9AFEE6B364AE806C43 /* Settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC2A07F9A2FC99873C99F726 /* Settings.swift */; };
+		CC7A60BB78441A9A624E52A0 /* WatchProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77376EA5078CFEAFCD129574 /* WatchProtocol.swift */; };
 		D190768769F36BC9D83945D0 /* KitziApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 321B9D9C495BA1EA3140D7F2 /* KitziApp.swift */; };
 		D5A4FF6EF126CD8ECFDCD346 /* PlayerSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0671E81FDAEF507A6570C66 /* PlayerSheets.swift */; };
 		D8B9F73D69EF981460224591 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6C5C51DF500712E2947DD67 /* RootView.swift */; };
 		DDFC358F94712AD5B6D534D1 /* KitziActivityBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA068AF3BCFF8330FEF0A045 /* KitziActivityBundle.swift */; };
 		E1BC14469B70C6FCAEC64C1A /* JSON.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA017E8671702DE6E2FE5AF8 /* JSON.swift */; };
+		E580E61597C5849F580CF00B /* AppIntents.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5BC0693C9B3515A9C0315986 /* AppIntents.framework */; };
+		E656DA8B96BF3F410039AB5D /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 525530C80140CBEB098E9A62 /* RootView.swift */; };
 		E87C4815381D6B1152B5BECE /* Player.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9364BC11E163DFAD03E24C7A /* Player.swift */; };
+		EA7CC5319687CF69F6001613 /* WatchProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77376EA5078CFEAFCD129574 /* WatchProtocol.swift */; };
 		EFD2ACB9BA178AFE16F1D2F5 /* CoverCrops.swift in Sources */ = {isa = PBXBuildFile; fileRef = 870493EDF14EC8348736B15D /* CoverCrops.swift */; };
 		F79C3A0437E740B3C1CF6ACB /* Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CB7B10BB52873F6629FAEF3 /* Components.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		1677E740AEFC2646AB282A5F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 942D3AF016707DB1FC723425 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 9EAF95215269DC9956DD357A;
+			remoteInfo = KitziWatch;
+		};
+		633471017A369DA5B97EBDD3 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 942D3AF016707DB1FC723425 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 3075CACF7547212F3BA2A106;
+			remoteInfo = KitziWatchWidget;
+		};
 		7C02642FAD811074868EEDAA /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 942D3AF016707DB1FC723425 /* Project object */;
@@ -62,6 +104,17 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
+		53DDCB0547A79BCB6F5DFB20 /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolderSpec = 16;
+			files = (
+				77B1DF66C371D263D82D1DD6 /* KitziWatch.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		568F45720B5802546F91765D /* Embed Foundation Extensions */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
@@ -73,56 +126,141 @@
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		88760614C145ADBC4EEC7A23 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				787F646FAB5FF04CB3F5F447 /* KitziWatchWidget.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		00FA8F090CE27F24C9AB6741 /* DownloadActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadActivityAttributes.swift; sourceTree = "<group>"; };
 		034A50630D7868E0CEFCAF5B /* Session.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Session.swift; sourceTree = "<group>"; };
 		06464A9F9F55C1CD4421F0C8 /* ShelfarrView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfarrView.swift; sourceTree = "<group>"; };
+		06C5854B5DC1DFDACA78CC80 /* Intents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Intents.swift; sourceTree = "<group>"; };
 		07B2C8062C86CEC6C172CBFF /* KitziActivity.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = KitziActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		097C53D5A070F33826C7489B /* KitziWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KitziWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		0D0B8E50E21FA7BFF6DA7D81 /* WatchPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchPlayer.swift; sourceTree = "<group>"; };
 		1506F8FD3774749ABBC8D069 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		1602C4CC1D323B914C6B3B63 /* SettingsAndLogin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsAndLogin.swift; sourceTree = "<group>"; };
 		17A0E1E15E4218180F58F704 /* StatsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatsView.swift; sourceTree = "<group>"; };
 		17B8E3566C7DFDF5D9E4D479 /* Shelfarr.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shelfarr.swift; sourceTree = "<group>"; };
 		1AEB4014F2DCFEB8056640A8 /* Downloads.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Downloads.swift; sourceTree = "<group>"; };
+		1B7EBEAB245D281C3B4A1BD5 /* WatchDownloads.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchDownloads.swift; sourceTree = "<group>"; };
 		1F3D409F49D8DE31A247416A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		321B9D9C495BA1EA3140D7F2 /* KitziApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KitziApp.swift; sourceTree = "<group>"; };
 		3CA997A1E9955DBC2F020A59 /* Achew.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Achew.swift; sourceTree = "<group>"; };
+		4055C5012EBE849B48915BE4 /* WidgetBook.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetBook.swift; sourceTree = "<group>"; };
+		464CD01AFB1CDE76B278CFD9 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		471EB2B15DD0EFA1875ECD9C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		4969CE881C2A151754F46F62 /* KitziWatchWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = KitziWatchWidget.entitlements; sourceTree = "<group>"; };
+		525530C80140CBEB098E9A62 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		5BC0693C9B3515A9C0315986 /* AppIntents.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppIntents.framework; path = System/Library/Frameworks/AppIntents.framework; sourceTree = SDKROOT; };
 		5CF150B1EDE911F1CA04A8FF /* OIDC.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OIDC.swift; sourceTree = "<group>"; };
 		6E653004BB025D3831DAE047 /* AchewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AchewView.swift; sourceTree = "<group>"; };
 		6EE197386AEF6FD4A9746C10 /* PlayHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayHistory.swift; sourceTree = "<group>"; };
+		72D70CC98E81A746D4BAAFF8 /* WatchLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchLink.swift; sourceTree = "<group>"; };
 		72EA634FE4E5BA8EACDC6323 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		77136F6DDD2678D2B1D0A3ED /* PlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerView.swift; sourceTree = "<group>"; };
+		77376EA5078CFEAFCD129574 /* WatchProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchProtocol.swift; sourceTree = "<group>"; };
 		77E45E9E1878E74D874D3EA7 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		7CB7B10BB52873F6629FAEF3 /* Components.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Components.swift; sourceTree = "<group>"; };
 		8318A010BEF0ED02A60BE699 /* LibraryPieces.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryPieces.swift; sourceTree = "<group>"; };
 		870493EDF14EC8348736B15D /* CoverCrops.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverCrops.swift; sourceTree = "<group>"; };
 		892F557B897B3F86C076F4AD /* Navigation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Navigation.swift; sourceTree = "<group>"; };
+		8D37E012EE7F1864BAA6FB0B /* BookView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookView.swift; sourceTree = "<group>"; };
 		8FCE7A967C606B0616C70C2B /* MiniPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniPlayer.swift; sourceTree = "<group>"; };
+		92EB25215C661578C3701CE2 /* RemoteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteView.swift; sourceTree = "<group>"; };
 		93623BA5626015A8C58ABFA5 /* KeylineCarousel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeylineCarousel.swift; sourceTree = "<group>"; };
 		9364BC11E163DFAD03E24C7A /* Player.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Player.swift; sourceTree = "<group>"; };
+		9724F1B6025BC99B2DE18ADD /* PhoneLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneLink.swift; sourceTree = "<group>"; };
 		988CAFBBF66EBE29B8D924FD /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		9DCB33DBEBD7B5195B020780 /* WatchModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchModel.swift; sourceTree = "<group>"; };
+		9FB4E6151559C078DD50E35F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A1F328B15C38D127BC77F17D /* KitziWatch.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = KitziWatch.entitlements; sourceTree = "<group>"; };
 		A1F7706AD4E40CB542C11463 /* AllBooksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AllBooksView.swift; sourceTree = "<group>"; };
+		A376D28A1869341B65DDA68E /* WatchStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchStore.swift; sourceTree = "<group>"; };
 		A5B2958CC2E28E4B8AE0D681 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		A70E7E175B0FC011DF4E7A7E /* SeriesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SeriesView.swift; sourceTree = "<group>"; };
+		A91943083F646B1418412D70 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		AACA4CF87524A94015FDE07E /* API.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = API.swift; sourceTree = "<group>"; };
 		B09076244F132CA075772AC8 /* QueueView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QueueView.swift; sourceTree = "<group>"; };
 		B30500DE3FF2BAE76405E0B3 /* LibraryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryStore.swift; sourceTree = "<group>"; };
 		B7A689890CA587095E45AB4C /* Kitzi.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Kitzi.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B9BC4DADB9655E6359A596EC /* PlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerView.swift; sourceTree = "<group>"; };
 		BA068AF3BCFF8330FEF0A045 /* KitziActivityBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KitziActivityBundle.swift; sourceTree = "<group>"; };
 		BA0E8F1BF82B2C5858D9DF3B /* SleepTimer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SleepTimer.swift; sourceTree = "<group>"; };
 		BC2A07F9A2FC99873C99F726 /* Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Settings.swift; sourceTree = "<group>"; };
+		BE3F4673E5CD40B74C890734 /* KitziWatchWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = KitziWatchWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		BE85099BDA54EBDF25F852DD /* NowListeningWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowListeningWidget.swift; sourceTree = "<group>"; };
 		C0671E81FDAEF507A6570C66 /* PlayerSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerSheets.swift; sourceTree = "<group>"; };
 		C4FC1DAA5AA2D97D229DA5CB /* AudibleRating.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudibleRating.swift; sourceTree = "<group>"; };
+		D24784A8851E233C398361E4 /* DebugHooks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugHooks.swift; sourceTree = "<group>"; };
 		D57DFA7606FCFCD1336528F2 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		DA017E8671702DE6E2FE5AF8 /* JSON.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSON.swift; sourceTree = "<group>"; };
 		DAF0BAB7454F6516BCF5E96E /* ImageLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageLoader.swift; sourceTree = "<group>"; };
 		E01E59579F9B77BC3368F25C /* BookDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookDetailView.swift; sourceTree = "<group>"; };
+		E20FBF7E7C2175EFA483390F /* KitziWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KitziWatchApp.swift; sourceTree = "<group>"; };
 		E6C5C51DF500712E2947DD67 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		EB533F742C08D4E2A95E25AE /* DownloadsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadsView.swift; sourceTree = "<group>"; };
 		F3D5349321CA8D9E2110D505 /* AuthorsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthorsView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
+/* Begin PBXFrameworksBuildPhase section */
+		8C5C32DA515A1E9F50FAE2C7 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E580E61597C5849F580CF00B /* AppIntents.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
 /* Begin PBXGroup section */
+		00E4B864741C3E469ED848CF /* KitziWatch */ = {
+			isa = PBXGroup;
+			children = (
+				471EB2B15DD0EFA1875ECD9C /* Info.plist */,
+				A1F328B15C38D127BC77F17D /* KitziWatch.entitlements */,
+				934B4147C89DCC346ADE26BD /* App */,
+				70BF1F87392C2D97D8C210E6 /* Core */,
+				A962BE5BCD58F17064B135F6 /* Resources */,
+				0D3BAE435DF2265B6D388F29 /* UI */,
+			);
+			path = KitziWatch;
+			sourceTree = "<group>";
+		};
+		067636D6CE9BCAC625726783 /* KitziWatchWidget */ = {
+			isa = PBXGroup;
+			children = (
+				464CD01AFB1CDE76B278CFD9 /* Info.plist */,
+				4969CE881C2A151754F46F62 /* KitziWatchWidget.entitlements */,
+				BE85099BDA54EBDF25F852DD /* NowListeningWidget.swift */,
+				4055C5012EBE849B48915BE4 /* WidgetBook.swift */,
+			);
+			path = KitziWatchWidget;
+			sourceTree = "<group>";
+		};
+		0D3BAE435DF2265B6D388F29 /* UI */ = {
+			isa = PBXGroup;
+			children = (
+				8D37E012EE7F1864BAA6FB0B /* BookView.swift */,
+				A91943083F646B1418412D70 /* HomeView.swift */,
+				B9BC4DADB9655E6359A596EC /* PlayerView.swift */,
+				92EB25215C661578C3701CE2 /* RemoteView.swift */,
+				525530C80140CBEB098E9A62 /* RootView.swift */,
+				1602C4CC1D323B914C6B3B63 /* SettingsAndLogin.swift */,
+			);
+			path = UI;
+			sourceTree = "<group>";
+		};
 		0FADBA0D4D74EF4AFE3DD43E /* Common */ = {
 			isa = PBXGroup;
 			children = (
@@ -216,6 +354,7 @@
 				3C3667CAF33F0AE76D28DB7C /* Playback */,
 				18058642CD4F3E3FF1AF6B0A /* Resources */,
 				B504962F2098B8FA233CA6CF /* UI */,
+				D2D7C7511EB0D7CC64E41233 /* Watch */,
 			);
 			path = Kitzi;
 			sourceTree = "<group>";
@@ -226,6 +365,18 @@
 				00FA8F090CE27F24C9AB6741 /* DownloadActivityAttributes.swift */,
 			);
 			path = Shared;
+			sourceTree = "<group>";
+		};
+		70BF1F87392C2D97D8C210E6 /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				1B7EBEAB245D281C3B4A1BD5 /* WatchDownloads.swift */,
+				72D70CC98E81A746D4BAAFF8 /* WatchLink.swift */,
+				9DCB33DBEBD7B5195B020780 /* WatchModel.swift */,
+				0D0B8E50E21FA7BFF6DA7D81 /* WatchPlayer.swift */,
+				A376D28A1869341B65DDA68E /* WatchStore.swift */,
+			);
+			path = Core;
 			sourceTree = "<group>";
 		};
 		880B2F6966A664DE7592D2EB /* Player */ = {
@@ -250,6 +401,24 @@
 			path = Browse;
 			sourceTree = "<group>";
 		};
+		90D78444065A140C9855EEBB /* WatchLink */ = {
+			isa = PBXGroup;
+			children = (
+				77376EA5078CFEAFCD129574 /* WatchProtocol.swift */,
+			);
+			path = WatchLink;
+			sourceTree = "<group>";
+		};
+		934B4147C89DCC346ADE26BD /* App */ = {
+			isa = PBXGroup;
+			children = (
+				D24784A8851E233C398361E4 /* DebugHooks.swift */,
+				06C5854B5DC1DFDACA78CC80 /* Intents.swift */,
+				E20FBF7E7C2175EFA483390F /* KitziWatchApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
 		9C26EF757113D3931BD02B30 /* KitziActivity */ = {
 			isa = PBXGroup;
 			children = (
@@ -264,8 +433,18 @@
 			children = (
 				B7A689890CA587095E45AB4C /* Kitzi.app */,
 				07B2C8062C86CEC6C172CBFF /* KitziActivity.appex */,
+				097C53D5A070F33826C7489B /* KitziWatch.app */,
+				BE3F4673E5CD40B74C890734 /* KitziWatchWidget.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		A962BE5BCD58F17064B135F6 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				9FB4E6151559C078DD50E35F /* Assets.xcassets */,
+			);
+			path = Resources;
 			sourceTree = "<group>";
 		};
 		B504962F2098B8FA233CA6CF /* UI */ = {
@@ -286,9 +465,21 @@
 			children = (
 				5103F7A77B93F223A0C4795F /* Kitzi */,
 				9C26EF757113D3931BD02B30 /* KitziActivity */,
+				00E4B864741C3E469ED848CF /* KitziWatch */,
+				067636D6CE9BCAC625726783 /* KitziWatchWidget */,
 				69886584B6F024B8CDD3F669 /* Shared */,
+				90D78444065A140C9855EEBB /* WatchLink */,
+				EF4D862375B45FF773DD2BC6 /* Frameworks */,
 				A3182A47339EF37A99B372D6 /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		D2D7C7511EB0D7CC64E41233 /* Watch */ = {
+			isa = PBXGroup;
+			children = (
+				9724F1B6025BC99B2DE18ADD /* PhoneLink.swift */,
+			);
+			path = Watch;
 			sourceTree = "<group>";
 		};
 		E180AF095804F08F275634A6 /* Settings */ = {
@@ -301,9 +492,34 @@
 			path = Settings;
 			sourceTree = "<group>";
 		};
+		EF4D862375B45FF773DD2BC6 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				5BC0693C9B3515A9C0315986 /* AppIntents.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		3075CACF7547212F3BA2A106 /* KitziWatchWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D65FAD1E280929B6845EC010 /* Build configuration list for PBXNativeTarget "KitziWatchWidget" */;
+			buildPhases = (
+				3A9D20D7A01A3B59F1E3BCA6 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = KitziWatchWidget;
+			packageProductDependencies = (
+			);
+			productName = KitziWatchWidget;
+			productReference = BE3F4673E5CD40B74C890734 /* KitziWatchWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		464B62CFFD933B947A37B1F9 /* KitziActivity */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 1FD00A8D6393F91851B9DF84 /* Build configuration list for PBXNativeTarget "KitziActivity" */;
@@ -328,17 +544,40 @@
 				AD756462DE3B1C5CE2088F4F /* Sources */,
 				C292E7C92C6BC039B8C5D326 /* Resources */,
 				568F45720B5802546F91765D /* Embed Foundation Extensions */,
+				53DDCB0547A79BCB6F5DFB20 /* Embed Watch Content */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 				640A4159569C2E6DBCC3402D /* PBXTargetDependency */,
+				BE99E956C037A3F6DD1A049C /* PBXTargetDependency */,
 			);
 			name = Kitzi;
 			packageProductDependencies = (
 			);
 			productName = Kitzi;
 			productReference = B7A689890CA587095E45AB4C /* Kitzi.app */;
+			productType = "com.apple.product-type.application";
+		};
+		9EAF95215269DC9956DD357A /* KitziWatch */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3B7B7A2DA0D1ED0BB378AD2E /* Build configuration list for PBXNativeTarget "KitziWatch" */;
+			buildPhases = (
+				5CAE0AC35C38F01E3F21FCD0 /* Sources */,
+				CAD12467EFACF899E7540498 /* Resources */,
+				8C5C32DA515A1E9F50FAE2C7 /* Frameworks */,
+				88760614C145ADBC4EEC7A23 /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				3153DC8FAE62690685FD937F /* PBXTargetDependency */,
+			);
+			name = KitziWatch;
+			packageProductDependencies = (
+			);
+			productName = KitziWatch;
+			productReference = 097C53D5A070F33826C7489B /* KitziWatch.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -350,11 +589,19 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
+					3075CACF7547212F3BA2A106 = {
+						DevelopmentTeam = 57L2ULXB7Z;
+						ProvisioningStyle = Automatic;
+					};
 					464B62CFFD933B947A37B1F9 = {
 						DevelopmentTeam = 57L2ULXB7Z;
 						ProvisioningStyle = Automatic;
 					};
 					5AE9B47269EE2863602D1A22 = {
+						DevelopmentTeam = 57L2ULXB7Z;
+						ProvisioningStyle = Automatic;
+					};
+					9EAF95215269DC9956DD357A = {
 						DevelopmentTeam = 57L2ULXB7Z;
 						ProvisioningStyle = Automatic;
 					};
@@ -376,6 +623,8 @@
 			targets = (
 				5AE9B47269EE2863602D1A22 /* Kitzi */,
 				464B62CFFD933B947A37B1F9 /* KitziActivity */,
+				9EAF95215269DC9956DD357A /* KitziWatch */,
+				3075CACF7547212F3BA2A106 /* KitziWatchWidget */,
 			);
 		};
 /* End PBXProject section */
@@ -389,9 +638,53 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		CAD12467EFACF899E7540498 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				892A0A76E0A7AD5CAB9B5D45 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		3A9D20D7A01A3B59F1E3BCA6 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B88879D4128A943121C793FC /* NowListeningWidget.swift in Sources */,
+				BFCEF7469C2593AC5871FCF3 /* WidgetBook.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5CAE0AC35C38F01E3F21FCD0 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8F7F294E4056563EAFA2578B /* API.swift in Sources */,
+				12D320EA9BCB6071F1765E5C /* BookView.swift in Sources */,
+				B1E14F1FCF166042BB4D9EA6 /* DebugHooks.swift in Sources */,
+				578A6DCAF9DDBEAA49A96223 /* HomeView.swift in Sources */,
+				4AAEBFECDE03E13CA03F0AFB /* Intents.swift in Sources */,
+				6AB03F4B24DD9B19833908A9 /* JSON.swift in Sources */,
+				040360A532BDB3B8BFA26482 /* KitziWatchApp.swift in Sources */,
+				C317A826E1229435696438D5 /* Models.swift in Sources */,
+				7DAAE99566AD7AEFDB9B04D9 /* PlayerView.swift in Sources */,
+				3DA7352EF89E430244DF191C /* RemoteView.swift in Sources */,
+				E656DA8B96BF3F410039AB5D /* RootView.swift in Sources */,
+				BE8918AA87F538F836747059 /* Session.swift in Sources */,
+				0D0C2276CDBDDAC626519977 /* SettingsAndLogin.swift in Sources */,
+				775DEB3B1EAD48860B3839EF /* WatchDownloads.swift in Sources */,
+				AEBF0B2BBFC41E3E38E8E00A /* WatchLink.swift in Sources */,
+				7D57B4DC9159AAC864645B72 /* WatchModel.swift in Sources */,
+				37D8B7D899EBC635E3DACD0A /* WatchPlayer.swift in Sources */,
+				CC7A60BB78441A9A624E52A0 /* WatchProtocol.swift in Sources */,
+				2603169ACCDE8858165A6AB6 /* WatchStore.swift in Sources */,
+				1BBFA1921E40BA6FC09A1411 /* WidgetBook.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		ACB357559F88255162FC6D82 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -428,6 +721,7 @@
 				0972478805318EF004EE268E /* Models.swift in Sources */,
 				57905EFD7CBD92380812884C /* Navigation.swift in Sources */,
 				37DD9738554B1A1BADCCED91 /* OIDC.swift in Sources */,
+				AA4ED67B7334A4AA33458EA1 /* PhoneLink.swift in Sources */,
 				17353BF7AD11E1525197070C /* PlayHistory.swift in Sources */,
 				E87C4815381D6B1152B5BECE /* Player.swift in Sources */,
 				D5A4FF6EF126CD8ECFDCD346 /* PlayerSheets.swift in Sources */,
@@ -443,16 +737,27 @@
 				3CBD574C01DA0F23483A4D74 /* ShelfarrView.swift in Sources */,
 				5CEBFC4C339D23A0A261AA4F /* SleepTimer.swift in Sources */,
 				915648314CBA6945A870AC44 /* StatsView.swift in Sources */,
+				EA7CC5319687CF69F6001613 /* WatchProtocol.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		3153DC8FAE62690685FD937F /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 3075CACF7547212F3BA2A106 /* KitziWatchWidget */;
+			targetProxy = 633471017A369DA5B97EBDD3 /* PBXContainerItemProxy */;
+		};
 		640A4159569C2E6DBCC3402D /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 464B62CFFD933B947A37B1F9 /* KitziActivity */;
 			targetProxy = 7C02642FAD811074868EEDAA /* PBXContainerItemProxy */;
+		};
+		BE99E956C037A3F6DD1A049C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 9EAF95215269DC9956DD357A /* KitziWatch */;
+			targetProxy = 1677E740AEFC2646AB282A5F /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -493,6 +798,39 @@
 			};
 			name = Release;
 		};
+		6D1B0599DF115DA3D863E145 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = KitziWatchWidget/KitziWatchWidget.entitlements;
+				INFOPLIST_FILE = KitziWatchWidget/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.bennybar.kitzi.watchkitapp.widget;
+				PRODUCT_NAME = KitziWatchWidget;
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 4;
+			};
+			name = Debug;
+		};
+		7E36FC3CF980A36D06EA695B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = KitziWatch/KitziWatch.entitlements;
+				INFOPLIST_FILE = KitziWatch/Info.plist;
+				PRODUCT_BUNDLE_IDENTIFIER = com.bennybar.kitzi.watchkitapp;
+				PRODUCT_NAME = KitziWatch;
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 4;
+			};
+			name = Debug;
+		};
 		86AC0C92F38C7FCF427717C6 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -528,7 +866,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 361;
+				CURRENT_PROJECT_VERSION = 362;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 57L2ULXB7Z;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -549,19 +887,37 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
-				MARKETING_VERSION = 2.0.361;
+				MARKETING_VERSION = 2.0.362;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = iphoneos;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 6.0;
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
 			};
 			name = Debug;
+		};
+		A6B7613C416F7BAEFD16B220 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = KitziWatchWidget/KitziWatchWidget.entitlements;
+				INFOPLIST_FILE = KitziWatchWidget/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.bennybar.kitzi.watchkitapp.widget;
+				PRODUCT_NAME = KitziWatchWidget;
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 4;
+			};
+			name = Release;
 		};
 		B56361F25520AAF11823D9B1 /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -632,7 +988,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 361;
+				CURRENT_PROJECT_VERSION = 362;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 57L2ULXB7Z;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -647,16 +1003,31 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
-				MARKETING_VERSION = 2.0.361;
+				MARKETING_VERSION = 2.0.362;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = iphoneos;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 6.0;
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Release;
+		};
+		EDA64111682976EA8247E182 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = KitziWatch/KitziWatch.entitlements;
+				INFOPLIST_FILE = KitziWatch/Info.plist;
+				PRODUCT_BUNDLE_IDENTIFIER = com.bennybar.kitzi.watchkitapp;
+				PRODUCT_NAME = KitziWatch;
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 4;
 			};
 			name = Release;
 		};
@@ -681,11 +1052,29 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
+		3B7B7A2DA0D1ED0BB378AD2E /* Build configuration list for PBXNativeTarget "KitziWatch" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7E36FC3CF980A36D06EA695B /* Debug */,
+				EDA64111682976EA8247E182 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		56CB0205ED94E80A292C8407 /* Build configuration list for PBXNativeTarget "Kitzi" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				1406A73EA558A966D47D4B4F /* Debug */,
 				6441DBD12B15CB825D9615BF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		D65FAD1E280929B6845EC010 /* Build configuration list for PBXNativeTarget "KitziWatchWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6D1B0599DF115DA3D863E145 /* Debug */,
+				A6B7613C416F7BAEFD16B220 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

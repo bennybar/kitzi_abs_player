@@ -104,10 +104,25 @@ struct BookDetailView: View {
         .sheet(isPresented: $showMoreInfo) { BookMoreInfoSheet(book: b) }
         .sheet(isPresented: $cropping) { CoverCropSheet(book: b) }
         .toolbar {
-            if settings.achewEnabled && Achew.shared.configured {
+            let achew = settings.achewEnabled && Achew.shared.configured
+            let watch = PhoneLink.shared.watchReady && downloads.isDownloaded(book.id)
+            if achew || watch {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
-                        Button { Task { await fixChapters() } } label: { Label("Fix Chapters in Achew", systemImage: "wand.and.stars") }
+                        if watch {
+                            if PhoneLink.shared.sending[book.id] != nil {
+                                Label("Sending to Apple Watch…", systemImage: "applewatch").disabled(true)
+                            } else {
+                                Button {
+                                    Toast.show(PhoneLink.shared.send(book.id)
+                                               ? "Sending to your watch. It carries on in the background."
+                                               : "Couldn't send this book to your watch")
+                                } label: { Label("Send to Apple Watch", systemImage: "applewatch") }
+                            }
+                        }
+                        if achew {
+                            Button { Task { await fixChapters() } } label: { Label("Fix Chapters in Achew", systemImage: "wand.and.stars") }
+                        }
                     } label: {
                         Image(systemName: "ellipsis").accessibilityLabel("More")
                     }

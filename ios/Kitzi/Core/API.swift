@@ -237,14 +237,19 @@ final class API {
     /// server transcodes to HLS instead of sending a file iOS can't open.
     static let mimeTypes = ["audio/mpeg", "audio/mp4", "audio/aac", "audio/flac", "audio/x-m4a", "audio/x-m4b"]
     static var clientVersion: String {
-        "kitzi-ios-\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?")"
+        "kitzi-\(platform)-\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?")"
     }
+    #if os(watchOS)
+    static let platform = "watchos", deviceName = "Apple Watch"
+    #else
+    static let platform = "ios", deviceName = "iPhone"
+    #endif
 
     struct PlaySession { var id: String?; var tracks: [Track]; var chapters: [Chapter]; var durationSec: Double? }
 
     func openSession(_ itemId: String) async -> PlaySession? {
         let body: JSON = [
-            "deviceInfo": ["clientVersion": Self.clientVersion, "deviceName": "iPhone"],
+            "deviceInfo": ["clientVersion": Self.clientVersion, "deviceName": Self.deviceName],
             "supportedMimeTypes": Self.mimeTypes,
             "forceDirectPlay": false,
         ]

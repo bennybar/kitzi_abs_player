@@ -40,6 +40,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         #endif
         _ = Downloads.shared
         _ = Player.shared
+        PhoneLink.shared.start()
+        #if DEBUG
+        Task { await PhoneLink.shared.runDebugHooks() }
+        #endif
         return true
     }
 
