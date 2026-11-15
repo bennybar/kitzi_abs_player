@@ -449,10 +449,12 @@ extension LibraryStore {
 }
 
 /// "Listeners Also Enjoyed" on a book's page: Audible's similar books, found by
-/// the book's Audible match. Hidden when there's no match or Audible can't be reached.
+/// the book's Audible match, in the Home shelves' M3 Expressive carousel. Hidden
+/// when there's no match or Audible can't be reached.
 struct SimilarBooksRow: View {
     let book: Book
     @State private var similar: [AudibleBook] = []
+    @State private var opened: AudibleBook?
     @Environment(LibraryStore.self) private var library
 
     var body: some View {
@@ -460,43 +462,72 @@ struct SimilarBooksRow: View {
         VStack(alignment: .leading, spacing: 12) {
             Color.clear.frame(height: 0)
             if !similar.isEmpty {
-                Text("Listeners Also Enjoyed").font(.headline)
-                ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(alignment: .top, spacing: 14) {
-                        ForEach(similar) { s in
-                            NavigationLink(value: s) {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    ZStack(alignment: .topTrailing) {
-                                        AudibleCover(url: s.coverURL, size: 118)
-                                        if library.match(s) != nil {
-                                            Image(systemName: "checkmark.circle.fill").font(.title3)
-                                                .symbolRenderingMode(.palette).foregroundStyle(.white, Color.accentColor)
-                                                .padding(5)
-                                                .accessibilityLabel("In your library")
-                                        }
-                                    }
-                                    Text(s.title).font(.footnote.weight(.semibold)).lineLimit(2)
-                                    if let a = s.authors.first { Text(a).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
-                                    if let st = s.stars {
-                                        Label(String(format: "%.1f", st), systemImage: "star.fill")
-                                            .font(.caption.weight(.semibold)).foregroundStyle(.orange)
-                                    }
-                                }
-                                .frame(width: 118, alignment: .leading)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
+                Text("Listeners Also Enjoyed").font(.title3.bold())
+                KeylineCarousel(
+                    items: similar,
+                    height: 210,
+                    keylines: { w in
+                        // One big cover, a medium and a small one peeking, as on Home.
+                        let small: CGFloat = 40, medium = w * 0.2
+                        return [w - medium - small - 16, medium, small]
+                    },
+                    onTap: { opened = $0 },
+                    label: { $0.title }
+                ) { s, fullness in
+                    AudibleCarouselCover(book: s, inLibrary: library.match(s) != nil, fullness: fullness)
                 }
-                .scrollClipDisabled()
+                .padding(.horizontal, -16)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .navigationDestination(item: $opened) { AudibleBookView(book: $0) }
         .task(id: book.id) {
             similar = []
             guard let asin = await AudibleRating.shared.rating(for: book)?.asin,
                   let found = try? await AudibleCatalog.similar(asin: asin) else { return }
             withAnimation(.snappy) { similar = found }
+        }
+    }
+}
+
+/// A carousel item: the cover, and over it the title, stars and author.
+private struct AudibleCarouselCover: View {
+    let book: AudibleBook
+    let inLibrary: Bool
+    let fullness: CGFloat
+
+    var body: some View {
+        ZStack(alignment: .bottomLeading) {
+            AsyncImage(url: book.coverURL) { img in
+                img.resizable().scaledToFill()
+            } placeholder: {
+                Rectangle().fill(.quaternary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipped()
+            LinearGradient(colors: [.clear, .black.opacity(0.8)], startPoint: .center, endPoint: .bottom)
+                .opacity(Double(fullness))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(book.title).font(.subheadline.weight(.semibold)).lineLimit(1)
+                HStack(spacing: 4) {
+                    if let st = book.stars {
+                        Image(systemName: "star.fill").foregroundStyle(.orange)
+                        Text(String(format: "%.1f", st)).fontWeight(.semibold)
+                    }
+                    if let a = book.authors.first { Text(book.stars == nil ? a : "· \(a)").lineLimit(1) }
+                }
+                .font(.caption).foregroundStyle(.white.opacity(0.85))
+            }
+            .foregroundStyle(.white)
+            .padding(12)
+            .opacity(Double(max(fullness * 1.6 - 0.6, 0)))
+            if inLibrary {
+                Image(systemName: "checkmark.circle.fill").font(.title3)
+                    .symbolRenderingMode(.palette).foregroundStyle(.white, Color.accentColor)
+                    .padding(10)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                    .opacity(Double(max(fullness * 1.6 - 0.6, 0)))
+            }
         }
     }
 }
