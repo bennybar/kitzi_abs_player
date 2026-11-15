@@ -83,6 +83,7 @@ struct HomeView: View {
                 BookDetailView(book: r.book).navigationTransition(.zoom(sourceID: r.source, in: zoom))
             }
             .environment(\.coverZoom, zoom)
+            .navigationDestination(for: FindBookRoute.self) { FindBookView(initialQuery: $0.query) }
             .navigationDestination(for: AllBooksRoute.self) { AllBooksView(filter: $0.filter) }
             .navigationDestination(for: BrowseRoute.self) { r in
                 switch r {
@@ -115,12 +116,21 @@ struct HomeView: View {
                 if ProcessInfo.processInfo.environment["KITZI_TEST_OPEN"] == "allbooks" {
                     path.append(AllBooksRoute(filter: .all))
                 }
+                if ProcessInfo.processInfo.environment["KITZI_TEST_OPEN"] == "findbook" {
+                    path.append(FindBookRoute(query: ProcessInfo.processInfo.environment["KITZI_TEST_QUERY"] ?? ""))
+                }
                 if ProcessInfo.processInfo.environment["KITZI_TEST_OPEN"] == "genres" {
                     path.append(BrowseRoute.genres)
                 }
                 #endif
             }
             .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink(value: FindBookRoute()) {
+                        HStack(spacing: 6) { Image(systemName: "text.magnifyingglass"); Text("Find Book") }.fixedSize()
+                    }
+                }
+                ToolbarSpacer(.fixed, placement: .topBarTrailing)
                 ToolbarItem(placement: .topBarTrailing) {
                     NavigationLink { StatsView() } label: { Image(systemName: "chart.bar") }
                 }

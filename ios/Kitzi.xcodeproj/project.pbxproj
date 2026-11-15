@@ -63,6 +63,7 @@
 		BFCEF7469C2593AC5871FCF3 /* WidgetBook.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4055C5012EBE849B48915BE4 /* WidgetBook.swift */; };
 		C317A826E1229435696438D5 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1506F8FD3774749ABBC8D069 /* Models.swift */; };
 		C500AD369826D8BA8893639A /* KeylineCarousel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93623BA5626015A8C58ABFA5 /* KeylineCarousel.swift */; };
+		C665FAC732FDB85A01176833 /* FindBookView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCA35E62EA2D0EB2AC73B392 /* FindBookView.swift */; };
 		C8AA9F21999C70CF09AB60B0 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5B2958CC2E28E4B8AE0D681 /* ProfileView.swift */; };
 		CB5F7E9AFEE6B364AE806C43 /* Settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC2A07F9A2FC99873C99F726 /* Settings.swift */; };
 		CC7A60BB78441A9A624E52A0 /* WatchProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77376EA5078CFEAFCD129574 /* WatchProtocol.swift */; };
@@ -205,6 +206,7 @@
 		D57DFA7606FCFCD1336528F2 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		DA017E8671702DE6E2FE5AF8 /* JSON.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSON.swift; sourceTree = "<group>"; };
 		DAF0BAB7454F6516BCF5E96E /* ImageLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageLoader.swift; sourceTree = "<group>"; };
+		DCA35E62EA2D0EB2AC73B392 /* FindBookView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FindBookView.swift; sourceTree = "<group>"; };
 		E01E59579F9B77BC3368F25C /* BookDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookDetailView.swift; sourceTree = "<group>"; };
 		E20FBF7E7C2175EFA483390F /* KitziWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KitziWatchApp.swift; sourceTree = "<group>"; };
 		E6C5C51DF500712E2947DD67 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
@@ -394,6 +396,7 @@
 			children = (
 				F3D5349321CA8D9E2110D505 /* AuthorsView.swift */,
 				EB533F742C08D4E2A95E25AE /* DownloadsView.swift */,
+				DCA35E62EA2D0EB2AC73B392 /* FindBookView.swift */,
 				B09076244F132CA075772AC8 /* QueueView.swift */,
 				A70E7E175B0FC011DF4E7A7E /* SeriesView.swift */,
 				06464A9F9F55C1CD4421F0C8 /* ShelfarrView.swift */,
@@ -710,6 +713,7 @@
 				44A50B1BBA2BC8CB1D42B0FD /* DownloadActivityAttributes.swift in Sources */,
 				B86422852832FD947D2C1A7C /* Downloads.swift in Sources */,
 				12094FC8DBF6263568FBB34D /* DownloadsView.swift in Sources */,
+				C665FAC732FDB85A01176833 /* FindBookView.swift in Sources */,
 				9513780700AE8AA8DDB22999 /* HomeView.swift in Sources */,
 				417D7D7092F934B44E78EE59 /* ImageLoader.swift in Sources */,
 				E1BC14469B70C6FCAEC64C1A /* JSON.swift in Sources */,
@@ -866,7 +870,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 364;
+				CURRENT_PROJECT_VERSION = 365;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 57L2ULXB7Z;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -887,7 +891,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
-				MARKETING_VERSION = 2.0.364;
+				MARKETING_VERSION = 2.0.365;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -988,7 +992,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 364;
+				CURRENT_PROJECT_VERSION = 365;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 57L2ULXB7Z;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -1003,7 +1007,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
-				MARKETING_VERSION = 2.0.364;
+				MARKETING_VERSION = 2.0.365;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
