@@ -24,6 +24,14 @@ final class WatchDownloads {
     private var plans: [String: Plan] = [:] { didSet { Store.set(try? JSONEncoder().encode(plans), "download_plans") } }
     private var written: [String: [Int: Int64]] = [:]
     private var attempts: [String: Int] = [:]
+    /// Sign-in renewals after a 401, per track: they don't use up its attempts.
+    private var renewals: [String: Int] = [:]
+    /// Books whose download failed (files removed), so the Downloads screen can
+    /// still list them with Retry until the app restarts.
+    private var failedBooks: [String: WatchBookManifest] = [:]
+    // Read once: the Downloads screen asks for these on every redraw.
+    @ObservationIgnored private var manifestCache: [String: WatchBookManifest] = [:]
+    @ObservationIgnored private var sizeCache: [String: Int64] = [:]
 
     nonisolated static let sessionId = "com.bennybar.kitzi.watch.downloads"
     /// Per track. Generous: big books over a watch's connection drop often, and
@@ -54,6 +62,12 @@ final class WatchDownloads {
     /// After a relaunch: tracks that arrived while the app wasn't running count
     /// as done, and any the system no longer has are queued again.
     private func reconcile() async {
+        // Leftovers with no finished book and no download on its way (a failure or
+        // a cancel in an older version): space nobody could free.
+        for id in (try? FileManager.default.contentsOfDirectory(atPath: Self.booksDir.path)) ?? []
+        where plans[id] == nil && states[id] != .done {
+            try? FileManager.default.removeItem(at: Self.booksDir.appendingPathComponent(id))
+        }
         let tasks = await session.allTasks
         var live: [String: Set<Int>] = [:]
         for t in tasks {
@@ -90,19 +104,32 @@ final class WatchDownloads {
     var downloadedIds: [String] { states.filter { $0.value == .done }.map(\.key) }
     /// Books on their way (queued, downloading, or failed and waiting for a retry).
     var activeIds: [String] { states.filter { $0.value != .done && $0.value != .none }.map(\.key) }
-    /// The book of a download that hasn't finished.
-    func planned(_ id: String) -> WatchBookManifest? { plans[id]?.manifest }
+    /// The book of a download that hasn't finished (or failed).
+    func planned(_ id: String) -> WatchBookManifest? { plans[id]?.manifest ?? failedBooks[id] }
 
     /// Space one book takes on the watch.
     func bytes(_ id: String) -> Int64 {
+        if let b = sizeCache[id] { return b }
         let dir = Self.booksDir.appendingPathComponent(id)
         let files = FileManager.default.enumerator(at: dir, includingPropertiesForKeys: [.fileSizeKey])?.allObjects as? [URL] ?? []
-        return files.reduce(0) { $0 + Int64((try? $1.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) }
+        let b = files.reduce(0) { $0 + Int64((try? $1.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) }
+        if states[id] == .done { sizeCache[id] = b }
+        return b
     }
 
     func downloaded(_ id: String) -> WatchBookManifest? {
-        guard let d = try? Data(contentsOf: Self.booksDir.appendingPathComponent("\(id)/book.json")) else { return nil }
-        return try? JSONDecoder().decode(WatchBookManifest.self, from: d)
+        if let m = manifestCache[id] { return m }
+        guard let d = try? Data(contentsOf: Self.booksDir.appendingPathComponent("\(id)/book.json")),
+              let m = try? JSONDecoder().decode(WatchBookManifest.self, from: d) else { return nil }
+        manifestCache[id] = m
+        return m
+    }
+
+    /// When the book finished downloading (ms), from its book.json.
+    func downloadedAt(_ id: String) -> Int64? {
+        let u = Self.booksDir.appendingPathComponent("\(id)/book.json")
+        guard let d = (try? FileManager.default.attributesOfItem(atPath: u.path))?[.modificationDate] as? Date else { return nil }
+        return Int64(d.timeIntervalSince1970 * 1000)
     }
 
     func fileURL(for t: Track) -> URL { Self.booksDir.appendingPathComponent(t.url) }
@@ -122,13 +149,17 @@ final class WatchDownloads {
     /// Plans and starts a book's download. Nil, or why it can't.
     @discardableResult
     func start(_ id: String) async -> String? {
-        guard plans[id] == nil, states[id] != .done else { return nil }
+        // Not twice (a double tap while the first one asks the server).
+        guard plans[id] == nil, states[id] != .done, states[id] != .queued else { return nil }
         states[id] = .queued
+        failedBooks[id] = nil
         guard let item = try? await API.shared.item(id, expanded: true), let base = API.shared.base,
               let media = item.obj("media"), let book = Book.from(item) else {
-            states[id] = .failed
+            if states[id] == .queued { states[id] = .failed }
             return "Couldn't reach the server. Check the connection."
         }
+        // Cancelled while the server answered.
+        guard states[id] == .queued else { return nil }
         let trackJson = media.objs("tracks").sorted { ($0.int("index") ?? 0) < ($1.int("index") ?? 0) }
         var sizes: [Int: Int64] = [:]
         for f in media.objs("audioFiles") { sizes[f.int("index") ?? -1] = Int64(f.obj("metadata")?.num("size") ?? 0) }
@@ -213,8 +244,17 @@ final class WatchDownloads {
         states[id] = .running(min(max(Double(bytes) / Double(plan.totalBytes), byTracks), 1))
     }
 
-    func trackFinished(_ id: String, track: Int) {
-        guard var plan = plans[id] else { return }
+    /// `file`: where the track was saved, removed if the book was cancelled or
+    /// failed meanwhile (the system finished it after the cancel).
+    func trackFinished(_ id: String, track: Int, file: URL? = nil) {
+        guard var plan = plans[id] else {
+            if let file { try? FileManager.default.removeItem(at: file) }
+            let dir = Self.booksDir.appendingPathComponent(id)
+            if states[id] != .done, !FileManager.default.fileExists(atPath: dir.appendingPathComponent("book.json").path) {
+                try? FileManager.default.removeItem(at: dir)
+            }
+            return
+        }
         plan.doneTracks.insert(track)
         plans[id] = plan
         if plan.doneTracks.count == plan.manifest.tracks.count {
@@ -228,27 +268,46 @@ final class WatchDownloads {
     func trackFailed(_ id: String, track: Int, httpCode: Int?, resumeData: Data?) {
         guard plans[id] != nil else { return }
         let key = "\(id)|\(track)"
-        let n = (attempts[key] ?? 0) + 1
-        attempts[key] = n
-        guard n <= Self.maxAttempts else { failed(id); return }
         if httpCode == 401 {
-            // An expired sign-in (the watch's own session): renew it, then again.
+            // An expired sign-in (the watch's own session, after an hour; watchOS
+            // may hold a download that long): renew it and go again. That isn't a
+            // failed attempt, but a sign-in that keeps being refused fails the book.
+            let n = (renewals[key] ?? 0) + 1
+            renewals[key] = n
+            guard n <= 3 else { failed(id); return }
             Task {
                 _ = await API.shared.refresh()
                 queueTrack(id, track, resumeData: nil)
             }
             return
         }
+        let n = (attempts[key] ?? 0) + 1
+        attempts[key] = n
+        guard n <= Self.maxAttempts else { failed(id); return }
         if let code = httpCode, (400..<500).contains(code), code != 408, code != 429 { failed(id); return }
         // A dropped connection carries on from where it stopped (resume data).
         queueTrack(id, track, resumeData: resumeData, after: min(Double(1 << n) * 5, 300))
     }
 
+    /// Gives up: the partial files go (nobody could free them otherwise), and the
+    /// book stays listed as failed so it can be retried.
     private func failed(_ id: String) {
         cancelTasks(id)
+        if let m = plans[id]?.manifest { failedBooks[id] = m }
         plans[id] = nil
         written[id] = nil
+        clearCounters(id)
+        try? FileManager.default.removeItem(at: Self.booksDir.appendingPathComponent(id))
         states[id] = .failed
+    }
+
+    #if DEBUG
+    func debugFail(_ id: String) { failed(id) }
+    #endif
+
+    private func clearCounters(_ id: String) {
+        for k in attempts.keys where k.hasPrefix(id + "|") { attempts[k] = nil }
+        for k in renewals.keys where k.hasPrefix(id + "|") { renewals[k] = nil }
     }
 
     private func complete(_ id: String) {
@@ -256,7 +315,9 @@ final class WatchDownloads {
         try? JSONEncoder().encode(plan.manifest).write(to: Self.booksDir.appendingPathComponent("\(id)/book.json"), options: .atomic)
         plans[id] = nil
         written[id] = nil
-        for k in attempts.keys where k.hasPrefix(id + "|") { attempts[k] = nil }
+        clearCounters(id)
+        manifestCache[id] = nil
+        sizeCache[id] = nil
         states[id] = .done
     }
 
@@ -304,6 +365,10 @@ final class WatchDownloads {
         cancelTasks(id)
         plans[id] = nil
         written[id] = nil
+        failedBooks[id] = nil
+        manifestCache[id] = nil
+        sizeCache[id] = nil
+        clearCounters(id)
         try? FileManager.default.removeItem(at: Self.booksDir.appendingPathComponent(id))
         states[id] = State.none
     }
@@ -350,7 +415,7 @@ nonisolated final class WatchDownloadDelegate: NSObject, URLSessionDownloadDeleg
         try? FileManager.default.removeItem(at: dest)
         do {
             try FileManager.default.moveItem(at: location, to: dest)
-            Task { @MainActor in WatchDownloads.shared.trackFinished(id, track: i) }
+            Task { @MainActor in WatchDownloads.shared.trackFinished(id, track: i, file: dest) }
         } catch {
             Task { @MainActor in WatchDownloads.shared.trackFailed(id, track: i, httpCode: nil, resumeData: nil) }
         }

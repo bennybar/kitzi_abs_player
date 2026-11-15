@@ -8,6 +8,7 @@ struct DownloadsView: View {
     @Environment(WatchModel.self) private var model
     @State private var removing: WatchBookManifest?
     @State private var error: String?
+    @State private var loadingId: String?
 
     private var onWatch: [WatchBookManifest] {
         downloads.downloadedIds.compactMap { downloads.downloaded($0) }.sorted { $0.book.title < $1.book.title }
@@ -18,6 +19,8 @@ struct DownloadsView: View {
     }
 
     var body: some View {
+        // Once per redraw (the playing row redraws this twice a second).
+        let onWatch = self.onWatch, active = self.active
         List {
             Section {
                 storage
@@ -25,7 +28,11 @@ struct DownloadsView: View {
             if !active.isEmpty {
                 Section("Downloading") {
                     ForEach(active, id: \.book.id) { m in
-                        activeRow(m)
+                        // A failed one: tap to try again.
+                        Button {
+                            guard downloads.state(m.book.id) == .failed else { return }
+                            Task { if let why = await downloads.start(m.book.id) { error = why } }
+                        } label: { activeRow(m) }
                             .swipeActions {
                                 Button(role: .destructive) { downloads.cancel(m.book.id) } label: { Label("Cancel", systemImage: "xmark") }
                             }
@@ -58,7 +65,7 @@ struct DownloadsView: View {
         } message: { m in
             Text("\(m.book.title) is deleted from the watch. You can still stream it, and your place is kept.")
         }
-        .alert("Can't play", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
+        .alert("Kitzi", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
             Button("OK", role: .cancel) {}
         } message: { Text(error ?? "") }
     }
@@ -85,6 +92,7 @@ struct DownloadsView: View {
         let left = Format.left(pos, of: total)
         return HStack(spacing: 10) {
             CoverView(id: id, size: 40)
+                .overlay { if loadingId == id { ProgressView().background(.black.opacity(0.5), in: Circle()) } }
             VStack(alignment: .leading, spacing: 3) {
                 Text(m.book.title).font(.body.weight(.medium)).lineLimit(2)
                 HStack(spacing: 4) {
@@ -107,7 +115,7 @@ struct DownloadsView: View {
         let text: String = switch state {
         case .running(let f): "\(Int(f * 100))%"
         case .queued: "Waiting…"
-        case .failed: "Failed. Open the book to retry."
+        case .failed: "Failed. Tap to try again."
         default: ""
         }
         var fraction: Double? { if case .running(let f) = state { f } else { nil } }
@@ -127,8 +135,10 @@ struct DownloadsView: View {
             WatchNav.shared.path.append(.player)
             return
         }
-        let fallback = model.shelf.first { $0.id == m.book.id }?.currentTimeSec ?? Store.position(m.book.id)?.sec ?? 0
-        if let why = await player.play(m.book, fallbackSec: fallback) {
+        let shelf = model.shelf.first { $0.id == m.book.id }
+        loadingId = m.book.id
+        defer { loadingId = nil }
+        if let why = await player.play(m.book, fallbackSec: shelf?.currentTimeSec ?? 0, fallbackAt: shelf?.lastUpdate ?? 0) {
             error = why
         } else {
             WatchNav.shared.path.append(.player)

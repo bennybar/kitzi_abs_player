@@ -57,14 +57,19 @@ final class WatchModel {
         }
     }
 
-    func signOut() async {
+    /// False (still signed in) when listening saved on the watch couldn't be sent:
+    /// signing out would lose it. `force` signs out anyway.
+    @discardableResult
+    func signOut(force: Bool = false) async -> Bool {
         await WatchPlayer.shared.stop()
-        _ = await flushPending()
+        let clean = await flushPending()
+        if !clean && !force { return false }
         if Session.shared.refreshToken != nil { await API.shared.logout() }
         Session.shared.clear()
         Store.signOut()
         shelf = []
         signedIn = false
+        return true
     }
 
     // MARK: shelf
@@ -84,10 +89,12 @@ final class WatchModel {
         online = true
         var progress: [String: Progress] = [:]
         for m in me.objs("mediaProgress") { if let p = Progress.from(m) { progress[p.itemId] = p } }
-        // Finished anywhere (here, the phone, the web): its download goes, so the
-        // watch doesn't fill up with books that are done. Not the loaded one.
+        // Finished anywhere (here, the phone, the web) after it was downloaded: its
+        // download goes, so the watch doesn't fill up with books that are done. Not
+        // the loaded one, and not a finished book put on the watch to hear again.
         let loaded = WatchPlayer.shared.nowPlaying?.book.id
         for (id, p) in progress where p.isFinished && id != loaded && WatchDownloads.shared.isDownloaded(id) {
+            guard let at = WatchDownloads.shared.downloadedAt(id), (p.finishedAt ?? p.lastUpdate) > at else { continue }
             WatchDownloads.shared.delete(id)
         }
         shelf = items.objs("libraryItems").compactMap { item -> ShelfBook? in

@@ -7,6 +7,10 @@ import UIKit
 /// KITZI_W_SCREEN opens a screen for screenshots.
 enum DebugHooks {
     private static var ran = false
+    /// The progress check gets no answer (a slow link): see WatchPlayer.startPosition.
+    static var serverSilent = false
+    /// Streams can't reach anything (rebuilt items stall too).
+    static var deadNetwork = false
 
     static func run() async {
         let env = ProcessInfo.processInfo.environment
@@ -30,6 +34,12 @@ enum DebugHooks {
             case "dlkill": await downloadThenDie()
             case "dlresume": await downloadResumed()
             case "remote": await remote()
+            case "staleresume": await staleResume()
+            case "pausedseek": await pausedSeek()
+            case "streambreak": await streamBreak()
+            case "dlfail": await downloadFail()
+            case "streamdead": await streamDead()
+            case "signoutpending": await signOutPending()
             case "dlkeep": await downloadsScreenData()
             case "dlcancel": for id in WatchDownloads.shared.activeIds { WatchDownloads.shared.cancel(id) }; log("dlcancel active=\(WatchDownloads.shared.activeIds.count)")
             case "dlclear": for id in WatchDownloads.shared.downloadedIds + WatchDownloads.shared.activeIds { WatchDownloads.shared.delete(id) }; log("dlclear done")
@@ -45,7 +55,7 @@ enum DebugHooks {
             case "book": if let first { WatchNav.shared.path = [.book(first.id)] }
             case "player":
                 if let first {
-                    _ = await WatchPlayer.shared.play(first.book, fallbackSec: first.currentTimeSec)
+                    _ = await WatchPlayer.shared.play(first.book, fallbackSec: first.currentTimeSec, fallbackAt: first.lastUpdate)
                     WatchPlayer.shared.pause()
                     WatchNav.shared.path = [.player]
                 }
@@ -159,6 +169,125 @@ enum DebugHooks {
     }
 
     /// Starts a big download and kills the app part way through, as watchOS might.
+    /// S3: the server doesn't answer in time, the watch has an old position, the
+    /// shelf a newer one: playback must start at the shelf's.
+    private static func staleResume() async {
+        guard let s = WatchModel.shared.shelf.first, let server = await serverPos(s.id) else { log("staleresume skipped"); return }
+        let old = max(server.0 - 600, 0)
+        Store.savePosition(s.id, LocalPosition(sec: old, savedAt: server.1 - 86_400_000, pending: false, finished: false))
+        serverSilent = true
+        let p = WatchPlayer.shared
+        if let why = await p.play(s.book, fallbackSec: s.currentTimeSec, fallbackAt: s.lastUpdate) { log("staleresume play failed: \(why)") }
+        serverSilent = false
+        let start = p.currentPosition()
+        log("staleresume start=\(Int(start)) shelf=\(Int(s.currentTimeSec)) oldWatch=\(Int(old)) ok=\(abs(start - s.currentTimeSec) < 3)")
+        p.pause()
+        try? await Task.sleep(for: .seconds(1))
+        await restore(s.id, server.0)
+    }
+
+    /// S4: a skip while paused (after a long pause) must survive Play.
+    private static func pausedSeek() async {
+        guard let s = WatchModel.shared.shelf.first, let server = await serverPos(s.id) else { log("pausedseek skipped"); return }
+        let p = WatchPlayer.shared
+        if let why = await p.play(s.book, fallbackSec: s.currentTimeSec, fallbackAt: s.lastUpdate) { log("pausedseek play failed: \(why)"); return }
+        try? await Task.sleep(for: .seconds(4))
+        p.pause()
+        try? await Task.sleep(for: .seconds(3))
+        let paused = p.currentPosition()
+        p.skip(-60)
+        let target = p.currentPosition()
+        p.debugLongPause()
+        _ = await p.resume()
+        try? await Task.sleep(for: .seconds(2))
+        let now = p.currentPosition()
+        log("pausedseek paused=\(Int(paused)) target=\(Int(target)) afterPlay=\(Int(now)) ok=\(now >= target - 1 && now < target + 6)")
+        p.pause()
+        try? await Task.sleep(for: .seconds(1))
+        await restore(s.id, server.0)
+    }
+
+    /// S1/S2/S5: a stream whose connection dies: no listening time while stuck,
+    /// the position stays right, and the watchdog rebuilds it and plays on.
+    private static func streamBreak() async {
+        guard let s = WatchModel.shared.shelf.first, let server = await serverPos(s.id) else { log("streambreak skipped"); return }
+        let p = WatchPlayer.shared
+        if let why = await p.play(s.book, fallbackSec: s.currentTimeSec, fallbackAt: s.lastUpdate) { log("streambreak play failed: \(why)"); return }
+        try? await Task.sleep(for: .seconds(5))
+        let before = p.currentPosition()
+        p.debugBreakStream()
+        try? await Task.sleep(for: .seconds(2))
+        let l1 = p.debugListened, pos1 = p.currentPosition()
+        try? await Task.sleep(for: .seconds(10))
+        let l2 = p.debugListened, pos2 = p.currentPosition()
+        log("streambreak stuck before=\(Int(before)) pos=\(Int(pos1))/\(Int(pos2)) buffering=\(p.buffering) playing=\(p.isPlaying) listenedGrew=\(String(format: "%.1f", l2 - l1))")
+        try? await Task.sleep(for: .seconds(15))
+        let pos3 = p.currentPosition()
+        try? await Task.sleep(for: .seconds(4))
+        let pos4 = p.currentPosition()
+        log("streambreak after recoveries=\(p.debugRecoveries) pos=\(Int(pos3))->\(Int(pos4)) advancing=\(pos4 > pos3 + 1) noJumpBack=\(pos3 >= before - 1) error=\(p.streamError ?? "-")")
+        p.pause()
+        try? await Task.sleep(for: .seconds(1))
+        await restore(s.id, server.0)
+    }
+
+    /// R3: a failed download leaves no files and stays listed with its book.
+    private static func downloadFail() async {
+        guard let lib = try? await API.shared.libraries().first(where: { $0.mediaType == "book" }),
+              let item = try? await API.shared.libraryItems(library: lib.id, page: 1, limit: 1, sort: "media.duration", desc: true).items.first,
+              let book = Book.from(item) else { log("dlfail skipped"); return }
+        let d = WatchDownloads.shared
+        _ = await d.start(book.id)
+        try? await Task.sleep(for: .seconds(8))
+        d.debugFail(book.id)
+        let dir = WatchDownloads.booksDir.appendingPathComponent(book.id)
+        try? await Task.sleep(for: .seconds(3))
+        log("dlfail state=\(d.state(book.id)) listed=\(d.activeIds.contains(book.id)) planned=\(d.planned(book.id) != nil) folderGone=\(!FileManager.default.fileExists(atPath: dir.path))")
+        d.delete(book.id)
+        log("dlfail removed state=\(d.state(book.id)) planned=\(d.planned(book.id) != nil)")
+    }
+
+    /// S2: a connection that stays dead: three rebuilds, then it pauses and says
+    /// so, with the position kept; Play afterwards (connection back) plays on.
+    private static func streamDead() async {
+        guard let s = WatchModel.shared.shelf.first, let server = await serverPos(s.id) else { log("streamdead skipped"); return }
+        let p = WatchPlayer.shared
+        if let why = await p.play(s.book, fallbackSec: s.currentTimeSec, fallbackAt: s.lastUpdate) { log("streamdead play failed: \(why)"); return }
+        try? await Task.sleep(for: .seconds(4))
+        let before = p.currentPosition()
+        deadNetwork = true
+        p.debugBreakStream()
+        for _ in 0..<200 where p.streamError == nil { try? await Task.sleep(for: .seconds(1)) }
+        try? await Task.sleep(for: .seconds(3))
+        log("streamdead gaveUp error=\(p.streamError ?? "-") playing=\(p.isPlaying) pos=\(Int(p.currentPosition())) before=\(Int(before)) saved=\(Int(Store.position(s.id)?.sec ?? -1))")
+        deadNetwork = false
+        _ = await p.resume()
+        try? await Task.sleep(for: .seconds(6))
+        log("streamdead replay error=\(p.streamError ?? "-") playing=\(p.isPlaying) buffering=\(p.buffering) pos=\(Int(p.currentPosition()))")
+        p.pause()
+        try? await Task.sleep(for: .seconds(1))
+        await restore(s.id, server.0)
+    }
+
+    /// R1: with listening that can't be sent, sign-out stops and says so.
+    private static func signOutPending() async {
+        let id = "kitzi-test-missing-item"
+        Store.savePosition(id, LocalPosition(sec: 10, savedAt: Format.nowMs, pending: true, finished: false))
+        let out = await WatchModel.shared.signOut()
+        log("signoutpending signedOut=\(out) stillSignedIn=\(WatchModel.shared.signedIn) keptPending=\(Store.position(id)?.pending ?? false)")
+        Store.set(nil, "pos:\(id)")
+    }
+
+    /// Puts the server (and the watch) back at `sec` and closes the book.
+    private static func restore(_ id: String, _ sec: Double) async {
+        let p = WatchPlayer.shared
+        p.seek(to: sec)
+        _ = await p.reportNow()
+        await p.stop(report: false)
+        let now = await serverPos(id)
+        log("restored server=\(Int(now?.0 ?? -1)) wanted=\(Int(sec))")
+    }
+
     /// For the Downloads screen: the two shortest books downloaded and kept, and the
     /// longest one left downloading.
     private static func downloadsScreenData() async {

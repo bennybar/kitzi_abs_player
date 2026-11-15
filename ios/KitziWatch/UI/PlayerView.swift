@@ -11,9 +11,9 @@ struct PlayerView: View {
     var body: some View {
         if let np = player.nowPlaying {
             PlayerFace(
-                coverId: np.book.id, title: np.book.title, chapter: player.chapterTitle,
+                coverId: np.book.id, title: np.book.title, chapter: player.streamError ?? player.chapterTitle,
                 position: player.position, total: np.totalSec, isPlaying: player.isPlaying,
-                speed: player.speed, sleepLabel: sleepLabel, busy: player.loading,
+                speed: player.speed, sleepLabel: sleepLabel, busy: player.loading, waiting: player.loading || player.buffering,
                 skipBack: 30, skipForward: 30,
                 back: { player.skip(-30) }, toggle: toggle, forward: { player.skip(30) }
             )
@@ -51,6 +51,20 @@ struct PlayerView: View {
     }
 }
 
+/// A turning arc around a round button: loading or buffering.
+struct RingSpinner: View {
+    @State private var spin = false
+
+    var body: some View {
+        Circle().trim(from: 0, to: 0.25)
+            .stroke(.white, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+            .rotationEffect(.degrees(spin ? 360 : 0))
+            .animation(.linear(duration: 1).repeatForever(autoreverses: false), value: spin)
+            .onAppear { spin = true }
+            .accessibilityLabel("Loading")
+    }
+}
+
 /// A thin progress line.
 struct Bar: View {
     let value: Double
@@ -81,6 +95,8 @@ struct PlayerFace: View {
     let speed: Double
     let sleepLabel: String?
     let busy: Bool
+    /// Loading or buffering: a spinner around the play button.
+    var waiting = false
     let skipBack: Int
     let skipForward: Int
     let back: () -> Void
@@ -115,6 +131,9 @@ struct PlayerFace: View {
                     Image(systemName: isPlaying ? "pause.fill" : "play.fill").font(.title2)
                         .contentTransition(.symbolEffect(.replace))
                         .frame(width: 50, height: 50)
+                        .overlay {
+                            if waiting { RingSpinner().padding(2) }
+                        }
                         .glassEffect(.regular.tint(.accentColor).interactive(), in: Circle())
                 }
                 .buttonStyle(.plain)

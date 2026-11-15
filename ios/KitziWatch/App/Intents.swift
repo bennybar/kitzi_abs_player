@@ -9,13 +9,23 @@ struct ResumeListeningIntent: AudioPlaybackIntent {
     @MainActor
     func perform() async throws -> some IntentResult {
         let player = WatchPlayer.shared
+        var why: String?
         if player.nowPlaying != nil {
-            _ = await player.resume()
+            why = await player.resume()
         } else if let s = WatchModel.shared.shelf.first {
-            _ = await player.play(s.book, fallbackSec: s.currentTimeSec)
+            why = await player.play(s.book, fallbackSec: s.currentTimeSec, fallbackAt: s.lastUpdate)
+        } else {
+            why = "There's nothing to resume."
         }
+        // Siri says why nothing plays (no headphones, no connection) instead of "done".
+        if let why { throw PlaybackFailed(reason: why) }
         return .result()
     }
+}
+
+struct PlaybackFailed: Error, CustomLocalizedStringResourceConvertible {
+    let reason: String
+    var localizedStringResource: LocalizedStringResource { "\(reason)" }
 }
 
 struct PauseListeningIntent: AudioPlaybackIntent {

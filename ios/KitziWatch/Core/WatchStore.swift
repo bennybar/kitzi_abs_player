@@ -83,9 +83,16 @@ struct LocalPosition: Codable {
 }
 
 extension WidgetBook {
-    /// Saves what the watch face shows and asks it to redraw.
+    /// Saves what the watch face shows and asks it to redraw: at once when the
+    /// book or play/pause changes, else at most every few minutes (the position
+    /// changes with every report, and each redraw costs battery).
     static func save(_ b: WidgetBook?) {
         Store.group?.set(b.flatMap { try? JSONEncoder().encode($0) }, forKey: key)
+        let now = Date()
+        if let l = lastReload, l.title == b?.title, l.playing == (b?.isPlaying ?? false), now.timeIntervalSince(l.at) < 300 { return }
+        lastReload = (b?.title, b?.isPlaying ?? false, now)
         WidgetCenter.shared.reloadAllTimelines()
     }
+
+    private static var lastReload: (title: String?, playing: Bool, at: Date)?
 }

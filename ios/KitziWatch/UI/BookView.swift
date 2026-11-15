@@ -26,16 +26,19 @@ struct BookView: View {
                     }
                     Button {
                         Task {
-                            if let why = await player.play(book, fallbackSec: shelf?.currentTimeSec ?? 0) {
+                            if let why = await player.play(book, fallbackSec: shelf?.currentTimeSec ?? 0, fallbackAt: shelf?.lastUpdate ?? 0) {
                                 error = why
                             } else {
                                 WatchNav.shared.path.append(.player)
                             }
                         }
                     } label: {
-                        Label(player.nowPlaying?.book.id == id || (shelf?.currentTimeSec ?? 0) > 0 ? "Resume" : "Play",
-                              systemImage: "play.fill")
-                            .frame(maxWidth: .infinity)
+                        HStack(spacing: 6) {
+                            if player.loading { ProgressView().frame(width: 18, height: 18) }
+                            Label(player.nowPlaying?.book.id == id || (shelf?.currentTimeSec ?? 0) > 0 ? "Resume" : "Play",
+                                  systemImage: "play.fill")
+                        }
+                        .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.glassProminent)
                     .disabled(player.loading)

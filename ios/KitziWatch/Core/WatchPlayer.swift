@@ -26,8 +26,13 @@ final class WatchPlayer {
     private let api = API.shared
 
     private(set) var nowPlaying: WatchNowPlaying?
+    /// Playing or waiting for data (the button shows Pause either way).
     private(set) var isPlaying = false
+    /// Waiting for data from the server (a stream on a slow link).
+    private(set) var buffering = false
     private(set) var loading = false
+    /// Why a stream stopped after it couldn't be recovered ("Lost the connection").
+    private(set) var streamError: String?
     /// Book position, refreshed while the app is in front.
     private(set) var position: Double = 0
     private(set) var speed = Store.speed
@@ -39,14 +44,34 @@ final class WatchPlayer {
 
     private let av = AVPlayer()
     private var trackIndex = 0
+    /// Where a seek is taking the current track, until it gets there: a new
+    /// track's time reads 0 while it loads, which would report the track's start.
+    private var seekTarget: Double?
     @ObservationIgnored private var endObserver: NSObjectProtocol?
     @ObservationIgnored private var rateObserver: NSKeyValueObservation?
+    @ObservationIgnored private var interruptionObserver: NSObjectProtocol?
     private var ticker: Task<Void, Never>?
     private var sleepTask: Task<Void, Never>?
     private var reportTask: Task<Bool?, Never>?
     /// Listening time not yet recorded by the server.
     private var listenedSec = 0.0
+    /// When sound started coming out (nil while paused or buffering): only
+    /// that counts as listening time.
     private var playingSince: Date?
+    private var audible = false
+    /// When the book was last paused (a short pause skips the server check on resume).
+    private var pausedAt: Date?
+    /// Set while `stop()` runs: its pause mustn't send another report.
+    private var stopping = false
+    /// Played again once an interruption (a call, Siri) ends, if it was playing.
+    private var resumeAfterInterruption = false
+    // The stream watchdog (see `watchStream`).
+    /// The token the current streamed item was made with: a newer one means the
+    /// item's requests would be refused, so it's rebuilt.
+    private var itemToken: String?
+    private var stalledSince: Date?
+    private var recoveries = 0
+    private var recovering = false
     // A downloaded book's listening goes to the server as a "local" session.
     private var localSessionId: String?
     private var localStartedAt: Int64 = 0
@@ -54,6 +79,8 @@ final class WatchPlayer {
     private var localListenedTotal = 0.0
 
     private static let syncEvery = 30.0
+    /// A stream stuck this long (by attempt) is rebuilt; after the last, it gives up.
+    private static let stallLimits: [Double] = [15, 30, 60]
 
     private init() {
         endObserver = NotificationCenter.default.addObserver(forName: AVPlayerItem.didPlayToEndTimeNotification, object: nil, queue: .main) { [weak self] n in
@@ -64,20 +91,25 @@ final class WatchPlayer {
             }
         }
         rateObserver = Self.observePlaying(av)
-        setUpRemoteCommands()
+        Self.setUpRemoteCommands()
+        interruptionObserver = Self.observeInterruptions()
     }
 
     // MARK: loading
 
     /// Plays `book` from the newer of the watch's and the server's positions. Nil, or why it can't.
-    func play(_ book: Book, fallbackSec: Double = 0) async -> String? {
+    /// `fallbackSec`/`fallbackAt`: where the shelf says the book is, and when that
+    /// was saved (server clock): used when the server can't be asked in time.
+    func play(_ book: Book, fallbackSec: Double = 0, fallbackAt: Int64 = 0) async -> String? {
         if nowPlaying?.book.id == book.id, av.currentItem != nil {
             return await resume()
         }
+        // Busy before the old book stops: a second tap meanwhile mustn't start
+        // another load (and open a second server session).
         guard !loading else { return nil }
-        if nowPlaying != nil { await stop() }
         loading = true
         defer { loading = false }
+        if nowPlaying != nil { await stop() }
         if let why = await startAudioSession() { return why }
 
         let np: WatchNowPlaying
@@ -86,19 +118,25 @@ final class WatchPlayer {
         } else {
             await api.ensureFreshToken()
             guard let s = await api.openSession(book.id) else {
+                endAudioSession()
                 return "Can't reach the server. Download the book to listen offline."
             }
-            guard !s.tracks.isEmpty else { return "This book has no playable audio." }
+            guard !s.tracks.isEmpty else { endAudioSession(); return "This book has no playable audio." }
             var b = book
             if b.durationSec == nil { b.durationSec = s.durationSec }
             np = WatchNowPlaying(book: b, tracks: s.tracks, chapters: s.chapters, isLocal: false, sessionId: s.id)
         }
-        var start = await startPosition(book.id, fallback: fallbackSec)
+        // A streamed book has just reached the server, so it can wait longer for
+        // the position than a downloaded one (maybe offline) should.
+        var start = await startPosition(book.id, fallback: fallbackSec, fallbackAt: fallbackAt, wait: np.isLocal ? 5 : 15)
         if start >= np.totalSec - 5 { start = 0 } // finished: from the top
 
         nowPlaying = np
         Store.lastBookId = book.id
         listenedSec = 0
+        streamError = nil
+        recoveries = 0
+        stalledSince = nil
         if np.isLocal {
             localSessionId = UUID().uuidString
             localStartedAt = Format.nowMs
@@ -110,7 +148,7 @@ final class WatchPlayer {
         let (i, off) = Self.locate(start, np.tracks)
         setTrack(i, offset: off)
         position = start
-        av.playImmediately(atRate: Float(speed))
+        startPlayback()
         startTicker()
         updateNowPlayingInfo()
         WatchModel.shared.updateWidget()
@@ -130,30 +168,46 @@ final class WatchPlayer {
         }
     }
 
-    /// The newer of the watch's saved position and the server's (if it answers within a few seconds).
-    private func startPosition(_ id: String, fallback: Double) async -> Double {
+    private func endAudioSession() {
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    }
+
+    /// The newest of the watch's saved position, the server's (if it answers within
+    /// `wait` seconds) and, when the server doesn't answer, the shelf's (`fallback`,
+    /// saved at `fallbackAt`). Timestamps are all in the server's clock.
+    private func startPosition(_ id: String, fallback: Double, fallbackAt: Int64, wait: Double) async -> Double {
         let local = Store.position(id)
         let fetch = Task { try? await api.mediaProgress(id).flatMap(Progress.from) }
-        let timer = Task { try? await Task.sleep(for: .seconds(5)); fetch.cancel() }
-        let server = await fetch.value
+        let timer = Task { try? await Task.sleep(for: .seconds(wait)); fetch.cancel() }
+        var server = await fetch.value
         timer.cancel()
-        switch (local, server) {
-        case (let l?, let s?): return l.savedAt > s.lastUpdate ? l.sec : s.currentTimeSec
-        case (nil, let s?): return s.currentTimeSec
-        case (let l?, nil): return l.sec
-        default: return fallback
+        #if DEBUG
+        if DebugHooks.serverSilent { server = nil }
+        #endif
+        var found: [(sec: Double, at: Int64)] = []
+        if let l = local { found.append((l.sec, l.savedAt)) }
+        if let s = server {
+            found.append((s.currentTimeSec, s.lastUpdate))
+        } else if fallbackAt > 0 {
+            found.append((fallback, fallbackAt))
         }
+        return found.max { $0.at < $1.at }?.sec ?? fallback
     }
 
     private func setTrack(_ i: Int, offset: Double) {
         guard let np = nowPlaying, np.tracks.indices.contains(i) else { return }
         trackIndex = i
         let t = np.tracks[i]
-        let url = t.isLocal ? WatchDownloads.shared.fileURL(for: t) : URL(string: t.url)!
+        var url = t.isLocal ? WatchDownloads.shared.fileURL(for: t) : URL(string: t.url)!
+        #if DEBUG
+        if DebugHooks.deadNetwork, !t.isLocal { url = URL(string: "http://10.255.255.1/stalled.mp3")! }
+        #endif
+        if !t.isLocal { itemToken = Session.shared.accessToken }
         let asset = AVURLAsset(url: url, options: t.isLocal ? nil : ["AVURLAssetHTTPHeaderFieldsKey": api.mediaHeaders])
         let item = AVPlayerItem(asset: asset)
         item.audioTimePitchAlgorithm = .timeDomain
         av.replaceCurrentItem(with: item)
+        seekTarget = offset > 0 ? offset : nil
         if offset > 0 { av.seek(to: CMTime(seconds: offset, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero) }
     }
 
@@ -161,7 +215,7 @@ final class WatchPlayer {
         guard let np = nowPlaying else { return }
         if trackIndex + 1 < np.tracks.count {
             setTrack(trackIndex + 1, offset: 0)
-            av.playImmediately(atRate: Float(speed))
+            startPlayback()
         } else {
             Task { await bookEnded(np) }
         }
@@ -171,10 +225,20 @@ final class WatchPlayer {
         position = np.totalSec
         _ = await reportNow(finished: true)
         WatchModel.shared.removeFromShelf(np.book.id)
-        if np.isLocal {
-            // Done with it: free the space the book takes on the watch.
-            await stop(report: false)
-            WatchDownloads.shared.delete(np.book.id)
+        // Done: the session closes (a streamed one too), and a downloaded book
+        // frees its space on the watch.
+        await stop(report: false)
+        if np.isLocal { WatchDownloads.shared.delete(np.book.id) }
+    }
+
+    /// Starts the loaded item. A stream gets AVPlayer's buffering first (playing
+    /// "immediately" on a slow link only stalls straight away).
+    private func startPlayback() {
+        if nowPlaying?.isLocal == true {
+            av.playImmediately(atRate: Float(speed))
+        } else {
+            av.defaultRate = Float(speed)
+            av.play()
         }
     }
 
@@ -195,10 +259,28 @@ final class WatchPlayer {
         loading = true
         defer { loading = false }
         if let why = await startAudioSession() { return why }
-        let target = await startPosition(np.book.id, fallback: currentPosition())
-        let here = currentPosition()
-        if nowPlaying?.book.id == np.book.id, abs(target - here) > 3, target < np.totalSec - 5 { seek(to: target) }
-        av.playImmediately(atRate: Float(speed))
+        let gaveUp = streamError != nil
+        streamError = nil
+        recoveries = 0
+        stalledSince = nil
+        // After a short pause nothing can have moved elsewhere: play at once.
+        let shortPause = pausedAt.map { Date().timeIntervalSince($0) < 60 } ?? false
+        if !shortPause {
+            let target = await startPosition(np.book.id, fallback: currentPosition(), fallbackAt: 0, wait: 3)
+            let here = currentPosition()
+            if nowPlaying?.book.id == np.book.id, abs(target - here) > 3, target < np.totalSec - 5 { seek(to: target) }
+        }
+        guard nowPlaying?.book.id == np.book.id else { return nil }
+        // A stream that failed, or whose sign-in has been renewed since (the old
+        // one expires after an hour): rebuild it where it is.
+        if !np.isLocal {
+            await api.ensureFreshToken()
+            if gaveUp || av.currentItem == nil || av.currentItem?.status == .failed || itemToken != Session.shared.accessToken {
+                let (i, off) = Self.locate(currentPosition(), np.tracks)
+                setTrack(i, offset: off)
+            }
+        }
+        startPlayback()
         return nil
     }
 
@@ -213,11 +295,18 @@ final class WatchPlayer {
         if i != trackIndex {
             let wasPlaying = isPlaying
             setTrack(i, offset: off)
-            if wasPlaying { av.playImmediately(atRate: Float(speed)) }
+            if wasPlaying { startPlayback() }
         } else {
+            seekTarget = off
             av.seek(to: CMTime(seconds: off, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
         }
         position = target
+        // Moved while paused: that's now the newest place in the book, so Play
+        // (which checks for a newer position) keeps it instead of jumping back.
+        if !isPlaying {
+            Store.savePosition(np.book.id, LocalPosition(sec: target, savedAt: Format.nowMs, pending: true, finished: false))
+            WatchModel.shared.updateShelfPosition(np.book, sec: target)
+        }
         updateNowPlayingInfo()
     }
 
@@ -236,6 +325,7 @@ final class WatchPlayer {
     func setSpeed(_ s: Double) {
         speed = s
         Store.speed = s
+        av.defaultRate = Float(s)
         if isPlaying { av.rate = Float(s) }
         updateNowPlayingInfo()
     }
@@ -255,8 +345,16 @@ final class WatchPlayer {
     func currentPosition() -> Double {
         guard let np = nowPlaying else { return 0 }
         let before = np.tracks.prefix(trackIndex).reduce(0) { $0 + $1.durationSec }
-        let t = av.currentTime().seconds
-        return before + (t.isFinite ? t : 0)
+        var t = av.currentTime().seconds
+        if !t.isFinite { t = 0 }
+        if let target = seekTarget {
+            if abs(t - target) < 1.5 || av.timeControlStatus == .playing {
+                seekTarget = nil // landed (or playing on from where it is)
+            } else {
+                t = target // still on its way: that's where the book is
+            }
+        }
+        return before + t
     }
 
     // MARK: sleep timer
@@ -309,37 +407,82 @@ final class WatchPlayer {
 
     // MARK: syncing
 
-    private func playingChanged(_ playing: Bool) {
-        guard playing != isPlaying else { return }
+    /// `status`: AVPlayer.TimeControlStatus's raw value.
+    private func statusChanged(_ status: Int) {
+        let s = AVPlayer.TimeControlStatus(rawValue: status) ?? .paused
         accrue()
+        audible = s == .playing
+        playingSince = audible ? Date() : nil
+        buffering = s == .waitingToPlayAtSpecifiedRate
+        let playing = s != .paused
+        guard playing != isPlaying else { return }
         isPlaying = playing
-        playingSince = playing ? Date() : nil
+        pausedAt = playing ? nil : Date()
         updateNowPlayingInfo()
         WatchModel.shared.updateWidget()
-        if !playing, nowPlaying != nil { Task { _ = await reportNow() } }
+        if !playing, nowPlaying != nil, !stopping { Task { _ = await reportNow() } }
     }
 
+    /// Adds the time sound was coming out (not buffering) to the listening time.
     private func accrue() {
         guard let since = playingSince else { return }
         listenedSec += Date().timeIntervalSince(since)
-        playingSince = isPlaying ? Date() : nil
+        playingSince = audible ? Date() : nil
     }
 
-    /// The position twice a second (for the screen) and a report every 30 s while playing.
+    /// The position twice a second (for the screen), a report every 30 s while
+    /// playing, and the stream watchdog. Slower while paused.
     private func startTicker() {
         ticker?.cancel()
         ticker = Task {
             var sinceReport = 0.0
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(0.5))
-                guard nowPlaying != nil else { continue }
+                let step = isPlaying ? 0.5 : 2
+                try? await Task.sleep(for: .seconds(step))
+                guard let np = nowPlaying else { continue }
                 position = currentPosition()
                 if isPlaying {
-                    sinceReport += 0.5
+                    sinceReport += step
                     if sinceReport >= Self.syncEvery { sinceReport = 0; _ = await reportNow() }
+                    if !np.isLocal { await watchStream(np) }
                 }
             }
         }
+    }
+
+    /// A stream that failed, or has been waiting for data too long (a dropped
+    /// connection, a network change, an expired sign-in), is rebuilt where it is,
+    /// with a renewed sign-in, waiting longer each time. After the last try it
+    /// pauses and says so. Its position is never touched: a stuck item still
+    /// reports where it really is.
+    private func watchStream(_ np: WatchNowPlaying) async {
+        guard !recovering, !loading else { return }
+        let failed = av.currentItem?.status == .failed
+        if av.timeControlStatus == .playing && !failed {
+            stalledSince = nil
+            recoveries = 0
+            return
+        }
+        let since = stalledSince ?? Date()
+        stalledSince = since
+        guard failed || Date().timeIntervalSince(since) >= Self.stallLimits[min(recoveries, Self.stallLimits.count - 1)] else { return }
+        guard recoveries < Self.stallLimits.count else {
+            av.pause()
+            streamError = "Lost the connection. Tap Play to try again."
+            stalledSince = nil
+            return
+        }
+        recovering = true
+        defer { recovering = false }
+        recoveries += 1
+        let pos = currentPosition()
+        await api.ensureFreshToken()
+        // Paused or another book meanwhile: leave it.
+        guard nowPlaying?.book.id == np.book.id, isPlaying, let tracks = nowPlaying?.tracks else { return }
+        let (i, off) = Self.locate(pos, tracks)
+        setTrack(i, offset: off)
+        startPlayback()
+        stalledSince = Date()
     }
 
     /// Reports the position (and listening time) now. True when the server took it;
@@ -372,7 +515,16 @@ final class WatchPlayer {
             case .ok: saved = true; recorded = true
             // The session is gone (closed by the server after a long pause): the
             // position still goes through without it.
-            case .gone, .refused: saved = await api.saveProgress(report)
+            case .gone:
+                saved = await api.saveProgress(report)
+                // Closed by the server (a restart, a long pause): a new one records
+                // the listening time again. Same tracks: its URLs replace the old
+                // ones, which may have belonged to the closed session.
+                if let s = await api.openSession(np.book.id), nowPlaying?.book.id == np.book.id {
+                    nowPlaying?.sessionId = s.id
+                    if s.tracks.count == np.tracks.count { nowPlaying?.tracks = s.tracks }
+                }
+            case .refused: saved = await api.saveProgress(report)
             case .unreachable: break
             }
         } else {
@@ -401,48 +553,76 @@ final class WatchPlayer {
     /// Stops the book: a final report (unless it was just sent), then the session closes.
     func stop(report: Bool = true) async {
         guard let np = nowPlaying else { return }
+        stopping = true
+        defer { stopping = false }
         av.pause()
         if report { _ = await reportNow() }
-        if let sid = np.sessionId { await api.closeSession(sid) }
+        // Closing needs no answer: don't hold the screen on a slow connection.
+        if let sid = np.sessionId { Task { await api.closeSession(sid) } }
         av.replaceCurrentItem(with: nil)
+        seekTarget = nil
         ticker?.cancel()
         cancelSleep()
         nowPlaying = nil
         status = nil
+        streamError = nil
+        buffering = false
+        itemToken = nil
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
         WatchModel.shared.updateWidget()
+        endAudioSession()
     }
 
     // MARK: system controls
 
-    private func setUpRemoteCommands() {
+    /// Built outside the main actor: MediaPlayer calls these on its own queue.
+    nonisolated private static func setUpRemoteCommands() {
         let c = MPRemoteCommandCenter.shared()
-        c.playCommand.addTarget { [weak self] _ in
-            MainActor.assumeIsolated { _ = Task { _ = await self?.resume() } }
+        c.playCommand.addTarget { _ in
+            Task { @MainActor in _ = await WatchPlayer.shared.resume() }
             return .success
         }
-        c.pauseCommand.addTarget { [weak self] _ in
-            MainActor.assumeIsolated { self?.pause() }
+        c.pauseCommand.addTarget { _ in
+            Task { @MainActor in WatchPlayer.shared.pause() }
             return .success
         }
-        c.togglePlayPauseCommand.addTarget { [weak self] _ in
-            MainActor.assumeIsolated { self?.togglePlay() }
+        c.togglePlayPauseCommand.addTarget { _ in
+            Task { @MainActor in WatchPlayer.shared.togglePlay() }
             return .success
         }
         c.skipBackwardCommand.preferredIntervals = [30]
-        c.skipBackwardCommand.addTarget { [weak self] _ in
-            MainActor.assumeIsolated { self?.skip(-30) }
+        c.skipBackwardCommand.addTarget { _ in
+            Task { @MainActor in WatchPlayer.shared.skip(-30) }
             return .success
         }
         c.skipForwardCommand.preferredIntervals = [30]
-        c.skipForwardCommand.addTarget { [weak self] _ in
-            MainActor.assumeIsolated { self?.skip(30) }
+        c.skipForwardCommand.addTarget { _ in
+            Task { @MainActor in WatchPlayer.shared.skip(30) }
             return .success
         }
-        c.changePlaybackPositionCommand.addTarget { [weak self] e in
+        c.changePlaybackPositionCommand.addTarget { e in
             let t = (e as? MPChangePlaybackPositionCommandEvent)?.positionTime ?? 0
-            MainActor.assumeIsolated { self?.seek(to: t) }
+            Task { @MainActor in WatchPlayer.shared.seek(to: t) }
             return .success
+        }
+    }
+
+    /// A call or Siri pauses the audio: play again afterwards if the system says to.
+    nonisolated private static func observeInterruptions() -> NSObjectProtocol {
+        NotificationCenter.default.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: nil) { n in
+            let type = (n.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt).flatMap(AVAudioSession.InterruptionType.init)
+            let options = (n.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt).map(AVAudioSession.InterruptionOptions.init)
+            let shouldResume = options?.contains(.shouldResume) ?? false
+            Task { @MainActor in WatchPlayer.shared.interrupted(began: type == .began, shouldResume: shouldResume) }
+        }
+    }
+
+    private func interrupted(began: Bool, shouldResume: Bool) {
+        if began {
+            resumeAfterInterruption = isPlaying
+        } else {
+            if resumeAfterInterruption, shouldResume, nowPlaying != nil { Task { _ = await resume() } }
+            resumeAfterInterruption = false
         }
     }
 
@@ -470,10 +650,26 @@ final class WatchPlayer {
 
     nonisolated private static func observePlaying(_ av: AVPlayer) -> NSKeyValueObservation {
         av.observe(\.timeControlStatus) { p, _ in
-            let playing = p.timeControlStatus != .paused
-            Task { @MainActor in WatchPlayer.shared.playingChanged(playing) }
+            let status = p.timeControlStatus.rawValue
+            Task { @MainActor in WatchPlayer.shared.statusChanged(status) }
         }
     }
+
+    #if DEBUG
+    // Test hooks (simulator only, see DebugHooks).
+    var debugListened: Double { listenedSec + (playingSince.map { Date().timeIntervalSince($0) } ?? 0) }
+    var debugRecoveries: Int { recoveries }
+    func debugLongPause() { pausedAt = Date(timeIntervalSinceNow: -3600) }
+    /// Swaps the playing item for one that never answers (a dead connection), at
+    /// the same place, as a dropped link would leave it.
+    func debugBreakStream() {
+        let off = av.currentTime().seconds
+        let item = AVPlayerItem(url: URL(string: "http://10.255.255.1/stalled.mp3")!)
+        av.replaceCurrentItem(with: item)
+        av.seek(to: CMTime(seconds: off, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+        av.play()
+    }
+    #endif
 
     /// A book position as (track index, seconds into that track).
     static func locate(_ sec: Double, _ tracks: [Track]) -> (Int, Double) {

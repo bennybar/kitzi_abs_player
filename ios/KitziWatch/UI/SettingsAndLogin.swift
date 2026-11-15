@@ -5,6 +5,7 @@ struct SettingsView: View {
     @Environment(WatchDownloads.self) private var downloads
     @State private var cellular = Store.downloadsUseCellular
     @State private var confirmSignOut = false
+    @State private var unsynced = false
 
     var body: some View {
         List {
@@ -33,10 +34,20 @@ struct SettingsView: View {
         .confirmationDialog("Sign out of Kitzi on this watch?", isPresented: $confirmSignOut, titleVisibility: .visible) {
             Button("Sign Out", role: .destructive) {
                 Task {
-                    await model.signOut()
+                    if await model.signOut() { WatchNav.shared.path.removeAll() } else { unsynced = true }
+                }
+            }
+        }
+        // Listening saved on the watch couldn't reach the server: signing out loses it.
+        .confirmationDialog("Some listening hasn't synced", isPresented: $unsynced, titleVisibility: .visible) {
+            Button("Sign Out Anyway", role: .destructive) {
+                Task {
+                    await model.signOut(force: true)
                     WatchNav.shared.path.removeAll()
                 }
             }
+        } message: {
+            Text("The server can't be reached, so where you got to on the watch hasn't been saved there yet. Signing out now loses it. Try again with a connection to keep it.")
         }
     }
 }
