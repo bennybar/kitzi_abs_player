@@ -498,13 +498,17 @@ private struct AudibleCarouselCover: View {
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
-            AsyncImage(url: book.coverURL) { img in
-                img.resizable().scaledToFill()
-            } placeholder: {
-                Rectangle().fill(.quaternary)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .clipped()
+            // In an overlay, so the filled image can't make the item taller than the
+            // carousel gives it (that pushed the title below the clipped edge).
+            Color.clear
+                .overlay {
+                    AsyncImage(url: book.coverURL) { img in
+                        img.resizable().scaledToFill()
+                    } placeholder: {
+                        Rectangle().fill(.quaternary)
+                    }
+                }
+                .clipped()
             LinearGradient(colors: [.clear, .black.opacity(0.8)], startPoint: .center, endPoint: .bottom)
                 .opacity(Double(fullness))
             VStack(alignment: .leading, spacing: 2) {
