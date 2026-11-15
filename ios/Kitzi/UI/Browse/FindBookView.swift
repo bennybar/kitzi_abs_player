@@ -302,16 +302,13 @@ struct AudibleBookView: View {
                 }
                 .buttonStyle(.glassProminent)
             }
-            if Shelfarr.shared.configured {
+            // Already in the library: nothing to send.
+            if Shelfarr.shared.configured && library.match(book) == nil {
                 if let r = existingRequest {
                     Label("Requested on Shelfarr · \(r.status.capitalized)", systemImage: "tray.and.arrow.down")
                         .font(.subheadline).foregroundStyle(.secondary)
                 } else {
-                    if library.match(book) == nil {
-                        shelfarrButton.buttonStyle(.glassProminent)
-                    } else {
-                        shelfarrButton.buttonStyle(.glass)
-                    }
+                    shelfarrButton.buttonStyle(.glassProminent)
                 }
             }
         }
