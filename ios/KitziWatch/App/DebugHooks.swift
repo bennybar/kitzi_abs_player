@@ -30,6 +30,9 @@ enum DebugHooks {
             case "dlkill": await downloadThenDie()
             case "dlresume": await downloadResumed()
             case "remote": await remote()
+            case "dlkeep": await downloadsScreenData()
+            case "dlcancel": for id in WatchDownloads.shared.activeIds { WatchDownloads.shared.cancel(id) }; log("dlcancel active=\(WatchDownloads.shared.activeIds.count)")
+            case "dlclear": for id in WatchDownloads.shared.downloadedIds + WatchDownloads.shared.activeIds { WatchDownloads.shared.delete(id) }; log("dlclear done")
             case "signout": await WatchModel.shared.signOut(); log("signout signedIn=\(WatchModel.shared.signedIn)")
             default: break
             }
@@ -48,6 +51,7 @@ enum DebugHooks {
                 }
             case "remote": WatchNav.shared.path = [.remote]
             case "settings": WatchNav.shared.path = [.settings]
+            case "downloads": WatchNav.shared.path = [.downloads]
             default: break
             }
         }
@@ -155,6 +159,21 @@ enum DebugHooks {
     }
 
     /// Starts a big download and kills the app part way through, as watchOS might.
+    /// For the Downloads screen: the two shortest books downloaded and kept, and the
+    /// longest one left downloading.
+    private static func downloadsScreenData() async {
+        guard let lib = try? await API.shared.libraries().first(where: { $0.mediaType == "book" }),
+              let short = try? await API.shared.libraryItems(library: lib.id, page: 1, limit: 2, sort: "media.duration", desc: false).items,
+              let long = try? await API.shared.libraryItems(library: lib.id, page: 1, limit: 1, sort: "media.duration", desc: true).items.first
+        else { log("dlkeep skipped"); return }
+        let d = WatchDownloads.shared
+        for item in short { if let b = Book.from(item) { _ = await d.start(b.id) } }
+        for _ in 0..<120 where !short.compactMap({ Book.from($0)?.id }).allSatisfy(d.isDownloaded) { try? await Task.sleep(for: .seconds(1)) }
+        if let b = Book.from(long) { _ = await d.start(b.id) }
+        try? await Task.sleep(for: .seconds(6))
+        log("dlkeep on watch=\(d.downloadedIds.count) active=\(d.activeIds.count)")
+    }
+
     private static func downloadThenDie() async {
         guard let lib = try? await API.shared.libraries().first(where: { $0.mediaType == "book" }),
               let item = try? await API.shared.libraryItems(library: lib.id, page: 1, limit: 1, sort: "media.duration", desc: true).items.first,

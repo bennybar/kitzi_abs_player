@@ -6,6 +6,7 @@ enum WatchRoute: Hashable {
     case player
     case remote
     case settings
+    case downloads
 }
 
 /// The navigation stack, shared so a screen can open the player.
@@ -33,6 +34,7 @@ struct WatchRootView: View {
                         case .player: PlayerView()
                         case .remote: RemoteView()
                         case .settings: SettingsView()
+                        case .downloads: DownloadsView()
                         }
                     }
             }

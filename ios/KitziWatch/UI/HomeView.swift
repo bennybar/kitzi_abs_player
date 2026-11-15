@@ -9,13 +9,6 @@ struct HomeView: View {
     @State private var syncResult: Bool?
     @State private var syncing = false
 
-    /// Books on the watch that aren't on the shelf (finished elsewhere, or not started).
-    private var onWatchOnly: [WatchBookManifest] {
-        downloads.downloadedIds.filter { id in !model.shelf.contains { $0.id == id } }
-            .compactMap { downloads.downloaded($0) }
-            .sorted { $0.book.title < $1.book.title }
-    }
-
     var body: some View {
         List {
             if let np = player.nowPlaying {
@@ -48,17 +41,19 @@ struct HomeView: View {
                 }
             }
 
-            if !onWatchOnly.isEmpty {
-                Section("On Watch") {
-                    ForEach(onWatchOnly, id: \.book.id) { m in
-                        NavigationLink(value: WatchRoute.book(m.book.id)) {
-                            BookRow(id: m.book.id, title: m.book.title, line: m.book.author, progress: nil)
+            Section {
+                NavigationLink(value: WatchRoute.downloads) {
+                    HStack {
+                        Label("Downloads", systemImage: "arrow.down.circle.fill")
+                        Spacer()
+                        let n = downloads.downloadedIds.count, active = downloads.activeIds.count
+                        if active > 0 {
+                            Image(systemName: "arrow.down").foregroundStyle(Color.accentColor)
+                                .symbolEffect(.pulse)
                         }
+                        if n > 0 { Text("\(n)").foregroundStyle(.secondary) }
                     }
                 }
-            }
-
-            Section {
                 Button {
                     Task {
                         syncing = true

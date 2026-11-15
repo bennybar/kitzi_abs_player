@@ -88,6 +88,17 @@ final class WatchDownloads {
     func state(_ id: String) -> State { states[id] ?? .none }
     func isDownloaded(_ id: String) -> Bool { states[id] == .done }
     var downloadedIds: [String] { states.filter { $0.value == .done }.map(\.key) }
+    /// Books on their way (queued, downloading, or failed and waiting for a retry).
+    var activeIds: [String] { states.filter { $0.value != .done && $0.value != .none }.map(\.key) }
+    /// The book of a download that hasn't finished.
+    func planned(_ id: String) -> WatchBookManifest? { plans[id]?.manifest }
+
+    /// Space one book takes on the watch.
+    func bytes(_ id: String) -> Int64 {
+        let dir = Self.booksDir.appendingPathComponent(id)
+        let files = FileManager.default.enumerator(at: dir, includingPropertiesForKeys: [.fileSizeKey])?.allObjects as? [URL] ?? []
+        return files.reduce(0) { $0 + Int64((try? $1.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) }
+    }
 
     func downloaded(_ id: String) -> WatchBookManifest? {
         guard let d = try? Data(contentsOf: Self.booksDir.appendingPathComponent("\(id)/book.json")) else { return nil }

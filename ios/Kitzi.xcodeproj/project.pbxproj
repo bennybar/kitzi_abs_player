@@ -59,6 +59,7 @@
 		B86422852832FD947D2C1A7C /* Downloads.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AEB4014F2DCFEB8056640A8 /* Downloads.swift */; };
 		B88879D4128A943121C793FC /* NowListeningWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE85099BDA54EBDF25F852DD /* NowListeningWidget.swift */; };
 		B907DF2152729D520D9B3B28 /* SeriesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A70E7E175B0FC011DF4E7A7E /* SeriesView.swift */; };
+		BDF3F20F26FDE43C97A0C948 /* DownloadsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E26E48E7C3877EE54574F780 /* DownloadsView.swift */; };
 		BE8918AA87F538F836747059 /* Session.swift in Sources */ = {isa = PBXBuildFile; fileRef = 034A50630D7868E0CEFCAF5B /* Session.swift */; };
 		BFCEF7469C2593AC5871FCF3 /* WidgetBook.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4055C5012EBE849B48915BE4 /* WidgetBook.swift */; };
 		C317A826E1229435696438D5 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1506F8FD3774749ABBC8D069 /* Models.swift */; };
@@ -209,6 +210,7 @@
 		DCA35E62EA2D0EB2AC73B392 /* FindBookView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FindBookView.swift; sourceTree = "<group>"; };
 		E01E59579F9B77BC3368F25C /* BookDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookDetailView.swift; sourceTree = "<group>"; };
 		E20FBF7E7C2175EFA483390F /* KitziWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KitziWatchApp.swift; sourceTree = "<group>"; };
+		E26E48E7C3877EE54574F780 /* DownloadsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadsView.swift; sourceTree = "<group>"; };
 		E6C5C51DF500712E2947DD67 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		EB533F742C08D4E2A95E25AE /* DownloadsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadsView.swift; sourceTree = "<group>"; };
 		F3D5349321CA8D9E2110D505 /* AuthorsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthorsView.swift; sourceTree = "<group>"; };
@@ -254,6 +256,7 @@
 			isa = PBXGroup;
 			children = (
 				8D37E012EE7F1864BAA6FB0B /* BookView.swift */,
+				E26E48E7C3877EE54574F780 /* DownloadsView.swift */,
 				A91943083F646B1418412D70 /* HomeView.swift */,
 				B9BC4DADB9655E6359A596EC /* PlayerView.swift */,
 				92EB25215C661578C3701CE2 /* RemoteView.swift */,
@@ -668,6 +671,7 @@
 				8F7F294E4056563EAFA2578B /* API.swift in Sources */,
 				12D320EA9BCB6071F1765E5C /* BookView.swift in Sources */,
 				B1E14F1FCF166042BB4D9EA6 /* DebugHooks.swift in Sources */,
+				BDF3F20F26FDE43C97A0C948 /* DownloadsView.swift in Sources */,
 				578A6DCAF9DDBEAA49A96223 /* HomeView.swift in Sources */,
 				4AAEBFECDE03E13CA03F0AFB /* Intents.swift in Sources */,
 				6AB03F4B24DD9B19833908A9 /* JSON.swift in Sources */,
@@ -870,7 +874,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 369;
+				CURRENT_PROJECT_VERSION = 370;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 57L2ULXB7Z;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -891,7 +895,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
-				MARKETING_VERSION = 2.0.369;
+				MARKETING_VERSION = 2.0.370;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -992,7 +996,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 369;
+				CURRENT_PROJECT_VERSION = 370;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 57L2ULXB7Z;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -1007,7 +1011,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
-				MARKETING_VERSION = 2.0.369;
+				MARKETING_VERSION = 2.0.370;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
