@@ -24,6 +24,7 @@ final class AppSettings {
     var expressivePlayButton: Bool { didSet { d.set(expressivePlayButton, forKey: "ui_expressive_play_button") } }
     var playerGradient: Bool { didSet { d.set(playerGradient, forKey: "ui_player_gradient_background") } }
     var audibleLink: Bool { didSet { d.set(audibleLink, forKey: "ui_audible_link_enabled") } }
+    var similarBooks: Bool { didSet { d.set(similarBooks, forKey: "ui_similar_books_enabled") } }
     var chapterTicks: Bool { didSet { d.set(chapterTicks, forKey: "ui_progress_bar_chapterized") } }
     var letterRail: Bool { didSet { d.set(letterRail, forKey: "ui_letter_scroll_enabled") } }
     var gridLayout: Bool { didSet { d.set(gridLayout, forKey: "ui_library_grid") } }
@@ -70,6 +71,7 @@ final class AppSettings {
         expressivePlayButton = b("ui_expressive_play_button", false)
         playerGradient = b("ui_player_gradient_background", true)
         audibleLink = b("ui_audible_link_enabled", true)
+        similarBooks = b("ui_similar_books_enabled", true)
         chapterTicks = b("ui_progress_bar_chapterized", true)
         letterRail = b("ui_letter_scroll_enabled", false)
         gridLayout = b("ui_library_grid", false)

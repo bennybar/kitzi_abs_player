@@ -71,10 +71,32 @@ enum AudibleCatalog {
         var c = URLComponents(string: "https://api.audible.com/1.0/catalog/products")!
         c.queryItems = [.init(name: "keywords", value: query), .init(name: "num_results", value: "30"),
                         .init(name: "products_sort_by", value: "Relevance"), .init(name: "image_sizes", value: "500"),
-                        .init(name: "response_groups", value: "rating,product_desc,product_attrs,contributors,media,series,category_ladders,product_extended_attrs")]
-        let (data, resp) = try await URLSession.shared.data(from: c.url!)
-        guard (resp as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
-        return ((JSONUtil.parse(data) as? JSON)?.objs("products") ?? []).compactMap(AudibleBook.init)
+                        .init(name: "response_groups", value: groups)]
+        return try await get(c.url!).objs("products").compactMap(AudibleBook.init)
+    }
+
+    private static let groups = "rating,product_desc,product_attrs,contributors,media,series,category_ladders,product_extended_attrs"
+    private static var similarCache: [String: [AudibleBook]] = [:]
+
+    /// "Listeners also enjoyed": Audible's similar books, in the book's own
+    /// language (it also suggests the same book in other languages).
+    static func similar(asin: String) async throws -> [AudibleBook] {
+        if let c = similarCache[asin] { return c }
+        let sims = try await get(URL(string: "https://api.audible.com/1.0/catalog/products/\(asin)/sims?similarity_type=RawSimilarities&num_results=20&image_sizes=500&response_groups=\(groups)")!)
+        let own = try? await get(URL(string: "https://api.audible.com/1.0/catalog/products/\(asin)?response_groups=product_attrs")!)
+        let language = own?.obj("product")?.str("language")
+        let books = sims.objs("similar_products")
+            .filter { p in language == nil || p.str("language") == nil || p.str("language") == language }
+            .compactMap(AudibleBook.init)
+            .filter { $0.asin != asin }
+        similarCache[asin] = books
+        return books
+    }
+
+    private static func get(_ url: URL) async throws -> JSON {
+        let (data, resp) = try await URLSession.shared.data(from: url)
+        guard (resp as? HTTPURLResponse)?.statusCode == 200, let root = JSONUtil.parse(data) as? JSON else { throw URLError(.badServerResponse) }
+        return root
     }
 }
 
@@ -134,7 +156,6 @@ struct FindBookView: View {
                 if !Task.isCancelled { failed = true }
             }
         }
-        .navigationDestination(for: AudibleBook.self) { AudibleBookView(book: $0) }
         .onAppear { if query.isEmpty && !initialQuery.isEmpty { query = initialQuery; searchActive = false } }
         #if DEBUG
         // Test hook (simulator screenshots): open the first result.
@@ -146,7 +167,7 @@ struct FindBookView: View {
     }
 }
 
-private struct AudibleCover: View {
+struct AudibleCover: View {
     let url: URL?
     var size: CGFloat
 
@@ -163,7 +184,7 @@ private struct AudibleCover: View {
 }
 
 /// Stars, the average and how many ratings.
-private struct AudibleStars: View {
+struct AudibleStars: View {
     let stars: Double
     let count: Int
 
@@ -423,6 +444,59 @@ extension LibraryStore {
             guard titles.contains(where: { AudibleRating.similar($0, t) }) else { return false }
             let mine = (b.authors.isEmpty ? [b.author ?? ""] : b.authors).map(AudibleRating.norm)
             return authors.isEmpty || mine.contains { m in authors.contains { !m.isEmpty && ($0.contains(m) || m.contains($0)) } }
+        }
+    }
+}
+
+/// "Listeners Also Enjoyed" on a book's page: Audible's similar books, found by
+/// the book's Audible match. Hidden when there's no match or Audible can't be reached.
+struct SimilarBooksRow: View {
+    let book: Book
+    @State private var similar: [AudibleBook] = []
+    @Environment(LibraryStore.self) private var library
+
+    var body: some View {
+        // A placeholder keeps the .task running when there's nothing to show yet.
+        VStack(alignment: .leading, spacing: 12) {
+            Color.clear.frame(height: 0)
+            if !similar.isEmpty {
+                Text("Listeners Also Enjoyed").font(.headline)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(alignment: .top, spacing: 14) {
+                        ForEach(similar) { s in
+                            NavigationLink(value: s) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    ZStack(alignment: .topTrailing) {
+                                        AudibleCover(url: s.coverURL, size: 118)
+                                        if library.match(s) != nil {
+                                            Image(systemName: "checkmark.circle.fill").font(.title3)
+                                                .symbolRenderingMode(.palette).foregroundStyle(.white, Color.accentColor)
+                                                .padding(5)
+                                                .accessibilityLabel("In your library")
+                                        }
+                                    }
+                                    Text(s.title).font(.footnote.weight(.semibold)).lineLimit(2)
+                                    if let a = s.authors.first { Text(a).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
+                                    if let st = s.stars {
+                                        Label(String(format: "%.1f", st), systemImage: "star.fill")
+                                            .font(.caption.weight(.semibold)).foregroundStyle(.orange)
+                                    }
+                                }
+                                .frame(width: 118, alignment: .leading)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+                .scrollClipDisabled()
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .task(id: book.id) {
+            similar = []
+            guard let asin = await AudibleRating.shared.rating(for: book)?.asin,
+                  let found = try? await AudibleCatalog.similar(asin: asin) else { return }
+            withAnimation(.snappy) { similar = found }
         }
     }
 }

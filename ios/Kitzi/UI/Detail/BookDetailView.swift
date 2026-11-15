@@ -221,6 +221,7 @@ struct BookDetailView: View {
                     iconActions
                     if let d = b.description.map(Self.stripHTML), !d.isEmpty { descriptionCard(d) }
                     detailsCard
+                    if settings.similarBooks { SimilarBooksRow(book: b) }
                     bookmarksCard
                 }
                 .padding(.horizontal, 16)
