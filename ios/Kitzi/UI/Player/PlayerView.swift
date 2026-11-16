@@ -27,6 +27,9 @@ struct PlayerView: View {
     @State private var confirmRemoveDownload = false
 
     @Environment(\.colorScheme) private var colorScheme
+    /// The phone's mode as the app has it (Settings > Theme), before the gradient
+    /// player darkens itself: for the sheets.
+    private var systemScheme: ColorScheme { colorScheme }
 
     var body: some View {
         ZStack {
@@ -462,9 +465,9 @@ struct PlayerView: View {
         }
         // Frosted enough that the busy cover behind doesn't wash out the text.
         .presentationBackground(.thickMaterial)
-        // The gradient player is always dark: its sheets are too (a light sheet
-        // over it glared).
-        .preferredColorScheme(settings.playerGradient ? .dark : nil)
+        // The phone's own light/dark mode (the player itself is dark with its
+        // gradient, but its sheets are their own surfaces, as in Apple Music).
+        .environment(\.colorScheme, systemScheme)
     }
 
     /// From one sheet to another: close, then open the next once the first is gone.
