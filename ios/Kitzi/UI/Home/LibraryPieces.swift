@@ -22,6 +22,26 @@ extension View {
     }
 }
 
+/// Opens a book's page with the cover zooming into it, from any list: the row's
+/// cover is the source (`coverZoomSource` with the same `source`), and the
+/// namespace comes from the list's `coverZoom` environment.
+struct ZoomBookLink<Label: View>: View {
+    let book: Book
+    let source: String
+    @ViewBuilder var label: () -> Label
+    @Environment(\.coverZoom) private var zoom
+
+    var body: some View {
+        NavigationLink {
+            if let zoom {
+                BookDetailView(book: book).navigationTransition(.zoom(sourceID: source, in: zoom))
+            } else {
+                BookDetailView(book: book)
+            }
+        } label: { label() }
+    }
+}
+
 /// Where a "See All" goes.
 struct ShelfRoute: Hashable { var title: String; var books: [Book] }
 
@@ -185,16 +205,18 @@ private struct BookContextMenu: ViewModifier {
         content.contextMenu {
             Button {
                 Task {
-                    if let error = await Player.shared.play(b) { Toast.show(error) } else { openPlayer() }
+                    if let error = await Player.shared.play(b) { Haptics.failure(); Toast.show(error) } else { openPlayer() }
                 }
             } label: { Label("Play", systemImage: "play.fill") }
             if !playing {
                 Button {
                     PlayQueue.shared.addNext(b.id)
+                    Haptics.tap()
                     Toast.show("Plays next", action: "Undo") { PlayQueue.shared.remove(b.id) }
                 } label: { Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") }
                 Button {
                     PlayQueue.shared.add(b.id)
+                    Haptics.tap()
                     Toast.show("Added to queue", action: "Undo") { PlayQueue.shared.remove(b.id) }
                 } label: { Label("Add to Queue", systemImage: "text.badge.plus") }
             }

@@ -65,7 +65,8 @@ final class AppSettings {
         func b(_ key: String, _ def: Bool) -> Bool { d.object(forKey: key) as? Bool ?? def }
         func i(_ key: String, _ def: Int) -> Int { d.object(forKey: key) as? Int ?? def }
         showSeriesTab = b("ui_show_series_tab", false)
-        showAuthorsTab = b("ui_author_view_enabled", true)
+        // Authors and Series are in Library › Browse; their tabs are extra (Settings).
+        showAuthorsTab = b("ui_author_view_enabled", false)
         showQueueTab = b("ui_queue_tab_enabled", true)
         showShelfarrTab = b("ui_shelfarr_tab", false)
         achewEnabled = b("ui_achew_enabled", false)

@@ -91,8 +91,10 @@ struct ShelfarrView: View {
                 Task {
                     do {
                         try await shelfarr.request(book)
+                        Haptics.success()
                         Toast.show("Requested \(book.title)")
                     } catch {
+                        Haptics.failure()
                         Toast.show(error.localizedDescription)
                     }
                 }

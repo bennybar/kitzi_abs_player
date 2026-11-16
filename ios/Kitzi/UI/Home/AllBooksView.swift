@@ -13,6 +13,7 @@ struct AllBooksView: View {
     @Environment(LibraryStore.self) private var library
     @Environment(AppSettings.self) private var settings
     @State private var sort: BookSort = .titleAsc
+    @Namespace private var zoom
     @State private var search = ""
 
     var body: some View {
@@ -28,6 +29,7 @@ struct AllBooksView: View {
         // Test hook (simulator screenshots): start on the rating sort.
         .onAppear { if ProcessInfo.processInfo.environment["KITZI_TEST_SORT"] == "rating" { sort = .ratingDesc } }
         #endif
+        .environment(\.coverZoom, zoom)
         .searchable(text: $search, prompt: "Title, author, series, narrator")
         .kitziBackground()
         .navigationTitle(filter == .all ? "All Books" : filter.label)
@@ -73,7 +75,9 @@ struct AllBooksView: View {
                 ForEach(groups, id: \.0) { letter, books in
                     Section {
                         ForEach(books) { b in
-                            NavigationLink(value: b) { CoverTile(book: b, size: nil, progress: library.progress[b.id]) }
+                            ZoomBookLink(book: b, source: "allg-\(b.id)") {
+                                CoverTile(book: b, size: nil, progress: library.progress[b.id], zoomID: "allg-\(b.id)")
+                            }
                                 .buttonStyle(.plain)
                                 .bookContextMenu(b)
                         }
@@ -93,7 +97,9 @@ struct AllBooksView: View {
     }
 
     private func row(_ b: Book) -> some View {
-        NavigationLink(value: b) { ListBookRow(book: b, showRating: sort == .ratingDesc) }
+        ZoomBookLink(book: b, source: "alll-\(b.id)") {
+            ListBookRow(book: b, zoomID: "alll-\(b.id)", showRating: sort == .ratingDesc)
+        }
             .bookContextMenu(b)
     }
 

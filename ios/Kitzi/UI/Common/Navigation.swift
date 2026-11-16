@@ -28,6 +28,7 @@ private struct KitziDestinations: ViewModifier {
 /// An author: photo and bio from the server, then their books by series, then the rest.
 struct AuthorDetailView: View {
     let name: String
+    @Namespace private var zoom
     @Environment(LibraryStore.self) private var library
     @State private var info: LibraryStore.AuthorInfo?
     @State private var expanded = false
@@ -66,19 +67,20 @@ struct AuthorDetailView: View {
             ForEach(bySeries, id: \.key) { series, list in
                 Section(series) {
                     ForEach(list.sorted { ($0.seriesSequence ?? .infinity) < ($1.seriesSequence ?? .infinity) }) { b in
-                        NavigationLink { BookDetailView(book: b) } label: { BookRow(book: b) }
+                        ZoomBookLink(book: b, source: "author-\(b.id)") { BookRow(book: b, zoomID: "author-\(b.id)") }
                     }
                 }
             }
             if !others.isEmpty {
                 Section(bySeries.isEmpty ? "Books" : "Other Books") {
                     ForEach(others.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }) { b in
-                        NavigationLink { BookDetailView(book: b) } label: { BookRow(book: b) }
+                        ZoomBookLink(book: b, source: "author-\(b.id)") { BookRow(book: b, zoomID: "author-\(b.id)") }
                     }
                 }
             }
         }
         .kitziBackground(grouped: true)
+        .environment(\.coverZoom, zoom)
         .navigationTitle(name)
         .navigationBarTitleDisplayMode(.inline)
         .task(id: name) { info = await library.authorInfo(name) }

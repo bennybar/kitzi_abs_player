@@ -46,6 +46,7 @@ struct BookDetailView: View {
     @State private var chapters: [Chapter] = []
     @State private var showChapters = false
     @State private var showAudibleChapters = false
+    @State private var showTitle = false
 
     /// The cached copy when there is one (fresher metadata), else what was passed in.
     private var b: Book { library.byId[book.id] ?? book }
@@ -54,7 +55,8 @@ struct BookDetailView: View {
 
     var body: some View {
         layout
-        .navigationTitle("Book Details")
+        // No title over the cover art; the book's own once its title scrolls away.
+        .navigationTitle(showTitle ? b.title : "")
         .navigationBarTitleDisplayMode(.inline)
         .confirmationDialog(
             progress?.isFinished == true ? "Mark as unfinished?" : "Mark as finished?",
@@ -74,6 +76,7 @@ struct BookDetailView: View {
         } message: {
             Text("The downloaded files are deleted from this device. You can still stream the book.")
         }
+        .sensoryFeedback(.error, trigger: playError) { _, new in new != nil }
         .alert("Couldn't start this book", isPresented: Binding(get: { playError != nil }, set: { if !$0 { playError = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -238,6 +241,10 @@ struct BookDetailView: View {
             }
             .padding(.bottom, 80)
         }
+        // Past the cover and the title under it: the title goes to the bar.
+        .onScrollGeometryChange(for: Bool.self, of: { $0.contentOffset.y > $0.containerSize.width + 20 }) { _, past in
+            withAnimation(.easeInOut(duration: 0.2)) { showTitle = past }
+        }
         .ignoresSafeArea(edges: .top)
     }
 
@@ -310,10 +317,10 @@ struct BookDetailView: View {
             HStack(spacing: 0) {
                 iconAction(dl.0, dl.1) { downloadTapped(state) }
                 iconAction("text.line.first.and.arrowtriangle.forward", "Play Next") {
-                    queue.addNext(book.id); Toast.show("Plays next", action: "Undo") { PlayQueue.shared.remove(book.id) }
+                    queue.addNext(book.id); Haptics.tap(); Toast.show("Plays next", action: "Undo") { PlayQueue.shared.remove(book.id) }
                 }
                 iconAction("text.badge.plus", "Add to Queue") {
-                    queue.add(book.id); Toast.show("Added to queue", action: "Undo") { PlayQueue.shared.remove(book.id) }
+                    queue.add(book.id); Haptics.tap(); Toast.show("Added to queue", action: "Undo") { PlayQueue.shared.remove(book.id) }
                 }
                 iconAction(progress?.isFinished == true ? "arrow.uturn.backward" : "checkmark.circle",
                            progress?.isFinished == true ? "Mark Unfinished" : "Mark Finished") { confirmFinished = true }
@@ -506,6 +513,7 @@ struct BookDetailView: View {
         let wasFinished = progress?.isFinished == true
         let before = progress
         if await library.setFinished(book.id, !wasFinished) {
+            Haptics.success()
             Toast.show(wasFinished ? "Marked as unfinished" : "Marked as finished", action: "Undo") {
                 Task {
                     if !(await LibraryStore.shared.restoreProgress(before, book.id)) {
@@ -514,6 +522,7 @@ struct BookDetailView: View {
                 }
             }
         } else {
+            Haptics.failure()
             Toast.show("Couldn't update the server. Nothing was changed.")
         }
     }

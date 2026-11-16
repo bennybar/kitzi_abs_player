@@ -246,8 +246,7 @@ struct AudibleGenreView: View {
                                        description: Text("Check your connection and try again."))
                     .listRowBackground(Color.clear)
             } else {
-                HStack { Spacer(); ProgressView("Loading…"); Spacer() }
-                    .padding(.top, 40).listRowBackground(Color.clear).listRowSeparator(.hidden)
+                ForEach(0..<7, id: \.self) { _ in LoadingRow().listRowBackground(Color.clear) }
             }
         }
         .listStyle(.plain)
@@ -270,14 +269,17 @@ struct AudibleGenreView: View {
 /// there are none or Audible can't be reached.
 struct AudibleReviewsCard: View {
     let asin: String
-    @State private var reviews: [AudibleReview] = []
+    /// Nil while loading (a placeholder holds its place).
+    @State private var reviews: [AudibleReview]?
     @State private var expanded: Set<String> = []
 
     var body: some View {
         // A placeholder keeps the .task running when there's nothing to show yet.
         VStack(spacing: 0) {
             Color.clear.frame(height: 0)
-            if !reviews.isEmpty {
+            if reviews == nil {
+                LoadingBlock(height: 220)
+            } else if let reviews, !reviews.isEmpty {
                 VStack(alignment: .leading, spacing: 14) {
                     Text("Reviews").font(.headline)
                     ForEach(reviews) { r in
@@ -290,6 +292,7 @@ struct AudibleReviewsCard: View {
                 .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
             }
         }
+        .animation(.snappy, value: reviews == nil)
         .task(id: asin) {
             reviews = (try? await AudibleCatalog.reviews(asin: asin)) ?? []
         }
@@ -343,8 +346,8 @@ struct MissingSeriesBooks: View {
                     }
                 }
             } else if !done {
-                HStack(spacing: 8) { ProgressView(); Text("Checking Audible…").foregroundStyle(.secondary) }
-                    .font(.subheadline)
+                LoadingRow()
+                LoadingRow()
             }
         } header: {
             if missing != nil || !done { Text("Not in Your Library") }
@@ -406,15 +409,23 @@ struct RatingFillBanner: View {
 struct LibraryBookReviews: View {
     let book: Book
     @State private var asin: String?
+    @State private var matched = false
 
     var body: some View {
         VStack(spacing: 0) {
             Color.clear.frame(height: 0)
-            if let asin { AudibleReviewsCard(asin: asin) }
+            if let asin {
+                AudibleReviewsCard(asin: asin)
+            } else if !matched {
+                LoadingBlock(height: 220)
+            }
         }
+        .animation(.snappy, value: matched)
         .task(id: book.id) {
             asin = nil
+            matched = false
             asin = await AudibleRating.shared.asin(for: book)
+            matched = true
         }
     }
 }
@@ -461,8 +472,7 @@ struct AudibleListView: View {
                                        description: Text("Check your connection and try again."))
                     .listRowBackground(Color.clear)
             } else {
-                HStack { Spacer(); ProgressView("Loading…"); Spacer() }
-                    .padding(.top, 40).listRowBackground(Color.clear).listRowSeparator(.hidden)
+                ForEach(0..<7, id: \.self) { _ in LoadingRow().listRowBackground(Color.clear) }
             }
         }
         .listStyle(.plain)
@@ -494,11 +504,14 @@ struct NextInSeriesCard: View {
     @Environment(LibraryStore.self) private var library
     @State private var next: AudibleBook?
     @State private var number: String?
+    @State private var looked = false
 
     var body: some View {
         VStack(spacing: 0) {
             Color.clear.frame(height: 0)
-            if let next {
+            if !looked {
+                LoadingBlock(height: 92)
+            } else if let next {
                 let mine = library.match(next) ?? ownedByNumber
                 Group {
                     if let mine {
@@ -510,8 +523,11 @@ struct NextInSeriesCard: View {
                 .buttonStyle(.plain)
             }
         }
+        .animation(.snappy, value: looked)
         .task(id: book.id) {
             next = nil
+            looked = false
+            defer { looked = true }
             guard let name = book.series, let current = book.seriesSequence else { return }
             let inSeries = library.books.filter { $0.series == name }.sorted { ($0.seriesSequence ?? 0) < ($1.seriesSequence ?? 0) }
             guard let found = try? await AudibleCatalog.series(named: name, books: [book] + inSeries.filter { $0.id != book.id }),
@@ -712,9 +728,11 @@ struct AudibleChaptersSheet: View {
         // Chapters past the end of this edition are dropped.
         let fitting = chapters.filter { $0.startSec < d }
         if let why = await API.shared.saveChapters(book.id, fitting, durationSec: d) {
+            Haptics.failure()
             error = why
             return
         }
+        Haptics.success()
         // The chapters fit, so the match is right: the server keeps the ASIN too
         // (only if it still has none).
         var savedAsin = false

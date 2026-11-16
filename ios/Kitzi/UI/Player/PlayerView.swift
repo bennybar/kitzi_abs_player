@@ -16,6 +16,7 @@ struct PlayerView: View {
     @Environment(Player.self) private var player
     @Environment(LibraryStore.self) private var library
     @Environment(AppSettings.self) private var settings
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(Downloads.self) private var downloads
     @Environment(SleepTimer.self) private var sleep
 
@@ -150,6 +151,10 @@ struct PlayerView: View {
                 .padding(12)
                 .animation(.spring(response: 0.35), value: player.positionBeforeLastJump)
             }
+            // Paused: the art steps back a little; playing, it springs forward (as in
+            // Apple Music). It stays put with Reduce Motion.
+            .scaleEffect(player.isPlaying || player.preparing || reduceMotion ? 1 : 0.88)
+            .animation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.45, dampingFraction: 0.68), value: player.isPlaying)
     }
 
     private func glassPill(_ icon: String, _ title: String, _ action: @escaping () -> Void) -> some View {

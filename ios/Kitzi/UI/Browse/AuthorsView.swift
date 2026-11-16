@@ -87,7 +87,8 @@ private struct AuthorCell: View {
     var body: some View {
         VStack(spacing: 8) {
             AuthorAvatar(author: author, size: 92)
-            Text(author.name).font(.subheadline.weight(.semibold)).lineLimit(2).multilineTextAlignment(.center)
+            // Two lines kept for every name, so the grid's rows line up.
+            Text(author.name).font(.subheadline.weight(.semibold)).lineLimit(2, reservesSpace: true).multilineTextAlignment(.center)
             Text("\(author.bookCount) book\(author.bookCount == 1 ? "" : "s")")
                 .font(.caption).foregroundStyle(.secondary)
         }

@@ -6,6 +6,7 @@ struct DownloadsView: View {
     @Environment(LibraryStore.self) private var library
     @Environment(AppSettings.self) private var settings
     @State private var confirmRemoveAll = false
+    @Namespace private var zoom
     @State private var removing: String?
     @State private var cancelling: String?
 
@@ -74,11 +75,9 @@ struct DownloadsView: View {
                         .listRowBackground(Color.clear)
                 } else {
                     ForEach(done) { b in
-                        NavigationLink {
-                            BookDetailView(book: b)
-                        } label: {
+                        ZoomBookLink(book: b, source: "dl-\(b.id)") {
                             HStack {
-                                BookRow(book: b)
+                                BookRow(book: b, zoomID: "dl-\(b.id)")
                                 Text(Format.size(downloads.bytes(b.id))).font(.caption).foregroundStyle(.secondary)
                             }
                         }
@@ -91,12 +90,14 @@ struct DownloadsView: View {
                 if !done.isEmpty { Text("On This Device") }
             } footer: {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Using \(Format.size(downloads.totalBytes)).")
+                    // Nothing downloaded: no "Using Zero KB."
+                    if downloads.totalBytes > 0 { Text("Using \(Format.size(downloads.totalBytes)).") }
                     Text(settings.wifiOnlyDownloads ? "Downloads use Wi-Fi only (change in Settings)." : "Downloads use Wi-Fi or cellular (change in Settings).")
                 }
             }
         }
         // A finished download moves between sections instead of jumping.
+        .environment(\.coverZoom, zoom)
         .animation(.default, value: downloads.downloadedIds)
         .animation(.default, value: active.map(\.0))
         .kitziBackground(grouped: true)

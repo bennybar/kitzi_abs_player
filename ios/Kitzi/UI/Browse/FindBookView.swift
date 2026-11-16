@@ -225,7 +225,11 @@ struct FindBookView: View {
     var body: some View {
         Group {
             if searching && results == nil {
-                ProgressView("Searching Audible…").frame(maxWidth: .infinity, maxHeight: .infinity)
+                // Rows the shape of the results while Audible answers.
+                List(0..<7, id: \.self) { _ in LoadingRow().listRowBackground(Color.clear) }
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
+                    .scrollDisabled(true)
             } else if failed {
                 ContentUnavailableView("Couldn't reach Audible", systemImage: "wifi.exclamationmark",
                                        description: Text("Check your connection and try again."))
@@ -548,8 +552,10 @@ struct AudibleBookView: View {
     private func request(_ m: ShelfarrBook) async {
         do {
             try await Shelfarr.shared.request(m)
+            Haptics.success()
             Toast.show("Sent \(m.title) to Shelfarr")
         } catch {
+            Haptics.failure()
             Toast.show(error.localizedDescription)
         }
     }
@@ -646,13 +652,18 @@ struct SimilarBooksRow: View {
     let book: Book
     @State private var similar: [AudibleBook] = []
     @State private var opened: AudibleBook?
+    @State private var loaded = false
     @Environment(LibraryStore.self) private var library
 
     var body: some View {
         // A placeholder keeps the .task running when there's nothing to show yet.
         VStack(alignment: .leading, spacing: 12) {
             Color.clear.frame(height: 0)
-            if !similar.isEmpty {
+            if !loaded {
+                // Its place held while Audible answers, so the page doesn't jump.
+                Text("Listeners Also Enjoyed").font(.title3.bold())
+                LoadingBlock(height: 210, radius: 28)
+            } else if !similar.isEmpty {
                 Text("Listeners Also Enjoyed").font(.title3.bold())
                 KeylineCarousel(
                     items: similar,
@@ -674,9 +685,11 @@ struct SimilarBooksRow: View {
         .navigationDestination(item: $opened) { AudibleBookView(book: $0) }
         .task(id: book.id) {
             similar = []
+            loaded = false
+            defer { withAnimation(.snappy) { loaded = true } }
             guard let asin = await AudibleRating.shared.asin(for: book),
                   let found = try? await AudibleCatalog.similar(asin: asin, language: await AudibleRating.shared.language(for: book)) else { return }
-            withAnimation(.snappy) { similar = found }
+            similar = found
         }
     }
 }

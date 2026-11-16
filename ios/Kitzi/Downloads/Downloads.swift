@@ -363,6 +363,7 @@ final class Downloads {
         clearAttempts(id)
         states[id] = .done
         lastOutcome = ("Downloaded \(p.book.title)", false)
+        if UIApplication.shared.applicationState == .active { Haptics.success() }
         // The cover, for offline lists and the lock screen.
         if let u = p.book.coverURL(width: 1000) {
             let dest = Self.booksDir.appendingPathComponent("\(id)/cover.jpg")

@@ -144,6 +144,9 @@ struct HomeView: View {
                     print("KITZITEST match martianAsin=\(martian?.asin ?? "-") booksWithAsin=\(library.books.filter { $0.asin != nil }.count)/\(library.books.count)")
                     for (name, b) in cases { print("KITZITEST match \(name): \(b.flatMap { library.match($0)?.title } ?? "no match")") }
                 }
+                if ProcessInfo.processInfo.environment["KITZI_TEST_OPEN"] == "byauthor" {
+                    path.append(BrowseRoute.authors)
+                }
                 if ProcessInfo.processInfo.environment["KITZI_TEST_OPEN"] == "byseries" {
                     path.append(BrowseRoute.series)
                 }
@@ -336,15 +339,17 @@ struct BookListView: View {
     /// A series' page: also lists its books on Audible that aren't here.
     var series: String? = nil
     @Environment(AppSettings.self) private var settings
+    @Namespace private var zoom
     var body: some View {
         List {
             ForEach(books) { b in
-                NavigationLink { BookDetailView(book: b) } label: { ListBookRow(book: b) }
+                ZoomBookLink(book: b, source: "list-\(b.id)") { ListBookRow(book: b, zoomID: "list-\(b.id)") }
                     .bookContextMenu(b)
             }
             if let series, settings.seriesMissing { MissingSeriesBooks(series: series, books: books) }
         }
         .listStyle(.plain)
+        .environment(\.coverZoom, zoom)
         .kitziBackground()
         .navigationTitle(title)
     }

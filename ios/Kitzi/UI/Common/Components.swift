@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// The shape-shifting play button's outline: a rounded square (paused) morphing
 /// into a scalloped "cookie" (playing). Animatable, so it springs between them.
@@ -90,6 +91,9 @@ struct ToastView: View {
 /// A library row: cover with progress, title, series, author, narrator, duration, state.
 struct BookRow: View {
     let book: Book
+    /// The cover zooms into the book's page (see ZoomBookLink).
+    var zoomID: String? = nil
+    @Environment(\.coverZoom) private var zoom
     @Environment(LibraryStore.self) private var library
     @Environment(Downloads.self) private var downloads
     @Environment(AppSettings.self) private var settings
@@ -101,6 +105,7 @@ struct BookRow: View {
                 CoverImage(book: book)
                     .frame(width: 76, height: 76)
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .coverZoomSource(zoomID ?? "", zoomID == nil ? nil : zoom, radius: 12)
                 if let p, p.progress > 0, !p.isFinished {
                     ProgressView(value: p.progress).tint(.accentColor).padding(.horizontal, 6).padding(.bottom, 4)
                 }
@@ -221,4 +226,64 @@ struct KitziBackground: ViewModifier {
 
 extension View {
     func kitziBackground(grouped: Bool = false) -> some View { modifier(KitziBackground(grouped: grouped)) }
+}
+
+// MARK: loading placeholders
+
+/// A gentle pulse for placeholders (still with Reduce Motion).
+private struct Pulsing: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var dim = false
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(dim ? 0.45 : 1)
+            .onAppear {
+                guard !reduceMotion else { return }
+                withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) { dim = true }
+            }
+    }
+}
+
+/// A grey block where something is loading, the size of what's coming, so the
+/// page doesn't jump when it arrives.
+struct LoadingBlock: View {
+    var height: CGFloat
+    var radius: CGFloat = 22
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: radius, style: .continuous)
+            .fill(.quaternary)
+            .frame(maxWidth: .infinity).frame(height: height)
+            .modifier(Pulsing())
+            .accessibilityLabel("Loading")
+    }
+}
+
+/// A grey stand-in for a book row (cover and three lines) while a list loads.
+struct LoadingRow: View {
+    var cover: CGFloat = 64
+
+    var body: some View {
+        HStack(spacing: 12) {
+            RoundedRectangle(cornerRadius: cover * 0.12, style: .continuous).fill(.quaternary).frame(width: cover, height: cover)
+            VStack(alignment: .leading, spacing: 7) {
+                Capsule().fill(.quaternary).frame(width: 180, height: 12)
+                Capsule().fill(.quaternary).frame(width: 120, height: 10)
+                Capsule().fill(.quaternary).frame(width: 150, height: 10)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 4)
+        .modifier(Pulsing())
+        .accessibilityHidden(true)
+    }
+}
+
+/// A tap in the hand for something that finished (or failed): the actions
+/// that otherwise only show a toast.
+enum Haptics {
+    static func success() { UINotificationFeedbackGenerator().notificationOccurred(.success) }
+    static func failure() { UINotificationFeedbackGenerator().notificationOccurred(.error) }
+    static func tap() { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
 }
