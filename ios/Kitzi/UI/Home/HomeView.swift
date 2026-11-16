@@ -21,6 +21,16 @@ struct HomeView: View {
                 LazyVStack(alignment: .leading, spacing: 26) {
                     if search.isEmpty {
                         topCard.padding(.horizontal, 20)
+                        // The first sync: shelves' shapes instead of an empty page.
+                        if library.books.isEmpty && library.syncing {
+                            ForEach(0..<2, id: \.self) { _ in
+                                VStack(alignment: .leading, spacing: 12) {
+                                    Capsule().fill(.quaternary).frame(width: 150, height: 20)
+                                    LoadingBlock(height: CarouselSize.cover, radius: 28)
+                                }
+                                .padding(.horizontal, 16)
+                            }
+                        }
                         shelves
                         if settings.becauseFinished { BecauseYouFinishedRow { path.append($0) } }
                     }
@@ -207,9 +217,12 @@ struct HomeView: View {
             Text("Browse").font(.title2.bold()).padding(.horizontal, 20)
             VStack(spacing: 0) {
                 ForEach(BookFilter.allCases) { f in
-                    let count = library.filtered(sort: .addedDesc, filter: f, search: "").count
-                    browseRow(f == .all ? "All Books" : f.label, Self.icon(f), count: count) { path.append(AllBooksRoute(filter: f)) }
-                    Divider().padding(.leading, 58)
+                    // Counted without sorting the library; a filter with nothing in it isn't listed.
+                    let count = library.count(f)
+                    if f == .all || count > 0 {
+                        browseRow(f == .all ? "All Books" : f.label, Self.icon(f), count: count) { path.append(AllBooksRoute(filter: f)) }
+                        Divider().padding(.leading, 58)
+                    }
                 }
                 browseRow("By Genre", "tag") { path.append(BrowseRoute.genres) }
                 Divider().padding(.leading, 58)
@@ -285,7 +298,7 @@ struct HomeView: View {
         let speed = max(Store.double("playback_speed") ?? 1, 0.1)
         return KeylineCarousel(
             items: books,
-            height: hero ? 250 : 210,
+            height: CarouselSize.cover,
             keylines: { w in
                 // One big cover, a medium and a small one peeking.
                 let small: CGFloat = 40, medium = w * 0.2

@@ -242,6 +242,17 @@ final class LibraryStore {
         return picks.sorted { $0.0 > $1.0 }.prefix(20).map(\.1)
     }
 
+    /// How many books a filter has (no sorting: Home asks for every filter on each redraw).
+    func count(_ filter: BookFilter) -> Int {
+        switch filter {
+        case .all: books.count
+        case .inProgress: books.count { b in progress[b.id].map { !$0.isFinished && $0.progress > 0 } ?? false }
+        case .notStarted: books.count { b in progress[b.id].map { !$0.isFinished && $0.progress <= 0 } ?? true }
+        case .finished: books.count { progress[$0.id]?.isFinished == true }
+        case .downloaded: books.count { Downloads.shared.isDownloaded($0.id) }
+        }
+    }
+
     func filtered(sort: BookSort, filter: BookFilter, search: String) -> [Book] {
         let q = search.trimmingCharacters(in: .whitespaces).lowercased()
         let list = books.filter { b in

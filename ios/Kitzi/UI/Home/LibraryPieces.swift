@@ -254,7 +254,7 @@ struct ResumeCard: View {
                             .shadow(color: .black.opacity(0.2), radius: 8, y: 4)
                         VStack(alignment: .leading, spacing: 4) {
                             Text("CONTINUE LISTENING").font(.caption2.weight(.bold)).foregroundStyle(.secondary)
-                            Text(b.title).font(.headline).lineLimit(1)
+                            Text(b.title).font(.headline).lineLimit(2)
                             ProgressView(value: p?.progress ?? 0).tint(.accentColor)
                             Text("\(Format.hm(left)) left").font(.caption).foregroundStyle(.secondary)
                         }

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// A Material 3 Expressive carousel, ported: items sit on "keylines" (large →
 /// medium → small) and change width as they move between them, the cover masked
@@ -108,6 +109,15 @@ struct KeylineCarousel<Item, Content: View>: View {
     private func lerp(_ a: CGFloat, _ b: CGFloat, _ t: CGFloat) -> CGFloat { a + (b - a) * t }
 }
 
+/// The carousels' height: the big item's width, so a (square) cover shows whole
+/// instead of losing its top and bottom. The same sum as the keylines' big item.
+enum CarouselSize {
+    @MainActor static var cover: CGFloat {
+        let w = min(UIScreen.main.bounds.width, 500) - 32
+        return min(max(w - w * 0.2 - 40 - 16, 180), 300)
+    }
+}
+
 /// A cover card for a carousel: title and caption on the art, fading as the item
 /// narrows (text under a shrinking item would be clipped mid-word).
 struct CarouselCover: View {
@@ -120,7 +130,9 @@ struct CarouselCover: View {
     var body: some View {
         ZStack(alignment: .bottomLeading) {
             CoverImage(book: book)
-            LinearGradient(colors: [.clear, .black.opacity(0.78)], startPoint: .center, endPoint: .bottom)
+            // Dark enough at the bottom that the title reads over the cover's own lettering.
+            LinearGradient(stops: [.init(color: .clear, location: 0.45), .init(color: .black.opacity(0.6), location: 0.72),
+                                   .init(color: .black.opacity(0.92), location: 1)], startPoint: .top, endPoint: .bottom)
                 .opacity(Double(fullness))
             VStack(alignment: .leading, spacing: 2) {
                 Text(book.title)

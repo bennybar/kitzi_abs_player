@@ -664,12 +664,12 @@ struct SimilarBooksRow: View {
             if !loaded {
                 // Its place held while Audible answers, so the page doesn't jump.
                 Text("Listeners Also Enjoyed").font(.title3.bold())
-                LoadingBlock(height: 210, radius: 28)
+                LoadingBlock(height: CarouselSize.cover, radius: 28)
             } else if !similar.isEmpty {
                 Text("Listeners Also Enjoyed").font(.title3.bold())
                 KeylineCarousel(
                     items: similar,
-                    height: 210,
+                    height: CarouselSize.cover,
                     keylines: { w in
                         // One big cover, a medium and a small one peeking, as on Home.
                         let small: CGFloat = 40, medium = w * 0.2
@@ -711,7 +711,8 @@ struct AudibleCarouselCover: View {
             Color.clear
                 .overlay { AudibleImage(url: book.coverURL) }
                 .clipped()
-            LinearGradient(colors: [.clear, .black.opacity(0.8)], startPoint: .center, endPoint: .bottom)
+            LinearGradient(stops: [.init(color: .clear, location: 0.45), .init(color: .black.opacity(0.6), location: 0.72),
+                                   .init(color: .black.opacity(0.92), location: 1)], startPoint: .top, endPoint: .bottom)
                 .opacity(Double(fullness))
             VStack(alignment: .leading, spacing: 2) {
                 Text(book.title).font(.subheadline.weight(.semibold)).lineLimit(1)

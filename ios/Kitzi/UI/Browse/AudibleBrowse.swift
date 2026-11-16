@@ -612,7 +612,7 @@ struct BecauseYouFinishedRow: View {
                     .padding(.horizontal, 16)
                 KeylineCarousel(
                     items: similar,
-                    height: 210,
+                    height: CarouselSize.cover,
                     keylines: { w in
                         let small: CGFloat = 40, medium = w * 0.2
                         return [w - medium - small - 16, medium, small]
