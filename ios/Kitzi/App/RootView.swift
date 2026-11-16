@@ -128,6 +128,10 @@ struct MainView: View {
                 let want = ProcessInfo.processInfo.environment["KITZI_TEST_BOOK"]
                 let b = want.flatMap { w in library.books.first { $0.title.localizedCaseInsensitiveContains(w) } } ?? library.continueListening.first
                 if let b { await player.play(b) }
+                if ProcessInfo.processInfo.environment["KITZI_TEST_BUSY"] != nil {
+                    player.setSpeed(1.5)
+                    SleepTimer.shared.start(minutes: 30)
+                }
                 showPlayer = true
             }
             #endif

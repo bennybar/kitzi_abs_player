@@ -90,6 +90,10 @@ struct PlayerView: View {
         }
     }
 
+    /// What's "on" or filled in (the progress, 1.5×, a running sleep timer): white
+    /// on the gradient player, where the indigo accent was too dim to read.
+    private var tint: Color { settings.playerGradient ? .white : .accentColor }
+
     // MARK: layout — the Android player's structure, in Liquid Glass, on one screen
 
     /// The Android player's order, in Liquid Glass: cover, title block, then the
@@ -155,7 +159,6 @@ struct PlayerView: View {
                             .transition(.scale.combined(with: .opacity))
                     }
                     Spacer()
-                    glassPill("info.circle", "Book Info") { sheet = .info }
                 }
                 .padding(12)
                 .animation(.spring(response: 0.35), value: player.positionBeforeLastJump)
@@ -210,7 +213,8 @@ struct PlayerView: View {
             }
             HStack(spacing: 10) {
                 StarsView(book: np.book).font(.caption)
-                lengthChip(np)
+                // The book's length is already under the scrubber when both bars show.
+                if !(settings.dualProgress && chapterScope(np) != nil) { lengthChip(np) }
             }
             .padding(.top, 2)
         }
@@ -251,7 +255,7 @@ struct PlayerView: View {
                 let thick: CGFloat = scrub == nil ? 6 : 10
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color.primary.opacity(0.18)).frame(height: thick)
-                    Capsule().fill(Color.accentColor).frame(width: max(w * fraction, thick), height: thick)
+                    Capsule().fill(tint).frame(width: max(w * fraction, thick), height: thick)
                     ForEach(ticks.indices, id: \.self) { i in
                         Rectangle().fill(Color.black.opacity(0.35)).frame(width: 1.5, height: thick).offset(x: w * ticks[i])
                     }
@@ -420,7 +424,11 @@ struct PlayerView: View {
                         .lineLimit(1).minimumScaleFactor(0.7)
                 }
             }
-            .foregroundStyle(highlighted ? Color.accentColor : Color.primary)
+            // On the gradient player, "on" is full white on a soft pill and the rest
+            // steps back a little; elsewhere it's the accent colour.
+            .foregroundStyle(highlighted ? tint : Color.primary.opacity(settings.playerGradient ? 0.8 : 1))
+            .padding(.horizontal, 8).padding(.vertical, 5)
+            .background { if highlighted && settings.playerGradient { Capsule().fill(.white.opacity(0.16)) } }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(Rectangle())
         }

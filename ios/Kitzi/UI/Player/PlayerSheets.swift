@@ -281,6 +281,8 @@ struct PlayerMoreSheet: View {
         @Bindable var settings = settings
         NavigationStack {
             List {
+                // Here, not as a pill on the cover (it covered the art's lettering).
+                Button { open(.info) } label: { row("Book Info", "info.circle") }
                 Button { confirmFinished = true } label: { row("Mark Finished", "checkmark.circle") }
                 Button { open(.bookmarks) } label: { row("Bookmarks", "bookmark") }
                 Button { open(.history) } label: { row("Play History", "clock.arrow.circlepath") }
@@ -289,7 +291,7 @@ struct PlayerMoreSheet: View {
                 Button(role: .destructive) {
                     open(nil)
                     Task { await player.closeBook() }
-                } label: { Label("Close Book", systemImage: "xmark.circle") }
+                } label: { Label("Close Book", systemImage: "xmark.circle").foregroundStyle(.red) }
             }
             .navigationTitle("More")
             .navigationBarTitleDisplayMode(.inline)
@@ -300,16 +302,18 @@ struct PlayerMoreSheet: View {
                 Text("This marks the book finished here and on the server, and stops playback.")
             }
         }
-        .presentationDetents([.medium])
+        // Tall enough for every row (seven didn't fit half the screen).
+        .presentationDetents([.fraction(0.64), .large])
     }
 
     /// Readable over the player's cover: the text in the normal colour, only the
     /// icon in the accent (a tinted label on glass over a dark cover was too faint).
     private func row(_ title: String, _ icon: String) -> some View {
         Label {
-            Text(title).foregroundStyle(.primary)
+            // The colour itself: ".primary" inside a button is the button's tint.
+            Text(title).foregroundStyle(Color.primary)
         } icon: {
-            Image(systemName: icon).foregroundStyle(Color.accentColor)
+            Image(systemName: icon).foregroundStyle(Color.primary.opacity(0.7))
         }
     }
 
