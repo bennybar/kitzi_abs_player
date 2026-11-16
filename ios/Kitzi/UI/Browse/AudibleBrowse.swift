@@ -630,6 +630,10 @@ struct AudibleChaptersSheet: View {
     @State private var loading = true
     @State private var saving = false
     @State private var error: String?
+    /// The Audible book the chapters came from.
+    @State private var asin: String?
+    /// The server has no ASIN for the book (Kitzi matched it by title): Apply saves this one too.
+    @State private var savesAsin = false
 
     var body: some View {
         NavigationStack {
@@ -643,6 +647,10 @@ struct AudibleChaptersSheet: View {
                                 Label(warning, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange).font(.subheadline)
                             }
                             Text("\(found.chapters.count) chapters on Audible · \(current.count) now").font(.subheadline).foregroundStyle(.secondary)
+                            if savesAsin, let asin {
+                                Text("Also saves Audible's ID (\(asin)) for this book to your server, so it's matched directly from now on.")
+                                    .font(.footnote).foregroundStyle(.secondary)
+                            }
                         }
                         Section("Audible's Chapters") {
                             ForEach(Array(found.chapters.enumerated()), id: \.offset) { i, c in
@@ -680,6 +688,10 @@ struct AudibleChaptersSheet: View {
                 error = "Audible doesn't have this book."
                 return
             }
+            self.asin = asin
+            // Matched by title (the server has no ASIN): Apply confirms the match.
+            let onServer = try? await API.shared.item(book.id)?.obj("media")?.obj("metadata")?.str("asin")
+            savesAsin = (onServer ?? nil)?.isEmpty ?? true
             found = await API.shared.audibleChapters(asin: asin)
         }
     }
@@ -703,8 +715,12 @@ struct AudibleChaptersSheet: View {
             error = why
             return
         }
+        // The chapters fit, so the match is right: the server keeps the ASIN too
+        // (only if it still has none).
+        var savedAsin = false
+        if savesAsin, let asin { savedAsin = await API.shared.saveAsinIfMissing(book.id, asin) }
         onApplied(fitting)
-        Toast.show("Chapters updated from Audible")
+        Toast.show(savedAsin ? "Chapters and Audible ID saved" : "Chapters updated from Audible")
         dismiss()
     }
 }

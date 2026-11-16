@@ -320,6 +320,15 @@ final class API {
         }
     }
 
+    /// Saves a book's Audible ASIN on the server, only when it has none (one the
+    /// server already has is never replaced). True when it was saved.
+    func saveAsinIfMissing(_ itemId: String, _ asin: String) async -> Bool {
+        guard let item = try? await item(itemId) else { return false }
+        if let existing = item.obj("media")?.obj("metadata")?.str("asin"), !existing.isEmpty { return false }
+        guard let (code, _) = try? await send("/api/items/\(itemId)/media", method: "PATCH", body: ["metadata": ["asin": asin]]) else { return false }
+        return (200..<300).contains(code)
+    }
+
     func closeSession(_ id: String) async {
         _ = try? await ok("/api/session/\(id)/close", method: "POST", body: [String: Any]())
     }
