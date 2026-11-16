@@ -52,6 +52,8 @@ final class LibraryStore {
 
     private func setBooks(_ list: [Book]) {
         books = list.filter(\.isAudioBook)
+        // Sorted once here (Home read it on every redraw).
+        recentlyAdded = Array(books.sorted { ($0.addedAt ?? 0) > ($1.addedAt ?? 0) }.prefix(20))
         byId = Dictionary(books.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
     }
 
@@ -219,7 +221,8 @@ final class LibraryStore {
             .prefix(20).compactMap { byId[$0.itemId] }
     }
 
-    var recentlyAdded: [Book] { Array(books.sorted { ($0.addedAt ?? 0) > ($1.addedAt ?? 0) }.prefix(20)) }
+    /// The 20 newest books (kept up to date by setBooks).
+    private(set) var recentlyAdded: [Book] = []
 
     /// The next book in each series you've finished one of (not one you've started).
     var continueSeries: [Book] {

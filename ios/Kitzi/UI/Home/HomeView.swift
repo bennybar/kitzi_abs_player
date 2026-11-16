@@ -110,7 +110,7 @@ struct HomeView: View {
                 BookListView(title: r.title, books: r.books)
             }
             .kitziDestinations()
-            .searchable(text: $search, prompt: "Title, author, series, narrator")
+            // Search has its own tab (it was hidden here until you pulled down).
             .task(id: search) {
                 guard search.count >= 3 else { serverResults = []; return }
                 try? await Task.sleep(for: .milliseconds(400))
@@ -215,26 +215,61 @@ struct HomeView: View {
     private var browseCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Browse").font(.title2.bold()).padding(.horizontal, 20)
-            VStack(spacing: 0) {
-                ForEach(BookFilter.allCases) { f in
-                    // Counted without sorting the library; a filter with nothing in it isn't listed.
-                    let count = library.count(f)
-                    if f == .all || count > 0 {
-                        browseRow(f == .all ? "All Books" : f.label, Self.icon(f), count: count) { path.append(AllBooksRoute(filter: f)) }
-                        Divider().padding(.leading, 58)
+            // Two columns of tiles (it was eight full-width rows, a whole screen). A
+            // plain grid, not a lazy one: inside Home's lazy stack a lazy grid left
+            // its first row blank after scrolling.
+            let tiles = browseTiles
+            GlassEffectContainer(spacing: 10) {
+                VStack(spacing: 10) {
+                    ForEach(Array(stride(from: 0, to: tiles.count, by: 2)), id: \.self) { i in
+                        HStack(spacing: 10) {
+                            browseTile(tiles[i])
+                            if i + 1 < tiles.count { browseTile(tiles[i + 1]) } else { Color.clear.frame(maxWidth: .infinity) }
+                        }
                     }
                 }
-                browseRow("By Genre", "tag") { path.append(BrowseRoute.genres) }
-                Divider().padding(.leading, 58)
-                browseRow("By Series", "books.vertical.circle") { path.append(BrowseRoute.series) }
-                if !settings.showAuthorsTab {
-                    Divider().padding(.leading, 58)
-                    browseRow("By Author", "person.2") { path.append(BrowseRoute.authors) }
-                }
             }
-            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
             .padding(.horizontal, 16)
         }
+    }
+
+    private struct BrowseTile { var title: String; var icon: String; var count: Int?; var go: () -> Void }
+
+    /// All Books and the filters that have books (counted without sorting the
+    /// library), then genre, series and (without its tab) author.
+    private var browseTiles: [BrowseTile] {
+        var out: [BrowseTile] = []
+        for f in BookFilter.allCases {
+            let count = library.count(f)
+            if f == .all || count > 0 {
+                out.append(BrowseTile(title: f == .all ? "All Books" : f.label, icon: Self.icon(f), count: count) { path.append(AllBooksRoute(filter: f)) })
+            }
+        }
+        out.append(BrowseTile(title: "By Genre", icon: "tag", count: nil) { path.append(BrowseRoute.genres) })
+        out.append(BrowseTile(title: "By Series", icon: "books.vertical.circle", count: nil) { path.append(BrowseRoute.series) })
+        if !settings.showAuthorsTab {
+            out.append(BrowseTile(title: "By Author", icon: "person.2", count: nil) { path.append(BrowseRoute.authors) })
+        }
+        return out
+    }
+
+    private func browseTile(_ t: BrowseTile) -> some View {
+        Button(action: t.go) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Image(systemName: t.icon).font(.title3).foregroundStyle(Color.accentColor).frame(height: 24)
+                    Spacer()
+                    if let count = t.count { Text("\(count)").font(.subheadline.monospacedDigit()).foregroundStyle(.secondary) }
+                }
+                Text(t.title).font(.subheadline.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.85)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(t.count.map { "\(t.title), \($0) books" } ?? t.title)
     }
 
     private static func icon(_ f: BookFilter) -> String {
@@ -247,21 +282,6 @@ struct HomeView: View {
         }
     }
 
-    private func browseRow(_ title: String, _ icon: String, count: Int? = nil, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 14) {
-                Image(systemName: icon).font(.title3).foregroundStyle(Color.accentColor).frame(width: 28)
-                Text(title).font(.body)
-                Spacer()
-                if let count { Text("\(count)").foregroundStyle(.secondary) }
-                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
-            }
-            .padding(.horizontal, 16).padding(.vertical, 14)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-
     // MARK: shelves (M3E carousels under iOS headers)
 
     @ViewBuilder private var shelves: some View {
@@ -269,15 +289,21 @@ struct HomeView: View {
             ForEach(server.filter { settings.showNextInSeries || $0.id != "continue-series" }) { s in
                 let listening = s.id == "continue-listening"
                 let key = ["continue-listening": "continue", "recently-added": "recent", "continue-series": "series"][s.id] ?? "other"
-                shelfSection(s.label, s.books, key: key, hero: listening, showProgress: listening)
+                shelfSection(s.label, listening ? continueBooks(s.books) : s.books, key: key, hero: listening, showProgress: listening)
             }
         } else {
-            shelfSection("Continue", library.continueListening, key: "continue", hero: true, showProgress: true)
+            shelfSection("Continue", continueBooks(library.continueListening), key: "continue", hero: true, showProgress: true)
             shelfSection("Recently Added", library.recentlyAdded, key: "recent", hero: false, showProgress: false)
             if settings.showNextInSeries {
                 shelfSection("Next in Series", library.continueSeries, key: "series", hero: false, showProgress: false) { $0.seriesLabel }
             }
         }
+    }
+
+    /// With the Resume card on top, Continue doesn't repeat the card's book.
+    private func continueBooks(_ books: [Book]) -> [Book] {
+        guard settings.homeTop == "resume", let shown = Player.shared.nowPlaying?.book.id ?? library.continueListening.first?.id else { return books }
+        return books.filter { $0.id != shown }
     }
 
     @ViewBuilder

@@ -272,6 +272,8 @@ struct AudibleReviewsCard: View {
     /// Nil while loading (a placeholder holds its place).
     @State private var reviews: [AudibleReview]?
     @State private var expanded: Set<String> = []
+    /// Two to start with (five long reviews ran two screens); the rest on demand.
+    @State private var showAll = false
 
     var body: some View {
         // A placeholder keeps the .task running when there's nothing to show yet.
@@ -282,9 +284,14 @@ struct AudibleReviewsCard: View {
             } else if let reviews, !reviews.isEmpty {
                 VStack(alignment: .leading, spacing: 14) {
                     Text("Reviews").font(.headline)
-                    ForEach(reviews) { r in
+                    ForEach(showAll ? reviews : Array(reviews.prefix(2))) { r in
                         if r.id != reviews.first?.id { Divider() }
                         review(r)
+                    }
+                    if !showAll, reviews.count > 2 {
+                        Divider()
+                        Button("Show \(reviews.count - 2) More Reviews") { withAnimation(.snappy) { showAll = true } }
+                            .font(.subheadline.weight(.semibold))
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

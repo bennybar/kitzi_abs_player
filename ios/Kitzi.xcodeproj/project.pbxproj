@@ -37,6 +37,7 @@
 		57905EFD7CBD92380812884C /* Navigation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 892F557B897B3F86C076F4AD /* Navigation.swift */; };
 		5CEBFC4C339D23A0A261AA4F /* SleepTimer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA0E8F1BF82B2C5858D9DF3B /* SleepTimer.swift */; };
 		5D54E9A99E1829EA59B36DEC /* AchewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E653004BB025D3831DAE047 /* AchewView.swift */; };
+		5DC716B311236E5E22022F0A /* SearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1ED42EFD9E66D92E3D2A0058 /* SearchView.swift */; };
 		5F24C94B4FD0C9C8794A181C /* PositionRulesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83398FC06B7ABF239A38FEF5 /* PositionRulesTests.swift */; };
 		6AB03F4B24DD9B19833908A9 /* JSON.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA017E8671702DE6E2FE5AF8 /* JSON.swift */; };
 		742CF2052333F40E8E36AEA5 /* LibraryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B30500DE3FF2BAE76405E0B3 /* LibraryStore.swift */; };
@@ -163,6 +164,7 @@
 		17B8E3566C7DFDF5D9E4D479 /* Shelfarr.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shelfarr.swift; sourceTree = "<group>"; };
 		1AEB4014F2DCFEB8056640A8 /* Downloads.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Downloads.swift; sourceTree = "<group>"; };
 		1B7EBEAB245D281C3B4A1BD5 /* WatchDownloads.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchDownloads.swift; sourceTree = "<group>"; };
+		1ED42EFD9E66D92E3D2A0058 /* SearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchView.swift; sourceTree = "<group>"; };
 		1F3D409F49D8DE31A247416A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		321B9D9C495BA1EA3140D7F2 /* KitziApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KitziApp.swift; sourceTree = "<group>"; };
 		3CA997A1E9955DBC2F020A59 /* Achew.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Achew.swift; sourceTree = "<group>"; };
@@ -436,6 +438,7 @@
 				EB533F742C08D4E2A95E25AE /* DownloadsView.swift */,
 				DCA35E62EA2D0EB2AC73B392 /* FindBookView.swift */,
 				B09076244F132CA075772AC8 /* QueueView.swift */,
+				1ED42EFD9E66D92E3D2A0058 /* SearchView.swift */,
 				A70E7E175B0FC011DF4E7A7E /* SeriesView.swift */,
 				06464A9F9F55C1CD4421F0C8 /* ShelfarrView.swift */,
 			);
@@ -812,6 +815,7 @@
 				C8AA9F21999C70CF09AB60B0 /* ProfileView.swift in Sources */,
 				96410AB4E89AE715FD17CED8 /* QueueView.swift in Sources */,
 				D8B9F73D69EF981460224591 /* RootView.swift in Sources */,
+				5DC716B311236E5E22022F0A /* SearchView.swift in Sources */,
 				B907DF2152729D520D9B3B28 /* SeriesView.swift in Sources */,
 				7B4E8094A86BB299F5408A47 /* Session.swift in Sources */,
 				CB5F7E9AFEE6B364AE806C43 /* Settings.swift in Sources */,
@@ -968,7 +972,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 379;
+				CURRENT_PROJECT_VERSION = 380;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 57L2ULXB7Z;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -989,7 +993,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
-				MARKETING_VERSION = 2.0.379;
+				MARKETING_VERSION = 2.0.380;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -1108,7 +1112,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 379;
+				CURRENT_PROJECT_VERSION = 380;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 57L2ULXB7Z;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -1123,7 +1127,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
-				MARKETING_VERSION = 2.0.379;
+				MARKETING_VERSION = 2.0.380;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";

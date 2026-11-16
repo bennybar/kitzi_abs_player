@@ -64,6 +64,10 @@ struct MainView: View {
             }
             Tab("Downloads", systemImage: "arrow.down.circle", value: "downloads") { NavigationStack { DownloadsView().kitziDestinations() } }
             Tab("Settings", systemImage: "gearshape", value: "settings") { NavigationStack { SettingsView().kitziDestinations() } }
+            // The system's search tab (its own button beside the bar): the library, and Audible.
+            Tab("Search", systemImage: "magnifyingglass", value: "search", role: .search) {
+                NavigationStack { SearchView().kitziDestinations() }
+            }
         }
         .tabBarMinimizeBehavior(.onScrollDown)
         // Only with a book: an accessory that's merely empty still shows its glass bar.

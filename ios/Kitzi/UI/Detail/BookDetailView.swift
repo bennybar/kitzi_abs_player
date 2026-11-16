@@ -235,10 +235,13 @@ struct BookDetailView: View {
                     // No spacing here: each Audible section brings its own gap when
                     // it has something, so empty ones leave no hole.
                     VStack(spacing: 0) {
+                        // Your own bookmarks come before Audible's sections; with
+                        // none yet, the hint about them goes last.
+                        if !bookmarks.isEmpty { bookmarksCard.padding(.bottom, 18) }
                         if settings.seriesMissing, b.series != nil, b.seriesSequence != nil { NextInSeriesCard(book: b) }
                         if settings.audibleReviews { LibraryBookReviews(book: b) }
                         if settings.similarBooks { SimilarBooksRow(book: b) }
-                        bookmarksCard
+                        if bookmarks.isEmpty { bookmarksCard }
                     }
                 }
                 .padding(.horizontal, 16)
