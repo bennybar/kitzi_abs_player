@@ -4,7 +4,7 @@ import SwiftUI
 struct AllBooksRoute: Hashable { var filter: BookFilter }
 
 /// Home's other browse screens.
-enum BrowseRoute: Hashable { case genres, authors }
+enum BrowseRoute: Hashable { case genres, authors, series }
 
 /// The whole library on its own screen: by title with an A–Z index down the side
 /// (or by another sort, as one list), filter and sort in the toolbar menu.

@@ -342,3 +342,21 @@ struct RatingFillBanner: View {
         }
     }
 }
+
+/// Reviews on a library book's page: its Audible match's (none when Audible
+/// has no match).
+struct LibraryBookReviews: View {
+    let book: Book
+    @State private var asin: String?
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Color.clear.frame(height: 0)
+            if let asin { AudibleReviewsCard(asin: asin) }
+        }
+        .task(id: book.id) {
+            asin = nil
+            asin = await AudibleRating.shared.rating(for: book)?.asin
+        }
+    }
+}

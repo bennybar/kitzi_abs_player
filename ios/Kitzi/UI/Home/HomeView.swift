@@ -92,6 +92,7 @@ struct HomeView: View {
                 switch r {
                 case .genres: GenresView(path: $path)
                 case .authors: AuthorsView()
+                case .series: SeriesView()
                 }
             }
             .navigationDestination(for: ShelfRoute.self) { r in
@@ -125,6 +126,9 @@ struct HomeView: View {
                 }
                 if ProcessInfo.processInfo.environment["KITZI_TEST_OPEN"] == "findbook" {
                     path.append(FindBookRoute(query: ProcessInfo.processInfo.environment["KITZI_TEST_QUERY"] ?? ""))
+                }
+                if ProcessInfo.processInfo.environment["KITZI_TEST_OPEN"] == "byseries" {
+                    path.append(BrowseRoute.series)
                 }
                 if ProcessInfo.processInfo.environment["KITZI_TEST_OPEN"] == "genres" {
                     path.append(BrowseRoute.genres)
@@ -179,6 +183,8 @@ struct HomeView: View {
                     Divider().padding(.leading, 58)
                 }
                 browseRow("By Genre", "tag") { path.append(BrowseRoute.genres) }
+                Divider().padding(.leading, 58)
+                browseRow("By Series", "books.vertical.circle") { path.append(BrowseRoute.series) }
                 if !settings.showAuthorsTab {
                     Divider().padding(.leading, 58)
                     browseRow("By Author", "person.2") { path.append(BrowseRoute.authors) }
