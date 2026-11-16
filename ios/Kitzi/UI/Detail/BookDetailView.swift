@@ -45,6 +45,7 @@ struct BookDetailView: View {
     @State private var cropping = false
     @State private var chapters: [Chapter] = []
     @State private var showChapters = false
+    @State private var showAudibleChapters = false
 
     /// The cached copy when there is one (fresher metadata), else what was passed in.
     private var b: Book { library.byId[book.id] ?? book }
@@ -102,12 +103,18 @@ struct BookDetailView: View {
             }
         }
         .sheet(isPresented: $showMoreInfo) { BookMoreInfoSheet(book: b) }
+        .sheet(isPresented: $showAudibleChapters) {
+            AudibleChaptersSheet(book: b, current: chapters) { new in
+                chapters = new
+                player.chaptersChanged(book.id, new)
+                chaptersVersion += 1 // the downloaded copy picks them up too
+            }
+        }
         .sheet(isPresented: $cropping) { CoverCropSheet(book: b) }
         .toolbar {
             let achew = settings.achewEnabled && Achew.shared.configured
             let watch = PhoneLink.shared.watchReady && downloads.isDownloaded(book.id)
-            if achew || watch {
-                ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         if watch {
                             if let f = PhoneLink.shared.sendProgress(book.id) {
@@ -120,6 +127,7 @@ struct BookDetailView: View {
                                 } label: { Label("Send to Apple Watch", systemImage: "applewatch") }
                             }
                         }
+                        Button { showAudibleChapters = true } label: { Label("Chapters from Audible", systemImage: "list.bullet.rectangle") }
                         if achew {
                             Button { Task { await fixChapters() } } label: { Label("Fix Chapters in Achew", systemImage: "wand.and.stars") }
                         }
@@ -127,7 +135,6 @@ struct BookDetailView: View {
                         Image(systemName: "ellipsis").accessibilityLabel("More")
                     }
                 }
-            }
         }
         // Back from Achew: it may have saved new chapters.
         .fullScreenCover(isPresented: $showAchew, onDismiss: { chaptersVersion += 1 }) { AchewView() }
@@ -139,6 +146,7 @@ struct BookDetailView: View {
             Text("Starting this book replaces your work on \(title).")
         }
         #if DEBUG
+        .task { if ProcessInfo.processInfo.environment["KITZI_TEST_AUDIBLE_CHAPTERS"] != nil { showAudibleChapters = true } }
         // Test hook (simulator screenshots): open Achew as it is, without starting this book.
         .task { if ProcessInfo.processInfo.environment["KITZI_ACHEW_OPEN"] != nil { showAchew = true } }
         // Or start this book id there first, after the launch hook has connected.
@@ -221,6 +229,7 @@ struct BookDetailView: View {
                     iconActions
                     if let d = b.description.map(Self.stripHTML), !d.isEmpty { descriptionCard(d) }
                     detailsCard
+                    if settings.seriesMissing, b.series != nil, b.seriesSequence != nil { NextInSeriesCard(book: b) }
                     if settings.audibleReviews { LibraryBookReviews(book: b) }
                     if settings.similarBooks { SimilarBooksRow(book: b) }
                     bookmarksCard

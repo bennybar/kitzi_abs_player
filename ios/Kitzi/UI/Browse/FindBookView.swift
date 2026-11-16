@@ -1,3 +1,4 @@
+import CryptoKit
 import SwiftUI
 
 /// A book in Audible's catalog (not necessarily in the library).
@@ -8,6 +9,8 @@ struct AudibleBook: Identifiable, Hashable {
     let authors: [String]
     let narrators: [String]
     let coverURL: URL?
+    /// A smaller cover for lists.
+    let thumbURL: URL?
     let stars: Double?
     let ratingCount: Int
     let performanceStars: Double?
@@ -22,6 +25,8 @@ struct AudibleBook: Identifiable, Hashable {
     /// The series it belongs to, with its number there ("3", "2.5").
     let seriesRefs: [SeriesRef]
     let genres: [String]
+    /// The genres with their Audible ids (tappable on the book's page).
+    let genreRefs: [AudibleGenre]
     let summary: String?
     var id: String { asin }
 
@@ -42,6 +47,7 @@ struct AudibleBook: Identifiable, Hashable {
         authors = p.objs("authors").compactMap { $0.str("name") }
         narrators = p.objs("narrators").compactMap { $0.str("name") }
         coverURL = (p.obj("product_images")?.str("500")).flatMap(URL.init(string:))
+        thumbURL = (p.obj("product_images")?.str("252")).flatMap(URL.init(string:)) ?? coverURL
         let r = p.obj("rating")
         let d = r?.obj("overall_distribution")
         stars = (d?.num("display_average_rating") ?? d?.num("average_rating")).flatMap { $0 > 0 ? $0 : nil }
@@ -63,8 +69,11 @@ struct AudibleBook: Identifiable, Hashable {
             return s.str("sequence").map { "\(name), Book \($0)" } ?? name
         }
         var seen = Set<String>()
-        genres = p.objs("category_ladders").flatMap { $0.objs("ladder").compactMap { $0.str("name") } }
-            .filter { seen.insert($0).inserted }
+        genreRefs = p.objs("category_ladders").flatMap { $0.objs("ladder") }.compactMap { g -> AudibleGenre? in
+            guard let id = g.str("id"), let name = g.str("name"), seen.insert(id).inserted else { return nil }
+            return AudibleGenre(id: id, name: name)
+        }
+        genres = genreRefs.map(\.name)
         summary = (p.str("publisher_summary") ?? p.str("merchandising_summary")).map(BookDetailView.stripHTML)
     }
 
@@ -79,35 +88,100 @@ struct AudibleBook: Identifiable, Hashable {
 }
 
 enum AudibleCatalog {
-    static func search(_ query: String) async throws -> [AudibleBook] {
-        var c = URLComponents(string: "https://api.audible.com/1.0/catalog/products")!
-        c.queryItems = [.init(name: "keywords", value: query), .init(name: "num_results", value: "30"),
-                        .init(name: "products_sort_by", value: "Relevance"), .init(name: "image_sizes", value: "500"),
-                        .init(name: "response_groups", value: groups)]
-        return try await get(c.url!).objs("products").compactMap(AudibleBook.init)
+    /// Everything a book's page shows.
+    static let groups = "rating,product_desc,product_attrs,contributors,media,series,category_ladders,product_extended_attrs"
+    /// What a list row shows (about half the download): the page loads the rest.
+    static let listGroups = "rating,product_attrs,contributors,media,series"
+    private static let base = "https://api.audible.com/1.0/catalog"
+
+    enum SearchSort: String, CaseIterable, Identifiable {
+        case relevance = "Relevance", bestSellers = "BestSellers", newest = "-ReleaseDate", longest = "-RuntimeLength"
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .relevance: "Best match"
+            case .bestSellers: "Bestsellers"
+            case .newest: "Newest"
+            case .longest: "Longest"
+            }
+        }
     }
 
-    static let groups = "rating,product_desc,product_attrs,contributors,media,series,category_ladders,product_extended_attrs"
-    private static var similarCache: [String: [AudibleBook]] = [:]
+    /// A page of search results (`page` from 0: Audible counts them from 0).
+    static func search(_ query: String, sort: SearchSort = .relevance, page: Int = 0) async throws -> [AudibleBook] {
+        var c = URLComponents(string: "\(base)/products")!
+        c.queryItems = [.init(name: "keywords", value: query), .init(name: "num_results", value: "30"),
+                        .init(name: "page", value: String(page)),
+                        .init(name: "products_sort_by", value: sort.rawValue), .init(name: "image_sizes", value: "252,500"),
+                        .init(name: "response_groups", value: listGroups)]
+        return try await get(c.url!, ttl: 600).objs("products").compactMap(AudibleBook.init)
+    }
+
+    /// One book with everything its page shows.
+    static func product(_ asin: String) async throws -> AudibleBook? {
+        try await get(URL(string: "\(base)/products/\(asin)?image_sizes=252,500&response_groups=\(groups)")!, ttl: 86400)
+            .obj("product").flatMap(AudibleBook.init)
+    }
+
+    /// Books by an author or a narrator, bestsellers first.
+    static func books(author: String? = nil, narrator: String? = nil) async throws -> [AudibleBook] {
+        var c = URLComponents(string: "\(base)/products")!
+        c.queryItems = [.init(name: "num_results", value: "50"), .init(name: "products_sort_by", value: "BestSellers"),
+                        .init(name: "image_sizes", value: "252,500"), .init(name: "response_groups", value: listGroups)]
+        if let author { c.queryItems?.append(.init(name: "author", value: author)) }
+        if let narrator { c.queryItems?.append(.init(name: "narrator", value: narrator)) }
+        return mainLanguage(try await get(c.url!, ttl: 6 * 3600).objs("products").compactMap(AudibleBook.init))
+    }
 
     /// "Listeners also enjoyed": Audible's similar books, in the book's own
     /// language (it also suggests the same book in other languages).
-    static func similar(asin: String) async throws -> [AudibleBook] {
-        if let c = similarCache[asin] { return c }
-        let sims = try await get(URL(string: "https://api.audible.com/1.0/catalog/products/\(asin)/sims?similarity_type=RawSimilarities&num_results=20&image_sizes=500&response_groups=\(groups)")!)
-        let own = try? await get(URL(string: "https://api.audible.com/1.0/catalog/products/\(asin)?response_groups=product_attrs")!)
-        let language = own?.obj("product")?.str("language")
-        let books = sims.objs("similar_products")
+    static func similar(asin: String, language: String? = nil) async throws -> [AudibleBook] {
+        let sims = try await get(URL(string: "\(base)/products/\(asin)/sims?similarity_type=RawSimilarities&num_results=20&image_sizes=252,500&response_groups=\(listGroups)")!, ttl: 86400)
+        var language = language
+        if language == nil {
+            language = try? await get(URL(string: "\(base)/products/\(asin)?response_groups=product_attrs")!, ttl: 7 * 86400)
+                .obj("product")?.str("language")
+        }
+        return sims.objs("similar_products")
             .filter { p in language == nil || p.str("language") == nil || p.str("language") == language }
             .compactMap(AudibleBook.init)
             .filter { $0.asin != asin }
-        similarCache[asin] = books
-        return books
     }
 
-    static func get(_ url: URL) async throws -> JSON {
+    /// The language most of `books` are in, and only those (lists also carry translations).
+    static func mainLanguage(_ books: [AudibleBook]) -> [AudibleBook] {
+        let counts = Dictionary(grouping: books.compactMap(\.language), by: { $0 }).mapValues(\.count)
+        guard let main = counts.max(by: { $0.value < $1.value })?.key else { return books }
+        return books.filter { $0.language == nil || $0.language == main }
+    }
+
+    // Answers are kept (memory and disk) for `ttl` seconds: a page opened again
+    // costs nothing, and Audible isn't asked more than it needs to be.
+    private static var memory: [String: (Date, JSON)] = [:]
+    private static let cacheDir: URL = {
+        let d = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("audible")
+        try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
+        return d
+    }()
+
+    static func get(_ url: URL, ttl: Double = 0) async throws -> JSON {
+        let key = url.absoluteString
+        // A stable name (hashValue changes every launch).
+        let file = cacheDir.appendingPathComponent(SHA256.hash(data: Data(key.utf8)).map { String(format: "%02x", $0) }.joined())
+        if ttl > 0 {
+            if let (at, j) = memory[key], Date().timeIntervalSince(at) < ttl { return j }
+            if let attrs = try? FileManager.default.attributesOfItem(atPath: file.path), let at = attrs[.modificationDate] as? Date,
+               Date().timeIntervalSince(at) < ttl, let d = try? Data(contentsOf: file), let j = JSONUtil.parse(d) as? JSON {
+                memory[key] = (at, j)
+                return j
+            }
+        }
         let (data, resp) = try await URLSession.shared.data(from: url)
         guard (resp as? HTTPURLResponse)?.statusCode == 200, let root = JSONUtil.parse(data) as? JSON else { throw URLError(.badServerResponse) }
+        if ttl > 0 {
+            memory[key] = (Date(), root)
+            try? data.write(to: file, options: .atomic)
+        }
         return root
     }
 }
@@ -121,12 +195,32 @@ struct FindBookView: View {
     @State private var results: [AudibleBook]?
     @State private var searching = false
     @State private var failed = false
+    @State private var sort: AudibleCatalog.SearchSort = .relevance
+    /// Other languages' editions too (off: only the language most results are in).
+    @State private var allLanguages = false
+    @State private var page = 0
+    @State private var canLoadMore = false
+    @State private var loadingMore = false
     /// Not focused at first: the genres are there to browse.
     @State private var searchActive = false
     #if DEBUG
     @State private var testOpen: AudibleBook?
     @State private var testGenre: AudibleGenre?
     #endif
+
+    /// The next page of results, added below.
+    private func loadMore() async {
+        guard canLoadMore, !loadingMore, let current = results else { return }
+        let q = query.trimmingCharacters(in: .whitespaces)
+        loadingMore = true
+        defer { loadingMore = false }
+        guard let more = try? await AudibleCatalog.search(q, sort: sort, page: page + 1),
+              q == query.trimmingCharacters(in: .whitespaces) else { return }
+        page += 1
+        let have = Set(current.map(\.asin))
+        results = current + more.filter { !have.contains($0.asin) }
+        canLoadMore = more.count >= 30
+    }
 
     var body: some View {
         Group {
@@ -138,9 +232,17 @@ struct FindBookView: View {
             } else if let results, results.isEmpty {
                 ContentUnavailableView.search(text: query)
             } else if let results {
-                List(results) { b in
-                    NavigationLink(value: b) { AudibleRow(book: b) }
-                        .listRowBackground(Color.clear)
+                let shown = allLanguages ? results : AudibleCatalog.mainLanguage(results)
+                List {
+                    ForEach(shown) { b in
+                        NavigationLink(value: b) { AudibleRow(book: b) }
+                            .listRowBackground(Color.clear)
+                            // Near the end: the next page.
+                            .onAppear { if b.id == shown.last?.id { Task { await loadMore() } } }
+                    }
+                    if loadingMore {
+                        HStack { Spacer(); ProgressView(); Spacer() }.listRowBackground(Color.clear).listRowSeparator(.hidden)
+                    }
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
@@ -154,7 +256,7 @@ struct FindBookView: View {
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $query, isPresented: $searchActive, placement: .navigationBarDrawer(displayMode: .always),
                     prompt: "Title, author, narrator")
-        .task(id: query) {
+        .task(id: "\(query)|\(sort.rawValue)") {
             let q = query.trimmingCharacters(in: .whitespaces)
             guard q.count >= 2 else { results = nil; failed = false; return }
             try? await Task.sleep(for: .milliseconds(450))
@@ -162,15 +264,26 @@ struct FindBookView: View {
             searching = true
             defer { searching = false }
             do {
-                let found = try await AudibleCatalog.search(q)
+                let found = try await AudibleCatalog.search(q, sort: sort)
                 guard !Task.isCancelled else { return }
                 results = found
+                page = 0
+                canLoadMore = found.count >= 30
                 failed = false
             } catch {
                 if !Task.isCancelled { failed = true }
             }
         }
-        .navigationDestination(for: AudibleGenre.self) { AudibleGenreView(genre: $0) }
+        .toolbar {
+            if results != nil {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Picker("Sort", selection: $sort) { ForEach(AudibleCatalog.SearchSort.allCases) { Text($0.label).tag($0) } }
+                        Toggle(isOn: $allLanguages) { Label("Other Languages", systemImage: "globe") }
+                    } label: { Image(systemName: "line.3.horizontal.decrease") }
+                }
+            }
+        }
         .onAppear { if query.isEmpty && !initialQuery.isEmpty { query = initialQuery; searchActive = false } }
         #if DEBUG
         // Test hook (simulator screenshots): open the first result.
@@ -191,14 +304,45 @@ struct AudibleCover: View {
     var size: CGFloat
 
     var body: some View {
-        AsyncImage(url: url) { img in
-            img.resizable().scaledToFill()
-        } placeholder: {
-            Image(systemName: "book.closed").foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, maxHeight: .infinity).background(.quaternary)
+        AudibleImage(url: url)
+            .frame(width: size, height: size)
+            .clipShape(RoundedRectangle(cornerRadius: size * 0.12, style: .continuous))
+    }
+}
+
+/// An Audible cover, kept in memory and on disk (so it doesn't flash when a
+/// list or carousel brings it back). Its own session: Kitzi's image loader
+/// signs requests for the user's server, and that mustn't go to Amazon.
+struct AudibleImage: View {
+    let url: URL?
+    @State private var image: UIImage?
+
+    private static let memory: NSCache<NSURL, UIImage> = { let c = NSCache<NSURL, UIImage>(); c.countLimit = 200; return c }()
+    private static let session: URLSession = {
+        let c = URLSessionConfiguration.default
+        c.urlCache = URLCache(memoryCapacity: 8_000_000, diskCapacity: 150_000_000,
+                              directory: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("audible-covers"))
+        c.requestCachePolicy = .returnCacheDataElseLoad
+        return URLSession(configuration: c)
+    }()
+
+    var body: some View {
+        ZStack {
+            Rectangle().fill(.quaternary)
+            if let image {
+                Image(uiImage: image).resizable().scaledToFill()
+            } else {
+                Image(systemName: "book.closed").foregroundStyle(.secondary)
+            }
         }
-        .frame(width: size, height: size)
-        .clipShape(RoundedRectangle(cornerRadius: size * 0.12, style: .continuous))
+        .task(id: url) {
+            guard let url else { return }
+            if let m = Self.memory.object(forKey: url as NSURL) { image = m; return }
+            guard let (data, _) = try? await Self.session.data(from: url),
+                  let img = await UIImage(data: data)?.byPreparingForDisplay() else { return }
+            Self.memory.setObject(img, forKey: url as NSURL)
+            image = img
+        }
     }
 }
 
@@ -228,7 +372,7 @@ struct AudibleRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            AudibleCover(url: book.coverURL, size: 64)
+            AudibleCover(url: book.thumbURL, size: 64)
             VStack(alignment: .leading, spacing: 3) {
                 Text(book.title).font(.body.weight(.semibold)).lineLimit(2)
                 if let a = book.author { Text(a).font(.subheadline).foregroundStyle(.secondary).lineLimit(1) }
@@ -250,7 +394,11 @@ struct AudibleRow: View {
 
 /// An Audible book's page, laid out like Kitzi's own book page.
 struct AudibleBookView: View {
-    let book: AudibleBook
+    private let initial: AudibleBook
+    /// The book as a list had it, then with everything (description, genres…).
+    @State private var full: AudibleBook?
+    private var book: AudibleBook { full ?? initial }
+    init(book: AudibleBook) { initial = book }
     @Environment(LibraryStore.self) private var library
     @State private var expanded = false
     @State private var shelfarrMatches: [ShelfarrBook]?
@@ -265,10 +413,16 @@ struct AudibleBookView: View {
                 VStack(spacing: 6) {
                     Text(book.title).font(.title2.bold()).multilineTextAlignment(.center)
                     if let s = book.subtitle { Text(s).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center) }
-                    if let a = book.author { Text(a).font(.headline).foregroundStyle(Color.accentColor).multilineTextAlignment(.center) }
+                    if !book.authors.isEmpty {
+                        people(book.authors, route: AudibleListRoute.author) {
+                            Text(book.authors.joined(separator: ", ")).font(.headline).foregroundStyle(Color.accentColor)
+                        }
+                    }
                     if !book.narrators.isEmpty {
-                        Text("Narrated by \(book.narrators.joined(separator: ", "))").font(.subheadline).foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
+                        people(book.narrators, route: AudibleListRoute.narrator) {
+                            (Text("Narrated by ").foregroundStyle(.secondary) + Text(book.narrators.joined(separator: ", ")).foregroundStyle(Color.accentColor))
+                                .font(.subheadline)
+                        }
                     }
                     if let s = book.stars { AudibleStars(stars: s, count: book.ratingCount).font(.subheadline).padding(.top, 2) }
                     chips.padding(.top, 4)
@@ -286,6 +440,7 @@ struct AudibleBookView: View {
         .navigationTitle("Audible")
         .navigationBarTitleDisplayMode(.inline)
         .task { if Shelfarr.shared.configured { try? await Shelfarr.shared.refresh() } }
+        .task(id: initial.asin) { if full == nil, let f = try? await AudibleCatalog.product(initial.asin) { full = f } }
         .confirmationDialog("Which book should Shelfarr get?", isPresented: Binding(get: { shelfarrMatches != nil }, set: { if !$0 { shelfarrMatches = nil } }),
                             titleVisibility: .visible, presenting: shelfarrMatches) { matches in
             ForEach(matches.prefix(6)) { m in
@@ -295,6 +450,19 @@ struct AudibleBookView: View {
             }
         } message: { _ in
             Text("Shelfarr will search for the audiobook and download it to your library.")
+        }
+    }
+
+    /// An author or narrator line: one person opens their books; several, a menu.
+    @ViewBuilder private func people<L: View>(_ names: [String], route: @escaping (String) -> AudibleListRoute,
+                                              @ViewBuilder label: () -> L) -> some View {
+        if names.count == 1 {
+            NavigationLink(value: route(names[0])) { label().multilineTextAlignment(.center) }.buttonStyle(.plain)
+        } else {
+            Menu {
+                ForEach(names, id: \.self) { n in NavigationLink(value: route(n)) { Text(n) } }
+            } label: { label().multilineTextAlignment(.center) }
+            .buttonStyle(.plain)
         }
     }
 
@@ -423,9 +591,17 @@ struct AudibleBookView: View {
         card {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Details").font(.headline)
-                if !book.series.isEmpty { row("books.vertical", "Series", book.series.joined(separator: "\n")) }
+                ForEach(book.seriesRefs, id: \.asin) { ref in
+                    NavigationLink(value: AudibleListRoute.series(ref)) {
+                        linkRow("books.vertical", "Series", ref.sequence.map { "\(ref.title), Book \($0)" } ?? ref.title)
+                    }
+                    .buttonStyle(.plain)
+                }
                 if let k = book.kind { row("headphones", "Type", [k, book.format].compactMap { $0 }.joined(separator: " · ")) }
-                if !book.genres.isEmpty { row("tag", "Genres", book.genres.prefix(5).joined(separator: ", ")) }
+                ForEach(Array(book.genreRefs.prefix(5).enumerated()), id: \.element.id) { i, g in
+                    NavigationLink(value: g) { linkRow(i == 0 ? "tag" : "", i == 0 ? "Genres" : "", g.name) }
+                        .buttonStyle(.plain)
+                }
                 if let d = book.releaseDate { row("calendar", "Released", d) }
                 if let l = book.language { row("globe", "Language", l) }
                 if let p = book.publisher { row("building.2", "Publisher", p) }
@@ -443,25 +619,23 @@ struct AudibleBookView: View {
         .font(.subheadline)
     }
 
+    /// A details row that opens something: the value in the accent colour, with a chevron.
+    private func linkRow(_ icon: String, _ label: String, _ value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Image(systemName: icon.isEmpty ? "tag" : icon).foregroundStyle(Color.accentColor).frame(width: 22).opacity(icon.isEmpty ? 0 : 1)
+            Text(label).foregroundStyle(.secondary).frame(width: 84, alignment: .leading)
+            Text(value).foregroundStyle(Color.accentColor).frame(maxWidth: .infinity, alignment: .leading)
+            Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+        }
+        .font(.subheadline)
+        .contentShape(Rectangle())
+    }
+
     private func card<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
         content()
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(16)
             .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-    }
-}
-
-extension LibraryStore {
-    /// The library's copy of an Audible book: same title (or title plus subtitle) and author.
-    func match(_ a: AudibleBook) -> Book? {
-        let titles = AudibleRating.titleVariants(a.title).map(AudibleRating.norm)
-        let authors = a.authors.map(AudibleRating.norm)
-        return books.first { b in
-            let t = AudibleRating.norm(b.title)
-            guard titles.contains(where: { AudibleRating.similar($0, t) }) else { return false }
-            let mine = (b.authors.isEmpty ? [b.author ?? ""] : b.authors).map(AudibleRating.norm)
-            return authors.isEmpty || mine.contains { m in authors.contains { !m.isEmpty && ($0.contains(m) || m.contains($0)) } }
-        }
     }
 }
 
@@ -500,15 +674,15 @@ struct SimilarBooksRow: View {
         .navigationDestination(item: $opened) { AudibleBookView(book: $0) }
         .task(id: book.id) {
             similar = []
-            guard let asin = await AudibleRating.shared.rating(for: book)?.asin,
-                  let found = try? await AudibleCatalog.similar(asin: asin) else { return }
+            guard let asin = await AudibleRating.shared.asin(for: book),
+                  let found = try? await AudibleCatalog.similar(asin: asin, language: await AudibleRating.shared.language(for: book)) else { return }
             withAnimation(.snappy) { similar = found }
         }
     }
 }
 
 /// A carousel item: the cover, and over it the title, stars and author.
-private struct AudibleCarouselCover: View {
+struct AudibleCarouselCover: View {
     let book: AudibleBook
     let inLibrary: Bool
     let fullness: CGFloat
@@ -518,13 +692,7 @@ private struct AudibleCarouselCover: View {
             // In an overlay, so the filled image can't make the item taller than the
             // carousel gives it (that pushed the title below the clipped edge).
             Color.clear
-                .overlay {
-                    AsyncImage(url: book.coverURL) { img in
-                        img.resizable().scaledToFill()
-                    } placeholder: {
-                        Rectangle().fill(.quaternary)
-                    }
-                }
+                .overlay { AudibleImage(url: book.coverURL) }
                 .clipped()
             LinearGradient(colors: [.clear, .black.opacity(0.8)], startPoint: .center, endPoint: .bottom)
                 .opacity(Double(fullness))

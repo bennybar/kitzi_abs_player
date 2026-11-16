@@ -19,6 +19,8 @@ struct Book: Codable, Identifiable, Hashable {
     var publishYear: Int?
     var genres: [String] = []
     var isAudioBook: Bool = true
+    /// Audible's id for it, when the server has one (its metadata match).
+    var asin: String? = nil
 
     /// The cover through the server; covers go through the authenticated loader.
     func coverURL(width: Int = 600) -> URL? {
@@ -72,7 +74,8 @@ struct Book: Codable, Identifiable, Hashable {
             authors: authors, narrators: narrators,
             publisher: meta?.str("publisher"), publishYear: year,
             genres: (meta?.arr("genres") ?? []).compactMap { $0 as? String },
-            isAudioBook: hasAudio
+            isAudioBook: hasAudio,
+            asin: meta?.str("asin").map { $0.trimmingCharacters(in: .whitespaces).uppercased() }.flatMap { $0.isEmpty ? nil : $0 }
         )
     }
 

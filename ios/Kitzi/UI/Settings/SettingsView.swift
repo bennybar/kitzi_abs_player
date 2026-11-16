@@ -19,7 +19,7 @@ struct SettingsView: View {
     /// The setting keys a backup carries (all AppSettings values).
     static let backupKeys = [
         "ui_show_series_tab", "ui_author_view_enabled", "ui_server_home_shelves", "ui_hide_series_when_same_as_author",
-        "ui_expressive_play_button", "ui_player_gradient_background", "ui_audible_link_enabled", "ui_similar_books_enabled", "ui_series_missing_enabled", "ui_audible_reviews_enabled", "ui_progress_bar_chapterized",
+        "ui_expressive_play_button", "ui_player_gradient_background", "ui_audible_link_enabled", "ui_similar_books_enabled", "ui_series_missing_enabled", "ui_audible_reviews_enabled", "ui_because_finished_enabled", "ui_progress_bar_chapterized",
         "ui_letter_scroll_enabled", "ui_library_grid", "ui_theme_mode", "downloads_wifi_only", "downloads_auto_delete_on_finish",
         "smart_rewind_enabled", "sync_progress_before_play", "pause_cancels_sleep_timer", "ui_dual_progress_enabled",
         "ui_resume_from_history_enabled", "detailed_play_history_enabled", "ui_progress_primary", "ui_seek_backward_seconds",
@@ -95,7 +95,7 @@ struct SettingsView: View {
             }
 
             if show("appearance", "series", "author", "shelves", "home", "play button", "shape", "gradient", "chapter",
-                    "audible", "rating", "similar", "enjoyed", "missing", "series", "reviews", "grid", "theme", "dark", "light", "carousel", "next in series", "full screen", "player",
+                    "audible", "rating", "similar", "enjoyed", "missing", "series", "reviews", "finished", "because", "grid", "theme", "dark", "light", "carousel", "next in series", "full screen", "player",
                     "top", "resume", "stats", "gradient", "background") {
                 // One choice per Home shelf: carousel, plain row of covers, or (Next in
                 // Series) not shown at all.
@@ -157,9 +157,13 @@ struct SettingsView: View {
                         Text("Audible reviews")
                         Text("The most helpful Audible reviews on each book's page")
                     }
+                    Toggle(isOn: $s.becauseFinished) {
+                        Text("Because you finished")
+                        Text("On Home: books like the last one you finished, from Audible")
+                    }
                     Toggle(isOn: $s.seriesMissing) {
-                        Text("Missing books in series")
-                        Text("A series' page lists its books on Audible that aren't in your library")
+                        Text("Series from Audible")
+                        Text("A series' page lists its books on Audible that aren't in your library, and a book's page shows the next one")
                     }
                     Toggle("Grid layout", isOn: $s.gridLayout)
                     Picker("Theme", selection: $s.themeMode) {

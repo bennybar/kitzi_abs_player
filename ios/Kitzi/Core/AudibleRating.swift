@@ -1,67 +1,81 @@
 import Foundation
 import Observation
 
-/// Audible star ratings, looked up by the book's ASIN when the server has one,
-/// else by a title/author search; cached for a week.
+/// A library book's Audible match: its ASIN (the server's, else found by a
+/// title/author search), stars and language. Saved for a week; an older one is
+/// still used when Audible can't be reached.
 @Observable
 final class AudibleRating {
     static let shared = AudibleRating()
-    struct Result: Codable { var asin: String; var stars: Double; var count: Int; var at: Double }
-    @ObservationIgnored private var memory: [String: Result?] = [:]
+    /// `stars` 0: on Audible but not rated yet (new or upcoming); `asin` empty: no match.
+    struct Result: Codable {
+        var asin: String
+        var stars: Double
+        var count: Int
+        var at: Double
+        var language: String? = nil
+    }
+    @ObservationIgnored private var memory: [String: Result] = [:]
     @ObservationIgnored private var inflight: [String: Task<Result?, Never>] = [:]
-    @ObservationIgnored private var disk: [String: Result?] = [:]
     /// Filling in the library's ratings (for the "Highest rated" sort): how many
     /// are done, of how many. Total 0 when it isn't running.
     private(set) var fillDone = 0
     private(set) var fillTotal = 0
+    #if DEBUG
+    @ObservationIgnored private var clearedForTest = false
+    #endif
+
+    private static let maxAge: Double = 7 * 86400
+    private static func key(_ id: String) -> String { "audible2:\(id)" }
+
+    private func saved(_ id: String) -> Result? {
+        if let m = memory[id] { return m }
+        guard let d = Store.d.data(forKey: Self.key(id)), let r = try? JSONDecoder().decode(Result.self, from: d) else { return nil }
+        memory[id] = r
+        return r
+    }
+
+    private func save(_ id: String, _ r: Result) {
+        memory[id] = r
+        Store.set(try? JSONEncoder().encode(r), Self.key(id))
+    }
 
     /// The rating already known (this session, or saved, however old), without asking Audible.
     func cached(_ id: String) -> Result? {
-        if let m = memory[id] { return m }
-        if let d = disk[id] { return d }
-        let r = Store.d.data(forKey: "audible2:\(id)").flatMap { try? JSONDecoder().decode(Result.self, from: $0) }
-        let v = (r?.stars ?? 0) > 0 ? r : nil
-        disk[id] = v
-        return v
+        guard let r = saved(id), r.stars > 0 else { return nil }
+        return r
     }
 
-    /// Looks up the ratings not known yet, a few at a time. Books already looked
-    /// up (rated or not on Audible) aren't asked again.
-    func fill(_ books: [Book]) async {
-        guard fillTotal == 0 else { return }
-        let todo = books.filter { memory[$0.id] == nil && Store.d.data(forKey: "audible2:\($0.id)") == nil }
-        guard !todo.isEmpty else { return }
-        fillTotal = todo.count
-        fillDone = 0
-        defer { fillTotal = 0 }
-        for start in stride(from: 0, to: todo.count, by: 4) {
-            if Task.isCancelled { return }
-            await withTaskGroup(of: Void.self) { g in
-                for b in todo[start..<min(start + 4, todo.count)] {
-                    g.addTask { _ = await self.rating(for: b) }
-                }
-            }
-            fillDone = min(start + 4, todo.count)
-        }
-    }
-
+    /// The book's stars (nil when Audible has no match or no ratings yet).
     func rating(for book: Book) async -> Result? {
-        if let m = memory[book.id] { return m }
-        if let d = Store.d.data(forKey: "audible2:\(book.id)"), let r = try? JSONDecoder().decode(Result.self, from: d),
-           Date().timeIntervalSince1970 - r.at < 7 * 86400 {
-            memory[book.id] = r.stars > 0 ? r : nil
-            return memory[book.id] ?? nil
-        }
+        guard let r = await lookup(book), r.stars > 0 else { return nil }
+        return r
+    }
+
+    /// The book's Audible ASIN, rated or not (nil when Audible has no match).
+    func asin(for book: Book) async -> String? {
+        if let a = book.asin { return a }
+        guard let r = await lookup(book), !r.asin.isEmpty else { return nil }
+        return r.asin
+    }
+
+    /// The book's language on Audible ("english"), when known.
+    func language(for book: Book) async -> String? { await lookup(book)?.language }
+
+    private func lookup(_ book: Book) async -> Result? {
+        let old = saved(book.id)
+        if let old, Date().timeIntervalSince1970 - old.at < Self.maxAge { return old }
         if let t = inflight[book.id] { return await t.value }
         let t = Task { () -> Result? in
-            // A failed lookup (offline, Audible unreachable) isn't remembered: only
-            // a real answer, rating or no match, is cached.
-            let r: Result?
-            do { r = try await fetch(book) } catch { return nil }
-            memory[book.id] = r
-            let toStore = r ?? Result(asin: "", stars: 0, count: 0, at: Date().timeIntervalSince1970)
-            Store.set(try? JSONEncoder().encode(toStore), "audible2:\(book.id)")
-            return r
+            do {
+                // A real answer (a match, or none) is saved; "no match" as an empty ASIN.
+                let r = try await fetch(book) ?? Result(asin: "", stars: 0, count: 0, at: Date().timeIntervalSince1970)
+                save(book.id, r)
+                return r
+            } catch {
+                // Offline or Audible failed: keep showing what was known.
+                return old
+            }
         }
         inflight[book.id] = t
         let r = await t.value
@@ -69,12 +83,63 @@ final class AudibleRating {
         return r
     }
 
+    /// Looks up the ratings not known yet. Books with the server's ASIN go 50 to a
+    /// request; the rest (a title search each) a few at a time.
+    func fill(_ books: [Book]) async {
+        guard fillTotal == 0 else { return }
+        #if DEBUG
+        // Test hook: start from nothing, and say how long it took.
+        if ProcessInfo.processInfo.environment["KITZI_TEST_CLEAR_RATINGS"] != nil, !clearedForTest {
+            clearedForTest = true
+            for b in books { Store.set(nil, Self.key(b.id)); memory[b.id] = nil }
+        }
+        let started = Date()
+        defer { print("KITZITEST fill took=\(String(format: "%.1f", Date().timeIntervalSince(started)))s rated=\(books.filter { cached($0.id) != nil }.count)/\(books.count)") }
+        #endif
+        let todo = books.filter { saved($0.id) == nil }
+        guard !todo.isEmpty else { return }
+        fillTotal = todo.count
+        fillDone = 0
+        defer { fillTotal = 0 }
+        let withAsin = todo.filter { $0.asin != nil }, without = todo.filter { $0.asin == nil }
+        for start in stride(from: 0, to: withAsin.count, by: 50) {
+            if Task.isCancelled { return }
+            let chunk = Array(withAsin[start..<min(start + 50, withAsin.count)])
+            let asins = chunk.compactMap(\.asin).joined(separator: ",")
+            guard let root = try? await product("https://api.audible.com/1.0/catalog/products?asins=\(asins)&response_groups=rating,product_attrs") else { continue }
+            var found: [String: JSON] = [:]
+            for p in root.objs("products") { if let a = p.str("asin") { found[a.uppercased()] = p } }
+            let now = Date().timeIntervalSince1970
+            for b in chunk {
+                // Not in Audible's (US) catalog: no stars, but the ASIN stays known.
+                let r = found[b.asin!].flatMap(result) ?? Result(asin: b.asin!, stars: 0, count: 0, at: now)
+                save(b.id, r)
+            }
+            fillDone += chunk.count
+        }
+        for start in stride(from: 0, to: without.count, by: 4) {
+            if Task.isCancelled { return }
+            await withTaskGroup(of: Void.self) { g in
+                for b in without[start..<min(start + 4, without.count)] {
+                    g.addTask { _ = await self.lookup(b) }
+                }
+            }
+            fillDone += min(4, without.count - start)
+        }
+    }
+
     /// Nil when Audible has no match; throws when it couldn't be asked.
     private func fetch(_ book: Book) async throws -> Result? {
-        // The server's ASIN is the reliable match.
-        if let item = try? await API.shared.item(book.id), let asin = item.obj("media")?.obj("metadata")?.str("asin"),
-           let p = try await product("https://api.audible.com/1.0/catalog/products/\(asin)?response_groups=rating")?.obj("product") {
-            return result(p)
+        // The server's ASIN is the reliable match (the library list carries it;
+        // an older cached copy may not, so ask the server then).
+        var asin = book.asin
+        if asin == nil { asin = try? await API.shared.item(book.id)?.obj("media")?.obj("metadata")?.str("asin") }
+        if let asin, !asin.isEmpty {
+            if let p = try await product("https://api.audible.com/1.0/catalog/products/\(asin)?response_groups=rating,product_attrs")?.obj("product") {
+                return result(p)
+            }
+            // Not in this store's catalog: still the book's ASIN.
+            return Result(asin: asin, stars: 0, count: 0, at: Date().timeIntervalSince1970)
         }
         // Else a search, as the Android app does: title variants, with the first
         // author and then without, matched on title, author and running time.
@@ -162,9 +227,12 @@ final class AudibleRating {
         return JSONUtil.parse(data) as? JSON
     }
 
+    /// Stars 0 when it has none yet.
     private func result(_ p: JSON) -> Result? {
-        guard let asin = p.str("asin"), let d = p.obj("rating")?.obj("overall_distribution"),
-              let stars = d.num("display_average_rating") ?? d.num("average_rating"), stars > 0 else { return nil }
-        return Result(asin: asin, stars: stars, count: d.int("num_ratings") ?? 0, at: Date().timeIntervalSince1970)
+        guard let asin = p.str("asin") else { return nil }
+        let d = p.obj("rating")?.obj("overall_distribution")
+        let stars = d?.num("display_average_rating") ?? d?.num("average_rating") ?? 0
+        return Result(asin: asin.uppercased(), stars: stars, count: d?.int("num_ratings") ?? 0,
+                      at: Date().timeIntervalSince1970, language: p.str("language"))
     }
 }

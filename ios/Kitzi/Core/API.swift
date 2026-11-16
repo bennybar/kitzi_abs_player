@@ -292,6 +292,34 @@ final class API {
         return code == 404 ? .gone : .refused
     }
 
+    /// Audible's chapters for an ASIN, through the server (it asks Audnexus, as its
+    /// own "Lookup" does): (title, start seconds) and Audible's running time.
+    func audibleChapters(asin: String) async -> (chapters: [Chapter], runtimeSec: Double?)? {
+        guard let (code, data) = try? await send("/api/search/chapters?asin=\(asin)&region=us"), code == 200,
+              let o = JSONUtil.parse(data) as? JSON else { return nil }
+        let chapters = o.objs("chapters").compactMap { c -> Chapter? in
+            guard let ms = c.num("startOffsetMs") else { return nil }
+            return Chapter(title: c.str("title") ?? "", startSec: ms / 1000)
+        }
+        return chapters.isEmpty ? nil : (chapters, o.num("runtimeLengthSec"))
+    }
+
+    /// Replaces a book's chapters on the server. Nil, or why it couldn't.
+    func saveChapters(_ itemId: String, _ chapters: [Chapter], durationSec: Double) async -> String? {
+        let body: [[String: Any]] = chapters.enumerated().map { i, c in
+            let end = i + 1 < chapters.count ? chapters[i + 1].startSec : durationSec
+            return ["id": i, "start": c.startSec, "end": max(end, c.startSec), "title": c.title]
+        }
+        guard let (code, _) = try? await send("/api/items/\(itemId)/chapters", method: "POST", body: ["chapters": body]) else {
+            return "Couldn't reach the server."
+        }
+        switch code {
+        case 200..<300: return nil
+        case 403: return "Your account isn't allowed to edit books on this server."
+        default: return "The server refused the chapters (\(code))."
+        }
+    }
+
     func closeSession(_ id: String) async {
         _ = try? await ok("/api/session/\(id)/close", method: "POST", body: [String: Any]())
     }

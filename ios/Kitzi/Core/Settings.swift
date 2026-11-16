@@ -27,6 +27,7 @@ final class AppSettings {
     var similarBooks: Bool { didSet { d.set(similarBooks, forKey: "ui_similar_books_enabled") } }
     var seriesMissing: Bool { didSet { d.set(seriesMissing, forKey: "ui_series_missing_enabled") } }
     var audibleReviews: Bool { didSet { d.set(audibleReviews, forKey: "ui_audible_reviews_enabled") } }
+    var becauseFinished: Bool { didSet { d.set(becauseFinished, forKey: "ui_because_finished_enabled") } }
     var chapterTicks: Bool { didSet { d.set(chapterTicks, forKey: "ui_progress_bar_chapterized") } }
     var letterRail: Bool { didSet { d.set(letterRail, forKey: "ui_letter_scroll_enabled") } }
     var gridLayout: Bool { didSet { d.set(gridLayout, forKey: "ui_library_grid") } }
@@ -76,6 +77,7 @@ final class AppSettings {
         similarBooks = b("ui_similar_books_enabled", true)
         seriesMissing = b("ui_series_missing_enabled", true)
         audibleReviews = b("ui_audible_reviews_enabled", true)
+        becauseFinished = b("ui_because_finished_enabled", true)
         chapterTicks = b("ui_progress_bar_chapterized", true)
         letterRail = b("ui_letter_scroll_enabled", false)
         gridLayout = b("ui_library_grid", false)

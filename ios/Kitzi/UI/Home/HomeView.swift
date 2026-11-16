@@ -22,6 +22,7 @@ struct HomeView: View {
                     if search.isEmpty {
                         topCard.padding(.horizontal, 20)
                         shelves
+                        if settings.becauseFinished { BecauseYouFinishedRow { path.append($0) } }
                     }
                     if search.isEmpty {
                         browseCard.id("allbooks")
@@ -126,6 +127,22 @@ struct HomeView: View {
                 }
                 if ProcessInfo.processInfo.environment["KITZI_TEST_OPEN"] == "findbook" {
                     path.append(FindBookRoute(query: ProcessInfo.processInfo.environment["KITZI_TEST_QUERY"] ?? ""))
+                }
+                if ProcessInfo.processInfo.environment["KITZI_TEST_MATCH"] != nil {
+                    // Matching an Audible book to the library: ASIN first, then the exact title.
+                    @MainActor func fake(_ asin: String, _ title: String, _ author: String) -> AudibleBook? {
+                        AudibleBook(["asin": asin, "title": title, "authors": [["name": author]]])
+                    }
+                    let martian = library.books.first { $0.title == "The Martian" }
+                    let cases: [(String, AudibleBook?)] = [
+                        ("same title", fake("X1", "The Martian", "Andy Weir")),
+                        ("longer title (sequel-like)", fake("X2", "The Martian Chronicles", "Andy Weir")),
+                        ("title with subtitle", fake("X3", "The Martian: A Novel", "Andy Weir")),
+                        ("other author", fake("X4", "The Martian", "Ray Bradbury")),
+                        ("server ASIN, other title", fake(martian?.asin ?? "none", "Totally Different", "Nobody")),
+                    ]
+                    print("KITZITEST match martianAsin=\(martian?.asin ?? "-") booksWithAsin=\(library.books.filter { $0.asin != nil }.count)/\(library.books.count)")
+                    for (name, b) in cases { print("KITZITEST match \(name): \(b.flatMap { library.match($0)?.title } ?? "no match")") }
                 }
                 if ProcessInfo.processInfo.environment["KITZI_TEST_OPEN"] == "byseries" {
                     path.append(BrowseRoute.series)

@@ -11,7 +11,9 @@ final class LibraryStore {
 
     private(set) var libraries: [LibraryInfo] = []
     private(set) var libraryId: String?
-    private(set) var books: [Book] = []
+    private(set) var books: [Book] = [] { didSet { matchIndex = nil } }
+    /// For matching Audible books to the library (see `match`): built once per library change.
+    @ObservationIgnored private var matchIndex: (byAsin: [String: Book], byTitle: [String: [Book]])?
     private(set) var byId: [String: Book] = [:]
     private(set) var progress: [String: Progress] = [:]
     var syncing = false
@@ -116,7 +118,15 @@ final class LibraryStore {
     func syncIfStale() async {
         guard let lib = libraryId else { return }
         let last = Store.double("last_full_sync_\(lib)") ?? 0
-        if books.isEmpty || Date().timeIntervalSince1970 - last > 12 * 3600 { await syncAll() } else { await refreshNewest() }
+        // Books cached before they carried their Audible ASIN: read the library
+        // again once, so matching and ratings can use it.
+        let current = Store.double("library_schema") == 2
+        if books.isEmpty || !current || Date().timeIntervalSince1970 - last > 12 * 3600 {
+            await syncAll()
+            if lastSyncReachedServer { Store.set(2.0, "library_schema") }
+        } else {
+            await refreshNewest()
+        }
     }
 
     /// The newest additions AND the most recently updated (edited metadata, a new
@@ -556,5 +566,41 @@ final class LibraryStore {
     /// Queued edits only (a different account signed in on this device).
     func clearPendingEdits() {
         Store.set(nil, "pending_bookmark_ops")
+    }
+}
+
+extension LibraryStore {
+    /// The library's copy of an Audible book: the same ASIN (the server's match),
+    /// else the same title (ignoring a subtitle, "(Unabridged)", "Book 3"…) by the
+    /// same author. Not a title that merely starts the same: "Foundation" isn't
+    /// "Foundation and Empire".
+    func match(_ a: AudibleBook) -> Book? {
+        let index = matchIndex ?? buildMatchIndex()
+        if let b = index.byAsin[a.asin] { return b }
+        let authors = a.authors.map(AudibleRating.norm).filter { !$0.isEmpty }
+        for t in AudibleRating.titleVariants(a.title).map(AudibleRating.norm) {
+            for b in index.byTitle[t] ?? [] {
+                // A book the server matched to another Audible edition is still this one
+                // (same title and author): the ASIN differs between editions.
+                let mine = (b.authors.isEmpty ? [b.author ?? ""] : b.authors).map(AudibleRating.norm).filter { !$0.isEmpty }
+                if authors.isEmpty || mine.isEmpty || mine.contains(where: { m in authors.contains { $0.contains(m) || m.contains($0) } }) {
+                    return b
+                }
+            }
+        }
+        return nil
+    }
+
+    private func buildMatchIndex() -> (byAsin: [String: Book], byTitle: [String: [Book]]) {
+        var byAsin: [String: Book] = [:], byTitle: [String: [Book]] = [:]
+        for b in books {
+            if let a = b.asin { byAsin[a] = b }
+            for t in Set(AudibleRating.titleVariants(b.title).map(AudibleRating.norm)) where !t.isEmpty {
+                byTitle[t, default: []].append(b)
+            }
+        }
+        let index = (byAsin, byTitle)
+        matchIndex = index
+        return index
     }
 }
