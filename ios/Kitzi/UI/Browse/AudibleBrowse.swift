@@ -292,6 +292,9 @@ struct AudibleReviewsCard: View {
                 .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
             }
         }
+        // Its own gap below, only when there's something (pages stack it with no
+        // spacing, so an empty one leaves no double gap).
+        .padding(.bottom, reviews?.isEmpty == true ? 0 : 18)
         .animation(.snappy, value: reviews == nil)
         .task(id: asin) {
             reviews = (try? await AudibleCatalog.reviews(asin: asin)) ?? []
@@ -420,6 +423,7 @@ struct LibraryBookReviews: View {
                 LoadingBlock(height: 220)
             }
         }
+        .padding(.bottom, matched ? 0 : 18) // the card inside brings its own
         .animation(.snappy, value: matched)
         .task(id: book.id) {
             asin = nil
@@ -523,6 +527,7 @@ struct NextInSeriesCard: View {
                 .buttonStyle(.plain)
             }
         }
+        .padding(.bottom, looked && next == nil ? 0 : 18)
         .animation(.snappy, value: looked)
         .task(id: book.id) {
             next = nil

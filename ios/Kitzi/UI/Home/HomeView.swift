@@ -144,6 +144,15 @@ struct HomeView: View {
                     print("KITZITEST match martianAsin=\(martian?.asin ?? "-") booksWithAsin=\(library.books.filter { $0.asin != nil }.count)/\(library.books.count)")
                     for (name, b) in cases { print("KITZITEST match \(name): \(b.flatMap { library.match($0)?.title } ?? "no match")") }
                 }
+                if ProcessInfo.processInfo.environment["KITZI_TEST_STATE"] != nil {
+                    // A lived-in app for screenshots: two short books downloaded (one in
+                    // progress), three in the queue.
+                    let started = library.books.filter { (library.progress[$0.id]?.progress ?? 0) > 0 }
+                        .sorted { ($0.durationSec ?? 0) < ($1.durationSec ?? 0) }
+                    for b in started.prefix(2) { _ = await Downloads.shared.start(b.id) }
+                    for b in library.books.prefix(3) { PlayQueue.shared.add(b.id) }
+                }
+                if let a = ProcessInfo.processInfo.environment["KITZI_TEST_AUTHOR"] { path.append(a) }
                 if ProcessInfo.processInfo.environment["KITZI_TEST_OPEN"] == "byauthor" {
                     path.append(BrowseRoute.authors)
                 }

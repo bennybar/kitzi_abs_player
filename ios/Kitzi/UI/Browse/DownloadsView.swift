@@ -76,10 +76,7 @@ struct DownloadsView: View {
                 } else {
                     ForEach(done) { b in
                         ZoomBookLink(book: b, source: "dl-\(b.id)") {
-                            HStack {
-                                BookRow(book: b, zoomID: "dl-\(b.id)")
-                                Text(Format.size(downloads.bytes(b.id))).font(.caption).foregroundStyle(.secondary)
-                            }
+                            BookRow(book: b, zoomID: "dl-\(b.id)", detail: Format.size(downloads.bytes(b.id)), showDownloaded: false)
                         }
                         .swipeActions {
                             Button { removing = b.id } label: { Label("Remove", systemImage: "trash") }.tint(.red)
@@ -104,8 +101,11 @@ struct DownloadsView: View {
         .navigationTitle("Downloads")
         .toolbar {
             if !done.isEmpty {
+                // In a menu: a big red button at the top was too easy to hit and too loud.
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Remove all", role: .destructive) { confirmRemoveAll = true }
+                    Menu {
+                        Button("Remove All Downloads", systemImage: "trash", role: .destructive) { confirmRemoveAll = true }
+                    } label: { Image(systemName: "ellipsis").accessibilityLabel("More") }
                 }
             }
         }

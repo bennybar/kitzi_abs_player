@@ -48,6 +48,15 @@ struct PlayerView: View {
         .environment(\.colorScheme, settings.playerGradient ? .dark : colorScheme)
         .sheet(item: $sheet) { kind in sheetView(kind) }
         .sensoryFeedback(.success, trigger: bookmarkAdded)
+        #if DEBUG
+        // Test hook (simulator screenshots): open one of the player's sheets.
+        .task {
+            if let k = ProcessInfo.processInfo.environment["KITZI_TEST_SHEET"].flatMap(PlayerSheetKind.init(rawValue:)) {
+                try? await Task.sleep(for: .seconds(2))
+                sheet = k
+            }
+        }
+        #endif
         // Toasts from the player (Undo, bookmark added, sleep timer) — the root's toast
         // layer sits underneath this full-screen cover.
         .overlay(alignment: .bottom) { ToastView().padding(.bottom, 24) }
@@ -445,6 +454,9 @@ struct PlayerView: View {
         }
         // Frosted enough that the busy cover behind doesn't wash out the text.
         .presentationBackground(.thickMaterial)
+        // The gradient player is always dark: its sheets are too (a light sheet
+        // over it glared).
+        .preferredColorScheme(settings.playerGradient ? .dark : nil)
     }
 
     /// From one sheet to another: close, then open the next once the first is gone.

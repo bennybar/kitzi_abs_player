@@ -93,6 +93,10 @@ struct BookRow: View {
     let book: Book
     /// The cover zooms into the book's page (see ZoomBookLink).
     var zoomID: String? = nil
+    /// Goes after the length ("9h 7m · 531 MB").
+    var detail: String? = nil
+    /// The "downloaded" mark (off where every row is a download).
+    var showDownloaded = true
     @Environment(\.coverZoom) private var zoom
     @Environment(LibraryStore.self) private var library
     @Environment(Downloads.self) private var downloads
@@ -101,27 +105,39 @@ struct BookRow: View {
     var body: some View {
         let p = library.progress[book.id]
         HStack(spacing: 14) {
-            ZStack(alignment: .bottom) {
-                CoverImage(book: book)
-                    .frame(width: 76, height: 76)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .coverZoomSource(zoomID ?? "", zoomID == nil ? nil : zoom, radius: 12)
-                if let p, p.progress > 0, !p.isFinished {
-                    ProgressView(value: p.progress).tint(.accentColor).padding(.horizontal, 6).padding(.bottom, 4)
+            CoverImage(book: book)
+                .frame(width: 68, height: 68)
+                // The progress sits inside the cover (an overlay can't widen it).
+                .overlay(alignment: .bottom) {
+                    if let p, p.progress > 0, !p.isFinished {
+                        GeometryReader { g in
+                            ZStack(alignment: .leading) {
+                                Rectangle().fill(.black.opacity(0.45))
+                                Rectangle().fill(Color.accentColor).frame(width: g.size.width * min(max(p.progress, 0), 1))
+                            }
+                        }
+                        .frame(height: 4)
+                    }
                 }
-            }
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .coverZoomSource(zoomID ?? "", zoomID == nil ? nil : zoom, radius: 12)
             VStack(alignment: .leading, spacing: 3) {
                 Text(book.title).font(.headline).lineLimit(2)
                 if let s = book.seriesLabel, !(settings.hideSeriesWhenSameAsAuthor && book.series == book.author) {
                     Text(s).font(.subheadline).foregroundStyle(Color.accentColor).lineLimit(1)
                 }
                 if let a = book.author { Text(a).font(.subheadline).foregroundStyle(.secondary).lineLimit(1) }
-                HStack(spacing: 8) {
-                    if let d = book.durationSec { Label(Format.hm(d), systemImage: "clock").labelStyle(.titleAndIcon) }
-                    if downloads.isDownloaded(book.id) { Image(systemName: "arrow.down.circle.fill").foregroundStyle(Color.accentColor) }
-                    if p?.isFinished == true { Image(systemName: "checkmark.circle.fill").foregroundStyle(.green) }
+                HStack(spacing: 5) {
+                    Text([book.durationSec.map { Format.hm($0) }, detail].compactMap { $0 }.joined(separator: " · "))
+                    if showDownloaded, downloads.isDownloaded(book.id) {
+                        Image(systemName: "arrow.down.circle.fill").foregroundStyle(Color.accentColor)
+                            .accessibilityLabel("Downloaded")
+                    }
+                    if p?.isFinished == true {
+                        Image(systemName: "checkmark.circle.fill").foregroundStyle(.green).accessibilityLabel("Finished")
+                    }
                 }
-                .font(.caption).foregroundStyle(.secondary)
+                .font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 0)
         }

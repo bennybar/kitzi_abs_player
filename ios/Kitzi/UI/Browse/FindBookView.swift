@@ -434,8 +434,10 @@ struct AudibleBookView: View {
                 actions
                 if book.performanceStars != nil || book.storyStars != nil { ratingsCard }
                 if let d = book.summary, !d.isEmpty { aboutCard(d) }
-                AudibleReviewsCard(asin: book.asin)
-                detailsCard
+                VStack(spacing: 0) {
+                    AudibleReviewsCard(asin: book.asin)
+                    detailsCard
+                }
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 80)
@@ -682,6 +684,8 @@ struct SimilarBooksRow: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        // Its own gap below, only when there's something (see AudibleReviewsCard).
+        .padding(.bottom, loaded && similar.isEmpty ? 0 : 18)
         .navigationDestination(item: $opened) { AudibleBookView(book: $0) }
         .task(id: book.id) {
             similar = []

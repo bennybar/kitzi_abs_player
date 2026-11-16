@@ -232,10 +232,14 @@ struct BookDetailView: View {
                     iconActions
                     if let d = b.description.map(Self.stripHTML), !d.isEmpty { descriptionCard(d) }
                     detailsCard
-                    if settings.seriesMissing, b.series != nil, b.seriesSequence != nil { NextInSeriesCard(book: b) }
-                    if settings.audibleReviews { LibraryBookReviews(book: b) }
-                    if settings.similarBooks { SimilarBooksRow(book: b) }
-                    bookmarksCard
+                    // No spacing here: each Audible section brings its own gap when
+                    // it has something, so empty ones leave no hole.
+                    VStack(spacing: 0) {
+                        if settings.seriesMissing, b.series != nil, b.seriesSequence != nil { NextInSeriesCard(book: b) }
+                        if settings.audibleReviews { LibraryBookReviews(book: b) }
+                        if settings.similarBooks { SimilarBooksRow(book: b) }
+                        bookmarksCard
+                    }
                 }
                 .padding(.horizontal, 16)
             }
@@ -310,12 +314,12 @@ struct BookDetailView: View {
             case .queued, .waiting: ("hourglass", "Waiting")
             case .running(let f): ("xmark", "\(Int(f * 100))%")
             case .failed: ("arrow.clockwise", "Retry")
-            case .done: ("checkmark", "Downloaded")
+            case .done: ("arrow.down.circle.fill", "Downloaded")
             }
         }()
         return GlassEffectContainer(spacing: 14) {
             HStack(spacing: 0) {
-                iconAction(dl.0, dl.1) { downloadTapped(state) }
+                iconAction(dl.0, dl.1, highlighted: state == .done) { downloadTapped(state) }
                 iconAction("text.line.first.and.arrowtriangle.forward", "Play Next") {
                     queue.addNext(book.id); Haptics.tap(); Toast.show("Plays next", action: "Undo") { PlayQueue.shared.remove(book.id) }
                 }
@@ -328,10 +332,13 @@ struct BookDetailView: View {
         }
     }
 
-    private func iconAction(_ icon: String, _ label: String, action: @escaping () -> Void) -> some View {
+    /// `highlighted`: in the accent colour (a state that's on, like "Downloaded").
+    private func iconAction(_ icon: String, _ label: String, highlighted: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             VStack(spacing: 6) {
-                Image(systemName: icon).font(.title3).frame(width: 54, height: 54)
+                Image(systemName: icon).font(highlighted ? .title2 : .title3)
+                    .foregroundStyle(highlighted ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.primary))
+                    .frame(width: 54, height: 54)
                     .glassEffect(.regular.interactive(), in: .circle)
                 Text(label).font(.caption).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
             }
