@@ -72,6 +72,9 @@ final class WatchPlayer {
     private var stalledSince: Date?
     private var recoveries = 0
     private var recovering = false
+    /// The app is on screen (not wrist-down or in the background): the position
+    /// on screen is only worth refreshing then.
+    @ObservationIgnored var screenActive = true
     // A downloaded book's listening goes to the server as a "local" session.
     private var localSessionId: String?
     private var localStartedAt: Int64 = 0
@@ -79,8 +82,6 @@ final class WatchPlayer {
     private var localListenedTotal = 0.0
 
     private static let syncEvery = 30.0
-    /// A stream stuck this long (by attempt) is rebuilt; after the last, it gives up.
-    private static let stallLimits: [Double] = [15, 30, 60]
 
     private init() {
         endObserver = NotificationCenter.default.addObserver(forName: AVPlayerItem.didPlayToEndTimeNotification, object: nil, queue: .main) { [weak self] n in
@@ -129,7 +130,7 @@ final class WatchPlayer {
         // A streamed book has just reached the server, so it can wait longer for
         // the position than a downloaded one (maybe offline) should.
         var start = await startPosition(book.id, fallback: fallbackSec, fallbackAt: fallbackAt, wait: np.isLocal ? 5 : 15)
-        if start >= np.totalSec - 5 { start = 0 } // finished: from the top
+        start = PositionRules.startOrTop(start, total: np.totalSec) // finished: from the top
 
         nowPlaying = np
         Store.lastBookId = book.id
@@ -152,7 +153,20 @@ final class WatchPlayer {
         startTicker()
         updateNowPlayingInfo()
         WatchModel.shared.updateWidget()
+        didStart(book.id, streamed: !np.isLocal)
         return nil
+    }
+
+    /// Playing started here: the iPhone pauses the same book, and a streamed book
+    /// is queued to download when that's on (Settings).
+    private func didStart(_ id: String, streamed: Bool) {
+        Task { await WatchLink.shared.pausePhone(ifPlaying: id) }
+        if streamed, Store.autoDownload { Task { _ = await WatchDownloads.shared.start(id, auto: true) } }
+    }
+
+    /// The iPhone started this book: pause it here.
+    func pauseIfPlaying(_ id: String) {
+        if nowPlaying?.book.id == id, isPlaying { pause() }
     }
 
     /// Long-form audio on the watch plays through Bluetooth headphones: activating
@@ -184,14 +198,9 @@ final class WatchPlayer {
         #if DEBUG
         if DebugHooks.serverSilent { server = nil }
         #endif
-        var found: [(sec: Double, at: Int64)] = []
-        if let l = local { found.append((l.sec, l.savedAt)) }
-        if let s = server {
-            found.append((s.currentTimeSec, s.lastUpdate))
-        } else if fallbackAt > 0 {
-            found.append((fallback, fallbackAt))
-        }
-        return found.max { $0.at < $1.at }?.sec ?? fallback
+        return PositionRules.start(local: local.map { .init(sec: $0.sec, at: $0.savedAt) },
+                                   server: server.map { .init(sec: $0.currentTimeSec, at: $0.lastUpdate) },
+                                   fallback: fallback, fallbackAt: fallbackAt)
     }
 
     private func setTrack(_ i: Int, offset: Double) {
@@ -268,9 +277,10 @@ final class WatchPlayer {
         if !shortPause {
             let target = await startPosition(np.book.id, fallback: currentPosition(), fallbackAt: 0, wait: 3)
             let here = currentPosition()
-            if nowPlaying?.book.id == np.book.id, abs(target - here) > 3, target < np.totalSec - 5 { seek(to: target) }
+            if nowPlaying?.book.id == np.book.id, PositionRules.shouldJump(to: target, from: here, total: np.totalSec) { seek(to: target) }
         }
         guard nowPlaying?.book.id == np.book.id else { return nil }
+        Task { await WatchLink.shared.pausePhone(ifPlaying: np.book.id) }
         // A stream that failed, or whose sign-in has been renewed since (the old
         // one expires after an hour): rebuild it where it is.
         if !np.isLocal {
@@ -334,6 +344,13 @@ final class WatchPlayer {
         guard let np = nowPlaying, !np.chapters.isEmpty else { return nil }
         let p = pos ?? position
         return np.chapters.lastIndex { $0.startSec <= p + 0.5 } ?? 0
+    }
+
+    /// The chapter the position is in: (start, end), nil without chapters.
+    var chapterBounds: (start: Double, end: Double)? {
+        guard let np = nowPlaying, np.chapters.count > 1, let i = chapterIndex() else { return nil }
+        let end = i + 1 < np.chapters.count ? np.chapters[i + 1].startSec : np.totalSec
+        return (np.chapters[i].startSec, end)
     }
 
     var chapterTitle: String? {
@@ -437,7 +454,9 @@ final class WatchPlayer {
         ticker = Task {
             var sinceReport = 0.0
             while !Task.isCancelled {
-                let step = isPlaying ? 0.5 : 2
+                // Twice a second on screen; wrist down or in the background only
+                // the reports and the watchdog need it (every few seconds).
+                let step = isPlaying ? (screenActive ? 0.5 : 5) : 2
                 try? await Task.sleep(for: .seconds(step))
                 guard let np = nowPlaying else { continue }
                 position = currentPosition()
@@ -465,8 +484,9 @@ final class WatchPlayer {
         }
         let since = stalledSince ?? Date()
         stalledSince = since
-        guard failed || Date().timeIntervalSince(since) >= Self.stallLimits[min(recoveries, Self.stallLimits.count - 1)] else { return }
-        guard recoveries < Self.stallLimits.count else {
+        let limit = PositionRules.stallLimit(attempt: recoveries)
+        guard failed || Date().timeIntervalSince(since) >= (limit ?? 60) else { return }
+        guard limit != nil else {
             av.pause()
             streamError = "Lost the connection. Tap Play to try again."
             stalledSince = nil
@@ -673,11 +693,6 @@ final class WatchPlayer {
 
     /// A book position as (track index, seconds into that track).
     static func locate(_ sec: Double, _ tracks: [Track]) -> (Int, Double) {
-        var remaining = sec
-        for (i, t) in tracks.enumerated() {
-            if remaining < t.durationSec || i == tracks.count - 1 { return (i, max(remaining, 0)) }
-            remaining -= t.durationSec
-        }
-        return (0, 0)
+        PositionRules.locate(sec, durations: tracks.map(\.durationSec))
     }
 }

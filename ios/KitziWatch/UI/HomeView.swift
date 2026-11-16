@@ -42,6 +42,7 @@ struct HomeView: View {
             }
 
             Section {
+                NavigationLink(value: WatchRoute.library) { Label("Library", systemImage: "books.vertical.fill") }
                 NavigationLink(value: WatchRoute.downloads) {
                     HStack {
                         Label("Downloads", systemImage: "arrow.down.circle.fill")
@@ -58,6 +59,7 @@ struct HomeView: View {
                     Task {
                         syncing = true
                         syncResult = await model.syncNow()
+                        Haptic.play(syncResult == true ? .success : .failure)
                         syncing = false
                     }
                 } label: {

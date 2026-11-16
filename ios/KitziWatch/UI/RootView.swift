@@ -1,4 +1,10 @@
 import SwiftUI
+import WatchKit
+
+/// A tap on the wrist for something the user did (or that finished).
+enum Haptic {
+    static func play(_ t: WKHapticType) { WKInterfaceDevice.current().play(t) }
+}
 
 /// Where the watch app can go from Home.
 enum WatchRoute: Hashable {
@@ -7,6 +13,9 @@ enum WatchRoute: Hashable {
     case remote
     case settings
     case downloads
+    case library
+    /// A book from the library (not necessarily on the shelf or the watch).
+    case libraryBook(Book)
 }
 
 /// The navigation stack, shared so a screen can open the player.
@@ -31,6 +40,8 @@ struct WatchRootView: View {
                     .navigationDestination(for: WatchRoute.self) { r in
                         switch r {
                         case .book(let id): BookView(id: id)
+                        case .libraryBook(let b): BookView(id: b.id, given: b)
+                        case .library: LibraryView()
                         case .player: PlayerView()
                         case .remote: RemoteView()
                         case .settings: SettingsView()

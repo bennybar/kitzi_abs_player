@@ -11,6 +11,8 @@ final class WatchLink: NSObject {
 
     /// The iPhone can be asked something right now.
     private(set) var reachable = false
+    /// The iPhone's playing state as it last sent it (see WatchMsg.pushState).
+    private(set) var pushedState: PhoneState?
     private var backgroundTasks: [WKWatchConnectivityRefreshBackgroundTask] = []
 
     func start() {
@@ -54,6 +56,23 @@ final class WatchLink: NSObject {
         return try? JSONDecoder().decode(PhoneState.self, from: data)
     }
 
+    /// The watch started `id`: if the iPhone is playing the same book, it pauses
+    /// (two players on one book overwrite each other's position).
+    func pausePhone(ifPlaying id: String) async {
+        guard reachable, let s = await phoneState(), s.itemId == id, s.isPlaying else { return }
+        _ = await phoneState(command: .pause)
+    }
+
+    fileprivate func received(kind: String?, itemId: String?, state: Data?) {
+        switch kind {
+        case WatchMsg.pushState:
+            pushedState = state.flatMap { try? JSONDecoder().decode(PhoneState.self, from: $0) }
+        case WatchMsg.playing:
+            if let itemId { WatchPlayer.shared.pauseIfPlaying(itemId) }
+        default: break
+        }
+    }
+
     fileprivate func updateReachable() {
         reachable = WCSession.default.activationState == .activated && WCSession.default.isReachable
         finishBackgroundTasks()
@@ -87,6 +106,20 @@ nonisolated final class Once<T: Sendable>: @unchecked Sendable {
 }
 
 extension WatchLink: WCSessionDelegate {
+    /// The iPhone's news, no reply wanted (see WatchMsg.pushState, .playing).
+    nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
+        let kind = message[WatchMsg.kind] as? String
+        let itemId = message["itemId"] as? String
+        let state = message["state"] as? Data
+        Task { @MainActor in received(kind: kind, itemId: itemId, state: state) }
+    }
+
+    /// The iPhone listened: the shelf here is out of date.
+    nonisolated func session(_ session: WCSession, didReceiveApplicationContext context: [String: Any]) {
+        guard context[WatchMsg.lastPlayed] != nil else { return }
+        Task { @MainActor in await WatchModel.shared.phoneListened() }
+    }
+
     nonisolated func session(_ session: WCSession, activationDidCompleteWith state: WCSessionActivationState, error: Error?) {
         Task { @MainActor in updateReachable() }
     }

@@ -3,6 +3,8 @@ import SwiftUI
 /// A book: cover, where you are, Play/Resume, and its download on the watch.
 struct BookView: View {
     let id: String
+    /// The book as the library listed it, for one that's neither on the shelf nor the watch.
+    var given: Book? = nil
     @Environment(WatchModel.self) private var model
     @Environment(WatchPlayer.self) private var player
     @Environment(WatchDownloads.self) private var downloads
@@ -10,7 +12,7 @@ struct BookView: View {
     @State private var confirmRemove = false
 
     private var shelf: ShelfBook? { model.shelf.first { $0.id == id } }
-    private var book: Book? { shelf?.book ?? downloads.downloaded(id)?.book }
+    private var book: Book? { shelf?.book ?? downloads.downloaded(id)?.book ?? given }
 
     var body: some View {
         ScrollView {

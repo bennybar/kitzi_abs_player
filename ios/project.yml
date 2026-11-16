@@ -14,8 +14,8 @@ settings:
     SWIFT_VERSION: "6.0"
     SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
     SWIFT_APPROACHABLE_CONCURRENCY: YES
-    MARKETING_VERSION: "2.0.374"
-    CURRENT_PROJECT_VERSION: "374"
+    MARKETING_VERSION: "2.0.375"
+    CURRENT_PROJECT_VERSION: "375"
     ENABLE_USER_SCRIPT_SANDBOXING: YES
 targets:
   Kitzi:
@@ -81,6 +81,7 @@ targets:
     type: application
     platform: watchOS
     sources:
+      - path: KitziWatchShared
       - path: KitziWatch
       - path: WatchLink
       - path: KitziWatchWidget/WidgetBook.swift
@@ -105,22 +106,39 @@ targets:
         WKApplication: true
         WKCompanionAppBundleIdentifier: com.bennybar.kitzi
         WKRunsIndependentlyOfCompanionApp: true
+        CFBundleURLTypes:
+          - CFBundleURLName: com.bennybar.kitzi.watch
+            CFBundleURLSchemes: [kitziwatch]
         UIBackgroundModes: [audio]
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
     settings:
       base:
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) KITZI_WATCH_APP
         PRODUCT_BUNDLE_IDENTIFIER: com.bennybar.kitzi.watchkitapp
         PRODUCT_NAME: KitziWatch
         TARGETED_DEVICE_FAMILY: "4"
         SKIP_INSTALL: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+  KitziWatchTests:
+    type: bundle.unit-test
+    platform: watchOS
+    sources:
+      - path: KitziWatchTests
+      - path: KitziWatch/Core/PositionRules.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bennybar.kitzi.watchtests
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_DEFAULT_ACTOR_ISOLATION: nonisolated
+        TARGETED_DEVICE_FAMILY: "4"
   KitziWatchWidget:
     type: app-extension
     platform: watchOS
     sources:
       - path: KitziWatchWidget
+      - path: KitziWatchShared
     entitlements:
       path: KitziWatchWidget/KitziWatchWidget.entitlements
       properties:
@@ -139,3 +157,10 @@ targets:
         PRODUCT_NAME: KitziWatchWidget
         TARGETED_DEVICE_FAMILY: "4"
         SKIP_INSTALL: YES
+schemes:
+  KitziWatchTests:
+    build:
+      targets:
+        KitziWatchTests: [test]
+    test:
+      targets: [KitziWatchTests]

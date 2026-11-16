@@ -161,7 +161,7 @@ final class WatchModel {
         var clean = true
         for id in Store.pendingIds where id != playing {
             guard let local = Store.position(id) else { continue }
-            if let server = try? await API.shared.mediaProgress(id).flatMap(Progress.from), server.lastUpdate > local.savedAt {
+            if let server = try? await API.shared.mediaProgress(id).flatMap(Progress.from), PositionRules.serverKeeps(serverAt: server.lastUpdate, localAt: local.savedAt) {
                 Store.savePosition(id, LocalPosition(sec: local.sec, savedAt: local.savedAt, pending: false, finished: local.finished))
                 continue
             }
@@ -180,9 +180,32 @@ final class WatchModel {
     }
 
     /// Tries the pending positions again in a while, even if the app isn't open.
-    func scheduleRetry() {
-        WKApplication.shared().scheduleBackgroundRefresh(withPreferredDate: Date().addingTimeInterval(15 * 60), userInfo: nil,
+    func scheduleRetry() { scheduleRefresh() }
+
+    /// Asks watchOS to wake the app in a while (15 min with positions to send,
+    /// else 30): it sends them and refreshes the shelf and the watch face, so
+    /// they're current (and ready offline) without opening the app.
+    func scheduleRefresh() {
+        let minutes: Double = Store.pendingIds.isEmpty ? 30 : 15
+        WKApplication.shared().scheduleBackgroundRefresh(withPreferredDate: Date().addingTimeInterval(minutes * 60), userInfo: nil,
                                                          scheduledCompletion: Self.ignore)
+    }
+
+    /// Woken in the background (see scheduleRefresh).
+    func backgroundRefresh() async {
+        guard signedIn else { return }
+        _ = await flushPending()
+        await refreshShelf()
+        scheduleRefresh()
+    }
+
+    @ObservationIgnored private var lastPhoneRefresh = Date.distantPast
+
+    /// The iPhone listened to something: the shelf is out of date (at most once a minute).
+    func phoneListened() async {
+        guard signedIn, Date().timeIntervalSince(lastPhoneRefresh) > 60 else { return }
+        lastPhoneRefresh = Date()
+        await refreshShelf()
     }
 
     /// Not main-actor code: watchOS calls the completion on its own queue.

@@ -3,7 +3,10 @@ import WidgetKit
 
 @main
 struct KitziWatchWidgets: WidgetBundle {
-    var body: some Widget { NowListeningWidget() }
+    var body: some Widget {
+        NowListeningWidget()
+        KitziPlayControl()
+    }
 }
 
 struct NowListeningEntry: TimelineEntry {
@@ -32,6 +35,8 @@ struct NowListeningWidget: Widget {
         StaticConfiguration(kind: "NowListening", provider: NowListeningProvider()) { entry in
             NowListeningView(entry: entry)
                 .containerBackground(.fill.tertiary, for: .widget)
+                // Opens Kitzi on the player (see KitziWatchApp's onOpenURL).
+                .widgetURL(URL(string: "kitziwatch://player"))
         }
         .configurationDisplayName("Kitzi")
         .description("The audiobook you're listening to.")

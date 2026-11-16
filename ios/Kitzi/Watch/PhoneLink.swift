@@ -17,6 +17,77 @@ final class PhoneLink: NSObject {
         guard WCSession.isSupported() else { return }
         WCSession.default.delegate = self
         WCSession.default.activate()
+        observePlayer()
+        startPushing()
+    }
+
+    // MARK: telling the watch
+
+    /// Follows the player (play/pause, the book, speed, sleep timer): each change
+    /// goes to the watch at once.
+    private func observePlayer() {
+        Self.track({
+            let p = Player.shared
+            _ = p.isPlaying; _ = p.nowPlaying?.book.id; _ = p.speed; _ = SleepTimer.shared.mode
+        }, then: { [weak self] in
+            self?.playerChanged()
+            self?.observePlayer()
+        })
+    }
+
+    /// Built outside the main actor: Observation calls `onChange` from wherever the
+    /// change happened; the reaction hops back to the main actor.
+    nonisolated private static func track(_ read: @escaping @MainActor () -> Void, then: @escaping @MainActor () -> Void) {
+        Task { @MainActor in
+            withObservationTracking { read() } onChange: {
+                Task { @MainActor in then() }
+            }
+        }
+    }
+
+    @ObservationIgnored private var lastPlaying: (id: String?, playing: Bool) = (nil, false)
+
+    private func playerChanged() {
+        let p = Player.shared
+        let id = p.nowPlaying?.book.id
+        // Started a book: the watch pauses it if it's playing the same one.
+        if p.isPlaying, let id, !(lastPlaying.id == id && lastPlaying.playing) {
+            sendToWatch([WatchMsg.kind: WatchMsg.playing, "itemId": id])
+        }
+        // Stopped: the watch's shelf is behind (it refreshes when it next can).
+        if !p.isPlaying, lastPlaying.playing, let last = lastPlaying.id, WCSession.default.activationState == .activated {
+            try? WCSession.default.updateApplicationContext([WatchMsg.lastPlayed: last, "at": Date().timeIntervalSince1970])
+        }
+        lastPlaying = (id, p.isPlaying)
+        pushState()
+    }
+
+    /// While playing, the state goes to the watch every 30 s too (the chapter
+    /// moves on; the watch counts the position itself in between).
+    private func startPushing() {
+        Task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(30))
+                if Player.shared.isPlaying { pushState() }
+            }
+        }
+    }
+
+    /// Only while the watch app is open and can hear it.
+    private func pushState() {
+        guard WCSession.default.activationState == .activated, WCSession.default.isReachable else { return }
+        var m = stateReply()
+        m[WatchMsg.kind] = WatchMsg.pushState
+        sendToWatch(m)
+    }
+
+    private func sendToWatch(_ m: [String: Any]) {
+        guard WCSession.default.activationState == .activated, WCSession.default.isReachable else { return }
+        Self.send(m)
+    }
+
+    nonisolated private static func send(_ m: [String: Any]) {
+        WCSession.default.sendMessage(m, replyHandler: nil, errorHandler: nil)
     }
 
     private func updateReady() {
@@ -115,7 +186,8 @@ final class PhoneLink: NSObject {
             positionSec: p.position, durationSec: np.totalSec, isPlaying: p.isPlaying, speed: p.speed,
             sleepRemainingSec: sleepRemaining(sleep),
             sleepEndOfChapter: sleep.mode == .endOfChapter,
-            skipBackSec: AppSettings.shared.seekBackSec, skipForwardSec: AppSettings.shared.seekForwardSec)
+            skipBackSec: AppSettings.shared.seekBackSec, skipForwardSec: AppSettings.shared.seekForwardSec,
+            sentAt: Date().timeIntervalSince1970)
         guard let data = try? JSONEncoder().encode(state) else { return [:] }
         return ["state": data]
     }
@@ -134,6 +206,7 @@ final class PhoneLink: NSObject {
         guard p.nowPlaying != nil else { return }
         switch cmd {
         case .toggle: p.togglePlay()
+        case .pause: if p.isPlaying { p.pause() }
         case .back: p.skip(-Double(AppSettings.shared.seekBackSec))
         case .forward: p.skip(Double(AppSettings.shared.seekForwardSec))
         case .previousChapter: p.previousChapter()
@@ -196,9 +269,23 @@ extension PhoneLink: WCSessionDelegate {
 extension PhoneLink {
     func runDebugHooks() async {
         let env = ProcessInfo.processInfo.environment
-        guard env["KITZI_TEST_SENDWATCH"] != nil || env["KITZI_TEST_LOADBOOK"] != nil else { return }
+        guard env["KITZI_TEST_SENDWATCH"] != nil || env["KITZI_TEST_LOADBOOK"] != nil || env["KITZI_TEST_PLAYPHONE"] != nil else { return }
         for _ in 0..<90 where LibraryStore.shared.books.isEmpty || !watchReady { try? await Task.sleep(for: .seconds(1)) }
         print("KITZITEST phone watchReady=\(watchReady) books=\(LibraryStore.shared.books.count)")
+        if env["KITZI_TEST_PLAYPHONE"] != nil {
+            // Plays the latest book for a while (the watch test pauses it from the watch).
+            let inProgress = LibraryStore.shared.books.first { (LibraryStore.shared.progress[$0.id]?.progress ?? 0) > 0 && LibraryStore.shared.progress[$0.id]?.isFinished != true }
+            if let b = inProgress ?? LibraryStore.shared.books.first {
+                let err = await Player.shared.play(b)
+                print("KITZITEST phone playing \(b.title) err=\(err ?? "-")")
+                for _ in 0..<120 {
+                    try? await Task.sleep(for: .seconds(1))
+                    if !Player.shared.isPlaying { print("KITZITEST phone paused by watch=true"); break }
+                }
+                Player.shared.pause()
+            }
+            return
+        }
         if env["KITZI_TEST_LOADBOOK"] != nil {
             let inProgress = LibraryStore.shared.books.first { (LibraryStore.shared.progress[$0.id]?.progress ?? 0) > 0 && LibraryStore.shared.progress[$0.id]?.isFinished != true }
             if let b = inProgress ?? LibraryStore.shared.books.first {

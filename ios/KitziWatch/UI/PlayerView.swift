@@ -15,7 +15,9 @@ struct PlayerView: View {
                 position: player.position, total: np.totalSec, isPlaying: player.isPlaying,
                 speed: player.speed, sleepLabel: sleepLabel, busy: player.loading, waiting: player.loading || player.buffering,
                 skipBack: 30, skipForward: 30,
-                back: { player.skip(-30) }, toggle: toggle, forward: { player.skip(30) }
+                back: { Haptic.play(.click); player.skip(-30) }, toggle: toggle,
+                forward: { Haptic.play(.click); player.skip(30) },
+                chapterStart: player.chapterBounds?.start, chapterEnd: player.chapterBounds?.end
             )
             .toolbar {
                 ToolbarItemGroup(placement: .bottomBar) {
@@ -46,8 +48,9 @@ struct PlayerView: View {
     }
 
     private func toggle() {
-        if player.isPlaying { player.pause(); return }
-        Task { if let why = await player.resume() { error = why } }
+        if player.isPlaying { Haptic.play(.stop); player.pause(); return }
+        Haptic.play(.start)
+        Task { if let why = await player.resume() { Haptic.play(.failure); error = why } }
     }
 }
 
@@ -102,22 +105,39 @@ struct PlayerFace: View {
     let back: () -> Void
     let toggle: () -> Void
     let forward: () -> Void
+    /// The chapter the position is in: the bar and times show it (with the time
+    /// left in the book under the title); nil shows the whole book.
+    var chapterStart: Double? = nil
+    var chapterEnd: Double? = nil
+
+    /// (elapsed, left, fraction) for the bar: the chapter's when known, else the book's.
+    private var progress: (elapsed: Double, left: Double, fraction: Double) {
+        if let s = chapterStart, let e = chapterEnd, e > s {
+            return PositionRules.chapterProgress(position: position, start: s, end: e)
+        }
+        return (position, max(total - position, 0), total > 0 ? min(position / total, 1) : 0)
+    }
+    private var inChapter: Bool { chapterStart != nil && (chapterEnd ?? 0) > (chapterStart ?? 0) }
 
     var body: some View {
         VStack(spacing: 4) {
             VStack(spacing: 1) {
                 Text(title).font(.headline).lineLimit(1)
-                if let chapter { Text(chapter).font(.caption2).foregroundStyle(.secondary).lineLimit(1) }
+                if let chapter {
+                    // In a chapter, the book's time left goes with its name.
+                    Text(inChapter && total > 0 ? "\(chapter) · \(Format.hm(max(total - position, 0))) left" : chapter)
+                        .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                }
             }
             VStack(spacing: 1) {
-                Bar(value: total > 0 ? position / total : 0, color: .white)
+                Bar(value: progress.fraction, color: .white)
                 HStack {
-                    Text(Format.clock(position))
+                    Text(Format.clock(progress.elapsed))
                     Spacer()
                     if abs(speed - 1) > 0.001 { Text(SpeedList.label(speed)).foregroundStyle(.primary) }
                     if let sleepLabel { Label(sleepLabel, systemImage: "moon.zzz.fill").labelStyle(.titleAndIcon).foregroundStyle(.primary) }
                     Spacer()
-                    Text("-" + Format.clock(max(total - position, 0)))
+                    Text("-" + Format.clock(progress.left))
                 }
                 .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
             }
@@ -170,10 +190,18 @@ private struct MorePage: View {
                 LabeledContent { Text(sleepLabel) } label: { Label("Sleep Timer", systemImage: "moon.zzz") }
             }
             Button {
-                Task { note = await player.addBookmark() ? "Bookmark added" : "Couldn't add the bookmark. Check the connection." }
+                Task {
+                    let ok = await player.addBookmark()
+                    Haptic.play(ok ? .success : .failure)
+                    note = ok ? "Bookmark added" : "Couldn't add the bookmark. Check the connection."
+                }
             } label: { Label("Add Bookmark", systemImage: "bookmark") }
             Button {
-                Task { note = await model.syncNow() ? "Synced" : "Saved on watch. It syncs when there's a connection." }
+                Task {
+                    let ok = await model.syncNow()
+                    Haptic.play(ok ? .success : .failure)
+                    note = ok ? "Synced" : "Saved on watch. It syncs when there's a connection."
+                }
             } label: { Label("Sync Now", systemImage: "arrow.triangle.2.circlepath") }
             if let note = note ?? player.status { Text(note).font(.caption2).foregroundStyle(.secondary) }
             Button(role: .destructive) {

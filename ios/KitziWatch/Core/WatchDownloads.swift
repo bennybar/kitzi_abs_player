@@ -148,7 +148,9 @@ final class WatchDownloads {
 
     /// Plans and starts a book's download. Nil, or why it can't.
     @discardableResult
-    func start(_ id: String) async -> String? {
+    /// `auto`: started by playing (Settings › Download What I Play): a book that
+    /// doesn't fit the storage limit is skipped quietly.
+    func start(_ id: String, auto: Bool = false) async -> String? {
         // Not twice (a double tap while the first one asks the server).
         guard plans[id] == nil, states[id] != .done, states[id] != .queued else { return nil }
         states[id] = .queued
@@ -174,6 +176,11 @@ final class WatchDownloads {
         guard !tracks.isEmpty else { states[id] = State.none; return "The server lists no audio for this book." }
         // Room for it, with some to spare for the system.
         let total = sizes.values.reduce(0, +)
+        let limit = Int64(Store.storageLimitGB) * 1_000_000_000
+        if limit > 0, total > 0, totalBytes + total > limit {
+            states[id] = State.none
+            return auto ? nil : "Over your storage limit (\(Store.storageLimitGB) GB): this book needs \(Format.size(total)). Remove a book, or raise the limit in Settings."
+        }
         if let free = Self.freeBytes, total > 0, total + 300_000_000 > free {
             states[id] = State.none
             return "Not enough space on the watch: the book needs \(Format.size(total)) and \(Format.size(max(free - 300_000_000, 0))) is free."
@@ -319,6 +326,8 @@ final class WatchDownloads {
         manifestCache[id] = nil
         sizeCache[id] = nil
         states[id] = .done
+        // Only when someone's looking (not in the background, or at night).
+        if WKApplication.shared().applicationState == .active { Haptic.play(.success) }
     }
 
     // MARK: from the phone

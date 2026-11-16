@@ -30,6 +30,19 @@ enum Store {
         set { set(newValue, "downloads_cellular") }
     }
 
+    /// A book streamed on the watch is also downloaded (watchOS fetches it when it
+    /// suits it, often while charging), so it plays offline next time.
+    static var autoDownload: Bool {
+        get { bool("auto_download") }
+        set { set(newValue, "auto_download") }
+    }
+
+    /// The most the watch's downloads may take, in GB (0: no limit).
+    static var storageLimitGB: Int {
+        get { d.integer(forKey: "storage_limit_gb") }
+        set { set(newValue, "storage_limit_gb") }
+    }
+
     static var speed: Double {
         get { double("speed") ?? 1 }
         set { set(newValue, "speed") }

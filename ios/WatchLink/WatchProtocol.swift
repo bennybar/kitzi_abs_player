@@ -18,6 +18,17 @@ nonisolated enum WatchMsg {
     /// carries the book ("manifest", a `WatchBookManifest`) and which file it is.
     static let track = "track"
     static let cover = "cover"
+
+    /// Phone → watch, while the watch app is open: what the iPhone is playing
+    /// now ("state", a `PhoneState`), sent when it changes instead of the watch
+    /// asking every few seconds.
+    static let pushState = "pushState"
+    /// Either way: "I started playing this book" ("itemId"): the other one pauses
+    /// it, so the two don't both play it and fight over its position.
+    static let playing = "playing"
+    /// Phone → watch application context: the iPhone listened ("lastPlayed",
+    /// "at"), so the watch's shelf is out of date.
+    static let lastPlayed = "lastPlayed"
 }
 
 /// The iPhone's sign-in, handed to the watch. Not the phone's own access/refresh
@@ -55,6 +66,9 @@ struct PhoneState: Codable, Equatable {
     var sleepEndOfChapter: Bool
     var skipBackSec: Int
     var skipForwardSec: Int
+    /// When the phone took this state (seconds since 1970): the watch moves the
+    /// position on from it while it's playing, without asking again.
+    var sentAt: Double?
 }
 
 enum RemoteCommand: String, Codable {
@@ -64,4 +78,6 @@ enum RemoteCommand: String, Codable {
     /// value: minutes.
     case sleep
     case sleepEndOfChapter, sleepOff
+    /// Pause (not toggle): the watch started the same book.
+    case pause
 }

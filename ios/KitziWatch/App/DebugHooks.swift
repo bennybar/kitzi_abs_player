@@ -39,6 +39,8 @@ enum DebugHooks {
             case "streambreak": await streamBreak()
             case "dlfail": await downloadFail()
             case "streamdead": await streamDead()
+            case "autodl": await autoDownload()
+            case "phonelink": await phoneLink()
             case "signoutpending": await signOutPending()
             case "dlkeep": await downloadsScreenData()
             case "dlcancel": for id in WatchDownloads.shared.activeIds { WatchDownloads.shared.cancel(id) }; log("dlcancel active=\(WatchDownloads.shared.activeIds.count)")
@@ -62,6 +64,7 @@ enum DebugHooks {
             case "remote": WatchNav.shared.path = [.remote]
             case "settings": WatchNav.shared.path = [.settings]
             case "downloads": WatchNav.shared.path = [.downloads]
+            case "library": WatchNav.shared.path = [.library]
             default: break
             }
         }
@@ -267,6 +270,48 @@ enum DebugHooks {
         p.pause()
         try? await Task.sleep(for: .seconds(1))
         await restore(s.id, server.0)
+    }
+
+    /// Item 15: the storage limit refuses a big book; streaming queues a download
+    /// when "Download What I Play" is on.
+    private static func autoDownload() async {
+        guard let lib = try? await API.shared.libraries().first(where: { $0.mediaType == "book" }),
+              let big = try? await API.shared.libraryItems(library: lib.id, page: 1, limit: 1, sort: "media.duration", desc: true).items.first,
+              let bigBook = Book.from(big), let s = WatchModel.shared.shelf.first else { log("autodl skipped"); return }
+        let d = WatchDownloads.shared
+        Store.storageLimitGB = 1
+        let refused = await d.start(bigBook.id)
+        let silent = await d.start(bigBook.id, auto: true)
+        log("autodl limit manual=\(refused ?? "-") auto=\(silent ?? "nil") state=\(d.state(bigBook.id))")
+        Store.storageLimitGB = 0
+        Store.autoDownload = true
+        _ = await WatchPlayer.shared.play(s.book, fallbackSec: s.currentTimeSec, fallbackAt: s.lastUpdate)
+        try? await Task.sleep(for: .seconds(6))
+        log("autodl streamed isLocal=\(WatchPlayer.shared.nowPlaying?.isLocal ?? true) download=\(d.state(s.id))")
+        WatchPlayer.shared.pause()
+        try? await Task.sleep(for: .seconds(1))
+        await WatchPlayer.shared.stop(report: false)
+        d.delete(s.id)
+        Store.autoDownload = false
+        log("autodl cleaned state=\(d.state(s.id))")
+    }
+
+    /// Item 5 and 9: the iPhone's state arrives without asking; playing the same
+    /// book here pauses it there.
+    private static func phoneLink() async {
+        let link = WatchLink.shared
+        for _ in 0..<60 where link.pushedState == nil { try? await Task.sleep(for: .seconds(1)) }
+        guard let s = link.pushedState else { log("phonelink no push reachable=\(link.reachable)"); return }
+        log("phonelink pushed title=\(s.title) playing=\(s.isPlaying) sentAt=\(s.sentAt != nil)")
+        guard s.isPlaying, let item = try? await API.shared.item(s.itemId), let book = Book.from(item),
+              let before = await serverPos(book.id) else { log("phonelink phone not playing"); return }
+        let p = WatchPlayer.shared
+        _ = await p.play(book, fallbackSec: s.positionSec, fallbackAt: 0)
+        for _ in 0..<15 where link.pushedState?.isPlaying != false { try? await Task.sleep(for: .seconds(1)) }
+        log("phonelink watch playing=\(p.isPlaying) phonePaused=\(link.pushedState?.isPlaying == false)")
+        p.pause()
+        try? await Task.sleep(for: .seconds(1))
+        await restore(book.id, before.0)
     }
 
     /// R1: with listening that can't be sent, sign-out stops and says so.

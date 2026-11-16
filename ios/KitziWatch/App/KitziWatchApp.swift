@@ -9,12 +9,23 @@ struct KitziWatchApp: App {
     var body: some Scene {
         WindowGroup {
             WatchRootView()
+                // The watch face widget: open on the player (else the latest book).
+                .onOpenURL { url in
+                    guard url.host == "player", WatchModel.shared.signedIn else { return }
+                    if WatchPlayer.shared.nowPlaying != nil {
+                        WatchNav.shared.path = [.player]
+                    } else if let s = WatchModel.shared.shelf.first {
+                        WatchNav.shared.path = [.book(s.id)]
+                    }
+                }
                 .environment(WatchModel.shared)
                 .environment(WatchPlayer.shared)
                 .environment(WatchDownloads.shared)
                 .environment(WatchLink.shared)
         }
         .onChange(of: phase) { _, p in
+            WatchPlayer.shared.screenActive = p == .active
+            if p == .background { WatchModel.shared.scheduleRefresh() }
             guard p == .active, WatchModel.shared.signedIn else { return }
             Task {
                 _ = await WatchModel.shared.flushPending()
@@ -29,6 +40,7 @@ final class WatchAppDelegate: NSObject, WKApplicationDelegate {
         WatchLink.shared.start()
         _ = WatchDownloads.shared
         _ = WatchPlayer.shared
+        WatchModel.shared.scheduleRefresh()
         #if DEBUG
         // Test hook (simulator only): sign in from the environment.
         let env = ProcessInfo.processInfo.environment
@@ -50,7 +62,7 @@ final class WatchAppDelegate: NSObject, WKApplicationDelegate {
                 WatchLink.shared.hold(t)
             case let t as WKApplicationRefreshBackgroundTask:
                 Task {
-                    _ = await WatchModel.shared.flushPending()
+                    await WatchModel.shared.backgroundRefresh()
                     t.setTaskCompletedWithSnapshot(false)
                 }
             default:

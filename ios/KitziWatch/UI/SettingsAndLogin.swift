@@ -4,6 +4,8 @@ struct SettingsView: View {
     @Environment(WatchModel.self) private var model
     @Environment(WatchDownloads.self) private var downloads
     @State private var cellular = Store.downloadsUseCellular
+    @State private var auto = Store.autoDownload
+    @State private var limit = Store.storageLimitGB
     @State private var confirmSignOut = false
     @State private var unsynced = false
 
@@ -17,6 +19,17 @@ struct SettingsView: View {
                     }
             } footer: {
                 Text("watchOS picks between Wi-Fi and your iPhone's connection. Books sent from the iPhone don't count.")
+            }
+            Section {
+                Toggle("Download What I Play", isOn: $auto)
+                    .onChange(of: auto) { _, v in Store.autoDownload = v }
+                Picker("Storage Limit", selection: $limit) {
+                    Text("None").tag(0)
+                    ForEach([1, 2, 4, 8, 16], id: \.self) { Text("\($0) GB").tag($0) }
+                }
+                .onChange(of: limit) { _, v in Store.storageLimitGB = v }
+            } footer: {
+                Text("A book you stream is downloaded too, so it plays offline next time. watchOS often waits until the watch is charging. Nothing past the storage limit is downloaded.")
             }
             Section {
                 LabeledContent("Downloads", value: Format.size(downloads.totalBytes))
