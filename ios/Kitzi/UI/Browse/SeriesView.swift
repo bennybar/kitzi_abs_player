@@ -43,7 +43,7 @@ struct SeriesView: View {
             } else {
                 ForEach(rows) { row in
                     NavigationLink {
-                        BookListView(title: row.name, books: row.books)
+                        BookListView(title: row.name, books: row.books, series: kind == .series ? row.name : nil)
                     } label: {
                         HStack(spacing: 14) {
                             FannedCovers(books: Array(row.books.prefix(3)))

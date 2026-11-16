@@ -171,7 +171,7 @@ struct Author: Hashable, Identifiable {
 }
 
 enum BookSort: String, CaseIterable, Identifiable {
-    case addedDesc, addedAsc, titleAsc, titleDesc, authorAsc, updatedDesc, durationDesc
+    case addedDesc, addedAsc, titleAsc, titleDesc, authorAsc, updatedDesc, durationDesc, ratingDesc
     var id: String { rawValue }
     var label: String {
         switch self {
@@ -182,6 +182,7 @@ enum BookSort: String, CaseIterable, Identifiable {
         case .authorAsc: "Author A–Z"
         case .updatedDesc: "Recently updated"
         case .durationDesc: "Longest first"
+        case .ratingDesc: "Highest rated"
         }
     }
 }

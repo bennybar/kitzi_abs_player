@@ -19,9 +19,17 @@ struct AudibleBook: Identifiable, Hashable {
     let language: String?
     let publisher: String?
     let series: [String]
+    /// The series it belongs to, with its number there ("3", "2.5").
+    let seriesRefs: [SeriesRef]
     let genres: [String]
     let summary: String?
     var id: String { asin }
+
+    struct SeriesRef: Hashable { let asin: String; let title: String; let sequence: String? }
+    var releaseDay: Date? { releaseDate.flatMap { Self.day.date(from: $0) } }
+    private static let day: DateFormatter = {
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "yyyy-MM-dd"; return f
+    }()
 
     var author: String? { authors.isEmpty ? nil : authors.joined(separator: ", ") }
     var year: String? { releaseDate.map { String($0.prefix(4)) } }
@@ -45,6 +53,10 @@ struct AudibleBook: Identifiable, Hashable {
         kind = p.str("content_delivery_type").map(Self.kindLabel)
         releaseDate = p.str("release_date") ?? p.str("issue_date")
         language = p.str("language").map { $0.capitalized }
+        seriesRefs = p.objs("series").compactMap { s in
+            guard let a = s.str("asin"), let t = s.str("title") else { return nil }
+            return SeriesRef(asin: a, title: t, sequence: s.str("sequence"))
+        }
         publisher = p.str("publisher_name")
         series = p.objs("series").compactMap { s in
             guard let name = s.str("title") else { return nil }
@@ -75,7 +87,7 @@ enum AudibleCatalog {
         return try await get(c.url!).objs("products").compactMap(AudibleBook.init)
     }
 
-    private static let groups = "rating,product_desc,product_attrs,contributors,media,series,category_ladders,product_extended_attrs"
+    static let groups = "rating,product_desc,product_attrs,contributors,media,series,category_ladders,product_extended_attrs"
     private static var similarCache: [String: [AudibleBook]] = [:]
 
     /// "Listeners also enjoyed": Audible's similar books, in the book's own
@@ -93,7 +105,7 @@ enum AudibleCatalog {
         return books
     }
 
-    private static func get(_ url: URL) async throws -> JSON {
+    static func get(_ url: URL) async throws -> JSON {
         let (data, resp) = try await URLSession.shared.data(from: url)
         guard (resp as? HTTPURLResponse)?.statusCode == 200, let root = JSONUtil.parse(data) as? JSON else { throw URLError(.badServerResponse) }
         return root
@@ -109,9 +121,11 @@ struct FindBookView: View {
     @State private var results: [AudibleBook]?
     @State private var searching = false
     @State private var failed = false
-    @State private var searchActive = true
+    /// Not focused at first: the genres are there to browse.
+    @State private var searchActive = false
     #if DEBUG
     @State private var testOpen: AudibleBook?
+    @State private var testGenre: AudibleGenre?
     #endif
 
     var body: some View {
@@ -131,8 +145,8 @@ struct FindBookView: View {
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
             } else {
-                ContentUnavailableView("Find a Book", systemImage: "text.magnifyingglass",
-                                       description: Text("Search Audible by title, author or narrator to see ratings, length and what it's about."))
+                // Nothing typed yet: browse Audible's bestsellers by genre.
+                AudibleGenresList()
             }
         }
         .kitziBackground()
@@ -156,10 +170,15 @@ struct FindBookView: View {
                 if !Task.isCancelled { failed = true }
             }
         }
+        .navigationDestination(for: AudibleGenre.self) { AudibleGenreView(genre: $0) }
         .onAppear { if query.isEmpty && !initialQuery.isEmpty { query = initialQuery; searchActive = false } }
         #if DEBUG
         // Test hook (simulator screenshots): open the first result.
         .navigationDestination(item: $testOpen) { AudibleBookView(book: $0) }
+        .navigationDestination(item: $testGenre) { AudibleGenreView(genre: $0) }
+        .task {
+            if let g = ProcessInfo.processInfo.environment["KITZI_TEST_GENRE"] { testGenre = AudibleGenre(id: g, name: "Science Fiction & Fantasy") }
+        }
         .onChange(of: results) { _, r in
             if ProcessInfo.processInfo.environment["KITZI_TEST_AUDIBLE_OPEN"] != nil, testOpen == nil { testOpen = r?.first }
         }
@@ -203,7 +222,7 @@ struct AudibleStars: View {
     }
 }
 
-private struct AudibleRow: View {
+struct AudibleRow: View {
     let book: AudibleBook
     @Environment(LibraryStore.self) private var library
 
@@ -257,6 +276,7 @@ struct AudibleBookView: View {
                 actions
                 if book.performanceStars != nil || book.storyStars != nil { ratingsCard }
                 if let d = book.summary, !d.isEmpty { aboutCard(d) }
+                AudibleReviewsCard(asin: book.asin)
                 detailsCard
             }
             .padding(.horizontal, 16)

@@ -16,10 +16,18 @@ struct AllBooksView: View {
     @State private var search = ""
 
     var body: some View {
+        // Re-sorted as Audible ratings arrive.
+        let _ = sort == .ratingDesc ? AudibleRating.shared.fillDone : 0
         let list = library.filtered(sort: sort, filter: filter, search: search)
         Group {
             if settings.gridLayout { grid(list) } else { listView(list) }
         }
+        .safeAreaInset(edge: .top) { if sort == .ratingDesc { RatingFillBanner() } }
+        .task(id: sort) { if sort == .ratingDesc { await AudibleRating.shared.fill(library.books) } }
+        #if DEBUG
+        // Test hook (simulator screenshots): start on the rating sort.
+        .onAppear { if ProcessInfo.processInfo.environment["KITZI_TEST_SORT"] == "rating" { sort = .ratingDesc } }
+        #endif
         .searchable(text: $search, prompt: "Title, author, series, narrator")
         .kitziBackground()
         .navigationTitle(filter == .all ? "All Books" : filter.label)
@@ -85,7 +93,7 @@ struct AllBooksView: View {
     }
 
     private func row(_ b: Book) -> some View {
-        NavigationLink(value: b) { ListBookRow(book: b) }
+        NavigationLink(value: b) { ListBookRow(book: b, showRating: sort == .ratingDesc) }
             .bookContextMenu(b)
     }
 

@@ -1,12 +1,49 @@
 import Foundation
+import Observation
 
 /// Audible star ratings, looked up by the book's ASIN when the server has one,
 /// else by a title/author search; cached for a week.
+@Observable
 final class AudibleRating {
     static let shared = AudibleRating()
     struct Result: Codable { var asin: String; var stars: Double; var count: Int; var at: Double }
-    private var memory: [String: Result?] = [:]
-    private var inflight: [String: Task<Result?, Never>] = [:]
+    @ObservationIgnored private var memory: [String: Result?] = [:]
+    @ObservationIgnored private var inflight: [String: Task<Result?, Never>] = [:]
+    @ObservationIgnored private var disk: [String: Result?] = [:]
+    /// Filling in the library's ratings (for the "Highest rated" sort): how many
+    /// are done, of how many. Total 0 when it isn't running.
+    private(set) var fillDone = 0
+    private(set) var fillTotal = 0
+
+    /// The rating already known (this session, or saved, however old), without asking Audible.
+    func cached(_ id: String) -> Result? {
+        if let m = memory[id] { return m }
+        if let d = disk[id] { return d }
+        let r = Store.d.data(forKey: "audible2:\(id)").flatMap { try? JSONDecoder().decode(Result.self, from: $0) }
+        let v = (r?.stars ?? 0) > 0 ? r : nil
+        disk[id] = v
+        return v
+    }
+
+    /// Looks up the ratings not known yet, a few at a time. Books already looked
+    /// up (rated or not on Audible) aren't asked again.
+    func fill(_ books: [Book]) async {
+        guard fillTotal == 0 else { return }
+        let todo = books.filter { memory[$0.id] == nil && Store.d.data(forKey: "audible2:\($0.id)") == nil }
+        guard !todo.isEmpty else { return }
+        fillTotal = todo.count
+        fillDone = 0
+        defer { fillTotal = 0 }
+        for start in stride(from: 0, to: todo.count, by: 4) {
+            if Task.isCancelled { return }
+            await withTaskGroup(of: Void.self) { g in
+                for b in todo[start..<min(start + 4, todo.count)] {
+                    g.addTask { _ = await self.rating(for: b) }
+                }
+            }
+            fillDone = min(start + 4, todo.count)
+        }
+    }
 
     func rating(for book: Book) async -> Result? {
         if let m = memory[book.id] { return m }

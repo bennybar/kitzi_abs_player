@@ -52,6 +52,7 @@
 		942B24EC862D0AB724D35AF8 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 72EA634FE4E5BA8EACDC6323 /* Assets.xcassets */; };
 		9513780700AE8AA8DDB22999 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77E45E9E1878E74D874D3EA7 /* HomeView.swift */; };
 		96410AB4E89AE715FD17CED8 /* QueueView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B09076244F132CA075772AC8 /* QueueView.swift */; };
+		969EB0C6967A7065BE805B30 /* AudibleBrowse.swift in Sources */ = {isa = PBXBuildFile; fileRef = F43911DABF6C121B8C99A648 /* AudibleBrowse.swift */; };
 		975699FDCEBAC503DE05FD76 /* BookDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E01E59579F9B77BC3368F25C /* BookDetailView.swift */; };
 		AA4ED67B7334A4AA33458EA1 /* PhoneLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9724F1B6025BC99B2DE18ADD /* PhoneLink.swift */; };
 		AEBF0B2BBFC41E3E38E8E00A /* WatchLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72D70CC98E81A746D4BAAFF8 /* WatchLink.swift */; };
@@ -214,6 +215,7 @@
 		E6C5C51DF500712E2947DD67 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		EB533F742C08D4E2A95E25AE /* DownloadsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadsView.swift; sourceTree = "<group>"; };
 		F3D5349321CA8D9E2110D505 /* AuthorsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthorsView.swift; sourceTree = "<group>"; };
+		F43911DABF6C121B8C99A648 /* AudibleBrowse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudibleBrowse.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -397,6 +399,7 @@
 		8DEA914057223A142784B268 /* Browse */ = {
 			isa = PBXGroup;
 			children = (
+				F43911DABF6C121B8C99A648 /* AudibleBrowse.swift */,
 				F3D5349321CA8D9E2110D505 /* AuthorsView.swift */,
 				EB533F742C08D4E2A95E25AE /* DownloadsView.swift */,
 				DCA35E62EA2D0EB2AC73B392 /* FindBookView.swift */,
@@ -709,6 +712,7 @@
 				84E5786901AC308F90A50BAD /* Achew.swift in Sources */,
 				5D54E9A99E1829EA59B36DEC /* AchewView.swift in Sources */,
 				8A7C89F38C06ED712E917469 /* AllBooksView.swift in Sources */,
+				969EB0C6967A7065BE805B30 /* AudibleBrowse.swift in Sources */,
 				2FAA57D13F60125E6522B23C /* AudibleRating.swift in Sources */,
 				33BB27110FA4E401BC5D3701 /* AuthorsView.swift in Sources */,
 				975699FDCEBAC503DE05FD76 /* BookDetailView.swift in Sources */,
@@ -874,7 +878,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 371;
+				CURRENT_PROJECT_VERSION = 372;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 57L2ULXB7Z;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -895,7 +899,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
-				MARKETING_VERSION = 2.0.371;
+				MARKETING_VERSION = 2.0.372;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -996,7 +1000,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 371;
+				CURRENT_PROJECT_VERSION = 372;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 57L2ULXB7Z;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -1011,7 +1015,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
-				MARKETING_VERSION = 2.0.371;
+				MARKETING_VERSION = 2.0.372;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";

@@ -26,9 +26,12 @@ struct HomeView: View {
                     if search.isEmpty {
                         browseCard.id("allbooks")
                     } else {
-                    // Filtered once per render (it sorts the whole library).
+                    // Filtered once per render (it sorts the whole library), and again
+                    // as Audible ratings arrive for the "Highest rated" sort.
+                    let _ = sort == .ratingDesc ? AudibleRating.shared.fillDone : 0
                     let list = library.filtered(sort: sort, filter: filter, search: search)
                     libraryHeader(count: list.count).id("allbooks")
+                    if sort == .ratingDesc { RatingFillBanner() }
                     if list.isEmpty && library.books.isEmpty { emptyState }
                     if settings.gridLayout {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 16)], spacing: 20) {
@@ -45,7 +48,7 @@ struct HomeView: View {
                         LazyVStack(spacing: 0) {
                             ForEach(list) { b in
                                 Button { path.append(BookFrom(book: b, source: "all-\(b.id)")) } label: {
-                                    ListBookRow(book: b, zoomID: "all-\(b.id)").padding(.vertical, 8)
+                                    ListBookRow(book: b, zoomID: "all-\(b.id)", showRating: sort == .ratingDesc).padding(.vertical, 8)
                                 }
                                     .buttonStyle(.plain)
                                     .bookContextMenu(b)
@@ -115,6 +118,10 @@ struct HomeView: View {
                 }
                 if ProcessInfo.processInfo.environment["KITZI_TEST_OPEN"] == "allbooks" {
                     path.append(AllBooksRoute(filter: .all))
+                }
+                if ProcessInfo.processInfo.environment["KITZI_TEST_OPEN"] == "series",
+                   let name = ProcessInfo.processInfo.environment["KITZI_TEST_SERIES"] {
+                    path.append(SeriesRoute(name: name))
                 }
                 if ProcessInfo.processInfo.environment["KITZI_TEST_OPEN"] == "findbook" {
                     path.append(FindBookRoute(query: ProcessInfo.processInfo.environment["KITZI_TEST_QUERY"] ?? ""))
@@ -287,6 +294,7 @@ struct HomeView: View {
         }
         .padding(.horizontal, 20)
         .onChange(of: sort) { _, v in Store.set(v.rawValue, "library_sort") }
+        .task(id: sort) { if sort == .ratingDesc { await AudibleRating.shared.fill(library.books) } }
     }
 
     private var emptyState: some View {
@@ -302,10 +310,16 @@ struct HomeView: View {
 struct BookListView: View {
     let title: String
     let books: [Book]
+    /// A series' page: also lists its books on Audible that aren't here.
+    var series: String? = nil
+    @Environment(AppSettings.self) private var settings
     var body: some View {
-        List(books) { b in
-            NavigationLink { BookDetailView(book: b) } label: { ListBookRow(book: b) }
-                .bookContextMenu(b)
+        List {
+            ForEach(books) { b in
+                NavigationLink { BookDetailView(book: b) } label: { ListBookRow(book: b) }
+                    .bookContextMenu(b)
+            }
+            if let series, settings.seriesMissing { MissingSeriesBooks(series: series, books: books) }
         }
         .listStyle(.plain)
         .kitziBackground()

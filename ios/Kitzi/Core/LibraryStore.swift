@@ -256,6 +256,18 @@ final class LibraryStore {
         case .authorAsc: return list.sorted { ($0.author ?? "~").localizedCaseInsensitiveCompare($1.author ?? "~") == .orderedAscending }
         case .updatedDesc: return list.sorted { ($0.updatedAt ?? 0) > ($1.updatedAt ?? 0) }
         case .durationDesc: return list.sorted { ($0.durationSec ?? 0) > ($1.durationSec ?? 0) }
+        case .ratingDesc:
+            // Audible's stars, weighted by how many rated it: a 5.0 from three
+            // people doesn't beat a 4.8 from forty thousand (each score is pulled
+            // towards 4.3, a typical average, by the weight of 100 ratings). Books
+            // without a rating last.
+            func score(_ r: AudibleRating.Result?) -> Double {
+                guard let r else { return 0 }
+                let n = Double(r.count)
+                return (r.stars * n + 4.3 * 100) / (n + 100)
+            }
+            let s = Dictionary(uniqueKeysWithValues: list.map { ($0.id, score(AudibleRating.shared.cached($0.id))) })
+            return list.sorted { (s[$0.id] ?? 0) > (s[$1.id] ?? 0) }
         }
     }
 

@@ -134,6 +134,8 @@ struct GoalCard: View {
 struct ListBookRow: View {
     let book: Book
     var zoomID: String? = nil
+    /// The "Highest rated" sort: Audible's stars instead of the length.
+    var showRating = false
     @Environment(LibraryStore.self) private var library
     @Environment(\.coverZoom) private var zoom
     var body: some View {
@@ -149,7 +151,16 @@ struct ListBookRow: View {
                 }
             }
             Spacer()
-            if library.progress[book.id]?.isFinished == true {
+            if showRating {
+                if let r = AudibleRating.shared.cached(book.id) {
+                    VStack(alignment: .trailing, spacing: 1) {
+                        Label(String(format: "%.1f", r.stars), systemImage: "star.fill")
+                            .font(.footnote.weight(.semibold)).foregroundStyle(.orange)
+                        Text("\(r.count.formatted(.number.notation(.compactName))) ratings")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
+            } else if library.progress[book.id]?.isFinished == true {
                 Image(systemName: "checkmark.circle.fill").foregroundStyle(.secondary)
             } else if let d = book.durationSec {
                 Text(Format.hm(d)).font(.footnote).foregroundStyle(.secondary)
