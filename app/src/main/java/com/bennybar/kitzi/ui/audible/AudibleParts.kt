@@ -68,6 +68,7 @@ class KitziNav(
     val openGenre: (AudibleGenre) -> Unit,
     val openList: (AudibleListRoute) -> Unit,
     val findBook: (String) -> Unit,
+    val openAchew: () -> Unit = {},
 )
 
 val LocalKitziNav = compositionLocalOf { KitziNav({}, {}, {}, {}, {}) }

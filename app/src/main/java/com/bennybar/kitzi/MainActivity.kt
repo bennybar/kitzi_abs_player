@@ -43,6 +43,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.LibraryBooks
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
@@ -196,6 +197,7 @@ private enum class Tab(val label: String, val icon: ImageVector) {
     QUEUE("Queue", Icons.AutoMirrored.Filled.QueueMusic),
     PLAYER("Player", Icons.Default.PlayArrow),
     DOWNLOADS("Downloads", Icons.Default.Download),
+    SHELFARR("Shelfarr", Icons.Default.Inbox),
     SETTINGS("Settings", Icons.Default.Settings),
 }
 
@@ -209,6 +211,10 @@ private sealed interface Overlay {
     data class Audible(val asin: String) : Overlay
     data class Genre(val id: String, val name: String) : Overlay
     data class AudibleList(val route: com.bennybar.kitzi.ui.audible.AudibleListRoute) : Overlay
+    data class ShelfarrRequest(val id: Int) : Overlay
+    data object ShelfarrSettings : Overlay
+    data object AchewSettings : Overlay
+    data object AchewWeb : Overlay
 }
 
 private fun Overlay.key(): String = when (this) {
@@ -219,6 +225,10 @@ private fun Overlay.key(): String = when (this) {
     is Overlay.FindBook -> "find:$query"
     is Overlay.Audible -> "audible:$asin"
     is Overlay.Genre -> "genre:$id|$name"
+    is Overlay.ShelfarrRequest -> "shelfarr:$id"
+    Overlay.ShelfarrSettings -> "shelfarr-settings"
+    Overlay.AchewSettings -> "achew-settings"
+    Overlay.AchewWeb -> "achew"
     is Overlay.AudibleList -> when (val r = route) {
         is com.bennybar.kitzi.ui.audible.AudibleListRoute.Author -> "alist:author|${r.name}"
         is com.bennybar.kitzi.ui.audible.AudibleListRoute.Narrator -> "alist:narrator|${r.name}"
@@ -232,6 +242,10 @@ private fun overlayFrom(s: String): Overlay? = when {
     s == "stats" -> Overlay.Stats
     s == "profile" -> Overlay.Profile
     s.startsWith("find:") -> Overlay.FindBook(s.removePrefix("find:"))
+    s.startsWith("shelfarr:") -> s.removePrefix("shelfarr:").toIntOrNull()?.let { Overlay.ShelfarrRequest(it) }
+    s == "shelfarr-settings" -> Overlay.ShelfarrSettings
+    s == "achew-settings" -> Overlay.AchewSettings
+    s == "achew" -> Overlay.AchewWeb
     s.startsWith("audible:") -> Overlay.Audible(s.removePrefix("audible:"))
     s.startsWith("genre:") -> s.removePrefix("genre:").split("|", limit = 2).takeIf { it.size == 2 }?.let { Overlay.Genre(it[0], it[1]) }
     s.startsWith("alist:") -> s.removePrefix("alist:").split("|", limit = 3).let { p ->
@@ -453,7 +467,8 @@ private fun App() {
     val showAuthors by UiPrefsState.showAuthorsTab
     val showSeries by UiPrefsState.showSeriesTab
     val playerAsTab by UiPrefsState.fullPlayerAsTab
-    val tabs = remember(showAuthors, showSeries, playerAsTab) {
+    val showShelfarr by UiPrefsState.showShelfarrTab
+    val tabs = remember(showAuthors, showSeries, playerAsTab, showShelfarr) {
         buildList {
             add(Tab.BOOKS)
             if (showSeries) add(Tab.SERIES)
@@ -461,6 +476,7 @@ private fun App() {
             add(Tab.QUEUE)
             if (playerAsTab) add(Tab.PLAYER)
             add(Tab.DOWNLOADS)
+            if (showShelfarr && com.bennybar.kitzi.data.services.Shelfarr.configured) add(Tab.SHELFARR)
             add(Tab.SETTINGS)
         }
     }
@@ -538,6 +554,7 @@ private fun App() {
                 openGenre = { pushOverlay(Overlay.Genre(it.id, it.name)) },
                 openList = { pushOverlay(Overlay.AudibleList(it)) },
                 findBook = { pushOverlay(Overlay.FindBook(it)) },
+                openAchew = { pushOverlay(Overlay.AchewWeb) },
             )
         }
         Box(Modifier.fillMaxSize()) {
@@ -577,6 +594,10 @@ private fun App() {
                                 com.bennybar.kitzi.data.audible.AudibleGenre(ov.id, ov.name), onBack = popOverlay,
                             )
                             is Overlay.AudibleList -> com.bennybar.kitzi.ui.audible.AudibleListScreen(ov.route, onBack = popOverlay)
+                            is Overlay.ShelfarrRequest -> com.bennybar.kitzi.ui.services.ShelfarrRequestScreen(ov.id, onBack = popOverlay)
+                            Overlay.ShelfarrSettings -> com.bennybar.kitzi.ui.services.ShelfarrSettingsScreen(onBack = popOverlay)
+                            Overlay.AchewSettings -> com.bennybar.kitzi.ui.services.AchewSettingsScreen(onBack = popOverlay)
+                            Overlay.AchewWeb -> com.bennybar.kitzi.ui.services.AchewWebScreen(onBack = popOverlay)
 
                             null -> when (tb) {
                                 Tab.BOOKS -> LibraryScreen(
@@ -590,10 +611,13 @@ private fun App() {
                                 Tab.QUEUE -> QueueScreen(onOpenPlayer = openPlayer)
                                 Tab.PLAYER -> PlayerScreen(contentPadding = playerPadding)
                                 Tab.DOWNLOADS -> DownloadsScreen(onOpenBook = openBook)
+                                Tab.SHELFARR -> com.bennybar.kitzi.ui.services.ShelfarrScreen(onOpenRequest = { pushOverlay(Overlay.ShelfarrRequest(it)) })
                                 Tab.SETTINGS -> SettingsScreen(
                                     onSignedOut = { signedIn = false },
                                     onOpenProfile = { pushOverlay(Overlay.Profile) },
                                     onOpenStats = { pushOverlay(Overlay.Stats) },
+                                    onOpenShelfarr = { pushOverlay(Overlay.ShelfarrSettings) },
+                                    onOpenAchew = { pushOverlay(Overlay.AchewSettings) },
                                 )
                             }
                         }

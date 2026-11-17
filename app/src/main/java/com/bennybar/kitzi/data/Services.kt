@@ -153,6 +153,9 @@ object Services {
         runCatching { books.clearProgress() }
         // ...and the local copies go, or they'd win the next account's resume.
         playback.clearLocalPositions()
+        // Another account mustn't inherit this one's Shelfarr or Achew.
+        com.bennybar.kitzi.data.services.Shelfarr.clear()
+        com.bennybar.kitzi.data.services.Achew.clear()
         prefs.removeWithPrefixes("bookmarks_cache:", "kitzi_pending_bookmark_ops")
         books.clearCachedStats()
         books.closeLibrary()

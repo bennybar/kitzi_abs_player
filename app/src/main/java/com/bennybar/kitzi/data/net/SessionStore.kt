@@ -49,6 +49,10 @@ class SessionStore(context: Context) {
         openSecure(context)
     }
 
+    /** Other services' addresses and logins (Shelfarr, Achew), kept encrypted. */
+    fun secret(key: String): String? = secure.getString(key, null)?.takeIf { it.isNotEmpty() }
+    fun setSecret(key: String, value: String?) = secure.edit { if (value.isNullOrEmpty()) remove(key) else putString(key, value) }
+
     private val _expired = MutableStateFlow(false)
 
     /**

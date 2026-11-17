@@ -395,6 +395,8 @@ fun AudibleBookScreen(asin: String, onBack: () -> Unit) {
                     Text("Open in Your Library", modifier = Modifier.padding(start = 8.dp))
                 }
             }
+            // Already in the library: nothing to send.
+            if (mine == null) com.bennybar.kitzi.ui.services.SendToShelfarr(book.title, book.authors.firstOrNull())
             if (book.performanceStars != null || book.storyStars != null) {
                 Card {
                     Text("Ratings", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)

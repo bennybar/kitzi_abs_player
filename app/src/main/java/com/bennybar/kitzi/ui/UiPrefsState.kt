@@ -30,6 +30,9 @@ object UiPrefsState {
     val audibleReviews = mutableStateOf(true)
     val seriesMissing = mutableStateOf(true)
     val becauseFinished = mutableStateOf(true)
+    /** Shelfarr's tab, and Achew's Fix Chapters on book pages (each once connected). */
+    val showShelfarrTab = mutableStateOf(false)
+    val achewEnabled = mutableStateOf(false)
 
     fun load(prefs: FlutterPrefs) {
         showAuthorsTab.value = prefs.getBoolean(K_AUTHORS, true)
@@ -46,6 +49,8 @@ object UiPrefsState {
         audibleReviews.value = prefs.getBoolean(K_REVIEWS, true)
         seriesMissing.value = prefs.getBoolean(K_SERIES_MISSING, true)
         becauseFinished.value = prefs.getBoolean(K_BECAUSE, true)
+        showShelfarrTab.value = prefs.getBoolean(K_SHELFARR_TAB, false)
+        achewEnabled.value = prefs.getBoolean(K_ACHEW, false)
     }
 
     /** Called by the Settings toggles: updates both the live state and the pref. */
@@ -66,6 +71,8 @@ object UiPrefsState {
             K_REVIEWS -> audibleReviews.value = value
             K_SERIES_MISSING -> seriesMissing.value = value
             K_BECAUSE -> becauseFinished.value = value
+            K_SHELFARR_TAB -> showShelfarrTab.value = value
+            K_ACHEW -> achewEnabled.value = value
         }
     }
 
@@ -73,7 +80,7 @@ object UiPrefsState {
     val ownedKeys = setOf(
         K_AUTHORS, K_SERIES, K_FULL_PLAYER, K_RESUME_HISTORY,
         K_DUAL_PROGRESS, K_HIDE_SERIES, K_LETTER, K_LETTER_ALPHA, K_AUDIBLE_LINK, K_EXPRESSIVE_PLAY,
-        K_SIMILAR, K_REVIEWS, K_SERIES_MISSING, K_BECAUSE,
+        K_SIMILAR, K_REVIEWS, K_SERIES_MISSING, K_BECAUSE, K_SHELFARR_TAB, K_ACHEW,
     )
 
     const val K_AUTHORS = "ui_author_view_enabled"
@@ -90,4 +97,6 @@ object UiPrefsState {
     const val K_REVIEWS = "ui_audible_reviews_enabled"
     const val K_SERIES_MISSING = "ui_series_missing_enabled"
     const val K_BECAUSE = "ui_because_finished_enabled"
+    const val K_SHELFARR_TAB = "ui_shelfarr_tab"
+    const val K_ACHEW = "ui_achew_enabled"
 }

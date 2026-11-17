@@ -40,6 +40,8 @@ import androidx.compose.material.icons.filled.SortByAlpha
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.VpnKey
+import androidx.compose.material.icons.filled.AutoFixHigh
+import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -80,7 +82,13 @@ import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
 @Composable
-fun SettingsScreen(onSignedOut: () -> Unit, onOpenProfile: () -> Unit = {}, onOpenStats: () -> Unit = {}) {
+fun SettingsScreen(
+    onSignedOut: () -> Unit,
+    onOpenProfile: () -> Unit = {},
+    onOpenStats: () -> Unit = {},
+    onOpenShelfarr: () -> Unit = {},
+    onOpenAchew: () -> Unit = {},
+) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val activity = androidx.activity.compose.LocalActivity.current as? androidx.activity.ComponentActivity
@@ -159,7 +167,7 @@ fun SettingsScreen(onSignedOut: () -> Unit, onOpenProfile: () -> Unit = {}, onOp
         }
 
         // ---------- Server access ----------
-        if (matches("server access", "custom http headers", "header")) {
+        if (matches("server access", "custom http headers", "header", "shelfarr", "request", "achew", "chapters")) {
             Section("Server access")
             val headerCount = Services.session.customHeaders.size
             ActionRow(
@@ -167,6 +175,14 @@ fun SettingsScreen(onSignedOut: () -> Unit, onOpenProfile: () -> Unit = {}, onOp
                 "Attach service-token headers (e.g. CF-Access-Client-Id). Tap to configure.",
                 trailing = { Text(if (headerCount == 0) "Off" else "$headerCount active") },
             ) { dialog = SettingsDialog.Headers }
+            ActionRow(
+                Icons.Default.Inbox, "Shelfarr", "Request audiobooks from your Shelfarr server",
+                trailing = { Text(if (com.bennybar.kitzi.data.services.Shelfarr.configured) "Connected" else "Off") },
+            ) { onOpenShelfarr() }
+            ActionRow(
+                Icons.Default.AutoFixHigh, "Achew", "Fix a book's chapters with your Achew server",
+                trailing = { Text(if (com.bennybar.kitzi.data.services.Achew.configured) "Connected" else "Off") },
+            ) { onOpenAchew() }
             HorizontalDivider()
         }
 

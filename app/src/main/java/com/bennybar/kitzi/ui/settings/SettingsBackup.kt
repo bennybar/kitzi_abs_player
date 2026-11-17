@@ -45,6 +45,8 @@ object SettingsBackup {
         "ui_audible_reviews_enabled",
         "ui_series_missing_enabled",
         "ui_because_finished_enabled",
+        "ui_shelfarr_tab",
+        "ui_achew_enabled",
         "pause_cancels_sleep_timer",
         "sync_progress_before_play",
         "detailed_play_history_enabled",

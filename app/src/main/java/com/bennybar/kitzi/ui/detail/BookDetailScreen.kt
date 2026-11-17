@@ -24,6 +24,7 @@ import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Business
 import androidx.compose.material.icons.filled.CalendarMonth
@@ -95,6 +96,15 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
     var notFound by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
     var showAudibleChapters by remember { mutableStateOf(false) }
+    /** Achew is busy with another book (its title): replace it, or open Achew as it is. */
+    var achewReplacing by remember { mutableStateOf<String?>(null) }
+    val nav = com.bennybar.kitzi.ui.audible.LocalKitziNav.current
+    // Makes this the book Achew works on, then opens it.
+    suspend fun startAchew() {
+        runCatching { com.bennybar.kitzi.data.services.Achew.start(itemId) }
+            .onSuccess { nav.openAchew() }
+            .onFailure { com.bennybar.kitzi.ui.common.Snackbars.show(it.message ?: "Couldn't start Achew") }
+    }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(itemId) {
@@ -210,6 +220,26 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
                             leadingIcon = { Icon(Icons.AutoMirrored.Filled.List, null) },
                             onClick = { showMenu = false; showAudibleChapters = true },
                         )
+                        if (com.bennybar.kitzi.ui.UiPrefsState.achewEnabled.value && com.bennybar.kitzi.data.services.Achew.configured) {
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text("Fix Chapters in Achew") },
+                                leadingIcon = { Icon(Icons.Default.AutoFixHigh, null) },
+                                onClick = {
+                                    showMenu = false
+                                    scope.launch {
+                                        runCatching { com.bennybar.kitzi.data.services.Achew.currentJob() }
+                                            .onSuccess { job ->
+                                                when {
+                                                    job == null -> startAchew()
+                                                    job.first == itemId -> nav.openAchew()
+                                                    else -> achewReplacing = job.second
+                                                }
+                                            }
+                                            .onFailure { com.bennybar.kitzi.ui.common.Snackbars.show(it.message ?: "Couldn't reach Achew") }
+                                    }
+                                },
+                            )
+                        }
                     }
                 }
             },
@@ -500,6 +530,20 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
 
             Spacer(Modifier.height(12.dp))
         }
+    }
+
+    achewReplacing?.let { other ->
+        AlertDialog(
+            onDismissRequest = { achewReplacing = null },
+            title = { Text("Achew is working on another book") },
+            text = { Text("Starting this book replaces your work on $other.") },
+            confirmButton = {
+                TextButton(onClick = { achewReplacing = null; scope.launch { startAchew() } }) {
+                    Text("Fix this book instead", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = { TextButton(onClick = { achewReplacing = null; nav.openAchew() }) { Text("Open Achew") } },
+        )
     }
 
     if (showAudibleChapters) {
