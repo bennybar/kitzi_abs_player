@@ -46,6 +46,23 @@ data class BookEntity(
     val publisher: String?,
     val publishYear: Int?,
     val genres: String?,
+    /** The server's Audible ASIN (metadata.asin), when it has one. */
+    val asin: String? = null,
+)
+
+/**
+ * A book's Audible match: its ASIN (the server's, or found by a title search),
+ * stars and language. `asin` empty: Audible has no match. `stars` 0: on Audible
+ * but not rated yet. In the library's database so the list can sort by it.
+ */
+@Entity(tableName = "audible")
+data class AudibleEntity(
+    @PrimaryKey val itemId: String,
+    val asin: String,
+    val stars: Double,
+    val count: Int,
+    val at: Long,
+    val language: String?,
 )
 
 /**

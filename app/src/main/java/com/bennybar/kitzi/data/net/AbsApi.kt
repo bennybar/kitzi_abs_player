@@ -4,8 +4,10 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 
 /**
  * The authenticated `/api/...` surface. Auth, refresh-on-401 and the custom
@@ -43,6 +45,18 @@ class AbsApi(
             .build()
         return client.newCall(request).execute().use { it.code to it.body?.string() }
     }
+
+    /** A write (POST/PATCH) with a JSON body: the status code and the answer. */
+    fun send(path: String, method: String, body: String): Pair<Int, String?> {
+        val request = Request.Builder()
+            .url(base() + path)
+            .method(method, body.toRequestBody("application/json".toMediaType()))
+            .build()
+        return client.newCall(request).execute().use { it.code to it.body?.string() }
+    }
+
+    /** A GET's raw answer (code, body), for callers that read it themselves. */
+    fun getRaw(path: String): Pair<Int, String?> = get(path)
 
     private fun parse(body: String?): JsonElement? =
         body?.takeIf { it.isNotEmpty() }?.let { runCatching { json.parseToJsonElement(it) }.getOrNull() }

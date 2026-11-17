@@ -25,6 +25,11 @@ object UiPrefsState {
     val audibleLink = mutableStateOf(true)
     /** Play/pause morphs between Material shapes (the Expressive button); off: the plain shapes. */
     val expressivePlayButton = mutableStateOf(true)
+    /** Audible on book pages and Home: similar books, reviews, the series' other books, "Because you finished". */
+    val similarBooks = mutableStateOf(true)
+    val audibleReviews = mutableStateOf(true)
+    val seriesMissing = mutableStateOf(true)
+    val becauseFinished = mutableStateOf(true)
 
     fun load(prefs: FlutterPrefs) {
         showAuthorsTab.value = prefs.getBoolean(K_AUTHORS, true)
@@ -37,6 +42,10 @@ object UiPrefsState {
         letterScrollBooksAlpha.value = prefs.getBoolean(K_LETTER_ALPHA, false)
         audibleLink.value = prefs.getBoolean(K_AUDIBLE_LINK, true)
         expressivePlayButton.value = prefs.getBoolean(K_EXPRESSIVE_PLAY, true)
+        similarBooks.value = prefs.getBoolean(K_SIMILAR, true)
+        audibleReviews.value = prefs.getBoolean(K_REVIEWS, true)
+        seriesMissing.value = prefs.getBoolean(K_SERIES_MISSING, true)
+        becauseFinished.value = prefs.getBoolean(K_BECAUSE, true)
     }
 
     /** Called by the Settings toggles: updates both the live state and the pref. */
@@ -53,6 +62,10 @@ object UiPrefsState {
             K_LETTER_ALPHA -> letterScrollBooksAlpha.value = value
             K_AUDIBLE_LINK -> audibleLink.value = value
             K_EXPRESSIVE_PLAY -> expressivePlayButton.value = value
+            K_SIMILAR -> similarBooks.value = value
+            K_REVIEWS -> audibleReviews.value = value
+            K_SERIES_MISSING -> seriesMissing.value = value
+            K_BECAUSE -> becauseFinished.value = value
         }
     }
 
@@ -60,6 +73,7 @@ object UiPrefsState {
     val ownedKeys = setOf(
         K_AUTHORS, K_SERIES, K_FULL_PLAYER, K_RESUME_HISTORY,
         K_DUAL_PROGRESS, K_HIDE_SERIES, K_LETTER, K_LETTER_ALPHA, K_AUDIBLE_LINK, K_EXPRESSIVE_PLAY,
+        K_SIMILAR, K_REVIEWS, K_SERIES_MISSING, K_BECAUSE,
     )
 
     const val K_AUTHORS = "ui_author_view_enabled"
@@ -72,4 +86,8 @@ object UiPrefsState {
     const val K_LETTER_ALPHA = "ui_letter_scroll_books_alpha"
     const val K_AUDIBLE_LINK = "ui_audible_link_enabled"
     const val K_EXPRESSIVE_PLAY = "ui_expressive_play_button"
+    const val K_SIMILAR = "ui_similar_books_enabled"
+    const val K_REVIEWS = "ui_audible_reviews_enabled"
+    const val K_SERIES_MISSING = "ui_series_missing_enabled"
+    const val K_BECAUSE = "ui_because_finished_enabled"
 }

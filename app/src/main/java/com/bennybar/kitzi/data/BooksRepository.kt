@@ -184,6 +184,7 @@ class BooksRepository(
     private fun open(id: String) {
         KitziDatabase.forLibrary(context, id)
         library.value = id
+        com.bennybar.kitzi.data.audible.LibraryMatcher.invalidate()
     }
 
     // ---- reads (always from Room) ------------------------------------------
@@ -240,6 +241,12 @@ class BooksRepository(
 
     suspend fun booksInSeries(series: String): List<Book> = withContext(Dispatchers.IO) {
         dao.booksInSeries(series).map { it.toBook(session.baseUrl.orEmpty()) }
+    }
+
+    /** Every audiobook in the library (for matching Audible's books). */
+    suspend fun allAudiobooks(): List<Book> = withContext(Dispatchers.IO) {
+        val base = session.baseUrl.orEmpty()
+        dao.allAudiobooks().map { it.toBook(base) }
     }
 
     suspend fun booksByAuthor(author: String): List<Book> = withContext(Dispatchers.IO) {
@@ -631,6 +638,65 @@ class BooksRepository(
         facts
     }
 
+    /**
+     * Audible's chapters for an ASIN, through the server (it asks Audnexus, as its
+     * own "Lookup" does), and Audible's running time. Null when there are none.
+     */
+    suspend fun audibleChapters(asin: String): Pair<List<com.bennybar.kitzi.playback.Chapter>, Double?>? = withContext(Dispatchers.IO) {
+        val (code, body) = runCatching { api.getRaw("/api/search/chapters?asin=$asin&region=us") }.getOrNull() ?: return@withContext null
+        if (code != 200 || body == null) return@withContext null
+        val o = runCatching { kotlinx.serialization.json.Json.parseToJsonElement(body) }.getOrNull().obj() ?: return@withContext null
+        val chapters = o["chapters"].arr().orEmpty().mapNotNull { el ->
+            val c = el.obj() ?: return@mapNotNull null
+            val ms = c["startOffsetMs"].num() ?: return@mapNotNull null
+            com.bennybar.kitzi.playback.Chapter(c["title"].str().orEmpty(), ms / 1000)
+        }
+        if (chapters.isEmpty()) null else chapters to o["runtimeLengthSec"].num()
+    }
+
+    /** Replaces a book's chapters on the server. Null, or why it couldn't. */
+    suspend fun saveChapters(itemId: String, chapters: List<com.bennybar.kitzi.playback.Chapter>, durationSec: Double): String? =
+        withContext(Dispatchers.IO) {
+            val arr = kotlinx.serialization.json.buildJsonArray {
+                chapters.forEachIndexed { i, c ->
+                    val end = if (i + 1 < chapters.size) chapters[i + 1].startSec else durationSec
+                    add(kotlinx.serialization.json.buildJsonObject {
+                        put("id", kotlinx.serialization.json.JsonPrimitive(i))
+                        put("start", kotlinx.serialization.json.JsonPrimitive(c.startSec))
+                        put("end", kotlinx.serialization.json.JsonPrimitive(maxOf(end, c.startSec)))
+                        put("title", kotlinx.serialization.json.JsonPrimitive(c.title))
+                    })
+                }
+            }
+            val body = kotlinx.serialization.json.buildJsonObject { put("chapters", arr) }.toString()
+            val code = runCatching { api.send("/api/items/$itemId/chapters", "POST", body).first }.getOrNull()
+                ?: return@withContext "Couldn't reach the server."
+            when (code) {
+                in 200..299 -> null
+                403 -> "Your account isn't allowed to edit books on this server."
+                else -> "The server refused the chapters ($code)."
+            }
+        }
+
+    /** The ASIN the server has for a book (null: none, or it couldn't be asked). */
+    suspend fun serverAsin(itemId: String): String? = withContext(Dispatchers.IO) {
+        runCatching { api.item(itemId) }.getOrNull()?.get("media").obj()?.get("metadata").obj()?.get("asin").str()
+    }
+
+    /**
+     * Saves a book's Audible ASIN on the server, only when it has none (one the
+     * server already has is never replaced). True when it was saved.
+     */
+    suspend fun saveAsinIfMissing(itemId: String, asin: String): Boolean = withContext(Dispatchers.IO) {
+        val item = runCatching { api.item(itemId) }.getOrNull() ?: return@withContext false
+        if (!item["media"].obj()?.get("metadata").obj()?.get("asin").str().isNullOrEmpty()) return@withContext false
+        val body = kotlinx.serialization.json.buildJsonObject {
+            put("metadata", kotlinx.serialization.json.buildJsonObject { put("asin", kotlinx.serialization.json.JsonPrimitive(asin)) })
+        }.toString()
+        val code = runCatching { api.send("/api/items/$itemId/media", "PATCH", body).first }.getOrNull()
+        code in 200..299
+    }
+
     /** The book's chapter list from the server item metadata (empty offline / none). */
     suspend fun chapters(itemId: String): List<com.bennybar.kitzi.playback.Chapter> = withContext(Dispatchers.IO) {
         val item = runCatching { api.item(itemId) }.getOrNull() ?: return@withContext emptyList()
@@ -923,6 +989,7 @@ class BooksRepository(
             .getOrDefault(emptyList()).toSet()
         val stale = libDao.allBookIds().filter { it !in serverIds && it !in downloaded }
         stale.forEach { libDao.deleteBook(it); libDao.deleteProgress(it) }
+        if (stale.isNotEmpty()) com.bennybar.kitzi.data.audible.LibraryMatcher.invalidate()
         if (stale.isNotEmpty()) Log.i(TAG, "pruneDeletedBooks: removed ${stale.size} book(s) gone from server")
     }
 
@@ -965,7 +1032,10 @@ class BooksRepository(
                 // reaches old rows: the re-mapped entity differs, so it's written.
                 .takeIf { it != old }
         }
-        if (changed.isNotEmpty()) libDao.upsertBooks(changed)
+        if (changed.isNotEmpty()) {
+            libDao.upsertBooks(changed)
+            com.bennybar.kitzi.data.audible.LibraryMatcher.invalidate()
+        }
         return changed.size
     }
 
@@ -1180,7 +1250,8 @@ class BooksRepository(
 
     private fun serverSort(sort: BookSort): Pair<String, Boolean> = when (sort) {
         BookSort.NAME_ASC -> "media.metadata.title" to false
-        BookSort.ADDED_DESC -> "addedAt" to true
+        // The server can't sort by Audible stars: page by date added (the list sorts locally).
+        BookSort.ADDED_DESC, BookSort.RATING_DESC -> "addedAt" to true
         BookSort.UPDATED_DESC -> "updatedAt" to true
     }
 
@@ -1198,7 +1269,7 @@ class BooksRepository(
          * the next launch then sweeps the whole library once. 1: audiobooks with an
          * attached ebook are kept (issue #52).
          */
-        const val MAPPER_VERSION = 1
+        const val MAPPER_VERSION = 2 // 2: books carry the server's ASIN
         const val KEY_MAPPER_VERSION = "kitzi_book_mapper_version"
         /** The automatic (launch) full sweep runs at most this often. */
         const val AUTO_SWEEP_MAX_AGE_MS = 12 * 3600 * 1000L

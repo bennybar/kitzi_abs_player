@@ -643,6 +643,15 @@ class PlaybackController(
         // doesn't wake every 26s doing nothing.
     }
 
+    /** The loaded book's chapters from the server again (after they were replaced). */
+    suspend fun refreshChapters() {
+        val itemId = _nowPlaying.value?.itemId ?: return
+        val real = withContext(Dispatchers.IO) { runCatching { books.chapters(itemId) }.getOrDefault(emptyList()) }
+        if (real.isEmpty()) return
+        cacheChapters(itemId, real)
+        _nowPlaying.value?.takeIf { it.itemId == itemId }?.let { _nowPlaying.value = it.copy(chapters = real) }
+    }
+
     private fun Track.toMediaItem(np: NowPlaying): MediaItem = MediaItem.Builder()
         .setUri(if (isLocal) Uri.fromFile(File(url)) else Uri.parse(url))
         .setMediaId("${np.itemId}#$index")

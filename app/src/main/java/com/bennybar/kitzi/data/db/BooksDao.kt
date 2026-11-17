@@ -11,7 +11,7 @@ import androidx.sqlite.db.SupportSQLiteQuery
 import kotlinx.coroutines.flow.Flow
 
 /** Library list ordering. Maps to the UI's SortMode (books_page.dart:40). */
-enum class BookSort { NAME_ASC, ADDED_DESC, UPDATED_DESC }
+enum class BookSort { NAME_ASC, ADDED_DESC, UPDATED_DESC, RATING_DESC }
 
 /** books_page.dart:42 */
 enum class LibraryFilter { ALL, NOT_STARTED, IN_PROGRESS, FINISHED }
@@ -70,7 +70,7 @@ interface BooksDao {
      * one statement — never by post-processing a loaded page, which is the bug
      * REWRITE.md calls "the single most 'app feels broken' bug there is".
      */
-    @RawQuery(observedEntities = [BookEntity::class, MediaProgressEntity::class])
+    @RawQuery(observedEntities = [BookEntity::class, MediaProgressEntity::class, AudibleEntity::class])
     fun pagedBooksRaw(query: SupportSQLiteQuery): Flow<List<BookEntity>>
 
     @RawQuery(observedEntities = [BookEntity::class, MediaProgressEntity::class])
@@ -167,6 +167,10 @@ interface BooksDao {
     @Query("SELECT * FROM books WHERE collection IS NOT NULL AND collection != '' AND $AUDIOBOOK_PREDICATE")
     suspend fun booksInAnyCollection(): List<BookEntity>
 
+    /** Every audiobook, for matching Audible's books to the library. */
+    @Query("SELECT * FROM books WHERE $AUDIOBOOK_PREDICATE")
+    suspend fun allAudiobooks(): List<BookEntity>
+
     companion object {
         /**
          * "Is this an audiobook?", byte-for-byte the predicate the Flutter app
@@ -216,6 +220,10 @@ interface BooksDao {
                 BookSort.NAME_ASC -> "b.title COLLATE NOCASE ASC"
                 BookSort.ADDED_DESC -> "b.addedAt IS NULL, b.addedAt DESC, b.updatedAt DESC"
                 BookSort.UPDATED_DESC -> "b.updatedAt IS NULL, b.updatedAt DESC"
+                // Stars pulled towards a typical 4.3 by the weight of 100 ratings, so a
+                // 4.9 from 20 people doesn't top a 4.7 from 20,000. Unrated last.
+                BookSort.RATING_DESC ->
+                    "(a.stars IS NULL OR a.stars <= 0), (a.stars * a.count + 430.0) / (a.count + 100) DESC, b.title COLLATE NOCASE ASC"
             }
 
             val select = when {
@@ -226,6 +234,7 @@ interface BooksDao {
             val sql = buildString {
                 append("SELECT $select FROM books b ")
                 append("LEFT JOIN media_progress p ON p.itemId = b.id ")
+                if (sort == BookSort.RATING_DESC && !countOnly && !titlesOnly) append("LEFT JOIN audible a ON a.itemId = b.id ")
                 append("WHERE ${where.joinToString(" AND ")} ")
                 if (!countOnly) {
                     append("ORDER BY $orderBy LIMIT ? OFFSET ?")
@@ -238,6 +247,18 @@ interface BooksDao {
             return SimpleSQLiteQuery(sql, args.toTypedArray())
         }
     }
+}
+
+@Dao
+interface AudibleDao {
+    @Query("SELECT * FROM audible WHERE itemId = :itemId")
+    suspend fun get(itemId: String): AudibleEntity?
+
+    @Query("SELECT itemId FROM audible")
+    suspend fun knownIds(): List<String>
+
+    @Upsert
+    suspend fun upsert(rows: List<AudibleEntity>)
 }
 
 data class AuthorCount(val name: String, val bookCount: Int)

@@ -205,6 +205,44 @@ private sealed interface Overlay {
     data object Series : Overlay
     data object Stats : Overlay
     data object Profile : Overlay
+    data class FindBook(val query: String) : Overlay
+    data class Audible(val asin: String) : Overlay
+    data class Genre(val id: String, val name: String) : Overlay
+    data class AudibleList(val route: com.bennybar.kitzi.ui.audible.AudibleListRoute) : Overlay
+}
+
+private fun Overlay.key(): String = when (this) {
+    is Overlay.BookDetail -> "book:$id"
+    Overlay.Series -> "series"
+    Overlay.Stats -> "stats"
+    Overlay.Profile -> "profile"
+    is Overlay.FindBook -> "find:$query"
+    is Overlay.Audible -> "audible:$asin"
+    is Overlay.Genre -> "genre:$id|$name"
+    is Overlay.AudibleList -> when (val r = route) {
+        is com.bennybar.kitzi.ui.audible.AudibleListRoute.Author -> "alist:author|${r.name}"
+        is com.bennybar.kitzi.ui.audible.AudibleListRoute.Narrator -> "alist:narrator|${r.name}"
+        is com.bennybar.kitzi.ui.audible.AudibleListRoute.Series -> "alist:series|${r.asin}|${r.title}"
+    }
+}
+
+private fun overlayFrom(s: String): Overlay? = when {
+    s.startsWith("book:") -> Overlay.BookDetail(s.removePrefix("book:"))
+    s == "series" -> Overlay.Series
+    s == "stats" -> Overlay.Stats
+    s == "profile" -> Overlay.Profile
+    s.startsWith("find:") -> Overlay.FindBook(s.removePrefix("find:"))
+    s.startsWith("audible:") -> Overlay.Audible(s.removePrefix("audible:"))
+    s.startsWith("genre:") -> s.removePrefix("genre:").split("|", limit = 2).takeIf { it.size == 2 }?.let { Overlay.Genre(it[0], it[1]) }
+    s.startsWith("alist:") -> s.removePrefix("alist:").split("|", limit = 3).let { p ->
+        when {
+            p[0] == "author" && p.size == 2 -> Overlay.AudibleList(com.bennybar.kitzi.ui.audible.AudibleListRoute.Author(p[1]))
+            p[0] == "narrator" && p.size == 2 -> Overlay.AudibleList(com.bennybar.kitzi.ui.audible.AudibleListRoute.Narrator(p[1]))
+            p[0] == "series" && p.size == 3 -> Overlay.AudibleList(com.bennybar.kitzi.ui.audible.AudibleListRoute.Series(p[1], p[2]))
+            else -> null
+        }
+    }
+    else -> null
 }
 
 /**
@@ -213,27 +251,8 @@ private sealed interface Overlay {
  * drop back to the tab underneath.
  */
 private val OverlayStackSaver = androidx.compose.runtime.saveable.Saver<List<Overlay>, ArrayList<String>>(
-    save = { stack ->
-        ArrayList(stack.map {
-            when (it) {
-                is Overlay.BookDetail -> "book:${it.id}"
-                Overlay.Series -> "series"
-                Overlay.Stats -> "stats"
-                Overlay.Profile -> "profile"
-            }
-        })
-    },
-    restore = { saved ->
-        saved.mapNotNull {
-            when {
-                it.startsWith("book:") -> Overlay.BookDetail(it.removePrefix("book:"))
-                it == "series" -> Overlay.Series
-                it == "stats" -> Overlay.Stats
-                it == "profile" -> Overlay.Profile
-                else -> null
-            }
-        }
-    },
+    save = { stack -> ArrayList(stack.map { it.key() }) },
+    restore = { saved -> saved.mapNotNull(::overlayFrom) },
 )
 
 /**
@@ -509,8 +528,23 @@ private fun App() {
             bottom = barInset,
         )
 
+        val nav = remember {
+            com.bennybar.kitzi.ui.audible.KitziNav(
+                openBook = { pushOverlay(Overlay.BookDetail(it)) },
+                openAudible = {
+                    com.bennybar.kitzi.data.audible.AudibleCatalog.remember(listOf(it))
+                    pushOverlay(Overlay.Audible(it.asin))
+                },
+                openGenre = { pushOverlay(Overlay.Genre(it.id, it.name)) },
+                openList = { pushOverlay(Overlay.AudibleList(it)) },
+                findBook = { pushOverlay(Overlay.FindBook(it)) },
+            )
+        }
         Box(Modifier.fillMaxSize()) {
-            CompositionLocalProvider(LocalMiniPlayerInset provides if (playerIsTabFull) 0.dp else barInset) {
+            CompositionLocalProvider(
+                LocalMiniPlayerInset provides if (playerIsTabFull) 0.dp else barInset,
+                com.bennybar.kitzi.ui.audible.LocalKitziNav provides nav,
+            ) {
                 // Screens cross-fade on change — a quick, snappy transition.
                 androidx.compose.animation.Crossfade(
                     targetState = overlay to tab,
@@ -518,13 +552,7 @@ private fun App() {
                     modifier = Modifier.fillMaxSize(),
                     label = "screen",
                 ) { (ov, tb) ->
-                    val screenKey: Any = when (ov) {
-                        is Overlay.BookDetail -> "book:${ov.id}"
-                        Overlay.Series -> "ov:series"
-                        Overlay.Stats -> "ov:stats"
-                        Overlay.Profile -> "ov:profile"
-                        null -> "tab:${tb.name}"
-                    }
+                    val screenKey: Any = ov?.let { "ov:${it.key()}" } ?: "tab:${tb.name}"
                     screenStateHolder.SaveableStateProvider(screenKey) {
                     Box(Modifier.fillMaxSize().padding(contentInsets)) {
                         when (ov) {
@@ -542,6 +570,13 @@ private fun App() {
                                 onBack = popOverlay,
                                 onOpenStats = { pushOverlay(Overlay.Stats) },
                             )
+
+                            is Overlay.FindBook -> com.bennybar.kitzi.ui.audible.FindBookScreen(ov.query, onBack = popOverlay)
+                            is Overlay.Audible -> com.bennybar.kitzi.ui.audible.AudibleBookScreen(ov.asin, onBack = popOverlay)
+                            is Overlay.Genre -> com.bennybar.kitzi.ui.audible.AudibleGenreScreen(
+                                com.bennybar.kitzi.data.audible.AudibleGenre(ov.id, ov.name), onBack = popOverlay,
+                            )
+                            is Overlay.AudibleList -> com.bennybar.kitzi.ui.audible.AudibleListScreen(ov.route, onBack = popOverlay)
 
                             null -> when (tb) {
                                 Tab.BOOKS -> LibraryScreen(

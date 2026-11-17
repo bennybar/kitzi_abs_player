@@ -23,6 +23,8 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Business
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CheckCircle
@@ -91,6 +93,8 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
     var playFailed by remember { mutableStateOf(false) }
     var renamingBookmark by remember { mutableStateOf<Bookmark?>(null) }
     var notFound by remember { mutableStateOf(false) }
+    var showMenu by remember { mutableStateOf(false) }
+    var showAudibleChapters by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(itemId) {
@@ -197,6 +201,16 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
                 val isFinished = progress?.isFinished == true
                 TextButton(onClick = { confirmFinished = true }) {
                     Text(if (isFinished) "Mark as unfinished" else "Mark as finished")
+                }
+                Box {
+                    IconButton(onClick = { showMenu = true }) { Icon(Icons.Default.MoreVert, "More") }
+                    androidx.compose.material3.DropdownMenu(showMenu, onDismissRequest = { showMenu = false }) {
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("Chapters from Audible") },
+                            leadingIcon = { Icon(Icons.AutoMirrored.Filled.List, null) },
+                            onClick = { showMenu = false; showAudibleChapters = true },
+                        )
+                    }
                 }
             },
         )
@@ -469,6 +483,11 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
                     }
                 },
             )
+            // From Audible: the next book of its series, reviews, similar books.
+            if (com.bennybar.kitzi.ui.UiPrefsState.seriesMissing.value) com.bennybar.kitzi.ui.audible.NextInSeriesCard(b)
+            if (com.bennybar.kitzi.ui.UiPrefsState.audibleReviews.value) com.bennybar.kitzi.ui.audible.LibraryBookReviews(b)
+            if (com.bennybar.kitzi.ui.UiPrefsState.similarBooks.value) com.bennybar.kitzi.ui.audible.SimilarBooksRow(b)
+
             renamingBookmark?.let { bm ->
                 com.bennybar.kitzi.ui.player.RenameBookmarkDialog(bm.title, onDismiss = { renamingBookmark = null }) { title ->
                     renamingBookmark = null
@@ -480,6 +499,13 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
             }
 
             Spacer(Modifier.height(12.dp))
+        }
+    }
+
+    if (showAudibleChapters) {
+        com.bennybar.kitzi.ui.audible.AudibleChaptersDialog(b, onDismiss = { showAudibleChapters = false }) {
+            // The loaded book picks up its new chapters.
+            if (Services.playback.nowPlaying.value?.itemId == itemId) scope.launch { Services.playback.refreshChapters() }
         }
     }
 

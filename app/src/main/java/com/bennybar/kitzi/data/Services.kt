@@ -80,6 +80,7 @@ object Services {
             )
             sleepTimer = SleepTimer(app, playback)
             queue = PlayQueue(prefs)
+            com.bennybar.kitzi.data.audible.AudibleCatalog.init(app)
 
             initialized = true
         }
@@ -90,6 +91,8 @@ object Services {
         CoroutineScope(Dispatchers.IO).launch {
             runCatching { downloads.adoptExistingDownloads() }
             runCatching { com.bennybar.kitzi.data.db.LegacyHistoryImport.importIfNeeded(appContext, prefs) }
+            // Ratings moved into the library database (with each book's match).
+            runCatching { prefs.removeWithPrefixes("audible_rating_v4_") }
         }
 
         // A play that finds the playback service gone (Android destroyed it while the
@@ -165,4 +168,8 @@ object Services {
     /** The downloads table lives in the active library's database, like everything else. */
     fun downloadsDao(): DownloadsDao =
         KitziDatabase.forLibrary(appContext, currentLibraryId()).downloadsDao()
+
+    /** Each book's Audible match, in the active library's database. */
+    fun audibleDao(): com.bennybar.kitzi.data.db.AudibleDao =
+        KitziDatabase.forLibrary(appContext, currentLibraryId()).audibleDao()
 }

@@ -14,18 +14,32 @@ import java.io.File
         MediaProgressEntity::class,
         AuthorEntity::class,
         DownloadEntity::class,
+        AudibleEntity::class,
     ],
     // v3: series names are stored with the "#N" suffix stripped, so the cache must
     // be rebuilt from the server for existing rows to be re-parsed.
-    version = 3,
+    // v4: books.asin, and the audible table (each book's Audible match).
+    version = 4,
     exportSchema = false,
 )
 abstract class KitziDatabase : RoomDatabase() {
     abstract fun booksDao(): BooksDao
     abstract fun downloadsDao(): DownloadsDao
+    abstract fun audibleDao(): AudibleDao
 
     companion object {
         private const val TAG = "KitziDatabase"
+
+        val MIGRATION_3_4 = object : androidx.room.migration.Migration(3, 4) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE books ADD COLUMN asin TEXT")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `audible` (`itemId` TEXT NOT NULL, `asin` TEXT NOT NULL, " +
+                        "`stars` REAL NOT NULL, `count` INTEGER NOT NULL, `at` INTEGER NOT NULL, `language` TEXT, " +
+                        "PRIMARY KEY(`itemId`))"
+                )
+            }
+        }
 
         /** The open database and its library, swapped as one so a reader can never
          *  pair the new id with the old (already closed) database. */
@@ -56,6 +70,7 @@ abstract class KitziDatabase : RoomDatabase() {
                     // throws on open — caught in testing — instead of silently wiping
                     // every download.
                     .fallbackToDestructiveMigrationFrom(dropAllTables = true, 1, 2)
+                    .addMigrations(MIGRATION_3_4)
                     .build()
                 open = Open(libraryId, db)
                 return db

@@ -228,6 +228,12 @@ fun SeriesScreen(onOpenBook: (String) -> Unit, onBack: () -> Unit) {
                                     books.takeIf { booksFor == group.name }.orEmpty().forEach { book ->
                                         BookCard(book, progress = progressById[book.id]) { onOpenBook(book.id) }
                                     }
+                                    // The series' books on Audible that aren't here.
+                                    if (tab == SeriesTab.SERIES && booksFor == group.name && books.isNotEmpty() &&
+                                        com.bennybar.kitzi.ui.UiPrefsState.seriesMissing.value
+                                    ) {
+                                        com.bennybar.kitzi.ui.audible.MissingSeriesBooks(group.name, books)
+                                    }
                                 }
                             }
                         }

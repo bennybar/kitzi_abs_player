@@ -50,6 +50,7 @@ import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.LibraryBooks
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.TravelExplore
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.material.icons.filled.Person
@@ -152,6 +153,13 @@ fun LibraryScreen(
         if (booksAlpha && query.sort != BookSort.NAME_ASC) vm.setSort(BookSort.NAME_ASC)
     }
 
+    // "Highest rated": look up the ratings not known yet (the list re-sorts as they arrive).
+    LaunchedEffect(query.sort) {
+        if (query.sort == BookSort.RATING_DESC) {
+            com.bennybar.kitzi.data.audible.AudibleRatingService.fillIn(com.bennybar.kitzi.data.audible.LibraryMatcher.all())
+        }
+    }
+
     var showSearch by remember { mutableStateOf(false) }
     // The search/grid/stats/filter/sort toolbar is hidden by default and revealed by
     // the control button to the right of the Series pill, so the top stays clean.
@@ -204,6 +212,9 @@ fun LibraryScreen(
                     if (showSearch) revealHeader() else vm.setSearch("")
                 },
             )
+            // Audible's catalog: search it, or browse its bestsellers by genre.
+            val nav = com.bennybar.kitzi.ui.audible.LocalKitziNav.current
+            CircleIconButton(Icons.Default.TravelExplore, "Find Book on Audible", onClick = { nav.findBook("") })
             // A dot on the controls button while a filter or non-default sort is in
             // effect, so a filtered list is never unexplained.
             val customized = query.filter != LibraryFilter.ALL || query.sort != LibraryQuery().sort
@@ -284,7 +295,19 @@ fun LibraryScreen(
                             placeholder = "Search books",
                             modifier = Modifier.padding(bottom = 8.dp),
                         )
+                        // Not here? Audible has it, maybe.
+                        if (query.search.isNotBlank()) {
+                            val nav = com.bennybar.kitzi.ui.audible.LocalKitziNav.current
+                            androidx.compose.material3.TextButton(
+                                onClick = { nav.findBook(query.search.trim()) },
+                                modifier = Modifier.padding(horizontal = 8.dp),
+                            ) {
+                                Icon(Icons.Default.TravelExplore, null, Modifier.size(18.dp))
+                                Text("Search Audible for “${query.search.trim()}”", modifier = Modifier.padding(start = 6.dp))
+                            }
+                        }
                     }
+                    if (query.sort == BookSort.RATING_DESC) com.bennybar.kitzi.ui.audible.RatingFillBanner()
                     if (showFilter) {
                         ChipRow(
                             options = LibraryFilter.entries.map { it to it.label() },
@@ -297,6 +320,7 @@ fun LibraryScreen(
                             options = listOf(
                                 BookSort.ADDED_DESC to "Recently added",
                                 BookSort.NAME_ASC to "Title A–Z",
+                                BookSort.RATING_DESC to "Highest rated",
                             ),
                             selected = query.sort,
                             onSelect = vm::setSort,
@@ -339,6 +363,9 @@ fun LibraryScreen(
                         if (serverShelves == null && recentlyAdded.isNotEmpty()) {
                             SectionHeader(Icons.Default.AutoAwesome, "Recently Added", Modifier.padding(horizontal = 16.dp))
                             Shelf(recentlyAdded, onOpenBook)
+                        }
+                        if (com.bennybar.kitzi.ui.UiPrefsState.becauseFinished.value) {
+                            com.bennybar.kitzi.ui.audible.BecauseYouFinishedRow(progressById)
                         }
                     }
                 }
@@ -393,6 +420,7 @@ fun LibraryScreen(
                                 Modifier.padding(horizontal = 16.dp),
                                 progress = progressById[book.id],
                                 downloaded = book.id in downloadedIds,
+                                showRating = query.sort == BookSort.RATING_DESC,
                             ) { onOpenBook(book.id) }
                         }
                     }
@@ -855,6 +883,8 @@ fun BookCard(
     modifier: Modifier = Modifier,
     progress: MediaProgressEntity? = null,
     downloaded: Boolean = false,
+    /** Its Audible stars (the "Highest rated" sort). */
+    showRating: Boolean = false,
     onClick: () -> Unit,
 ) {
     Surface(
@@ -916,6 +946,12 @@ fun BookCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                if (showRating) {
+                    com.bennybar.kitzi.ui.common.AudibleStars(
+                        itemId = book.id, title = book.title, author = book.author, durationMs = book.durationMs,
+                        starSize = 13.dp, modifier = Modifier.padding(top = 3.dp),
                     )
                 }
                 Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {

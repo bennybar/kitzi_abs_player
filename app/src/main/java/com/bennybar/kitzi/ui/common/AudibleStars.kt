@@ -35,9 +35,8 @@ import java.util.Locale
 import kotlin.math.floor
 
 /**
- * A cached Audible community star rating for a book: shows the cached value
- * immediately and refreshes in place when it's stale (>24h). Renders nothing
- * until a confident rating exists — matching the Flutter widget.
+ * A book's Audible community stars: the saved value at once, refreshed in place
+ * when it's old. Nothing until Audible has a rating for it.
  */
 @Composable
 fun AudibleStars(
@@ -52,12 +51,22 @@ fun AudibleStars(
 ) {
     var rating by remember(itemId) { mutableStateOf(AudibleRatingService.peek(itemId)) }
     LaunchedEffect(itemId) {
-        AudibleRatingService.loadCached(itemId)?.let { rating = it }
-        AudibleRatingService.resolve(itemId, title, author, narrator, durationMs)?.let { rating = it }
+        val book = com.bennybar.kitzi.data.Services.books.getBook(itemId)
+            ?: com.bennybar.kitzi.data.model.Book(
+                id = itemId, title = title, author = author, coverUrl = "", description = null,
+                durationMs = durationMs, sizeBytes = null, updatedAt = null, addedAt = null, series = null,
+                seriesSequence = null, collection = null, collectionSequence = null, isAudioBook = true,
+                mediaKind = null, libraryId = null, authors = emptyList(), narrators = emptyList(),
+                publisher = null, publishYear = null, genres = emptyList(),
+            )
+        AudibleRatingService.lookup(book)?.let { rating = it }
     }
 
     val r = rating ?: return
-    if (!r.found || r.rating <= 0.0) return
+    if (r.stars <= 0.0) return
+    val stars = r.stars
+    val count = r.count
+    val asin = r.asin.takeIf { it.isNotEmpty() }
 
     val amber = Color(0xFFF6A609)
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
@@ -66,7 +75,7 @@ fun AudibleStars(
     // browser — toggleable in Settings, on by default.
     val context = LocalContext.current
     val linkMod = if (com.bennybar.kitzi.ui.UiPrefsState.audibleLink.value) {
-        val url = r.asin?.let { "https://www.audible.com/pd/$it" }
+        val url = asin?.let { "https://www.audible.com/pd/$it" }
             ?: ("https://www.audible.com/search?keywords=" +
                 Uri.encode(listOfNotNull(title, author).joinToString(" ")))
         Modifier
@@ -82,8 +91,8 @@ fun AudibleStars(
     } else Modifier
 
     Row(modifier.then(linkMod), horizontalArrangement = Arrangement.spacedBy(1.dp), verticalAlignment = Alignment.CenterVertically) {
-        val full = floor(r.rating).toInt()
-        val frac = r.rating - full
+        val full = floor(stars).toInt()
+        val frac = stars - full
         val fullCount = if (frac >= 0.75) full + 1 else full
         val hasHalf = frac >= 0.25 && frac < 0.75
         for (i in 0 until 5) {
@@ -94,15 +103,15 @@ fun AudibleStars(
             }
         }
         Text(
-            String.format(Locale.US, "%.1f", r.rating),
+            String.format(Locale.US, "%.1f", stars),
             fontSize = (starSize.value * 0.85f).sp,
             fontWeight = FontWeight.Bold,
             color = muted,
             modifier = Modifier.padding(start = 6.dp),
         )
-        if (showCount && (r.count ?: 0) > 0) {
+        if (showCount && count > 0) {
             Text(
-                "(${formatCount(r.count!!)})",
+                "(${formatCount(count)})",
                 fontSize = (starSize.value * 0.78f).sp,
                 color = muted.copy(alpha = 0.85f),
                 modifier = Modifier.padding(start = 4.dp),
@@ -111,5 +120,5 @@ fun AudibleStars(
     }
 }
 
-private fun formatCount(n: Int): String =
+fun formatCount(n: Int): String =
     if (n >= 1000) String.format(Locale.US, "%.1fk", n / 1000.0).replace(".0k", "k") else n.toString()
