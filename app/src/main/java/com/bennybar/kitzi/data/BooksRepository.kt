@@ -354,6 +354,18 @@ class BooksRepository(
             .toSortedMap()
     }
 
+    /** Genre to its books (most books first), from the books' own genres. */
+    suspend fun genres(): Map<String, List<Book>> = withContext(Dispatchers.IO) {
+        val base = session.baseUrl.orEmpty()
+        val skip = setOf("audiobook", "audiobooks", "audio book")
+        val by = HashMap<String, MutableList<Book>>()
+        for (b in dao.allAudiobooks().map { it.toBook(base) }) {
+            for (g in b.genres) if (g.lowercase() !in skip) by.getOrPut(g) { mutableListOf() }.add(b)
+        }
+        by.entries.sortedWith(compareByDescending<Map.Entry<String, MutableList<Book>>> { it.value.size }.thenBy { it.key })
+            .associateTo(LinkedHashMap()) { (g, books) -> g to books.sortedBy { it.title.lowercase() } }
+    }
+
     /**
      * The server's real collections (name to books, in the collection's order), or
      * null when they can't be fetched. Not the same as [collections], which groups

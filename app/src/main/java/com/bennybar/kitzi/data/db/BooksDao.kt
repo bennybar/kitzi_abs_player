@@ -199,10 +199,10 @@ interface BooksDao {
             val where = mutableListOf(AUDIOBOOK_PREDICATE)
 
             search?.trim()?.takeIf { it.isNotEmpty() }?.let {
-                where += "(LOWER(b.title) LIKE ? OR LOWER(b.author) LIKE ?)"
+                // Titles, authors, series and narrators.
+                where += "(LOWER(b.title) LIKE ? OR LOWER(b.author) LIKE ? OR LOWER(b.series) LIKE ? OR LOWER(b.narrators) LIKE ?)"
                 val like = "%${it.lowercase()}%"
-                args += like
-                args += like
+                repeat(4) { args += like }
             }
 
             // A book with no progress row counts as not-started; `finished` and

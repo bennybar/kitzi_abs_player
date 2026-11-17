@@ -292,7 +292,7 @@ fun LibraryScreen(
                         KitziSearchField(
                             value = query.search,
                             onValueChange = vm::setSearch,
-                            placeholder = "Search books",
+                            placeholder = "Title, author, series, narrator",
                             modifier = Modifier.padding(bottom = 8.dp),
                         )
                         // Not here? Audible has it, maybe.

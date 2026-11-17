@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Collections
+import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material.icons.filled.LibraryBooks
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -55,7 +56,7 @@ import com.bennybar.kitzi.ui.common.ScreenHeader
 import com.bennybar.kitzi.ui.library.BookCard
 
 private enum class SeriesTab(val title: String, val noun: String) {
-    SERIES("Series", "series"), COLLECTIONS("Collections", "collection"), PLAYLISTS("Playlists", "playlist")
+    SERIES("Series", "series"), COLLECTIONS("Collections", "collection"), PLAYLISTS("Playlists", "playlist"), GENRES("Genres", "genre")
 }
 
 /** One row in the browse list, whether a series or a collection. */
@@ -68,6 +69,7 @@ fun SeriesScreen(onOpenBook: (String) -> Unit, onBack: () -> Unit) {
     var series by remember { mutableStateOf<List<SeriesRow>>(emptyList()) }
     var collections by remember { mutableStateOf<Map<String, List<Book>>>(emptyMap()) }
     var playlists by remember { mutableStateOf<Map<String, List<Book>>>(emptyMap()) }
+    var genres by remember { mutableStateOf<Map<String, List<Book>>>(emptyMap()) }
     var search by remember { mutableStateOf("") }
     var expanded by remember { mutableStateOf<String?>(null) }
     var books by remember { mutableStateOf<List<Book>>(emptyList()) }
@@ -83,6 +85,7 @@ fun SeriesScreen(onOpenBook: (String) -> Unit, onBack: () -> Unit) {
     LaunchedEffect(Unit) {
         series = Services.books.seriesWithCovers(minBooks)
         collections = Services.books.collections()
+        genres = Services.books.genres()
         loading = false
         // The server's real collections first (made in its web UI), then any grouping
         // by a `collection` metadata field that isn't one of them. Offline: the latter.
@@ -96,6 +99,7 @@ fun SeriesScreen(onOpenBook: (String) -> Unit, onBack: () -> Unit) {
             SeriesTab.SERIES -> expanded?.let { Services.books.booksInSeries(it) }.orEmpty()
             SeriesTab.COLLECTIONS -> expanded?.let { collections[it] }.orEmpty()
             SeriesTab.PLAYLISTS -> expanded?.let { playlists[it] }.orEmpty()
+            SeriesTab.GENRES -> expanded?.let { genres[it] }.orEmpty()
         }
         booksFor = expanded
     }
@@ -108,11 +112,18 @@ fun SeriesScreen(onOpenBook: (String) -> Unit, onBack: () -> Unit) {
         SeriesTab.PLAYLISTS -> playlists.map { (name, items) ->
             Group(name, items.size, items.take(3).map { it.coverUrl })
         }
+        SeriesTab.GENRES -> genres.map { (name, items) ->
+            Group(name, items.size, items.take(3).map { it.coverUrl })
+        }
     }.filter { it.name.contains(search, ignoreCase = true) }
 
     Column(Modifier.fillMaxSize()) {
         ScreenHeader(
-            icon = if (tab == SeriesTab.SERIES) Icons.Default.AutoStories else Icons.Default.Collections,
+            icon = when (tab) {
+                SeriesTab.SERIES -> Icons.Default.AutoStories
+                SeriesTab.GENRES -> Icons.Default.LocalOffer
+                else -> Icons.Default.Collections
+            },
             title = tab.title,
             subtitle = "${groups.size} in library",
             onBack = onBack,
@@ -147,6 +158,7 @@ fun SeriesScreen(onOpenBook: (String) -> Unit, onBack: () -> Unit) {
                 message = when {
                     search.isNotBlank() -> "Try adjusting your search terms"
                     tab == SeriesTab.PLAYLISTS -> "Playlists you make on your server appear here"
+                    tab == SeriesTab.GENRES -> "Your server hasn't tagged these books with genres"
                     else -> "${tab.title} appear when books are grouped together"
                 },
             )

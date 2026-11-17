@@ -317,6 +317,17 @@ class LibraryViewModel : ViewModel() {
 
     fun setSort(sort: BookSort) { query.value = query.value.copy(sort = sort, limit = 60) }
     fun setFilter(filter: LibraryFilter) { query.value = query.value.copy(filter = filter, limit = 60) }
-    fun setSearch(text: String) { query.value = query.value.copy(search = text, limit = 60) }
+    fun setSearch(text: String) {
+        query.value = query.value.copy(search = text, limit = 60)
+        // Books just added on the server, not in the local copy yet: the server's own
+        // search brings them in (into the cache, so the list shows them).
+        serverSearch?.cancel()
+        val q = text.trim()
+        if (q.length >= 3) serverSearch = viewModelScope.launch {
+            kotlinx.coroutines.delay(400)
+            runCatching { books.searchServer(q) }
+        }
+    }
+    private var serverSearch: kotlinx.coroutines.Job? = null
     fun toggleGrid() { grid.value = !grid.value }
 }
