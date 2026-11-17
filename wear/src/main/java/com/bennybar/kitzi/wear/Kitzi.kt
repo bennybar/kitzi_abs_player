@@ -39,10 +39,13 @@ class Kitzi private constructor(context: Context) {
                 ?: run { online.value = false; return false }
             online.value = true
             // Finished anywhere (here, the phone, the web): its download goes, so the
-            // watch doesn't fill up with books that are done. Not the loaded one.
+            // watch doesn't fill up with books that are done. Not the loaded one, and
+            // not one downloaded after it was finished (to listen again).
             val loaded = player.nowPlaying.value?.book?.id
-            finished.filter { it != loaded && downloads.state(it) == DownloadState.Done }
-                .forEach { downloads.delete(it) }
+            finished.filter { (id, at) ->
+                id != loaded && downloads.state(id) == DownloadState.Done &&
+                    (downloads.downloadedAt(id)?.let { at > it + api.clockOffsetMs } ?: false)
+            }.keys.forEach { downloads.delete(it) }
             val merged = books.map { b ->
                 val local = store.position(b.id)
                 if (local != null && local.savedAt > b.lastUpdate) b.copy(currentTimeSec = local.sec) else b
@@ -64,7 +67,7 @@ class Kitzi private constructor(context: Context) {
 
     /** The watch's own newer position for a book on the shelf (after listening here). */
     fun updateShelfPosition(itemId: String, sec: Double) {
-        val now = System.currentTimeMillis()
+        val now = api.nowMs()
         val updated = shelf.value.map { if (it.id == itemId) it.copy(currentTimeSec = sec, lastUpdate = now) else it }
             .sortedByDescending { it.lastUpdate }
         shelf.value = updated
@@ -104,12 +107,19 @@ class Kitzi private constructor(context: Context) {
         return reported != false && flushed && fetched
     }
 
-    suspend fun signOut() {
+    /**
+     * Signs out. Positions saved offline would be lost, so unless [force], it stops
+     * first when some couldn't be sent, and returns how many (0: signed out).
+     */
+    suspend fun signOut(force: Boolean = false): Int {
         player.stop()
         runCatching { flushPending() }
+        val unsent = store.pendingIds().size
+        if (unsent > 0 && !force) return unsent
         store.signOut()
         shelf.value = emptyList()
         signedIn.value = false
+        return 0
     }
 
     companion object {

@@ -52,7 +52,16 @@ class Api(private val store: Store) {
             if (base != null && req.url.toString().startsWith(base) && req.header("Authorization") == null) {
                 store.accessToken?.let { b.header("Authorization", "Bearer $it") }
             }
-            chain.proceed(b.build())
+            val resp = chain.proceed(b.build())
+            // The server's clock, from its answers: positions are compared with the
+            // server's own timestamps, and the watch's clock can be off.
+            if (base != null && req.url.toString().startsWith(base)) {
+                resp.header("Date")?.let { d ->
+                    runCatching { java.time.ZonedDateTime.parse(d, java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME) }
+                        .getOrNull()?.let { clockOffsetMs = it.toInstant().toEpochMilli() - System.currentTimeMillis() }
+                }
+            }
+            resp
         }
         // A watch sign-in has its own refresh token: renew once on a 401. (A phone
         // sign-in uses the account's API token, which doesn't expire.)
@@ -73,6 +82,11 @@ class Api(private val store: Store) {
         .build()
 
     private fun base() = store.baseUrl ?: error("not signed in")
+
+    /** How far the server's clock is ahead of the watch's (from its Date headers; to the second). */
+    @Volatile var clockOffsetMs = 0L
+    /** Now, on the server's clock. */
+    fun nowMs(): Long = System.currentTimeMillis() + clockOffsetMs
 
     // ---- sign-in -------------------------------------------------------------------
 
@@ -125,10 +139,10 @@ class Api(private val store: Store) {
 
     /**
      * Continue Listening: the books in progress, most recent first, with their
-     * positions, plus the ids of every finished book. Null when the server can't
-     * be reached.
+     * positions, plus every finished book (id to when it was finished). Null when
+     * the server can't be reached.
      */
-    fun continueListening(): Pair<List<Book>, Set<String>>? {
+    fun continueListening(): Pair<List<Book>, Map<String, Long>>? {
         val items = get("/api/me/items-in-progress?limit=25") as? JsonObject ?: return null
         val me = get("/api/me") as? JsonObject ?: return null
         val progress = (me["mediaProgress"] as? JsonArray).orEmpty()
@@ -136,7 +150,8 @@ class Api(private val store: Store) {
             .filter { it.str("episodeId") == null }
             .associateBy { it.str("libraryItemId") }
         val finished = progress.filterValues { (it["isFinished"] as? JsonPrimitive)?.contentOrNull == "true" }
-            .keys.filterNotNull().toSet()
+            .mapNotNull { (id, p) -> id?.let { it to (p.num("finishedAt") ?: p.num("lastUpdate") ?: 0.0).toLong() } }
+            .toMap()
         val books = (items["libraryItems"] as? JsonArray).orEmpty().mapNotNull { el ->
             val item = el as? JsonObject ?: return@mapNotNull null
             if (item.str("mediaType") != "book") return@mapNotNull null
@@ -207,6 +222,10 @@ class Api(private val store: Store) {
         return send("POST", "/api/session/$sessionId/sync", body)
     }
 
+    /** Adds a bookmark at [timeSec]. True when the server saved it. */
+    fun addBookmark(itemId: String, timeSec: Double, title: String): Boolean =
+        send("POST", "/api/me/item/$itemId/bookmark", buildJsonObject { put("time", timeSec); put("title", title) }) == true
+
     fun closeSession(sessionId: String) {
         send("POST", "/api/session/$sessionId/close", buildJsonObject { })
     }
@@ -217,7 +236,7 @@ class Api(private val store: Store) {
         buildJsonObject {
             put("currentTime", r.currentSec)
             put("isFinished", r.finished)
-            put("lastUpdate", System.currentTimeMillis())
+            put("lastUpdate", nowMs())
             r.durationSec?.takeIf { it > 0 }?.let {
                 put("duration", it)
                 put("progress", (r.currentSec / it).coerceIn(0.0, 1.0))

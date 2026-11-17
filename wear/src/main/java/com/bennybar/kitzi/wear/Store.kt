@@ -93,6 +93,20 @@ class Store(context: Context) {
         get() = prefs.getBoolean("wifi_only", false)
         set(v) = prefs.edit { putBoolean("wifi_only", v) }
 
+    /** A book streamed on the watch is downloaded too, so it plays offline next time. */
+    var autoDownload: Boolean
+        get() = prefs.getBoolean("auto_download", false)
+        set(v) = prefs.edit { putBoolean("auto_download", v) }
+
+    /** The most the watch's downloads may take, in GB (0: no limit). */
+    var storageLimitGb: Int
+        get() = prefs.getInt("storage_limit_gb", 0)
+        set(v) = prefs.edit { putInt("storage_limit_gb", v) }
+
+    var speed: Float
+        get() = prefs.getFloat("speed", 1f)
+        set(v) = prefs.edit { putFloat("speed", v) }
+
     var shelf: List<Book>
         get() = prefs.getString("shelf", null)
             ?.let { runCatching { json.decodeFromString(BOOKS, it) }.getOrNull() }.orEmpty()

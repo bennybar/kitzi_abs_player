@@ -72,6 +72,7 @@ private fun KitziApp(k: Kitzi) {
                     onOpenBook = { nav.navigate("book/$it") },
                     onOpenPlayer = { nav.navigate("player") },
                     onOpenSettings = { nav.navigate("settings") },
+                    onOpenDownloads = { nav.navigate("downloads") },
                 )
             }
             composable("book/{id}") { entry ->
@@ -79,7 +80,20 @@ private fun KitziApp(k: Kitzi) {
                     nav.navigate("player") { popUpTo("home") }
                 })
             }
-            composable("player") { PlayerScreen(k) }
+            composable("player") { PlayerScreen(k, onMore = { nav.navigate("more") }) }
+            composable("more") {
+                MoreScreen(
+                    k,
+                    onSpeed = { nav.navigate("speed") },
+                    onSleep = { nav.navigate("sleep") },
+                    onChapters = { nav.navigate("chapters") },
+                    onClosed = { nav.popBackStack("home", inclusive = false) },
+                )
+            }
+            composable("speed") { SpeedScreen(k) { nav.popBackStack() } }
+            composable("sleep") { SleepScreen(k) { nav.popBackStack() } }
+            composable("chapters") { ChaptersScreen(k) { nav.popBackStack("player", inclusive = false) } }
+            composable("downloads") { DownloadsScreen(k, onOpenBook = { nav.navigate("book/$it") }) }
             composable("settings") { SettingsScreen(k) }
         }
     }

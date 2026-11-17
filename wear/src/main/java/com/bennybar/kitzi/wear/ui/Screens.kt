@@ -25,6 +25,7 @@ import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.Forward30
+import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay30
@@ -51,6 +52,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.rotary.onRotaryScrollEvent
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -187,7 +189,13 @@ private fun rememberTextInput(label: String, onResult: (String) -> Unit): () -> 
 // ---- home: Continue Listening ----------------------------------------------------
 
 @Composable
-fun HomeScreen(k: Kitzi, onOpenBook: (String) -> Unit, onOpenPlayer: () -> Unit, onOpenSettings: () -> Unit) {
+fun HomeScreen(
+    k: Kitzi,
+    onOpenBook: (String) -> Unit,
+    onOpenPlayer: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onOpenDownloads: () -> Unit = {},
+) {
     val shelf by k.shelf.collectAsState()
     val refreshing by k.refreshing.collectAsState()
     val online by k.online.collectAsState()
@@ -276,6 +284,14 @@ fun HomeScreen(k: Kitzi, onOpenBook: (String) -> Unit, onOpenPlayer: () -> Unit,
                     label = { Text("Sync now") },
                     secondaryLabel = syncResult?.let { { Text(it) } },
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                )
+            }
+            item {
+                FilledTonalButton(
+                    onClick = onOpenDownloads,
+                    icon = { Icon(Icons.Default.Download, null) },
+                    label = { Text("Downloads") },
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
             item {
@@ -404,9 +420,12 @@ fun BookScreen(k: Kitzi, itemId: String, onPlaying: () -> Unit) {
 // ---- player ----------------------------------------------------------------------
 
 @Composable
-fun PlayerScreen(k: Kitzi) {
+fun PlayerScreen(k: Kitzi, onMore: () -> Unit = {}) {
     val np by k.player.nowPlaying.collectAsState()
-    val playing by k.player.isPlaying.collectAsState()
+    val playing by k.player.wantsPlay.collectAsState()
+    val buffering by k.player.buffering.collectAsState()
+    val loading by k.player.loading.collectAsState()
+    val view = LocalView.current
     val status by k.player.status.collectAsState()
     val book = np ?: run {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Nothing playing") }
@@ -415,11 +434,13 @@ fun PlayerScreen(k: Kitzi) {
     val scope = rememberCoroutineScope()
     var position by remember { mutableDoubleStateOf(0.0) }
     var chapter by remember { mutableStateOf<String?>(null) }
+    var bounds by remember { mutableStateOf<Triple<Int, Double, Double>?>(null) }
     var syncing by remember { mutableStateOf(false) }
     LaunchedEffect(book.book.id) {
         while (true) {
             position = k.player.positionSec() ?: 0.0
             chapter = k.player.chapterTitle()
+            bounds = k.player.chapterBounds()
             delay(1000)
         }
     }
@@ -456,10 +477,20 @@ fun PlayerScreen(k: Kitzi) {
         val fraction = if (total > 0) (position / total).toFloat().coerceIn(0f, 1f) else 0f
         val track = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f)
         val fill = MaterialTheme.colorScheme.primary
+        // Inside it, a thinner ring for the chapter.
+        val chapterFraction = bounds?.let { (_, start, end) -> ((position - start) / (end - start).coerceAtLeast(0.001)).toFloat().coerceIn(0f, 1f) }
+        val chapterFill = MaterialTheme.colorScheme.tertiary
         Canvas(Modifier.fillMaxSize().padding(4.dp)) {
             val stroke = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round)
             drawArc(track, 0f, 360f, useCenter = false, style = stroke)
             if (fraction > 0f) drawArc(fill, -90f, 360f * fraction, useCenter = false, style = stroke)
+        }
+        if (chapterFraction != null) {
+            Canvas(Modifier.fillMaxSize().padding(11.dp)) {
+                val thin = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
+                drawArc(track, 0f, 360f, useCenter = false, style = thin)
+                if (chapterFraction > 0f) drawArc(chapterFill, -90f, 360f * chapterFraction, useCenter = false, style = thin)
+            }
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(horizontal = 22.dp)) {
             // Inset further than the controls: near the top the round screen is
@@ -474,14 +505,21 @@ fun PlayerScreen(k: Kitzi) {
             }
             Spacer(Modifier.height(6.dp))
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                IconButton(onClick = { k.player.skip(-30.0) }) { Icon(Icons.Default.Replay30, "Back 30 seconds") }
-                FilledIconButton(onClick = { k.player.togglePlay() }, modifier = Modifier.size(56.dp)) {
-                    Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, if (playing) "Pause" else "Play",
+                IconButton(onClick = { haptic(view); k.player.skip(-30.0) }) { Icon(Icons.Default.Replay30, "Back 30 seconds") }
+                FilledIconButton(onClick = { haptic(view); k.player.togglePlay() }, modifier = Modifier.size(56.dp)) {
+                    // Waiting on the network: a spinner, and Pause still works.
+                    if (buffering || loading) CircularProgressIndicator(Modifier.size(30.dp))
+                    else Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, if (playing) "Pause" else "Play",
                         modifier = Modifier.size(32.dp))
                 }
-                IconButton(onClick = { k.player.skip(30.0) }) { Icon(Icons.Default.Forward30, "Forward 30 seconds") }
+                IconButton(onClick = { haptic(view); k.player.skip(30.0) }) { Icon(Icons.Default.Forward30, "Forward 30 seconds") }
             }
-            Text("${clock(position)} / ${clock(total)}", style = MaterialTheme.typography.bodySmall)
+            // Within the chapter when there are chapters (the outer ring has the book).
+            val b = bounds
+            Text(
+                if (b != null) "${clock(position - b.second)} / ${clock(b.third - b.second)}" else "${clock(position)} / ${clock(total)}",
+                style = MaterialTheme.typography.bodySmall,
+            )
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 IconButton(onClick = {
                     audio.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_SAME, AudioManager.FLAG_SHOW_UI)
@@ -495,6 +533,7 @@ fun PlayerScreen(k: Kitzi) {
                 ) {
                     if (syncing) CircularProgressIndicator(Modifier.size(20.dp)) else Icon(Icons.Default.Sync, "Sync now")
                 }
+                IconButton(onClick = onMore) { Icon(Icons.Default.MoreHoriz, "More") }
             }
         }
         // Below the controls, so a message doesn't push the title under the clock.
@@ -516,7 +555,11 @@ fun PlayerScreen(k: Kitzi) {
 fun SettingsScreen(k: Kitzi) {
     val scope = rememberCoroutineScope()
     var wifiOnly by remember { mutableStateOf(k.store.wifiOnly) }
+    var autoDownload by remember { mutableStateOf(k.store.autoDownload) }
+    var limit by remember { mutableStateOf(k.store.storageLimitGb) }
     var confirmSignOut by remember { mutableStateOf(false) }
+    /** Positions saved offline that sign-out would lose (asked once more). */
+    var unsent by remember { mutableStateOf(0) }
     val used = remember { k.downloads.usedBytes() }
     val listState = rememberScalingLazyListState()
     ScreenScaffold(scrollState = listState) { padding ->
@@ -528,6 +571,27 @@ fun SettingsScreen(k: Kitzi) {
                     onCheckedChange = { wifiOnly = it; k.store.wifiOnly = it },
                     label = { Text("Wi-Fi only") },
                     secondaryLabel = { Text(if (wifiOnly) "Downloads skip LTE" else "Downloads use Wi-Fi or LTE") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            item {
+                SwitchButton(
+                    checked = autoDownload,
+                    onCheckedChange = { autoDownload = it; k.store.autoDownload = it },
+                    label = { Text("Auto-download") },
+                    secondaryLabel = { Text("Keep books you stream on the watch") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            item {
+                FilledTonalButton(
+                    onClick = {
+                        val steps = listOf(0, 1, 2, 4, 8)
+                        limit = steps[(steps.indexOf(limit) + 1) % steps.size]
+                        k.store.storageLimitGb = limit
+                    },
+                    label = { Text("Download limit") },
+                    secondaryLabel = { Text(if (limit == 0) "No limit" else "$limit GB") },
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
@@ -545,10 +609,20 @@ fun SettingsScreen(k: Kitzi) {
                 FilledTonalButton(
                     onClick = {
                         if (!confirmSignOut) confirmSignOut = true
-                        else scope.launch { k.signOut() }
+                        else scope.launch { unsent = k.signOut(force = unsent > 0) }
                     },
-                    label = { Text(if (confirmSignOut) "Tap again to sign out" else "Sign out") },
-                    secondaryLabel = { Text("Downloads stay on the watch") },
+                    label = {
+                        Text(
+                            when {
+                                unsent > 0 -> "Sign out anyway"
+                                confirmSignOut -> "Tap again to sign out"
+                                else -> "Sign out"
+                            }
+                        )
+                    },
+                    secondaryLabel = {
+                        Text(if (unsent > 0) "$unsent position${if (unsent == 1) "" else "s"} not synced yet would be lost" else "Downloads stay on the watch")
+                    },
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
@@ -561,4 +635,9 @@ private fun waitingLabel(k: Kitzi) = if (k.store.wifiOnly) "Waiting for Wi-Fi" e
 private fun clock(sec: Double): String {
     val s = sec.toLong().coerceAtLeast(0)
     return if (s >= 3600) "%d:%02d:%02d".format(s / 3600, s / 60 % 60, s % 60) else "%d:%02d".format(s / 60, s % 60)
+}
+
+/** A short tick under the finger. */
+internal fun haptic(view: android.view.View) {
+    view.performHapticFeedback(android.view.HapticFeedbackConstants.CONFIRM)
 }

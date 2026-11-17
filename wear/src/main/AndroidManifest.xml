@@ -55,6 +55,20 @@
             </intent-filter>
         </service>
 
+        <!-- The Tile: the book, its progress, and play/pause. -->
+        <service
+            android:name=".PlayerTile"
+            android:exported="true"
+            android:label="Kitzi"
+            android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER">
+            <intent-filter>
+                <action android:name="androidx.wear.tiles.action.BIND_TILE_PROVIDER" />
+            </intent-filter>
+            <meta-data
+                android:name="androidx.wear.tiles.PREVIEW"
+                android:resource="@mipmap/launcher_icon" />
+        </service>
+
         <!-- WorkManager's foreground service, typed for the downloads. -->
         <service
             android:name="androidx.work.impl.foreground.SystemForegroundService"

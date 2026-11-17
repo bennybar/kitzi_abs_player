@@ -79,7 +79,17 @@ class Downloads(private val context: Context, private val store: Store) {
 
     fun coverFile(itemId: String): File? = File(dir(itemId), COVER).takeIf { it.exists() }
 
+    /** Why a download failed, for the Downloads screen. */
+    val failReasons = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    /** When the book was downloaded (its manifest), in the watch's clock; null when it isn't. */
+    fun downloadedAt(itemId: String): Long? = File(dir(itemId), MANIFEST).takeIf { it.exists() }?.lastModified()
+
+    /** Free space left for downloads on the watch. */
+    fun freeBytes(): Long = root.apply { mkdirs() }.usableSpace
+
     fun start(itemId: String) {
+        failReasons.remove(itemId)
         val request = OneTimeWorkRequestBuilder<DownloadWorker>()
             .setInputData(workDataOf(KEY_ITEM to itemId))
             .addTag(TAG).addTag("item:$itemId")
@@ -154,6 +164,13 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
                 .associate { (it.num("index")?.toInt() ?: -1) to ((it["metadata"] as? JsonObject)?.num("size") ?: 0.0) }
             val totalBytes = sizes.values.sum().coerceAtLeast(1.0)
             var doneBytes = 0.0
+            // Room for it: the storage limit (Settings) and the watch's free space.
+            val limit = k.store.storageLimitGb * 1_073_741_824L
+            val have = k.downloads.dir(itemId).walkTopDown().filter { it.isFile }.sumOf { it.length() }
+            if (limit > 0 && k.downloads.usedBytes() - have + totalBytes > limit) {
+                return fail(k, itemId, "Over the ${k.store.storageLimitGb} GB download limit")
+            }
+            if (k.downloads.freeBytes() + have < totalBytes + 200_000_000) return fail(k, itemId, "Not enough space on the watch")
 
             val dir = k.downloads.dir(itemId).apply { mkdirs() }
             val base = k.store.baseUrl!!
@@ -217,7 +234,10 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
         }
     }
 
-    private fun fail(k: Kitzi, itemId: String): Result {
+    /** Gives up: what was fetched goes (it can't play), and the book shows as failed. */
+    private fun fail(k: Kitzi, itemId: String, why: String = "Download failed"): Result {
+        k.downloads.dir(itemId).deleteRecursively()
+        k.downloads.failReasons[itemId] = why
         k.downloads.set(itemId, DownloadState.Failed)
         return Result.failure()
     }

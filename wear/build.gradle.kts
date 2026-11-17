@@ -92,6 +92,8 @@ dependencies {
     implementation(libs.wear.compose.foundation)
     implementation(libs.wear.compose.navigation)
     implementation(libs.wear.input)
+    implementation(libs.wear.tiles)
+    implementation(libs.wear.protolayout)
 
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.exoplayer.hls)
@@ -106,4 +108,6 @@ dependencies {
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.androidx.security.crypto)
     implementation(libs.play.services.wearable)
+
+    testImplementation(libs.junit)
 }
