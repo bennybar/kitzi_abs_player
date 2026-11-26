@@ -13,7 +13,7 @@ struct PlayerView: View {
             PlayerFace(
                 coverId: np.book.id, title: np.book.title, chapter: player.streamError ?? player.chapterTitle,
                 position: player.position, total: np.totalSec, isPlaying: player.isPlaying,
-                speed: player.speed, sleepLabel: sleepLabel, busy: player.loading, waiting: player.loading || player.buffering,
+                speed: player.speed, sleepLabel: sleepLabel, busy: player.loading, waiting: player.loading || player.buffering || player.jumping,
                 note: player.streamError == nil ? player.waitLabel : nil,
                 skipBack: 30, skipForward: 30,
                 back: { Haptic.play(.click); player.skip(-30) }, toggle: toggle,

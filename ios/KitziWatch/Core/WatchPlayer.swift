@@ -51,6 +51,11 @@ final class WatchPlayer {
     private var loadedBytes: Int64 = 0
     /// Where the server had the book at the last start-position check (nil: no answer).
     private var serverStart: Double?
+    /// A long jump is opening its new stream (see jumpStream).
+    private(set) var jumping = false
+    /// Counts the books started and stopped, so a jump still in flight knows
+    /// the playback it began in has gone.
+    private var runs = 0
     @ObservationIgnored private var endObserver: NSObjectProtocol?
     @ObservationIgnored private var rateObserver: NSKeyValueObservation?
     @ObservationIgnored private var interruptionObserver: NSObjectProtocol?
@@ -114,6 +119,7 @@ final class WatchPlayer {
         guard !loading else { return nil }
         loading = true
         defer { loading = false }
+        runs += 1
         if nowPlaying != nil { await stop() }
         if let why = await startAudioSession() { return why }
 
@@ -134,6 +140,7 @@ final class WatchPlayer {
                 _ = await api.saveProgress(API.Report(itemId: book.id, currentSec: start, durationSec: book.durationSec,
                                                       finished: false, paused: true, listenedSec: nil))
             }
+            if let left = Store.openStream { Task { await api.closeSession(left) } }
             guard let s = await api.openSession(book.id, hls: true) else {
                 endAudioSession()
                 return "Can't reach the server. Download the book to listen offline."
@@ -142,6 +149,7 @@ final class WatchPlayer {
             var b = book
             if b.durationSec == nil { b.durationSec = s.durationSec }
             np = WatchNowPlaying(book: b, tracks: s.tracks, chapters: s.chapters, isLocal: false, sessionId: s.id)
+            Store.openStream = s.id
         }
         start = PositionRules.startOrTop(start, total: np.totalSec) // finished: from the top
 
@@ -282,6 +290,8 @@ final class WatchPlayer {
         guard let np = nowPlaying, !loading else { return nil }
         loading = true
         defer { loading = false }
+        // A long jump still opening its stream: Play carries on from it.
+        while jumping { try? await Task.sleep(for: .milliseconds(50)) }
         if let why = await startAudioSession() { return why }
         let gaveUp = streamError != nil
         streamError = nil
@@ -296,7 +306,7 @@ final class WatchPlayer {
                 if !np.isLocal, abs(target - here) > 45 {
                     Task { await WatchLink.shared.pausePhone(ifPlaying: np.book.id) }
                     await api.ensureFreshToken()
-                    await jumpStream(to: target, play: true)
+                    await jumpStream(to: target, play: true, run: runs)
                     return nil
                 }
                 seek(to: target)
@@ -336,13 +346,21 @@ final class WatchPlayer {
         let (i, off) = Self.locate(target, np.tracks)
         // A long jump in an HLS stream goes through a new stream (see jumpStream).
         if np.tracks[i].url.contains(".m3u8"), abs(target - currentPosition()) > 45 {
-            guard !loading else { return }
+            guard !loading, !jumping else { return }
             let wasPlaying = isPlaying
-            Task {
-                loading = true
-                await jumpStream(to: target, play: wasPlaying)
-                loading = false
+            // Tied to this run of the book here and now: started later, it could
+            // attach itself to the next one.
+            let run = runs
+            jumping = true
+            // The book is at the target from this moment (as a seek in place is).
+            seekTarget = off
+            position = target
+            if !wasPlaying {
+                Store.savePosition(np.book.id, LocalPosition(sec: target, savedAt: Format.nowMs, pending: true, finished: false))
+                WatchModel.shared.updateShelfPosition(np.book, sec: target)
             }
+            updateNowPlayingInfo()
+            Task { await jumpStream(to: target, play: wasPlaying, run: run) }
             return
         }
         if i != trackIndex {
@@ -368,8 +386,10 @@ final class WatchPlayer {
     /// it restarts, and the player skips ahead past them (27 s late, ten hours
     /// away). So the server is told the new place and a new stream opens there,
     /// which starts exact, as a first start does.
-    private func jumpStream(to target: Double, play: Bool) async {
-        guard let np = nowPlaying else { return }
+    private func jumpStream(to target: Double, play: Bool, run: Int) async {
+        jumping = true
+        defer { jumping = false }
+        guard run == runs, let np = nowPlaying else { return }
         stopping = true // its pause isn't a report of its own
         av.pause()
         seekTarget = Self.locate(target, np.tracks).1 // the book is at the target from here on
@@ -377,11 +397,16 @@ final class WatchPlayer {
         _ = await reportNow() // the listening so far, and the new place
         stopping = false
         let s = await api.openSession(np.book.id, hls: true)
-        guard nowPlaying?.book.id == np.book.id else { return }
+        guard run == runs, nowPlaying?.book.id == np.book.id else {
+            // Closed (or another book) meanwhile: the new stream isn't needed.
+            if let orphan = s?.id { Task { await api.closeSession(orphan) } }
+            return
+        }
         if let s, !s.tracks.isEmpty {
             if let old = np.sessionId { Task { await api.closeSession(old) } }
             nowPlaying?.sessionId = s.id
             nowPlaying?.tracks = s.tracks
+            Store.openStream = s.id
         }
         guard let tracks = nowPlaying?.tracks else { return }
         let (i, off) = Self.locate(target, tracks)
@@ -494,7 +519,7 @@ final class WatchPlayer {
 
     /// What it's waiting on, for the player ("Buffering…"); nil when it isn't.
     var waitLabel: String? {
-        if loading { return "Opening…" }
+        if loading || jumping { return "Opening…" }
         guard buffering else { return nil }
         return recoveries > 0 ? "Reconnecting…" : "Buffering…"
     }
@@ -625,9 +650,16 @@ final class WatchPlayer {
                 // Closed by the server (a restart, a long pause): a new one records
                 // the listening time again. Same tracks: its URLs replace the old
                 // ones, which may have belonged to the closed session.
-                if let s = await api.openSession(np.book.id, hls: true), nowPlaying?.book.id == np.book.id {
-                    nowPlaying?.sessionId = s.id
-                    if s.tracks.count == np.tracks.count { nowPlaying?.tracks = s.tracks }
+                // Only for the session still in use: one replaced meanwhile (a long
+                // jump) answers "gone" too, and its replacement must not get another.
+                if nowPlaying?.sessionId == sid, let s = await api.openSession(np.book.id, hls: true) {
+                    if nowPlaying?.book.id == np.book.id, nowPlaying?.sessionId == sid {
+                        nowPlaying?.sessionId = s.id
+                        if s.tracks.count == np.tracks.count { nowPlaying?.tracks = s.tracks }
+                        Store.openStream = s.id
+                    } else if let orphan = s.id {
+                        Task { await api.closeSession(orphan) }
+                    }
                 }
             case .refused: saved = await api.saveProgress(report)
             case .unreachable: break
@@ -658,12 +690,17 @@ final class WatchPlayer {
     /// Stops the book: a final report (unless it was just sent), then the session closes.
     func stop(report: Bool = true) async {
         guard let np = nowPlaying else { return }
+        runs += 1
         stopping = true
         defer { stopping = false }
         av.pause()
         if report { _ = await reportNow() }
         // Closing needs no answer: don't hold the screen on a slow connection.
-        if let sid = np.sessionId { Task { await api.closeSession(sid) } }
+        // (Store.openStream stays until then: a close that didn't get through is
+        // sent again at the next play.)
+        if let sid = np.sessionId {
+            Task { if await api.closeSession(sid), Store.openStream == sid { Store.openStream = nil } }
+        }
         av.replaceCurrentItem(with: nil)
         seekTarget = nil
         ticker?.cancel()

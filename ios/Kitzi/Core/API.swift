@@ -334,8 +334,10 @@ final class API {
         return (200..<300).contains(code)
     }
 
-    func closeSession(_ id: String) async {
-        _ = try? await ok("/api/session/\(id)/close", method: "POST", body: [String: Any]())
+    /// True when the server answered (closed, or it no longer has the session).
+    @discardableResult
+    func closeSession(_ id: String) async -> Bool {
+        (try? await send("/api/session/\(id)/close", method: "POST", body: [String: Any]())) != nil
     }
 
     enum SaveResult { case ok, refused, unreachable }

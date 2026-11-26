@@ -23,6 +23,14 @@ enum Store {
         set { set(newValue, "last_book") }
     }
 
+    /// The streaming session open on the server, until it's closed. An HLS
+    /// stream keeps hundreds of MB there: one the watch couldn't close (no
+    /// signal, the app ended) is closed the next time it plays.
+    static var openStream: String? {
+        get { string("open_stream") }
+        set { set(newValue, "open_stream") }
+    }
+
     /// Downloads may use the watch's cellular connection (off: Wi-Fi, or the
     /// phone's connection, whichever watchOS picks).
     static var downloadsUseCellular: Bool {

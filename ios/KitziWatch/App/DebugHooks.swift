@@ -136,7 +136,7 @@ enum DebugHooks {
         t0 = Date()
         p.seek(to: target)
         try? await Task.sleep(for: .milliseconds(300))
-        for _ in 0..<300 where !(p.debugAudible && !p.loading) { try? await Task.sleep(for: .milliseconds(100)) }
+        for _ in 0..<300 where !(p.debugAudible && !p.jumping) { try? await Task.sleep(for: .milliseconds(100)) }
         log("deepstream seek to=\(Int(target)) of=\(Int(total)) audible=\(p.debugAudible) after=\(String(format: "%.1f", Date().timeIntervalSince(t0)))s at=\(Int(p.currentPosition())) recoveries=\(p.debugRecoveries)")
         for i in 0..<6 {
             try? await Task.sleep(for: .seconds(1))
