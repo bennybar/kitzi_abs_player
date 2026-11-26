@@ -27,6 +27,7 @@ enum DebugHooks {
             switch step {
             case "shelf": await shelf()
             case "stream": await stream()
+            case "deepstream": await deepStream()
             case "pending": await pending()
             case "download": await download()
             case "receive": await receive()
@@ -118,6 +119,53 @@ enum DebugHooks {
         await p.stop(report: false)
         let restored = await serverPos(s.id)
         log("stream restored server=\(Int(restored?.0 ?? -1)) wanted=\(Int(before?.0 ?? -1)) nowPlaying=\(p.nowPlaying == nil ? "nil" : "set")")
+    }
+
+    /// Streams from near the end of the book (where a file's index and a long
+    /// way in used to take minutes), timing how long audio takes to start.
+    private static func deepStream() async {
+        guard let s = WatchModel.shared.shelf.first else { log("deepstream skipped: empty shelf"); return }
+        let before = await serverPos(s.id)
+        let p = WatchPlayer.shared
+        var t0 = Date()
+        if let why = await p.play(s.book, fallbackSec: s.currentTimeSec) { log("deepstream play failed: \(why)"); return }
+        for _ in 0..<300 where !p.debugAudible { try? await Task.sleep(for: .milliseconds(100)) }
+        log("deepstream start audible=\(p.debugAudible) after=\(String(format: "%.1f", Date().timeIntervalSince(t0)))s at=\(Int(p.currentPosition()))")
+        let total = p.nowPlaying?.totalSec ?? 0
+        let target = total - 1500
+        t0 = Date()
+        p.seek(to: target)
+        try? await Task.sleep(for: .milliseconds(300))
+        for _ in 0..<300 where !(p.debugAudible && !p.loading) { try? await Task.sleep(for: .milliseconds(100)) }
+        log("deepstream seek to=\(Int(target)) of=\(Int(total)) audible=\(p.debugAudible) after=\(String(format: "%.1f", Date().timeIntervalSince(t0)))s at=\(Int(p.currentPosition())) recoveries=\(p.debugRecoveries)")
+        for i in 0..<6 {
+            try? await Task.sleep(for: .seconds(1))
+            log("deepstream t+\(i + 1)s at=\(String(format: "%.1f", p.currentPosition())) off=\(String(format: "%.1f", p.currentPosition() - target - Date().timeIntervalSince(t0)))")
+        }
+        // A fresh start from there (the server starts the stream at that place).
+        p.pause()
+        let deep = p.currentPosition()
+        _ = await p.reportNow()
+        await p.stop(report: false)
+        t0 = Date()
+        if let why = await p.play(s.book, fallbackSec: deep) { log("deepstream replay failed: \(why)"); return }
+        for _ in 0..<600 where !p.debugAudible { try? await Task.sleep(for: .milliseconds(100)) }
+        log("deepstream fresh start wanted=\(String(format: "%.1f", deep)) audible=\(p.debugAudible) after=\(String(format: "%.1f", Date().timeIntervalSince(t0)))s at=\(String(format: "%.1f", p.currentPosition()))")
+        try? await Task.sleep(for: .seconds(4))
+        log("deepstream fresh +4s at=\(String(format: "%.1f", p.currentPosition()))")
+        // Short skips around a fresh start (back past where the stream began).
+        for d in [-30.0, -30, -30, 30, 30, 30, 30] {
+            let from = p.currentPosition(); let t = Date()
+            p.skip(d)
+            try? await Task.sleep(for: .seconds(4))
+            log("deepstream skip \(Int(d)) moved=\(String(format: "%.1f", p.currentPosition() - from - Date().timeIntervalSince(t))) audible=\(p.debugAudible)")
+        }
+        p.pause()
+        p.seek(to: before?.0 ?? 0)
+        _ = await p.reportNow()
+        await p.stop(report: false)
+        let restored = await serverPos(s.id)
+        log("deepstream restored server=\(Int(restored?.0 ?? -1)) wanted=\(Int(before?.0 ?? -1))")
     }
 
     /// An old pending position must not overwrite a newer one on the server.

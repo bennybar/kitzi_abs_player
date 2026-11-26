@@ -47,6 +47,10 @@ final class WatchPlayer {
     /// Where a seek is taking the current track, until it gets there: a new
     /// track's time reads 0 while it loads, which would report the track's start.
     private var seekTarget: Double?
+    /// What the current stream item had fetched at the watchdog's last look.
+    private var loadedBytes: Int64 = 0
+    /// Where the server had the book at the last start-position check (nil: no answer).
+    private var serverStart: Double?
     @ObservationIgnored private var endObserver: NSObjectProtocol?
     @ObservationIgnored private var rateObserver: NSKeyValueObservation?
     @ObservationIgnored private var interruptionObserver: NSObjectProtocol?
@@ -114,11 +118,23 @@ final class WatchPlayer {
         if let why = await startAudioSession() { return why }
 
         let np: WatchNowPlaying
+        var start: Double
         if let saved = WatchDownloads.shared.downloaded(book.id) {
             np = WatchNowPlaying(book: saved.book, tracks: saved.tracks, chapters: saved.chapters, isLocal: true)
+            start = await startPosition(book.id, fallback: fallbackSec, fallbackAt: fallbackAt, wait: 5)
         } else {
             await api.ensureFreshToken()
-            guard let s = await api.openSession(book.id) else {
+            // A stream needs the network anyway, so it can wait longer for the
+            // position than a downloaded book (maybe offline) should.
+            start = await startPosition(book.id, fallback: fallbackSec, fallbackAt: fallbackAt, wait: 15)
+            if let d = book.durationSec { start = PositionRules.startOrTop(start, total: d) }
+            // The server prepares the stream where IT has the book. Starting
+            // elsewhere (a newer place saved on the watch), it gets that first.
+            if serverStart.map({ abs($0 - start) > 5 }) ?? true {
+                _ = await api.saveProgress(API.Report(itemId: book.id, currentSec: start, durationSec: book.durationSec,
+                                                      finished: false, paused: true, listenedSec: nil))
+            }
+            guard let s = await api.openSession(book.id, hls: true) else {
                 endAudioSession()
                 return "Can't reach the server. Download the book to listen offline."
             }
@@ -127,9 +143,6 @@ final class WatchPlayer {
             if b.durationSec == nil { b.durationSec = s.durationSec }
             np = WatchNowPlaying(book: b, tracks: s.tracks, chapters: s.chapters, isLocal: false, sessionId: s.id)
         }
-        // A streamed book has just reached the server, so it can wait longer for
-        // the position than a downloaded one (maybe offline) should.
-        var start = await startPosition(book.id, fallback: fallbackSec, fallbackAt: fallbackAt, wait: np.isLocal ? 5 : 15)
         start = PositionRules.startOrTop(start, total: np.totalSec) // finished: from the top
 
         nowPlaying = np
@@ -195,6 +208,7 @@ final class WatchPlayer {
         let timer = Task { try? await Task.sleep(for: .seconds(wait)); fetch.cancel() }
         var server = await fetch.value
         timer.cancel()
+        serverStart = server?.currentTimeSec
         #if DEBUG
         if DebugHooks.serverSilent { server = nil }
         #endif
@@ -216,8 +230,9 @@ final class WatchPlayer {
         let item = AVPlayerItem(asset: asset)
         item.audioTimePitchAlgorithm = .timeDomain
         av.replaceCurrentItem(with: item)
+        loadedBytes = 0
         seekTarget = offset > 0 ? offset : nil
-        if offset > 0 { exactSeek(offset, local: t.isLocal) }
+        if offset > 0 { exactSeek(offset, in: t) }
     }
 
     private func trackEnded() {
@@ -277,7 +292,15 @@ final class WatchPlayer {
         if !shortPause {
             let target = await startPosition(np.book.id, fallback: currentPosition(), fallbackAt: 0, wait: 3)
             let here = currentPosition()
-            if nowPlaying?.book.id == np.book.id, PositionRules.shouldJump(to: target, from: here, total: np.totalSec) { seek(to: target) }
+            if nowPlaying?.book.id == np.book.id, PositionRules.shouldJump(to: target, from: here, total: np.totalSec) {
+                if !np.isLocal, abs(target - here) > 45 {
+                    Task { await WatchLink.shared.pausePhone(ifPlaying: np.book.id) }
+                    await api.ensureFreshToken()
+                    await jumpStream(to: target, play: true)
+                    return nil
+                }
+                seek(to: target)
+            }
         }
         guard nowPlaying?.book.id == np.book.id else { return nil }
         Task { await WatchLink.shared.pausePhone(ifPlaying: np.book.id) }
@@ -294,13 +317,13 @@ final class WatchPlayer {
         return nil
     }
 
-    /// To the exact second only in a downloaded file. In a stream, an exact seek
-    /// makes AVFoundation read the file from the start up to that point (an MP3
-    /// has no index), so a book resumed hours in waited for most of it to
-    /// download: a stream lands on the nearest point it can reach directly.
-    private func exactSeek(_ sec: Double, local: Bool) {
+    /// To the exact second in a downloaded file or an HLS stream (short segments:
+    /// cheap). In a file streamed as it is, an exact seek can make AVFoundation
+    /// read from the start up to that point (an MP3 has no index), so that lands
+    /// on the nearest point it can reach directly.
+    private func exactSeek(_ sec: Double, in track: Track) {
         let t = CMTime(seconds: sec, preferredTimescale: 600)
-        if local { av.seek(to: t, toleranceBefore: .zero, toleranceAfter: .zero) } else { av.seek(to: t) }
+        if track.isLocal || track.url.contains(".m3u8") { av.seek(to: t, toleranceBefore: .zero, toleranceAfter: .zero) } else { av.seek(to: t) }
     }
 
     func skip(_ delta: Double) {
@@ -311,13 +334,24 @@ final class WatchPlayer {
         guard let np = nowPlaying else { return }
         let target = min(max(sec, 0), np.totalSec)
         let (i, off) = Self.locate(target, np.tracks)
+        // A long jump in an HLS stream goes through a new stream (see jumpStream).
+        if np.tracks[i].url.contains(".m3u8"), abs(target - currentPosition()) > 45 {
+            guard !loading else { return }
+            let wasPlaying = isPlaying
+            Task {
+                loading = true
+                await jumpStream(to: target, play: wasPlaying)
+                loading = false
+            }
+            return
+        }
         if i != trackIndex {
             let wasPlaying = isPlaying
             setTrack(i, offset: off)
             if wasPlaying { startPlayback() }
         } else {
             seekTarget = off
-            exactSeek(off, local: np.tracks[i].isLocal)
+            exactSeek(off, in: np.tracks[i])
         }
         position = target
         // Moved while paused: that's now the newest place in the book, so Play
@@ -326,6 +360,33 @@ final class WatchPlayer {
             Store.savePosition(np.book.id, LocalPosition(sec: target, savedAt: Format.nowMs, pending: true, finished: false))
             WatchModel.shared.updateShelfPosition(np.book, sec: target)
         }
+        updateNowPlayingInfo()
+    }
+
+    /// A long jump in an HLS stream. The server only has the segments around
+    /// where its stream started: asked for others it answers "not found" while
+    /// it restarts, and the player skips ahead past them (27 s late, ten hours
+    /// away). So the server is told the new place and a new stream opens there,
+    /// which starts exact, as a first start does.
+    private func jumpStream(to target: Double, play: Bool) async {
+        guard let np = nowPlaying else { return }
+        stopping = true // its pause isn't a report of its own
+        av.pause()
+        seekTarget = Self.locate(target, np.tracks).1 // the book is at the target from here on
+        position = target
+        _ = await reportNow() // the listening so far, and the new place
+        stopping = false
+        let s = await api.openSession(np.book.id, hls: true)
+        guard nowPlaying?.book.id == np.book.id else { return }
+        if let s, !s.tracks.isEmpty {
+            if let old = np.sessionId { Task { await api.closeSession(old) } }
+            nowPlaying?.sessionId = s.id
+            nowPlaying?.tracks = s.tracks
+        }
+        guard let tracks = nowPlaying?.tracks else { return }
+        let (i, off) = Self.locate(target, tracks)
+        setTrack(i, offset: off)
+        if play { startPlayback() }
         updateNowPlayingInfo()
     }
 
@@ -431,6 +492,13 @@ final class WatchPlayer {
         return await api.addBookmark(np.book.id, time: (pos * 1000).rounded() / 1000, title: title)
     }
 
+    /// What it's waiting on, for the player ("Buffering…"); nil when it isn't.
+    var waitLabel: String? {
+        if loading { return "Opening…" }
+        guard buffering else { return nil }
+        return recoveries > 0 ? "Reconnecting…" : "Buffering…"
+    }
+
     // MARK: syncing
 
     /// `status`: AVPlayer.TimeControlStatus's raw value.
@@ -491,6 +559,14 @@ final class WatchPlayer {
             recoveries = 0
             return
         }
+        // Still loading (bytes are arriving): slow isn't stuck. Rebuilding now
+        // would throw away what's been fetched and start it again.
+        let bytes = av.currentItem?.accessLog()?.events.reduce(Int64(0)) { $0 + $1.numberOfBytesTransferred } ?? 0
+        if !failed, bytes > loadedBytes {
+            loadedBytes = bytes
+            stalledSince = nil
+            return
+        }
         let since = stalledSince ?? Date()
         stalledSince = since
         let limit = PositionRules.stallLimit(attempt: recoveries)
@@ -549,7 +625,7 @@ final class WatchPlayer {
                 // Closed by the server (a restart, a long pause): a new one records
                 // the listening time again. Same tracks: its URLs replace the old
                 // ones, which may have belonged to the closed session.
-                if let s = await api.openSession(np.book.id), nowPlaying?.book.id == np.book.id {
+                if let s = await api.openSession(np.book.id, hls: true), nowPlaying?.book.id == np.book.id {
                     nowPlaying?.sessionId = s.id
                     if s.tracks.count == np.tracks.count { nowPlaying?.tracks = s.tracks }
                 }
@@ -688,6 +764,7 @@ final class WatchPlayer {
     // Test hooks (simulator only, see DebugHooks).
     var debugListened: Double { listenedSec + (playingSince.map { Date().timeIntervalSince($0) } ?? 0) }
     var debugRecoveries: Int { recoveries }
+    var debugAudible: Bool { audible }
     func debugLongPause() { pausedAt = Date(timeIntervalSinceNow: -3600) }
     /// Swaps the playing item for one that never answers (a dead connection), at
     /// the same place, as a dropped link would leave it.

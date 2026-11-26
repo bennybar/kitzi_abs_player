@@ -14,6 +14,7 @@ struct PlayerView: View {
                 coverId: np.book.id, title: np.book.title, chapter: player.streamError ?? player.chapterTitle,
                 position: player.position, total: np.totalSec, isPlaying: player.isPlaying,
                 speed: player.speed, sleepLabel: sleepLabel, busy: player.loading, waiting: player.loading || player.buffering,
+                note: player.streamError == nil ? player.waitLabel : nil,
                 skipBack: 30, skipForward: 30,
                 back: { Haptic.play(.click); player.skip(-30) }, toggle: toggle,
                 forward: { Haptic.play(.click); player.skip(30) },
@@ -100,6 +101,8 @@ struct PlayerFace: View {
     let busy: Bool
     /// Loading or buffering: a spinner around the play button.
     var waiting = false
+    /// Shown in place of the chapter while it waits ("Buffering…").
+    var note: String? = nil
     let skipBack: Int
     let skipForward: Int
     let back: () -> Void
@@ -123,7 +126,9 @@ struct PlayerFace: View {
         VStack(spacing: 4) {
             VStack(spacing: 1) {
                 Text(title).font(.headline).lineLimit(1)
-                if let chapter {
+                if let note {
+                    Text(note).font(.caption2).foregroundStyle(Color.accentColor).lineLimit(1)
+                } else if let chapter {
                     // In a chapter, the book's time left goes with its name.
                     Text(inChapter && total > 0 ? "\(chapter) · \(Format.hm(max(total - position, 0))) left" : chapter)
                         .font(.caption2).foregroundStyle(.secondary).lineLimit(1)

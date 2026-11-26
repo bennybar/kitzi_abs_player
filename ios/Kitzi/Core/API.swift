@@ -247,11 +247,16 @@ final class API {
 
     struct PlaySession { var id: String?; var tracks: [Track]; var chapters: [Chapter]; var durationSec: Double? }
 
-    func openSession(_ itemId: String) async -> PlaySession? {
+    /// `hls`: the server repackages the book as an HLS stream (a playlist of short
+    /// segments) instead of handing out the original files. Starting a file needs
+    /// its whole index first (10 MB for a 16-hour M4B), which on the watch's
+    /// cellular link took minutes; an HLS stream starts after one segment.
+    func openSession(_ itemId: String, hls: Bool = false) async -> PlaySession? {
         let body: JSON = [
             "deviceInfo": ["clientVersion": Self.clientVersion, "deviceName": Self.deviceName],
             "supportedMimeTypes": Self.mimeTypes,
             "forceDirectPlay": false,
+            "forceTranscode": hls,
         ]
         guard let base, let (code, data) = try? await send("/api/items/\(itemId)/play", method: "POST", body: body),
               code == 200, let root = JSONUtil.parse(data) as? JSON else { return nil }
