@@ -217,7 +217,7 @@ final class WatchPlayer {
         item.audioTimePitchAlgorithm = .timeDomain
         av.replaceCurrentItem(with: item)
         seekTarget = offset > 0 ? offset : nil
-        if offset > 0 { av.seek(to: CMTime(seconds: offset, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero) }
+        if offset > 0 { exactSeek(offset, local: t.isLocal) }
     }
 
     private func trackEnded() {
@@ -294,6 +294,15 @@ final class WatchPlayer {
         return nil
     }
 
+    /// To the exact second only in a downloaded file. In a stream, an exact seek
+    /// makes AVFoundation read the file from the start up to that point (an MP3
+    /// has no index), so a book resumed hours in waited for most of it to
+    /// download: a stream lands on the nearest point it can reach directly.
+    private func exactSeek(_ sec: Double, local: Bool) {
+        let t = CMTime(seconds: sec, preferredTimescale: 600)
+        if local { av.seek(to: t, toleranceBefore: .zero, toleranceAfter: .zero) } else { av.seek(to: t) }
+    }
+
     func skip(_ delta: Double) {
         seek(to: currentPosition() + delta)
     }
@@ -308,7 +317,7 @@ final class WatchPlayer {
             if wasPlaying { startPlayback() }
         } else {
             seekTarget = off
-            av.seek(to: CMTime(seconds: off, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+            exactSeek(off, local: np.tracks[i].isLocal)
         }
         position = target
         // Moved while paused: that's now the newest place in the book, so Play
