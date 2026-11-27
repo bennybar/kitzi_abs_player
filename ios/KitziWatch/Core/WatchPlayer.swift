@@ -442,7 +442,10 @@ final class WatchPlayer {
             return
         }
         if let s, !s.tracks.isEmpty {
-            if let old = np.sessionId { Task { await api.closeSession(old) } }
+            // The session in use now: a "gone" answer to the report above may have
+            // replaced the one this jump started from (closing that one left the
+            // replacement open on the server).
+            if let old = nowPlaying?.sessionId { Task { await api.closeSession(old) } }
             nowPlaying?.sessionId = s.id
             nowPlaying?.tracks = s.tracks
             Store.openStream = s.id
