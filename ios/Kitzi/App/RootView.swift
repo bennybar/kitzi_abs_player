@@ -116,6 +116,8 @@ struct MainView: View {
                 return
             }
             if ProcessInfo.processInfo.environment["KITZI_TEST_OPEN"] == "playertest" { await PlayerTests.run(); return }
+            if ProcessInfo.processInfo.environment["KITZI_TEST_OPEN"] == "radartest" { await RadarTests.run(); return }
+            if ProcessInfo.processInfo.environment["KITZI_TEST_OPEN"] == "radarnotify" { await RadarTests.notify(); return }
             // KITZI_TEST_OPEN=coldresume: let the launch auto-load the last book, wait
             // 25 s (the test moves it on the server), then resume 8 s and pause.
             if ProcessInfo.processInfo.environment["KITZI_TEST_OPEN"] == "coldresume" {
@@ -154,7 +156,10 @@ struct MainView: View {
             case .active:
                 // Back in the app: listening on another device shows up at once.
                 player.appForegrounded()
-                Task { await library.quietRefresh() }
+                Task {
+                    await library.quietRefresh()
+                    await Radar.shared.checkAll()
+                }
             default: break
             }
         }
@@ -167,6 +172,28 @@ struct MainView: View {
             }
         }
         .onOpenURL { _ in showPlayer = player.nowPlaying != nil }
+        // A tapped notification: its book (in the library, or on Audible) or the list.
+        .sheet(item: Binding(get: { NotificationRoute.shared.pending.map(RouteBox.init) },
+                             set: { if $0 == nil { NotificationRoute.shared.pending = nil } })) { box in
+            NavigationStack {
+                Group {
+                    switch box.target {
+                    case .audible(let asin): AudibleASINView(asin: asin)
+                    case .releases: ReleasesView()
+                    case .book(let title, let author):
+                        if let b = Self.libraryBook(title: title, author: author) { BookDetailView(book: b) }
+                        else { ContentUnavailableView("Not in your library yet", systemImage: "books.vertical",
+                                                      description: Text("\(title) hasn't reached the library yet. Pull to refresh in a moment.")) }
+                    }
+                }
+                .kitziDestinations()
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button { NotificationRoute.shared.pending = nil } label: { Image(systemName: "xmark") }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -328,5 +355,18 @@ struct HeadersView: View {
                 }
             }
         }
+    }
+}
+
+/// A notification's target, as a sheet item.
+struct RouteBox: Identifiable {
+    let target: NotificationRoute.Target
+    var id: String { String(describing: target) }
+}
+
+extension MainView {
+    /// The library's copy of a book known by title and author (a Shelfarr arrival).
+    static func libraryBook(title: String, author: String?) -> Book? {
+        LibraryStore.shared.matching(title: title, author: author)
     }
 }

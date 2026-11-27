@@ -127,6 +127,7 @@ enum BackgroundTasks {
                     await Player.shared.flushPending()
                     await LibraryStore.shared.refreshNewest()
                     await LibraryStore.shared.syncProgress()
+                    await Radar.shared.checkAll()
                 }
                 t.setTaskCompleted(success: true)
             }

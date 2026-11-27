@@ -46,6 +46,9 @@ final class AudibleRating {
         return r
     }
 
+    /// The book's Audible language as already known (no lookup).
+    func knownLanguage(_ id: String) -> String? { saved(id)?.language }
+
     /// The book's stars (nil when Audible has no match or no ratings yet).
     func rating(for book: Book) async -> Result? {
         guard let r = await lookup(book), r.stars > 0 else { return nil }

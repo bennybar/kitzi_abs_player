@@ -210,6 +210,10 @@ struct HomeView: View {
                 out.append(BrowseTile(title: f == .all ? "All Books" : f.label, icon: Self.icon(f), count: count) { path.append(AllBooksRoute(filter: f)) })
             }
         }
+        if settings.radar {
+            let n = Radar.shared.finds.count
+            out.append(BrowseTile(title: "New Releases", icon: "dot.radiowaves.left.and.right", count: n > 0 ? n : nil) { path.append(ReleasesRoute()) })
+        }
         out.append(BrowseTile(title: "By Genre", icon: "tag", count: nil) { path.append(BrowseRoute.genres) })
         out.append(BrowseTile(title: "By Series", icon: "books.vertical.circle", count: nil) { path.append(BrowseRoute.series) })
         out.append(BrowseTile(title: "By Narrator", icon: "mic", count: nil) { path.append(BrowseRoute.narrators) })

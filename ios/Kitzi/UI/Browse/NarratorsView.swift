@@ -62,5 +62,20 @@ struct NarratorView: View {
         .scrollContentBackground(.hidden)
         .kitziBackground()
         .navigationTitle(name)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                let following = Radar.shared.followedNarrators.contains(name)
+                Button {
+                    if following { Radar.shared.followedNarrators.remove(name) } else {
+                        Radar.shared.followedNarrators.insert(name)
+                        Haptics.success()
+                        Toast.show(AppSettings.shared.radar ? "Following \(name): new books show in New Releases"
+                                   : "Following \(name). Turn on New Releases in Settings to be notified")
+                    }
+                } label: {
+                    Label(following ? "Following" : "Follow", systemImage: following ? "bell.fill" : "bell")
+                }
+            }
+        }
     }
 }

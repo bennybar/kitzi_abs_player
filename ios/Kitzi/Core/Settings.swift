@@ -28,6 +28,10 @@ final class AppSettings {
     var seriesMissing: Bool { didSet { d.set(seriesMissing, forKey: "ui_series_missing_enabled") } }
     var audibleReviews: Bool { didSet { d.set(audibleReviews, forKey: "ui_audible_reviews_enabled") } }
     var becauseFinished: Bool { didSet { d.set(becauseFinished, forKey: "ui_because_finished_enabled") } }
+    /// Notifications: new releases from the library's authors and series (and followed narrators).
+    var radar: Bool { didSet { d.set(radar, forKey: "notify_new_releases") } }
+    /// Notifications: a Shelfarr request has arrived in the library.
+    var notifyShelfarr: Bool { didSet { d.set(notifyShelfarr, forKey: "notify_shelfarr_ready") } }
     var chapterTicks: Bool { didSet { d.set(chapterTicks, forKey: "ui_progress_bar_chapterized") } }
     var gridLayout: Bool { didSet { d.set(gridLayout, forKey: "ui_library_grid") } }
     /// Home shelves shown as a plain row of covers instead of a carousel
@@ -78,6 +82,8 @@ final class AppSettings {
         seriesMissing = b("ui_series_missing_enabled", true)
         audibleReviews = b("ui_audible_reviews_enabled", true)
         becauseFinished = b("ui_because_finished_enabled", true)
+        radar = b("notify_new_releases", false)
+        notifyShelfarr = b("notify_shelfarr_ready", false)
         chapterTicks = b("ui_progress_bar_chapterized", true)
         gridLayout = b("ui_library_grid", false)
         carouselOff = Set(d.stringArray(forKey: "ui_carousel_off") ?? [])

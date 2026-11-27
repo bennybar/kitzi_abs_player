@@ -152,6 +152,11 @@ extension AudibleCatalog {
         return []
     }
 
+    /// "4", or "2.5".
+    static func label(_ n: Double) -> String {
+        n.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(n)) : String(n)
+    }
+
     /// The book's number in a series (unnumbered last).
     static func sequence(_ b: AudibleBook, in series: String) -> Double {
         numbers(b.seriesRefs.first { $0.asin == series }?.sequence).first ?? 9999

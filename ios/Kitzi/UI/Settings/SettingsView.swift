@@ -38,6 +38,33 @@ struct SettingsView: View {
     var body: some View {
         @Bindable var s = settings
         Form {
+            if show("notifications", "new releases", "radar", "shelfarr", "ready", "authors", "narrators") {
+                Section {
+                    Toggle(isOn: Binding(get: { s.radar }, set: { on in
+                        s.radar = on
+                        if on { Task { _ = await Notifier.authorize(); await Radar.shared.checkAll(force: true) } }
+                    })) {
+                        Text("New releases")
+                        Text("New and coming books from your authors, the series you listen to, and narrators you follow")
+                    }
+                    if s.radar {
+                        NavigationLink { ReleasesView() } label: { Label("New releases", systemImage: "dot.radiowaves.left.and.right") }
+                    }
+                    if Shelfarr.shared.configured {
+                        Toggle(isOn: Binding(get: { s.notifyShelfarr }, set: { on in
+                            s.notifyShelfarr = on
+                            if on { Task { _ = await Notifier.authorize(); await Radar.shared.checkShelfarr() } }
+                        })) {
+                            Text("Shelfarr requests ready")
+                            Text("When a book you requested arrives in your library")
+                        }
+                    }
+                } header: {
+                    Text("Notifications")
+                } footer: {
+                    Text("Checked a few times a day in the background (iOS decides exactly when), and when you open Kitzi.")
+                }
+            }
             if show("library", "listening stats", "active library", "resync", "profile", "stats", "health", "missing", "match", "year", "review") {
                 Section("Library") {
                     NavigationLink { StatsView() } label: { Label("Listening stats", systemImage: "chart.bar") }

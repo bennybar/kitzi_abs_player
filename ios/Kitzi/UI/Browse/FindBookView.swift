@@ -133,6 +133,16 @@ enum AudibleCatalog {
         return mainLanguage(try await get(c.url!, ttl: 6 * 3600).objs("products").compactMap(AudibleBook.init))
     }
 
+    /// An author's or a narrator's books, newest release first (pre-orders included).
+    static func newest(author: String? = nil, narrator: String? = nil) async throws -> [AudibleBook] {
+        var c = URLComponents(string: "\(base)/products")!
+        c.queryItems = [.init(name: "num_results", value: "20"), .init(name: "products_sort_by", value: "-ReleaseDate"),
+                        .init(name: "image_sizes", value: "252,500"), .init(name: "response_groups", value: listGroups)]
+        if let author { c.queryItems?.append(.init(name: "author", value: author)) }
+        if let narrator { c.queryItems?.append(.init(name: "narrator", value: narrator)) }
+        return mainLanguage(try await get(c.url!, ttl: 6 * 3600).objs("products").compactMap(AudibleBook.init))
+    }
+
     /// "Listeners also enjoyed": Audible's similar books, in the book's own
     /// language (it also suggests the same book in other languages).
     static func similar(asin: String, language: String? = nil) async throws -> [AudibleBook] {

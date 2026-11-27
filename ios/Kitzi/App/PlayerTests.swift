@@ -3,6 +3,36 @@ import Foundation
 
 /// A simulator run of the player's position rules (KITZI_TEST_OPEN=playertest):
 /// prints "KITZITEST …" lines, and puts the book back where it was.
+enum RadarTests {
+    /// Posts one of the radar's finds as its notification (after asking permission).
+    static func notify() async {
+        let ok = await Notifier.authorize()
+        print("KITZITEST notify authorized=\(ok)")
+        await Radar.shared.checkReleases()
+        guard let f = Radar.shared.sortedFinds.first else { print("KITZITEST notify no finds"); return }
+        try? await Task.sleep(for: .seconds(2))
+        await Notifier.releases([f], out: [])
+        print("KITZITEST notify posted \(f.title)")
+        // And as if it had been tapped.
+        try? await Task.sleep(for: .seconds(6))
+        NotificationRoute.shared.handle(["open": "audible", "asin": f.asin])
+    }
+
+    static func run() async {
+        let library = LibraryStore.shared
+        for _ in 0..<40 where library.books.isEmpty { try? await Task.sleep(for: .milliseconds(500)) }
+        let t0 = Date()
+        await Radar.shared.checkReleases()
+        let finds = Radar.shared.sortedFinds
+        print("KITZITEST radar took=\(String(format: "%.1f", Date().timeIntervalSince(t0)))s finds=\(finds.count) upcoming=\(finds.filter(\.isUpcoming).count)")
+        for f in finds.prefix(12) { print("KITZITEST radar \(f.reason) | \(f.title) | \(f.releaseDate ?? "-") | inLibrary=\(library.byId.values.contains { $0.title == f.title })") }
+        let t1 = Date()
+        await Radar.shared.checkReleases()
+        print("KITZITEST radar second run took=\(String(format: "%.1f", Date().timeIntervalSince(t1)))s finds=\(Radar.shared.finds.count)")
+        print("KITZITEST done")
+    }
+}
+
 enum PlayerTests {
     static func log(_ s: String) { print("KITZITEST \(s)") }
 

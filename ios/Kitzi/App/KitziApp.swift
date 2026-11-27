@@ -1,4 +1,5 @@
 import SwiftUI
+import UserNotifications
 
 @main
 struct KitziApp: App {
@@ -11,9 +12,10 @@ struct KitziApp: App {
     }
 }
 
-final class AppDelegate: NSObject, UIApplicationDelegate {
+final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         BackgroundTasks.register()
+        UNUserNotificationCenter.current().delegate = self
         #if DEBUG
         // Test hook: sign in from the environment (simulator runs only).
         let env = ProcessInfo.processInfo.environment
@@ -45,6 +47,19 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         Task { await PhoneLink.shared.runDebugHooks() }
         #endif
         return true
+    }
+
+    // Shown while the app is open too.
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
+        [.banner, .sound, .list]
+    }
+
+    /// Tapped: open what it's about.
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+        let info = response.notification.request.content.userInfo
+        var plain: [String: String] = [:]
+        for (k, v) in info { if let k = k as? String, let v = v as? String { plain[k] = v } }
+        await MainActor.run { NotificationRoute.shared.handle(plain) }
     }
 
     /// iOS relaunched us for finished background downloads.
