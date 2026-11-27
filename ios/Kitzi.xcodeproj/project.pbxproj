@@ -58,6 +58,7 @@
 		8F7F294E4056563EAFA2578B /* API.swift in Sources */ = {isa = PBXBuildFile; fileRef = AACA4CF87524A94015FDE07E /* API.swift */; };
 		915648314CBA6945A870AC44 /* StatsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17A0E1E15E4218180F58F704 /* StatsView.swift */; };
 		919BD506F1ED7348ECC56FAB /* Shelfarr.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17B8E3566C7DFDF5D9E4D479 /* Shelfarr.swift */; };
+		923B12C176D66E605E66633D /* SeriesSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5000E1C176BD29F715E05B1A /* SeriesSync.swift */; };
 		942B24EC862D0AB724D35AF8 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 72EA634FE4E5BA8EACDC6323 /* Assets.xcassets */; };
 		9513780700AE8AA8DDB22999 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77E45E9E1878E74D874D3EA7 /* HomeView.swift */; };
 		96410AB4E89AE715FD17CED8 /* QueueView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B09076244F132CA075772AC8 /* QueueView.swift */; };
@@ -184,6 +185,7 @@
 		471EB2B15DD0EFA1875ECD9C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		4969CE881C2A151754F46F62 /* KitziWatchWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = KitziWatchWidget.entitlements; sourceTree = "<group>"; };
 		4E1FAA5B318ADFD3696C4CCC /* ReleasesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReleasesView.swift; sourceTree = "<group>"; };
+		5000E1C176BD29F715E05B1A /* SeriesSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SeriesSync.swift; sourceTree = "<group>"; };
 		525530C80140CBEB098E9A62 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		5727BB068A0154E97AE0E29E /* KitziWatchTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KitziWatchTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		5BC0693C9B3515A9C0315986 /* AppIntents.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppIntents.framework; path = System/Library/Frameworks/AppIntents.framework; sourceTree = SDKROOT; };
@@ -381,6 +383,7 @@
 				1506F8FD3774749ABBC8D069 /* Models.swift */,
 				5CF150B1EDE911F1CA04A8FF /* OIDC.swift */,
 				AE675FA5458E37AE31D8EF91 /* Radar.swift */,
+				5000E1C176BD29F715E05B1A /* SeriesSync.swift */,
 				034A50630D7868E0CEFCAF5B /* Session.swift */,
 				BC2A07F9A2FC99873C99F726 /* Settings.swift */,
 				17B8E3566C7DFDF5D9E4D479 /* Shelfarr.swift */,
@@ -847,6 +850,7 @@
 				F7FD31A5EB5A251B2EFF246F /* ReleasesView.swift in Sources */,
 				D8B9F73D69EF981460224591 /* RootView.swift in Sources */,
 				5DC716B311236E5E22022F0A /* SearchView.swift in Sources */,
+				923B12C176D66E605E66633D /* SeriesSync.swift in Sources */,
 				B907DF2152729D520D9B3B28 /* SeriesView.swift in Sources */,
 				7B4E8094A86BB299F5408A47 /* Session.swift in Sources */,
 				CB5F7E9AFEE6B364AE806C43 /* Settings.swift in Sources */,
@@ -1004,7 +1008,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 397;
+				CURRENT_PROJECT_VERSION = 398;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 57L2ULXB7Z;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -1025,7 +1029,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
-				MARKETING_VERSION = 2.0.397;
+				MARKETING_VERSION = 2.0.398;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -1144,7 +1148,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 397;
+				CURRENT_PROJECT_VERSION = 398;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 57L2ULXB7Z;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -1159,7 +1163,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
-				MARKETING_VERSION = 2.0.397;
+				MARKETING_VERSION = 2.0.398;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";

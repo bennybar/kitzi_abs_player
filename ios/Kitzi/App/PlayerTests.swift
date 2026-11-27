@@ -142,3 +142,22 @@ enum PlayerTests {
     }
 }
 #endif
+
+#if DEBUG
+/// What Sync Series would change (KITZI_TEST_OPEN=seriestest): read-only, nothing is saved.
+enum SeriesTests {
+    static func run() async {
+        let library = LibraryStore.shared
+        for _ in 0..<40 where library.books.isEmpty { try? await Task.sleep(for: .milliseconds(500)) }
+        let t0 = Date()
+        let changes = await SeriesSync.check(library.books)
+        print("KITZITEST series took=\(String(format: "%.1f", Date().timeIntervalSince(t0)))s books=\(library.books.count) changes=\(changes.count) added=\(changes.values.filter { $0.before.isEmpty }.count)")
+        for (id, c) in changes.prefix(25) { print("KITZITEST series \(library.byId[id]?.title.prefix(40) ?? "?") | \(c.summary)") }
+        if let t = library.books.first(where: { $0.title.contains("Titan Sinking") }) {
+            let c = await SeriesSync.check(t)
+            print("KITZITEST series titan one=\(c?.summary ?? "none")")
+        }
+        print("KITZITEST done")
+    }
+}
+#endif

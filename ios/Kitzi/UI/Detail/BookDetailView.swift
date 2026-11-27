@@ -47,6 +47,8 @@ struct BookDetailView: View {
     @State private var chapters: [Chapter] = []
     @State private var showChapters = false
     @State private var showAudibleChapters = false
+    /// Audible's series for the book, to confirm before saving them to the server.
+    @State private var seriesChange: SeriesSync.Change?
     @State private var showTitle = false
 
     /// The cached copy when there is one (fresher metadata), else what was passed in.
@@ -126,6 +128,7 @@ struct BookDetailView: View {
             }
         }
         .sheet(isPresented: $cropping) { CoverCropSheet(book: b) }
+        .modifier(SeriesConfirm(change: $seriesChange) { Task { await saveSeries() } })
         .toolbar {
             let achew = settings.achewEnabled && Achew.shared.configured
             let watch = PhoneLink.shared.watchReady && downloads.isDownloaded(book.id)
@@ -143,6 +146,7 @@ struct BookDetailView: View {
                             }
                         }
                         Button { showAudibleChapters = true } label: { Label("Chapters from Audible", systemImage: "list.bullet.rectangle") }
+                        Button { Task { await checkSeries() } } label: { Label("Sync Series from Audible", systemImage: "books.vertical") }
                         if achew {
                             Button { Task { await fixChapters() } } label: { Label("Fix Chapters in Achew", systemImage: "wand.and.stars") }
                         }
@@ -613,6 +617,28 @@ struct BookDetailView: View {
         return t
     }
 
+    /// Audible's series for this book, compared with the server's (confirmed before saving).
+    private func checkSeries() async {
+        Toast.show("Looking up the series on Audible…")
+        if let c = await SeriesSync.check(book) {
+            seriesChange = c
+        } else {
+            Toast.show(await AudibleRating.shared.asin(for: book) == nil ? "Audible doesn't have this book"
+                       : "The series already match Audible (or Audible lists none)")
+        }
+    }
+
+    private func saveSeries() async {
+        if let why = await SeriesSync.apply(book) {
+            Haptics.failure()
+            Toast.show(why)
+        } else {
+            Haptics.success()
+            Toast.show("Series saved to your server")
+            await library.refreshNewest()
+        }
+    }
+
     static func stripHTML(_ s: String) -> String {
         var t = s.replacingOccurrences(of: "<br\\s*/?>", with: "\n", options: .regularExpression)
         t = t.replacingOccurrences(of: "</p>", with: "\n\n")
@@ -785,5 +811,21 @@ enum SpeedLabel {
     static func text(_ s: Double) -> String {
         let t = s.truncatingRemainder(dividingBy: 1) == 0 ? String(format: "%.1f", s) : String(format: "%g", (s * 100).rounded() / 100)
         return t + "×"
+    }
+}
+
+/// "Save Audible's series?" before Sync Series from Audible writes to the server.
+private struct SeriesConfirm: ViewModifier {
+    @Binding var change: SeriesSync.Change?
+    let save: () -> Void
+
+    func body(content: Content) -> some View {
+        content.confirmationDialog("Save Audible's series?", isPresented: Binding(get: { change != nil }, set: { if !$0 { change = nil } }),
+                                   titleVisibility: .visible, presenting: change) { _ in
+            Button("Save to Server", action: save)
+        } message: { c in
+            Text(c.before.isEmpty ? "Adds \(c.summary) to this book on your server."
+                 : "Changes this book's series on your server: \(c.summary).")
+        }
     }
 }

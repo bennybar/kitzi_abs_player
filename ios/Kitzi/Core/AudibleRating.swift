@@ -46,6 +46,9 @@ final class AudibleRating {
         return r
     }
 
+    /// The book's Audible ASIN as already known (no lookup).
+    func knownAsin(_ id: String) -> String? { saved(id).flatMap { $0.asin.isEmpty ? nil : $0.asin } }
+
     /// The book's Audible language as already known (no lookup).
     func knownLanguage(_ id: String) -> String? { saved(id)?.language }
 
