@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import Observation
 import WatchKit
 
@@ -97,7 +98,7 @@ final class WatchModel {
             guard let at = WatchDownloads.shared.downloadedAt(id), (p.finishedAt ?? p.lastUpdate) > at else { continue }
             WatchDownloads.shared.delete(id)
         }
-        shelf = items.objs("libraryItems").compactMap { item -> ShelfBook? in
+        let fresh = items.objs("libraryItems").compactMap { item -> ShelfBook? in
             guard item.str("mediaType") == "book", let book = Book.from(item) else { return nil }
             let p = progress[book.id]
             guard p?.isFinished != true, let p, p.currentTimeSec > 0 else { return nil }
@@ -110,7 +111,10 @@ final class WatchModel {
             return s
         }
         .sorted { $0.lastUpdate > $1.lastUpdate }
+        // Assigned only when it changed (each assignment redraws the lists), animated.
+        if fresh != shelf { withAnimation(.snappy) { shelf = fresh } }
         Store.shelf = shelf
+        lastRefresh = Date()
         updateWidget()
         return true
     }
@@ -123,7 +127,7 @@ final class WatchModel {
     }
 
     /// The watch's own newer position for a book (after listening here).
-    func updateShelfPosition(_ book: Book, sec: Double) {
+    func updateShelfPosition(_ book: Book, sec: Double, persist: Bool = true) {
         if let i = shelf.firstIndex(where: { $0.id == book.id }) {
             shelf[i].currentTimeSec = sec
             shelf[i].lastUpdate = Format.nowMs
@@ -131,9 +135,19 @@ final class WatchModel {
             shelf.append(ShelfBook(book: book, currentTimeSec: sec, lastUpdate: Format.nowMs))
         }
         shelf.sort { $0.lastUpdate > $1.lastUpdate }
-        Store.shelf = shelf
+        if persist { Store.shelf = shelf }
         updateWidget()
     }
+
+    /// Back in the app: the shelf again, unless it was fetched a few minutes ago
+    /// (on the watch the app becomes active at every wrist raise), or the watch
+    /// is playing (its own book is tracked here; the shelf can wait for the pause).
+    func refreshIfStale() async {
+        _ = await flushPending()
+        guard Date().timeIntervalSince(lastRefresh) > 300, !WatchPlayer.shared.isPlaying else { return }
+        await refreshShelf()
+    }
+    @ObservationIgnored private var lastRefresh = Date.distantPast
 
     /// The watch face shows the loaded book, else the latest one on the shelf.
     func updateWidget() {
@@ -180,13 +194,22 @@ final class WatchModel {
     }
 
     /// Tries the pending positions again in a while, even if the app isn't open.
-    func scheduleRetry() { scheduleRefresh() }
+    /// (Once per stretch offline: every report that couldn't be sent asked again.)
+    func scheduleRetry() {
+        guard Date().timeIntervalSince(lastRetry) > 600 else { return }
+        lastRetry = Date()
+        scheduleRefresh(pending: true)
+    }
+    @ObservationIgnored private var lastRetry = Date.distantPast
 
-    /// Asks watchOS to wake the app in a while (15 min with positions to send,
-    /// else 30): it sends them and refreshes the shelf and the watch face, so
-    /// they're current (and ready offline) without opening the app.
-    func scheduleRefresh() {
-        let minutes: Double = Store.pendingIds.isEmpty ? 30 : 15
+    /// Asks watchOS to wake the app in a while: in 15 minutes with positions to
+    /// send; else hourly while Kitzi has been used in the last day, and every six
+    /// hours after that (it used to be every 30 minutes, forever). It sends them
+    /// and refreshes the shelf and the watch face, so they're current (and ready
+    /// offline) without opening the app.
+    func scheduleRefresh(pending: Bool? = nil) {
+        let recent = Date().timeIntervalSince1970 - (Store.double("last_used") ?? 0) < 24 * 3600
+        let minutes: Double = (pending ?? !Store.pendingIds.isEmpty) ? 15 : (recent ? 60 : 360)
         WKApplication.shared().scheduleBackgroundRefresh(withPreferredDate: Date().addingTimeInterval(minutes * 60), userInfo: nil,
                                                          scheduledCompletion: Self.ignore)
     }

@@ -47,6 +47,7 @@ struct BookView: View {
                     .padding(.top, 4)
                     downloadButton
                         .buttonStyle(.glass)
+                        .animation(.snappy, value: downloads.state(id))
                 }
                 .padding(.horizontal, 4)
             } else {

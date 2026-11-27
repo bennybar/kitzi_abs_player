@@ -24,8 +24,20 @@ struct NowListeningProvider: TimelineProvider {
         completion(context.isPreview ? placeholder(in: context) : NowListeningEntry(date: .now, book: WidgetBook.load()))
     }
 
+    /// Playing: an entry every five minutes for the next three hours, each with
+    /// the time left counted on at the speed (the app reloads only when it's off
+    /// from that: a pause, a skip, another book). Paused: just the one.
     func getTimeline(in context: Context, completion: @escaping (Timeline<NowListeningEntry>) -> Void) {
-        completion(Timeline(entries: [NowListeningEntry(date: .now, book: WidgetBook.load())], policy: .never))
+        let book = WidgetBook.load(), now = Date()
+        guard let book, book.isPlaying else {
+            completion(Timeline(entries: [NowListeningEntry(date: now, book: book)], policy: .never))
+            return
+        }
+        let entries = (0..<36).map { i -> NowListeningEntry in
+            let d = now.addingTimeInterval(Double(i) * 300)
+            return NowListeningEntry(date: d, book: book.at(d))
+        }
+        completion(Timeline(entries: entries, policy: .never))
     }
 }
 
@@ -67,7 +79,8 @@ struct NowListeningView: View {
             Image(systemName: "headphones").font(.title3).widgetAccentable()
                 .widgetLabel { Gauge(value: progress) { Text("Kitzi") } }
         case .accessoryInline:
-            if let b { Text("\(b.title) · \(Self.hm(b.remainingSec)) left") } else { Text("Kitzi") }
+            // The time first: a long title cut it off.
+            if let b { Text("\(Self.hm(b.remainingSec)) left · \(b.title)") } else { Text("Kitzi") }
         default:
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {

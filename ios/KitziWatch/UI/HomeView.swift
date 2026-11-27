@@ -6,6 +6,8 @@ struct HomeView: View {
     @Environment(WatchModel.self) private var model
     @Environment(WatchPlayer.self) private var player
     @Environment(WatchDownloads.self) private var downloads
+    @Environment(\.isLuminanceReduced) private var dimmed
+    @Environment(\.coverZoom) private var zoom
     @State private var syncResult: Bool?
     @State private var syncing = false
 
@@ -14,13 +16,15 @@ struct HomeView: View {
             if let np = player.nowPlaying {
                 NavigationLink(value: WatchRoute.player) {
                     HStack(spacing: 10) {
-                        CoverView(id: np.book.id, size: 44)
+                        CoverView(id: np.book.id, size: 44).zoomSource("player", zoom)
                         VStack(alignment: .leading, spacing: 3) {
                             Label(player.isPlaying ? "Now Playing" : "Paused", systemImage: player.isPlaying ? "waveform" : "pause.fill")
-                                .symbolEffect(.variableColor.iterative, isActive: player.isPlaying)
+                                .contentTransition(.symbolEffect(.replace))
+                                .symbolEffect(.variableColor.iterative, isActive: player.isPlaying && !dimmed)
                                 .font(.caption2.weight(.semibold)).foregroundStyle(Color.accentColor)
                             Text(np.book.title).font(.headline).lineLimit(2)
-                            Bar(value: np.totalSec > 0 ? player.position / np.totalSec : 0).padding(.top, 2)
+                            // (Its own view: the list isn't redrawn with every position tick.)
+                            NowPlayingBar().padding(.top, 2)
                         }
                     }
                     .padding(.vertical, 4)
@@ -36,7 +40,8 @@ struct HomeView: View {
                     NavigationLink(value: WatchRoute.book(s.id)) {
                         BookRow(id: s.id, title: s.book.title,
                                 line: line(s.id, Format.left(s.currentTimeSec, of: s.durationSec)),
-                                progress: s.durationSec > 0 ? min(s.currentTimeSec / s.durationSec, 1) : nil)
+                                progress: s.durationSec > 0 ? min(s.currentTimeSec / s.durationSec, 1) : nil,
+                                zoomID: "book-\(s.id)")
                     }
                 }
             }
@@ -50,7 +55,7 @@ struct HomeView: View {
                         let n = downloads.downloadedIds.count, active = downloads.activeIds.count
                         if active > 0 {
                             Image(systemName: "arrow.down").foregroundStyle(Color.accentColor)
-                                .symbolEffect(.pulse)
+                                .symbolEffect(.pulse, isActive: !dimmed)
                         }
                         if n > 0 { Text("\(n)").foregroundStyle(.secondary) }
                     }
@@ -74,6 +79,7 @@ struct HomeView: View {
             }
         }
         .navigationTitle("Kitzi")
+        .animation(.snappy, value: player.nowPlaying?.book.id)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 NavigationLink(value: WatchRoute.settings) { Image(systemName: "gearshape.fill") }
@@ -103,10 +109,12 @@ struct BookRow: View {
     let title: String
     let line: String?
     let progress: Double?
+    var zoomID: String? = nil
+    @Environment(\.coverZoom) private var zoom
 
     var body: some View {
         HStack(spacing: 10) {
-            CoverView(id: id, size: 40)
+            CoverView(id: id, size: 40).zoomSource(zoomID ?? "", zoomID == nil ? nil : zoom)
             VStack(alignment: .leading, spacing: 3) {
                 Text(title).font(.body.weight(.medium)).lineLimit(2)
                 if let line { Text(line).font(.caption2).foregroundStyle(.secondary).lineLimit(1) }
@@ -114,5 +122,15 @@ struct BookRow: View {
             }
         }
         .padding(.vertical, 2)
+    }
+}
+
+/// The loaded book's progress, for Home's Now Playing row.
+struct NowPlayingBar: View {
+    @Environment(WatchPlayer.self) private var player
+
+    var body: some View {
+        let total = player.nowPlaying?.totalSec ?? 0
+        Bar(value: total > 0 ? player.position / total : 0)
     }
 }

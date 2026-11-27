@@ -66,7 +66,7 @@ struct LibraryView: View {
         failed = false
         let books = r.items.compactMap(Book.from).filter(\.isAudioBook)
         let have = Set(recent.map(\.id))
-        recent += books.filter { !have.contains($0.id) }
+        withAnimation(.snappy) { recent += books.filter { !have.contains($0.id) } }
         page += 1
         more = r.items.count >= 20
     }
@@ -76,6 +76,7 @@ struct LibraryView: View {
         guard !q.isEmpty, let lib = await library() else { results = nil; return }
         loading = true
         defer { loading = false }
-        results = ((try? await API.shared.search(library: lib, query: q)) ?? []).compactMap(Book.from).filter(\.isAudioBook)
+        let found = ((try? await API.shared.search(library: lib, query: q)) ?? []).compactMap(Book.from).filter(\.isAudioBook)
+        withAnimation(.snappy) { results = found }
     }
 }

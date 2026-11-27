@@ -104,16 +104,24 @@ struct LocalPosition: Codable {
 }
 
 extension WidgetBook {
-    /// Saves what the watch face shows and asks it to redraw: at once when the
-    /// book or play/pause changes, else at most every few minutes (the position
-    /// changes with every report, and each redraw costs battery).
+    /// Saves what the watch face shows and asks it to redraw, only when it would
+    /// show something else: another book, play/pause, or a time left more than a
+    /// minute away from what the face works out itself (while playing it counts on
+    /// at the speed; a skip, a seek or a new speed makes the difference).
     static func save(_ b: WidgetBook?) {
-        Store.group?.set(b.flatMap { try? JSONEncoder().encode($0) }, forKey: key)
         let now = Date()
-        if let l = lastReload, l.title == b?.title, l.playing == (b?.isPlaying ?? false), now.timeIntervalSince(l.at) < 300 { return }
-        lastReload = (b?.title, b?.isPlaying ?? false, now)
+        var b = b
+        if b?.isPlaying == true { b?.savedAt = now; b?.speed = WatchPlayer.shared.speed }
+        let shown = last.map { $0.at(now) }
+        if let s = shown, let b, s.title == b.title, s.isPlaying == b.isPlaying, abs(s.remainingSec - b.remainingSec) < 60 { return }
+        if shown == nil, b == nil, loaded { return }
+        loaded = true
+        last = b
+        Store.group?.set(b.flatMap { try? JSONEncoder().encode($0) }, forKey: key)
         WidgetCenter.shared.reloadAllTimelines()
     }
 
-    private static var lastReload: (title: String?, playing: Bool, at: Date)?
+    /// What the face was last given (nil: nothing yet, or no book).
+    private static var last: WidgetBook? = load()
+    private static var loaded = false
 }

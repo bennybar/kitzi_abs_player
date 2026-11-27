@@ -335,9 +335,11 @@ enum DebugHooks {
         Store.autoDownload = true
         _ = await WatchPlayer.shared.play(s.book, fallbackSec: s.currentTimeSec, fallbackAt: s.lastUpdate)
         try? await Task.sleep(for: .seconds(6))
-        log("autodl streamed isLocal=\(WatchPlayer.shared.nowPlaying?.isLocal ?? true) download=\(d.state(s.id))")
+        // Not while streaming (the book was fetched twice at once): on the pause.
+        log("autodl streamed isLocal=\(WatchPlayer.shared.nowPlaying?.isLocal ?? true) download=\(d.state(s.id)) ok=\(d.state(s.id) == .none)")
         WatchPlayer.shared.pause()
-        try? await Task.sleep(for: .seconds(1))
+        try? await Task.sleep(for: .seconds(3))
+        log("autodl paused download=\(d.state(s.id)) ok=\(d.state(s.id) != .none)")
         await WatchPlayer.shared.stop(report: false)
         d.delete(s.id)
         Store.autoDownload = false

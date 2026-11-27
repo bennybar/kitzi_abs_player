@@ -34,7 +34,13 @@ final class WatchPlayer {
     /// Why a stream stopped after it couldn't be recovered ("Lost the connection").
     private(set) var streamError: String?
     /// Book position, refreshed while the app is in front.
-    private(set) var position: Double = 0
+    private(set) var position: Double = 0 {
+        // The chapter, kept apart: what shows only the chapter redraws when it
+        // changes, not with every position tick.
+        didSet { let i = chapterIndex(at: position); if i != currentChapter { currentChapter = i } }
+    }
+    /// The chapter the position is in (nil: no chapters).
+    private(set) var currentChapter: Int?
     private(set) var speed = Store.speed
     /// The last sync, for the player ("Synced 14:02", "Saved on watch").
     private(set) var status: String?
@@ -60,6 +66,8 @@ final class WatchPlayer {
     @ObservationIgnored private var rateObserver: NSKeyValueObservation?
     @ObservationIgnored private var interruptionObserver: NSObjectProtocol?
     private var ticker: Task<Void, Never>?
+    /// Seconds of playing since the last periodic report.
+    @ObservationIgnored private var sinceReport = 0.0
     private var sleepTask: Task<Void, Never>?
     private var reportTask: Task<Bool?, Never>?
     /// Listening time not yet recorded by the server.
@@ -83,7 +91,20 @@ final class WatchPlayer {
     private var recovering = false
     /// The app is on screen (not wrist-down or in the background): the position
     /// on screen is only worth refreshing then.
-    @ObservationIgnored var screenActive = true
+    @ObservationIgnored var screenActive = true {
+        // Wrist raised: the time on screen is current at once (the ticker was
+        // sleeping its wrist-down step), and it counts at the screen's pace again.
+        didSet {
+            guard screenActive, !oldValue, nowPlaying != nil else { return }
+            position = currentPosition()
+            if isPlaying { startTicker() }
+        }
+    }
+    /// A streamed book to download once listening stops ("Download What I Play"):
+    /// downloading it while streaming it fetched the book twice at once.
+    @ObservationIgnored private var downloadWhenPaused: String?
+    /// The lock screen's cover, read from disk once per book.
+    @ObservationIgnored private var artwork: (id: String, art: MPMediaItemArtwork)?
     // A downloaded book's listening goes to the server as a "local" session.
     private var localSessionId: String?
     private var localStartedAt: Int64 = 0
@@ -156,6 +177,7 @@ final class WatchPlayer {
         nowPlaying = np
         Store.lastBookId = book.id
         listenedSec = 0
+        sinceReport = 0
         streamError = nil
         recoveries = 0
         stalledSince = nil
@@ -182,7 +204,14 @@ final class WatchPlayer {
     /// is queued to download when that's on (Settings).
     private func didStart(_ id: String, streamed: Bool) {
         Task { await WatchLink.shared.pausePhone(ifPlaying: id) }
-        if streamed, Store.autoDownload { Task { _ = await WatchDownloads.shared.start(id, auto: true) } }
+        downloadWhenPaused = streamed && Store.autoDownload ? id : nil
+    }
+
+    /// The streamed book's download starts once listening stops (see downloadWhenPaused).
+    private func startPendingDownload() {
+        guard let id = downloadWhenPaused else { return }
+        downloadWhenPaused = nil
+        Task { _ = await WatchDownloads.shared.start(id, auto: true) }
     }
 
     /// The iPhone started this book: pause it here.
@@ -282,12 +311,22 @@ final class WatchPlayer {
 
     func pause() {
         av.pause()
+        // Paused (by you, the sleep timer, or a stream that gave up): not a
+        // moment's pause AVPlayer reports while a stream starts.
+        startPendingDownload()
     }
 
     /// Resumes the loaded book — from the server's position if that's newer
     /// (listened on the phone during the pause), like a fresh start does.
     func resume() async -> String? {
         guard let np = nowPlaying, !loading else { return nil }
+        // Streamed until now, and downloaded since: plays on from the file (no
+        // stream to keep open, nothing more to fetch).
+        if !np.isLocal, !jumping, WatchDownloads.shared.isDownloaded(np.book.id) {
+            let book = np.book
+            await stop()
+            return await play(book)
+        }
         loading = true
         defer { loading = false }
         // A long jump still opening its stream: Play carries on from it.
@@ -443,13 +482,13 @@ final class WatchPlayer {
 
     /// The chapter the position is in: (start, end), nil without chapters.
     var chapterBounds: (start: Double, end: Double)? {
-        guard let np = nowPlaying, np.chapters.count > 1, let i = chapterIndex() else { return nil }
+        guard let np = nowPlaying, np.chapters.count > 1, let i = currentChapter, np.chapters.indices.contains(i) else { return nil }
         let end = i + 1 < np.chapters.count ? np.chapters[i + 1].startSec : np.totalSec
         return (np.chapters[i].startSec, end)
     }
 
     var chapterTitle: String? {
-        guard let np = nowPlaying, np.chapters.count > 1, let i = chapterIndex() else { return nil }
+        guard let np = nowPlaying, np.chapters.count > 1, let i = currentChapter, np.chapters.indices.contains(i) else { return nil }
         return np.chapters[i].title
     }
 
@@ -494,8 +533,12 @@ final class WatchPlayer {
         sleepAt = nil
         sleepTask = Task {
             while !Task.isCancelled {
-                if currentPosition() >= end - 0.3 { pause(); sleepEndOfChapter = false; return }
-                try? await Task.sleep(for: .seconds(0.5))
+                let pos = currentPosition()
+                if pos >= end - 0.3 { pause(); sleepEndOfChapter = false; return }
+                // Asleep until shortly before the end (at most a minute at a time: a
+                // seek or a speed change moves it), then close checks.
+                let left = (end - pos) / max(speed, 0.5)
+                try? await Task.sleep(for: .seconds(left > 3 ? min(left - 2, 60) : 0.5))
             }
         }
         return true
@@ -539,6 +582,7 @@ final class WatchPlayer {
         pausedAt = playing ? nil : Date()
         updateNowPlayingInfo()
         WatchModel.shared.updateWidget()
+        if playing { startTicker() }
         if !playing, nowPlaying != nil, !stopping { Task { _ = await reportNow() } }
     }
 
@@ -550,23 +594,24 @@ final class WatchPlayer {
     }
 
     /// The position twice a second (for the screen), a report every 30 s while
-    /// playing, and the stream watchdog. Slower while paused.
+    /// playing, and the stream watchdog. Only while playing: paused, nothing
+    /// moves (a seek sets the position itself), and it starts again on Play.
     private func startTicker() {
         ticker?.cancel()
         ticker = Task {
-            var sinceReport = 0.0
             while !Task.isCancelled {
                 // Twice a second on screen; wrist down or in the background only
                 // the reports and the watchdog need it (every few seconds).
-                let step = isPlaying ? (screenActive ? 0.5 : 5) : 2
+                let step = screenActive ? 0.5 : 5
                 try? await Task.sleep(for: .seconds(step))
-                guard let np = nowPlaying else { continue }
+                guard !Task.isCancelled, let np = nowPlaying else { continue }
                 position = currentPosition()
-                if isPlaying {
-                    sinceReport += step
-                    if sinceReport >= Self.syncEvery { sinceReport = 0; _ = await reportNow() }
-                    if !np.isLocal { await watchStream(np) }
-                }
+                guard isPlaying else { return }
+                // (Kept across restarts of the ticker: a wrist raise restarts it,
+                // and must not put the next report off.)
+                sinceReport += step
+                if sinceReport >= Self.syncEvery { sinceReport = 0; _ = await reportNow() }
+                if !np.isLocal { await watchStream(np) }
             }
         }
     }
@@ -634,7 +679,9 @@ final class WatchPlayer {
         accrue()
         let now = Format.nowMs
         Store.savePosition(np.book.id, LocalPosition(sec: pos, savedAt: now, pending: true, finished: finished))
-        WatchModel.shared.updateShelfPosition(np.book, sec: pos)
+        // While playing, the shelf is only updated in memory (it's written to disk
+        // when listening stops, not with every report).
+        WatchModel.shared.updateShelfPosition(np.book, sec: pos, persist: !isPlaying || finished)
 
         let listened = listenedSec
         let report = API.Report(itemId: np.book.id, currentSec: pos, durationSec: np.totalSec, finished: finished,
@@ -704,6 +751,7 @@ final class WatchPlayer {
         av.replaceCurrentItem(with: nil)
         seekTarget = nil
         ticker?.cancel()
+        startPendingDownload()
         cancelSleep()
         nowPlaying = nil
         status = nil
@@ -779,9 +827,10 @@ final class WatchPlayer {
         ]
         if let a = np.book.author { info[MPMediaItemPropertyArtist] = a }
         if let c = chapterTitle { info[MPMediaItemPropertyAlbumTitle] = c }
-        if let file = WatchDownloads.shared.coverFile(np.book.id), let img = UIImage(contentsOfFile: file.path) {
-            info[MPMediaItemPropertyArtwork] = Self.makeArtwork(img)
+        if artwork?.id != np.book.id, let file = WatchDownloads.shared.coverFile(np.book.id), let img = UIImage(contentsOfFile: file.path) {
+            artwork = (np.book.id, Self.makeArtwork(img))
         }
+        if let a = artwork, a.id == np.book.id { info[MPMediaItemPropertyArtwork] = a.art }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }
 

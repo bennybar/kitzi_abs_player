@@ -9,6 +9,8 @@ struct DownloadsView: View {
     @State private var removing: WatchBookManifest?
     @State private var error: String?
     @State private var loadingId: String?
+    @State private var freeBytes: Int64?
+    @Environment(\.isLuminanceReduced) private var dimmed
 
     private var onWatch: [WatchBookManifest] {
         downloads.downloadedIds.compactMap { downloads.downloaded($0) }.sorted { $0.book.title < $1.book.title }
@@ -19,7 +21,7 @@ struct DownloadsView: View {
     }
 
     var body: some View {
-        // Once per redraw (the playing row redraws this twice a second).
+        // Once per redraw.
         let onWatch = self.onWatch, active = self.active
         List {
             Section {
@@ -59,6 +61,9 @@ struct DownloadsView: View {
             }
         }
         .navigationTitle("Downloads")
+        .animation(.snappy, value: downloads.downloadedIds)
+        .animation(.snappy, value: downloads.activeIds)
+        .task { freeBytes = WatchDownloads.freeBytes }
         .confirmationDialog("Remove from your watch?", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),
                             titleVisibility: .visible, presenting: removing) { m in
             Button("Remove", role: .destructive) { downloads.delete(m.book.id) }
@@ -77,7 +82,7 @@ struct DownloadsView: View {
                 Text(Format.size(downloads.totalBytes)).font(.headline)
                 Text("used").foregroundStyle(.secondary)
             }
-            if let free = WatchDownloads.freeBytes {
+            if let free = freeBytes {
                 Text("\(Format.size(free)) free on the watch").font(.caption2).foregroundStyle(.secondary)
             }
         }
@@ -87,24 +92,19 @@ struct DownloadsView: View {
     private func bookRow(_ m: WatchBookManifest) -> some View {
         let id = m.book.id
         let playing = player.nowPlaying?.book.id == id
-        let total = m.book.durationSec ?? m.tracks.reduce(0) { $0 + $1.durationSec }
-        let pos = playing ? player.position : (model.shelf.first { $0.id == id }?.currentTimeSec ?? Store.position(id)?.sec ?? 0)
-        let left = Format.left(pos, of: total)
         return HStack(spacing: 10) {
             CoverView(id: id, size: 40)
                 .overlay { if loadingId == id { ProgressView().background(.black.opacity(0.5), in: Circle()) } }
             VStack(alignment: .leading, spacing: 3) {
                 Text(m.book.title).font(.body.weight(.medium)).lineLimit(2)
-                HStack(spacing: 4) {
-                    if playing {
-                        Image(systemName: player.isPlaying ? "waveform" : "pause.fill").foregroundStyle(Color.accentColor)
-                            .symbolEffect(.variableColor.iterative, isActive: player.isPlaying)
-                    }
-                    Text([pos > 0 ? left : nil, Format.size(downloads.bytes(id))].compactMap { $0 }.joined(separator: " · "))
-                        .foregroundStyle(.secondary).lineLimit(1)
+                // The playing book's line follows the player in its own view (the
+                // whole list was redrawn twice a second).
+                if playing {
+                    PlayingDownloadLine(manifest: m, size: downloads.bytes(id), dimmed: dimmed)
+                } else {
+                    DownloadLine(manifest: m, pos: model.shelf.first { $0.id == id }?.currentTimeSec ?? Store.position(id)?.sec ?? 0,
+                                 size: downloads.bytes(id))
                 }
-                .font(.caption2)
-                if total > 0, pos > 0 { Bar(value: pos / total).padding(.top, 2) }
             }
         }
         .padding(.vertical, 2)
@@ -143,5 +143,44 @@ struct DownloadsView: View {
         } else {
             WatchNav.shared.path.append(.player)
         }
+    }
+}
+
+/// A downloaded book's time left, size and progress.
+private struct DownloadLine: View {
+    let manifest: WatchBookManifest
+    let pos: Double
+    let size: Int64
+    var playing: Bool? = nil
+    var dimmed = false
+
+    var body: some View {
+        let total = manifest.book.durationSec ?? manifest.tracks.reduce(0) { $0 + $1.durationSec }
+        let left = Format.left(pos, of: total)
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 4) {
+                if let playing {
+                    Image(systemName: playing ? "waveform" : "pause.fill").foregroundStyle(Color.accentColor)
+                        .contentTransition(.symbolEffect(.replace))
+                        .symbolEffect(.variableColor.iterative, isActive: playing && !dimmed)
+                }
+                Text([pos > 0 ? left : nil, Format.size(size)].compactMap { $0 }.joined(separator: " · "))
+                    .foregroundStyle(.secondary).lineLimit(1)
+            }
+            .font(.caption2)
+            if total > 0, pos > 0 { Bar(value: pos / total).padding(.top, 2) }
+        }
+    }
+}
+
+/// The same for the book that's loaded: from the player.
+private struct PlayingDownloadLine: View {
+    let manifest: WatchBookManifest
+    let size: Int64
+    let dimmed: Bool
+    @Environment(WatchPlayer.self) private var player
+
+    var body: some View {
+        DownloadLine(manifest: manifest, pos: player.position, size: size, playing: player.isPlaying, dimmed: dimmed)
     }
 }

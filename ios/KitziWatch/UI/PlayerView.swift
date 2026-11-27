@@ -7,19 +7,24 @@ import WatchKit
 struct PlayerView: View {
     @Environment(WatchPlayer.self) private var player
     @State private var error: String?
+    /// Play/Pause as tapped, until the player catches up (a resume can wait a
+    /// few seconds for the server: the button showed the old state meanwhile).
+    @State private var intended: Bool?
 
     var body: some View {
+        // (Nothing here reads the position: only the time and bar below follow it.)
         if let np = player.nowPlaying {
             PlayerFace(
-                coverId: np.book.id, title: np.book.title, chapter: player.streamError ?? player.chapterTitle,
-                position: player.position, total: np.totalSec, isPlaying: player.isPlaying,
-                speed: player.speed, sleepLabel: sleepLabel, busy: player.loading, waiting: player.loading || player.buffering || player.jumping,
+                coverId: np.book.id, title: np.book.title, isPlaying: intended ?? player.isPlaying,
+                busy: false, waiting: player.loading || player.buffering || player.jumping,
                 note: player.streamError == nil ? player.waitLabel : nil,
                 skipBack: 30, skipForward: 30,
                 back: { Haptic.play(.click); player.skip(-30) }, toggle: toggle,
-                forward: { Haptic.play(.click); player.skip(30) },
-                chapterStart: player.chapterBounds?.start, chapterEnd: player.chapterBounds?.end
-            )
+                forward: { Haptic.play(.click); player.skip(30) }
+            ) { showNote, note in
+                WatchFaceInfo(note: showNote ? note : nil)
+            }
+            .onChange(of: player.isPlaying) { _, _ in intended = nil }
             .toolbar {
                 ToolbarItemGroup(placement: .bottomBar) {
                     if np.chapters.count > 1 {
@@ -42,28 +47,51 @@ struct PlayerView: View {
         }
     }
 
+    private func toggle() {
+        if player.isPlaying { Haptic.play(.stop); intended = false; player.pause(); return }
+        Haptic.play(.start)
+        intended = true
+        Task {
+            if let why = await player.resume() { Haptic.play(.failure); error = why }
+            intended = nil
+        }
+    }
+}
+
+/// The watch player's chapter line, bar and times: the only part that follows
+/// the position (twice a second), so the rest of the face isn't redrawn with it.
+private struct WatchFaceInfo: View {
+    let note: String?
+    @Environment(WatchPlayer.self) private var player
+
+    var body: some View {
+        let np = player.nowPlaying
+        let bounds = player.chapterBounds
+        FaceInfo(chapter: player.streamError ?? player.chapterTitle, note: note,
+                 position: player.position, total: np?.totalSec ?? 0, speed: player.speed,
+                 sleepLabel: sleepLabel, chapterStart: bounds?.start, chapterEnd: bounds?.end)
+    }
+
     private var sleepLabel: String? {
         if player.sleepEndOfChapter { return "Chapter end" }
         if let at = player.sleepAt { return Format.clock(max(at.timeIntervalSinceNow, 0)) }
         return nil
     }
-
-    private func toggle() {
-        if player.isPlaying { Haptic.play(.stop); player.pause(); return }
-        Haptic.play(.start)
-        Task { if let why = await player.resume() { Haptic.play(.failure); error = why } }
-    }
 }
 
-/// A turning arc around a round button: loading or buffering.
+/// A turning arc around a round button: loading or buffering. Still (a quarter
+/// ring) in always-on and with Reduce Motion.
 struct RingSpinner: View {
     @State private var spin = false
+    @Environment(\.isLuminanceReduced) private var dimmed
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
+        let still = dimmed || reduceMotion
         Circle().trim(from: 0, to: 0.25)
             .stroke(.white, style: StrokeStyle(lineWidth: 3, lineCap: .round))
-            .rotationEffect(.degrees(spin ? 360 : 0))
-            .animation(.linear(duration: 1).repeatForever(autoreverses: false), value: spin)
+            .rotationEffect(.degrees(spin && !still ? 360 : 0))
+            .animation(still ? nil : .linear(duration: 1).repeatForever(autoreverses: false), value: spin && !still)
             .onAppear { spin = true }
             .accessibilityLabel("Loading")
     }
@@ -87,31 +115,20 @@ struct Bar: View {
     }
 }
 
-/// The face shared by the watch's player and the iPhone remote: the book over
-/// its cover's colours, where you are, and the three big controls.
-struct PlayerFace: View {
-    let coverId: String
-    let title: String
+/// Under the title: the chapter (or a note while it waits), the bar and the times.
+struct FaceInfo: View {
     let chapter: String?
+    /// Shown in place of the chapter while it waits ("Buffering…").
+    let note: String?
     let position: Double
     let total: Double
-    let isPlaying: Bool
     let speed: Double
     let sleepLabel: String?
-    let busy: Bool
-    /// Loading or buffering: a spinner around the play button.
-    var waiting = false
-    /// Shown in place of the chapter while it waits ("Buffering…").
-    var note: String? = nil
-    let skipBack: Int
-    let skipForward: Int
-    let back: () -> Void
-    let toggle: () -> Void
-    let forward: () -> Void
     /// The chapter the position is in: the bar and times show it (with the time
-    /// left in the book under the title); nil shows the whole book.
+    /// left in the book after its name); nil shows the whole book.
     var chapterStart: Double? = nil
     var chapterEnd: Double? = nil
+    @Environment(\.isLuminanceReduced) private var dimmed
 
     /// (elapsed, left, fraction) for the bar: the chapter's when known, else the book's.
     private var progress: (elapsed: Double, left: Double, fraction: Double) {
@@ -122,31 +139,71 @@ struct PlayerFace: View {
     }
     private var inChapter: Bool { chapterStart != nil && (chapterEnd ?? 0) > (chapterStart ?? 0) }
 
+    /// Always-on: minutes only (the seconds would be stale between its rare updates).
+    private func clock(_ s: Double) -> String { dimmed ? Format.hm(s) : Format.clock(s) }
+
     var body: some View {
+        let p = progress
         VStack(spacing: 4) {
-            VStack(spacing: 1) {
-                Text(title).font(.headline).lineLimit(1)
-                if let note {
-                    Text(note).font(.caption2).foregroundStyle(Color.accentColor).lineLimit(1)
-                } else if let chapter {
-                    // In a chapter, the book's time left goes with its name.
-                    Text(inChapter && total > 0 ? "\(chapter) · \(Format.hm(max(total - position, 0))) left" : chapter)
-                        .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
-                }
+            // One line either way, so the face doesn't shift when the note comes and goes.
+            ZStack {
+                let line = chapter.map { inChapter && total > 0 ? "\($0) · \(Format.hm(max(total - position, 0))) left" : $0 }
+                Text(line ?? " ").foregroundStyle(.secondary).opacity(note == nil ? 1 : 0)
+                if let note { Text(note).foregroundStyle(Color.accentColor).transition(.opacity) }
             }
+            .font(.caption2).lineLimit(1)
+            .animation(.easeInOut(duration: 0.2), value: note)
             VStack(spacing: 1) {
-                Bar(value: progress.fraction, color: .white)
+                Bar(value: p.fraction, color: .white)
                 HStack {
-                    Text(Format.clock(progress.elapsed))
+                    Text(clock(p.elapsed))
                     Spacer()
                     if abs(speed - 1) > 0.001 { Text(SpeedList.label(speed)).foregroundStyle(.primary) }
                     if let sleepLabel { Label(sleepLabel, systemImage: "moon.zzz.fill").labelStyle(.titleAndIcon).foregroundStyle(.primary) }
                     Spacer()
-                    Text("-" + Format.clock(progress.left))
+                    Text("-" + clock(p.left))
                 }
                 .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
             }
             .padding(.top, 2)
+        }
+    }
+}
+
+/// The face shared by the watch's player and the iPhone remote: the book over
+/// its cover's colours, where you are (`info`), and the three big controls.
+struct PlayerFace<Info: View>: View {
+    let coverId: String
+    let title: String
+    let isPlaying: Bool
+    let busy: Bool
+    /// Loading or buffering: a spinner around the play button.
+    var waiting = false
+    /// What it's waiting on ("Buffering…"), for `info`.
+    var note: String? = nil
+    let skipBack: Int
+    let skipForward: Int
+    let back: () -> Void
+    let toggle: () -> Void
+    let forward: () -> Void
+    /// Whose volume the Digital Crown turns: the watch's, or the iPhone's (remote).
+    var volume: WKInterfaceVolumeControl.Origin = .local
+    /// The chapter line, bar and times; given whether to show the note, and the note.
+    @ViewBuilder let info: (_ showNote: Bool, _ note: String?) -> Info
+    /// The wait shows only after a moment: a resume or a skip that's quick no
+    /// longer flashes "Opening…" and the spinner.
+    @State private var showWait = false
+
+    var body: some View {
+        VStack(spacing: 4) {
+            Text(title).font(.headline).lineLimit(1)
+                // The crown sets the volume here, as in the system's Now Playing.
+                .padding(.trailing, 22)
+                .overlay(alignment: .trailing) {
+                    VolumeControl(origin: volume).frame(width: 22, height: 22)
+                        .accessibilityLabel("Volume")
+                }
+            info(showWait, note)
             HStack(spacing: 14) {
                 Button(action: back) { Image(systemName: "gobackward.\(skipBack)").font(.title3).frame(width: 38, height: 38)
                     .glassEffect(.regular.interactive(), in: Circle()) }
@@ -155,9 +212,10 @@ struct PlayerFace: View {
                 Button(action: toggle) {
                     Image(systemName: isPlaying ? "pause.fill" : "play.fill").font(.title2)
                         .contentTransition(.symbolEffect(.replace))
+                        .animation(.snappy, value: isPlaying)
                         .frame(width: 50, height: 50)
                         .overlay {
-                            if waiting { RingSpinner().padding(2) }
+                            if showWait { RingSpinner().padding(2).transition(.opacity) }
                         }
                         .glassEffect(.regular.tint(.accentColor).interactive(), in: Circle())
                 }
@@ -174,6 +232,13 @@ struct PlayerFace: View {
         }
         .padding(.horizontal, 6)
         .coverBackground(coverId)
+        .task(id: waiting) {
+            if waiting {
+                try? await Task.sleep(for: .milliseconds(400))
+                guard !Task.isCancelled else { return }
+            }
+            withAnimation(.easeInOut(duration: 0.2)) { showWait = waiting }
+        }
     }
 }
 
@@ -185,8 +250,8 @@ private struct MorePage: View {
     var body: some View {
         List {
             if let np = player.nowPlaying, np.chapters.count > 1 {
-                Button { player.previousChapter() } label: { Label("Previous Chapter", systemImage: "backward.end.fill") }
-                Button { player.nextChapter() } label: { Label("Next Chapter", systemImage: "forward.end.fill") }
+                Button { Haptic.play(.click); player.previousChapter() } label: { Label("Previous Chapter", systemImage: "backward.end.fill") }
+                Button { Haptic.play(.click); player.nextChapter() } label: { Label("Next Chapter", systemImage: "forward.end.fill") }
             }
             NavigationLink { SpeedList(speed: player.speed) { player.setSpeed($0) } } label: {
                 LabeledContent { Text(SpeedList.label(player.speed)) } label: { Label("Speed", systemImage: "gauge.with.dots.needle.67percent") }
@@ -232,10 +297,11 @@ struct ChaptersList: View {
 
     var body: some View {
         if let np = player.nowPlaying {
-            let current = player.chapterIndex()
+            let current = player.currentChapter
             ScrollViewReader { proxy in
                 List(Array(np.chapters.enumerated()), id: \.offset) { i, c in
                     Button {
+                        Haptic.play(.click)
                         player.seek(to: c.startSec)
                         dismiss()
                     } label: {
@@ -305,5 +371,21 @@ struct SleepList: View {
             }
         }
         .navigationTitle("Sleep Timer")
+    }
+}
+
+/// The system's volume indicator, holding the Digital Crown: turning it sets the
+/// volume (the watch's own, or the iPhone's from the remote).
+struct VolumeControl: WKInterfaceObjectRepresentable {
+    let origin: WKInterfaceVolumeControl.Origin
+
+    func makeWKInterfaceObject(context: Context) -> WKInterfaceVolumeControl {
+        let v = WKInterfaceVolumeControl(origin: origin)
+        v.setTintColor(.white)
+        return v
+    }
+
+    func updateWKInterfaceObject(_ v: WKInterfaceVolumeControl, context: Context) {
+        v.focus()
     }
 }

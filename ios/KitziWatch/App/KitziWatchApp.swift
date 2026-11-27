@@ -26,11 +26,10 @@ struct KitziWatchApp: App {
         .onChange(of: phase) { _, p in
             WatchPlayer.shared.screenActive = p == .active
             if p == .background { WatchModel.shared.scheduleRefresh() }
-            guard p == .active, WatchModel.shared.signedIn else { return }
-            Task {
-                _ = await WatchModel.shared.flushPending()
-                await WatchModel.shared.refreshShelf()
-            }
+            guard p == .active else { return }
+            Store.set(Date().timeIntervalSince1970, "last_used")
+            guard WatchModel.shared.signedIn else { return }
+            Task { await WatchModel.shared.refreshIfStale() }
         }
     }
 }

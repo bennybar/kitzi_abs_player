@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import Observation
 import UIKit
 import WatchKit
@@ -57,6 +58,20 @@ final class WatchDownloads {
         }
         _ = session // reconnect to the background session's tasks
         Task { await reconcile() }
+        // The books' details read off the main thread now, not on first sight
+        // (Downloads read every one of them as it opened).
+        let ids = states.filter { $0.value == .done }.map(\.key)
+        Task {
+            let dir = Self.booksDir
+            let found = await Task.detached(priority: .utility) { () -> [String: Data] in
+                var out: [String: Data] = [:]
+                for id in ids { out[id] = try? Data(contentsOf: dir.appendingPathComponent("\(id)/book.json")) }
+                return out
+            }.value
+            for (id, d) in found where manifestCache[id] == nil && states[id] == .done {
+                manifestCache[id] = try? JSONDecoder().decode(WatchBookManifest.self, from: d)
+            }
+        }
     }
 
     /// After a relaunch: tracks that arrived while the app wasn't running count
@@ -139,10 +154,16 @@ final class WatchDownloads {
         return FileManager.default.fileExists(atPath: u.path) ? u : nil
     }
 
+    /// What the downloads take on disk: walked at most every 10 s (Downloads
+    /// asked on every redraw, twice a second while a book played).
     var totalBytes: Int64 {
+        if let t = totalCache, Date().timeIntervalSince(t.at) < 10 { return t.bytes }
         let files = FileManager.default.enumerator(at: Self.booksDir, includingPropertiesForKeys: [.fileSizeKey])?.allObjects as? [URL] ?? []
-        return files.reduce(0) { $0 + Int64((try? $1.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) }
+        let bytes = files.reduce(0) { $0 + Int64((try? $1.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) }
+        totalCache = (Date(), bytes)
+        return bytes
     }
+    @ObservationIgnored private var totalCache: (at: Date, bytes: Int64)?
 
     // MARK: from the server
 
@@ -325,7 +346,8 @@ final class WatchDownloads {
         clearCounters(id)
         manifestCache[id] = nil
         sizeCache[id] = nil
-        states[id] = .done
+        totalCache = nil
+        withAnimation(.snappy) { states[id] = .done }
         // Only when someone's looking (not in the background, or at night).
         if WKApplication.shared().applicationState == .active { Haptic.play(.success) }
     }
@@ -377,6 +399,7 @@ final class WatchDownloads {
         failedBooks[id] = nil
         manifestCache[id] = nil
         sizeCache[id] = nil
+        totalCache = nil
         clearCounters(id)
         try? FileManager.default.removeItem(at: Self.booksDir.appendingPathComponent(id))
         states[id] = State.none
