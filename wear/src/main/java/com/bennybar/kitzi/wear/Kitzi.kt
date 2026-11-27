@@ -52,6 +52,7 @@ class Kitzi private constructor(context: Context) {
             }
             shelf.value = merged
             store.shelf = merged
+            lastRefresh = android.os.SystemClock.elapsedRealtime()
             return true
         } finally {
             refreshing.value = false
@@ -66,13 +67,24 @@ class Kitzi private constructor(context: Context) {
     }
 
     /** The watch's own newer position for a book on the shelf (after listening here). */
-    fun updateShelfPosition(itemId: String, sec: Double) {
+    fun updateShelfPosition(itemId: String, sec: Double, persist: Boolean = true) {
         val now = api.nowMs()
         val updated = shelf.value.map { if (it.id == itemId) it.copy(currentTimeSec = sec, lastUpdate = now) else it }
             .sortedByDescending { it.lastUpdate }
         shelf.value = updated
-        store.shelf = updated
+        if (persist) store.shelf = updated
     }
+
+    /**
+     * Back in the app: the shelf again, unless it was fetched a few minutes ago, or
+     * the watch is playing (its own book is tracked here; the shelf can wait for the pause).
+     */
+    suspend fun refreshIfStale() {
+        flushPending()
+        if (android.os.SystemClock.elapsedRealtime() - lastRefresh < 5 * 60_000 || player.isPlaying.value) return
+        refreshShelf()
+    }
+    private var lastRefresh = -5 * 60_000L
 
     /**
      * Sends positions saved while offline. A newer position on the server (listened

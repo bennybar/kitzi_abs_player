@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.Business
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.FastForward
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Gradient
 import androidx.compose.material.icons.filled.GraphicEq
@@ -673,8 +674,12 @@ private fun factIcon(key: String): ImageVector = when (key) {
 fun PlayerMoreSheet(
     gradientEnabled: Boolean,
     chapterized: Boolean,
+    voiceBoost: Boolean,
+    skipSilence: Boolean,
     onPlayHistory: () -> Unit,
     onBookmarks: () -> Unit,
+    onVoiceBoost: (Boolean) -> Unit,
+    onSkipSilence: (Boolean) -> Unit,
     onToggleGradient: () -> Unit,
     onToggleChapterized: () -> Unit,
     onMarkFinished: () -> Unit,
@@ -686,6 +691,9 @@ fun PlayerMoreSheet(
             MoreRow(Icons.Default.CheckCircle, "Mark as finished", onMarkFinished)
             MoreRow(Icons.Default.Bookmarks, "Bookmarks", onBookmarks)
             MoreRow(Icons.Default.History, "Play history", onPlayHistory)
+            // For this book.
+            MoreSwitchRow(Icons.AutoMirrored.Filled.VolumeUp, "Voice Boost", voiceBoost, onVoiceBoost)
+            MoreSwitchRow(Icons.Default.FastForward, "Skip Silence", skipSilence, onSkipSilence)
             MoreRow(
                 Icons.Default.Gradient,
                 if (gradientEnabled) "Disable gradient background" else "Enable gradient background",
@@ -785,6 +793,18 @@ private fun MoreRow(icon: ImageVector, label: String, onClick: () -> Unit) {
     ) {
         Icon(icon, null, tint = MaterialTheme.colorScheme.primary)
         Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(start = 16.dp))
+    }
+}
+
+@Composable
+private fun MoreSwitchRow(icon: ImageVector, label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable { onChange(!checked) }.padding(horizontal = 20.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, null, tint = MaterialTheme.colorScheme.primary)
+        Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(start = 16.dp).weight(1f))
+        androidx.compose.material3.Switch(checked = checked, onCheckedChange = onChange)
     }
 }
 

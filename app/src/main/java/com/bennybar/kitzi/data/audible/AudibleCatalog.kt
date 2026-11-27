@@ -111,6 +111,19 @@ data class AudibleBook(
     }
 }
 
+/** A step of a series' ladder: a book of the library, or one on Audible that isn't here. Unnumbered last. */
+sealed interface SeriesRung {
+    val number: Double
+
+    data class Mine(val book: com.bennybar.kitzi.data.model.Book) : SeriesRung {
+        override val number: Double get() = book.seriesSequence ?: 9999.0
+    }
+
+    data class Missing(val book: AudibleBook, val sequence: Double?) : SeriesRung {
+        override val number: Double get() = sequence ?: 9999.0
+    }
+}
+
 data class AudibleReview(
     val id: String,
     val title: String?,
@@ -185,9 +198,21 @@ object AudibleCatalog {
         get(url("/products/$asin", "image_sizes" to "252,500", "response_groups" to GROUPS), ttlSec = 86400)
             ?.get("product").obj()?.let(AudibleBook::from)?.also { remember(listOf(it)) }
 
+    /** Many books by ASIN, 50 to a request, with just [groups], as Audible answers. A request that fails is skipped. */
+    suspend fun products(asins: List<String>, groups: String): List<JsonObject> =
+        asins.chunked(50).flatMap { chunk ->
+            runCatching { get(url("/products", "asins" to chunk.joinToString(","), "response_groups" to groups), ttlSec = 86400) }
+                .getOrNull()?.get("products").arr().orEmpty().mapNotNull { it.obj() }
+        }
+
     /** Books by an author or a narrator, bestsellers first. */
     suspend fun booksBy(author: String? = null, narrator: String? = null): List<AudibleBook> =
         mainLanguage(books(get(url("/products", "num_results" to "50", "products_sort_by" to "BestSellers",
+            "image_sizes" to "252,500", "response_groups" to LIST_GROUPS, "author" to author, "narrator" to narrator), ttlSec = 6 * 3600)))
+
+    /** An author's or a narrator's books, newest release first (pre-orders included). */
+    suspend fun newest(author: String? = null, narrator: String? = null): List<AudibleBook> =
+        mainLanguage(books(get(url("/products", "num_results" to "20", "products_sort_by" to "-ReleaseDate",
             "image_sizes" to "252,500", "response_groups" to LIST_GROUPS, "author" to author, "narrator" to narrator), ttlSec = 6 * 3600)))
 
     /**
@@ -339,6 +364,39 @@ object AudibleCatalog {
 
     /** The book's entry in a series ("3", "1-3"). */
     fun sequenceLabel(b: AudibleBook, series: String): String? = b.seriesRefs.firstOrNull { it.asin == series }?.sequence
+
+    /** Dated more than five years out: Audible's placeholder for "no date" (1 Jan 2200). */
+    fun farFuture(b: AudibleBook, today: LocalDate): Boolean = b.releaseDay?.isAfter(today.plusYears(5)) == true
+
+    /**
+     * The books of a series ([all], in series order, as [seriesBooks] gives them)
+     * that aren't in the library: not [inLibrary] (ASINs matched to it), and not by
+     * their number either ([owned]: another edition of a book that's here, a box set
+     * of books that are). One edition per number: the most-rated (they come first).
+     */
+    fun missingFromSeries(
+        all: List<AudibleBook>,
+        seriesAsin: String,
+        inLibrary: Set<String>,
+        owned: Set<Double>,
+        today: LocalDate,
+    ): List<SeriesRung.Missing> {
+        val seen = HashSet<Double>()
+        return all.mapNotNull { b ->
+            if (b.asin in inLibrary || farFuture(b, today)) return@mapNotNull null
+            val ns = numbers(sequenceLabel(b, seriesAsin))
+            when {
+                ns.isEmpty() -> SeriesRung.Missing(b, null)
+                ns.all { it in owned } -> null
+                ns.size == 1 && !seen.add(ns[0]) -> null
+                else -> SeriesRung.Missing(b, ns[0])
+            }
+        }
+    }
+
+    /** Every book of a series in order: yours, and Audible's that aren't here (yours first at the same number). */
+    fun ladder(mine: List<com.bennybar.kitzi.data.model.Book>, missing: List<SeriesRung.Missing>): List<SeriesRung> =
+        (mine.map { SeriesRung.Mine(it) } + missing).sortedBy { it.number }
 
     /** Null when Audible answered 404; throws when it couldn't be reached. */
     private suspend fun get(url: String, ttlSec: Long = 0): JsonObject? = withContext(Dispatchers.IO) {

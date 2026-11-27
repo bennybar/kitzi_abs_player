@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.AutoFixHigh
+import androidx.compose.material.icons.automirrored.filled.LibraryBooks
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Business
 import androidx.compose.material.icons.filled.CalendarMonth
@@ -36,6 +37,8 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.SportsScore
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AlertDialog
@@ -64,6 +67,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -96,6 +100,13 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
     var notFound by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
     var showAudibleChapters by remember { mutableStateOf(false) }
+    /** Audible's series for the book, to confirm before saving them to the server. */
+    var seriesChange by remember { mutableStateOf<com.bennybar.kitzi.data.audible.SeriesSync.Change?>(null) }
+    var showFinishBy by remember { mutableStateOf(false) }
+    /** The speed this book plays at: its own, else the last one chosen. */
+    var bookSpeed by remember(itemId) {
+        androidx.compose.runtime.mutableDoubleStateOf(Services.prefs.getDouble("playback_speed:$itemId", Services.prefs.getDouble("playback_speed", 1.0)))
+    }
     /** Achew is busy with another book (its title): replace it, or open Achew as it is. */
     var achewReplacing by remember { mutableStateOf<String?>(null) }
     val nav = com.bennybar.kitzi.ui.audible.LocalKitziNav.current
@@ -220,6 +231,22 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
                             leadingIcon = { Icon(Icons.AutoMirrored.Filled.List, null) },
                             onClick = { showMenu = false; showAudibleChapters = true },
                         )
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("Sync Series from Audible") },
+                            leadingIcon = { Icon(Icons.AutoMirrored.Filled.LibraryBooks, null) },
+                            onClick = {
+                                showMenu = false
+                                scope.launch {
+                                    com.bennybar.kitzi.ui.common.Snackbars.show("Looking up the series on Audible…")
+                                    val c = com.bennybar.kitzi.data.audible.SeriesSync.check(b)
+                                    if (c != null) seriesChange = c
+                                    else com.bennybar.kitzi.ui.common.Snackbars.show(
+                                        if (com.bennybar.kitzi.data.audible.AudibleRatingService.asin(b) == null) "Audible doesn't have this book"
+                                        else "The series already match Audible (or Audible lists none)"
+                                    )
+                                }
+                            },
+                        )
                         if (com.bennybar.kitzi.ui.UiPrefsState.achewEnabled.value && com.bennybar.kitzi.data.services.Achew.configured) {
                             androidx.compose.material3.DropdownMenuItem(
                                 text = { Text("Fix Chapters in Achew") },
@@ -277,12 +304,15 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
                                     modifier = Modifier.padding(top = 4.dp),
                                 )
                             }
-                            b.narrators.firstOrNull()?.let {
+                            b.narrators.firstOrNull()?.let { n ->
                                 Text(
-                                    "Narrated by $it",
+                                    androidx.compose.ui.text.buildAnnotatedString {
+                                        append("Narrated by ")
+                                        withStyle(androidx.compose.ui.text.SpanStyle(color = MaterialTheme.colorScheme.primary)) { append(n) }
+                                    },
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(top = 6.dp),
+                                    modifier = Modifier.padding(top = 6.dp).clickable { nav.openNarrator(n) },
                                 )
                             }
                             com.bennybar.kitzi.ui.common.AudibleStars(
@@ -381,6 +411,52 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
                     ) {
                         Icon(Icons.Default.Download, null)
                         Text(if (d?.status == DownloadStatus.FAILED) "Retry" else "Download", modifier = Modifier.padding(start = 6.dp))
+                    }
+                }
+            }
+
+            // "At your pace": when a started book will be done at the recent daily listening.
+            val today = java.time.LocalDate.now()
+            val pace = remember { com.bennybar.kitzi.data.ListeningPace.dailyPaceSec(Services.books.cachedPerDaySec().orEmpty(), today) }
+            val durationSec = progress?.durationSec?.takeIf { it > 0 } ?: ((b.durationMs ?: 0L) / 1000.0)
+            val left = progress?.let {
+                com.bennybar.kitzi.data.ListeningPace.timeLeftSec(it.progress, it.isFinished, it.currentTimeSec, durationSec, bookSpeed)
+            }
+            left?.let { com.bennybar.kitzi.data.ListeningPace.finishDate(it, pace, today) }?.let { done ->
+                val locale = androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
+                val days = java.time.temporal.ChronoUnit.DAYS.between(today, done)
+                val day = when {
+                    days == 0L -> "today"
+                    days == 1L -> "tomorrow"
+                    days < 7 -> done.dayOfWeek.getDisplayName(java.time.format.TextStyle.FULL, locale)
+                    else -> done.format(java.time.format.DateTimeFormatter.ofPattern("MMM d", locale))
+                }
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { showFinishBy = true }.padding(vertical = 6.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Default.SportsScore, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                    Text(
+                        "At your pace, done $day",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(start = 6.dp),
+                    )
+                }
+                if (showFinishBy) {
+                    FinishBySheet(
+                        pace = pace,
+                        leftSec = left,
+                        done = done,
+                        contentLeftSec = (durationSec - progress!!.currentTimeSec).coerceAtLeast(0.0),
+                        speed = bookSpeed,
+                        onDismiss = { showFinishBy = false },
+                    ) { speed ->
+                        if (Services.playback.nowPlaying.value?.itemId == itemId) Services.playback.setSpeed(speed)
+                        else Services.prefs.putDouble("playback_speed:$itemId", speed)
+                        bookSpeed = speed
+                        showFinishBy = false
                     }
                 }
             }
@@ -551,6 +627,32 @@ fun BookDetailScreen(itemId: String, onPlay: () -> Unit, onBack: () -> Unit) {
             // The loaded book picks up its new chapters.
             if (Services.playback.nowPlaying.value?.itemId == itemId) scope.launch { Services.playback.refreshChapters() }
         }
+    }
+
+    seriesChange?.let { c ->
+        AlertDialog(
+            onDismissRequest = { seriesChange = null },
+            title = { Text("Save Audible's series?") },
+            text = {
+                Text(if (c.before.isEmpty()) "Adds ${c.summary} to this book on your server." else "Changes this book's series on your server: ${c.summary}.")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    seriesChange = null
+                    scope.launch {
+                        val why = com.bennybar.kitzi.data.audible.SeriesSync.apply(b)
+                        if (why != null) {
+                            com.bennybar.kitzi.ui.common.Snackbars.show(why)
+                        } else {
+                            com.bennybar.kitzi.ui.common.Snackbars.show("Series saved to your server")
+                            runCatching { Services.books.refresh() }
+                            book = Services.books.getBook(itemId) ?: book
+                        }
+                    }
+                }) { Text("Save to Server") }
+            },
+            dismissButton = { TextButton(onClick = { seriesChange = null }) { Text("Cancel") } },
+        )
     }
 
     if (showInfo) {
@@ -814,6 +916,96 @@ private fun DescriptionCard(text: String) {
             }
         }
     }
+}
+
+/**
+ * "At your pace": the recent daily listening, what's left and when it'll be done,
+ * and the speed it needs to be done by a chosen day ([onSetSpeed] plays at it).
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FinishBySheet(
+    pace: Double,
+    leftSec: Double,
+    done: java.time.LocalDate,
+    contentLeftSec: Double,
+    speed: Double,
+    onDismiss: () -> Unit,
+    onSetSpeed: (Double) -> Unit,
+) {
+    val today = java.time.LocalDate.now()
+    val dateFormat = java.time.format.DateTimeFormatter.ofLocalizedDate(java.time.format.FormatStyle.MEDIUM)
+    var target by remember { mutableStateOf(today.plusDays(7)) }
+    var picking by remember { mutableStateOf(false) }
+    val label = { s: Double -> com.bennybar.kitzi.ui.player.speedLabel(s.toFloat()) }
+    androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("At Your Pace", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            PaceRow("Your pace", "${formatHm(pace.toLong())} a day")
+            PaceRow("Left at ${label(speed)}", formatHm(leftSec.toLong()))
+            PaceRow("Done", done.format(dateFormat))
+            Text(
+                "Your average over the last 14 days, days off included.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+            Text("Finish By", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { picking = true }.padding(vertical = 6.dp)) {
+                Text("Day", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                Text(target.format(dateFormat), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.primary)
+            }
+            com.bennybar.kitzi.data.ListeningPace.speedToFinish(contentLeftSec, pace, today, target)?.let { needed ->
+                val v = com.bennybar.kitzi.data.ListeningPace.playableSpeed(needed)
+                val max = com.bennybar.kitzi.playback.PlaybackController.MAX_SPEED
+                when {
+                    v > max -> PaceNote("Even at ${label(max)} that needs more than your usual listening.")
+                    v <= speed + 0.001 -> PaceNote("You're on track at ${label(speed)}.")
+                    else -> Button(onClick = { onSetSpeed(v) }, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Default.Speed, null)
+                        Text("Listen at ${label(v)}", modifier = Modifier.padding(start = 8.dp))
+                    }
+                }
+            }
+        }
+    }
+    if (picking) {
+        // The picker counts in UTC midnights.
+        val utc = java.time.ZoneOffset.UTC
+        val todayMs = today.atStartOfDay(utc).toInstant().toEpochMilli()
+        val state = androidx.compose.material3.rememberDatePickerState(
+            initialSelectedDateMillis = target.atStartOfDay(utc).toInstant().toEpochMilli(),
+            selectableDates = object : androidx.compose.material3.SelectableDates {
+                override fun isSelectableDate(utcTimeMillis: Long) = utcTimeMillis >= todayMs
+            },
+        )
+        androidx.compose.material3.DatePickerDialog(
+            onDismissRequest = { picking = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    state.selectedDateMillis?.let { target = java.time.Instant.ofEpochMilli(it).atZone(utc).toLocalDate() }
+                    picking = false
+                }) { Text("OK") }
+            },
+            dismissButton = { TextButton(onClick = { picking = false }) { Text("Cancel") } },
+        ) { androidx.compose.material3.DatePicker(state) }
+    }
+}
+
+@Composable
+private fun PaceRow(label: String, value: String) {
+    Row(Modifier.fillMaxWidth()) {
+        Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+        Text(value, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun PaceNote(text: String) {
+    Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 /** Kept for callers that still format a raw duration. */

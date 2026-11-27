@@ -257,6 +257,13 @@ interface AudibleDao {
     @Query("SELECT itemId FROM audible")
     suspend fun knownIds(): List<String>
 
+    @Query("SELECT * FROM audible")
+    suspend fun all(): List<AudibleEntity>
+
+    /** The books whose Audible rating is known. */
+    @Query("SELECT * FROM audible WHERE stars > 0")
+    suspend fun rated(): List<AudibleEntity>
+
     @Upsert
     suspend fun upsert(rows: List<AudibleEntity>)
 }

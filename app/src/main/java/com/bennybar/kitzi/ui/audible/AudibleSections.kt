@@ -3,6 +3,7 @@ package com.bennybar.kitzi.ui.audible
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -15,6 +16,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.LibraryBooks
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
@@ -44,6 +46,7 @@ import com.bennybar.kitzi.data.audible.AudibleCatalog
 import com.bennybar.kitzi.data.audible.AudibleRatingService
 import com.bennybar.kitzi.data.audible.AudibleReview
 import com.bennybar.kitzi.data.audible.LibraryMatcher
+import com.bennybar.kitzi.data.audible.SeriesRung
 import com.bennybar.kitzi.data.model.Book
 import com.bennybar.kitzi.playback.Chapter
 import com.bennybar.kitzi.ui.common.Snackbars
@@ -150,7 +153,8 @@ private fun Modifier.layoutWide() = layout { measurable, constraints ->
 
 /**
  * On a library book's page: the next book of its series on Audible. Opens the
- * library's copy when it's here, else its Audible page.
+ * library's copy when it's here, else its Audible page (with Send to Shelfarr under
+ * the card). A book the server has no series (or number) for uses Audible's.
  */
 @Composable
 fun NextInSeriesCard(book: Book) {
@@ -158,25 +162,40 @@ fun NextInSeriesCard(book: Book) {
     var next by remember(book.id) { mutableStateOf<AudibleBook?>(null) }
     var number by remember(book.id) { mutableStateOf<String?>(null) }
     var mine by remember(book.id) { mutableStateOf<Book?>(null) }
+    /** The series' name: the server's, else Audible's. */
+    var seriesName by remember(book.id) { mutableStateOf(book.series) }
     var looked by remember(book.id) { mutableStateOf(false) }
-    val name = book.series
-    val current = book.seriesSequence
-    if (name == null || current == null) return
     LaunchedEffect(book.id) {
         try {
-            val inSeries = Services.books.booksInSeries(name)
-            val found = runCatching { AudibleCatalog.seriesFor(name, listOf(book) + inSeries.filter { it.id != book.id }) }.getOrNull() ?: return@LaunchedEffect
+            val name = book.series
+            val sequence = book.seriesSequence
+            val found: Pair<AudibleBook.SeriesRef, String?>
+            val current: Double
+            if (name != null && sequence != null) {
+                val inSeries = Services.books.booksInSeries(name)
+                found = runCatching { AudibleCatalog.seriesFor(name, listOf(book) + inSeries.filter { it.id != book.id }) }.getOrNull() ?: return@LaunchedEffect
+                current = sequence
+            } else {
+                // No series (or no number) on the server: Audible's own, from the book's Audible match.
+                val asin = AudibleRatingService.asin(book) ?: return@LaunchedEffect
+                val product = runCatching { AudibleCatalog.product(asin) }.getOrNull() ?: return@LaunchedEffect
+                val ref = product.seriesRefs.firstOrNull() ?: return@LaunchedEffect
+                current = AudibleCatalog.numbers(ref.sequence).firstOrNull() ?: return@LaunchedEffect
+                found = ref to product.language
+                seriesName = ref.title
+            }
             val all = runCatching { AudibleCatalog.seriesBooks(found.first, found.second) }.getOrNull() ?: return@LaunchedEffect
-            // The first single book numbered after this one (not a box set).
+            // The first single book numbered after this one (not a box set, not a placeholder date).
+            val today = LocalDate.now()
             val candidate = all.firstOrNull { b ->
                 val ns = AudibleCatalog.numbers(AudibleCatalog.sequenceLabel(b, found.first.asin))
-                ns.size == 1 && ns[0] > current
+                !AudibleCatalog.farFuture(b, today) && ns.size == 1 && ns[0] > current
             } ?: return@LaunchedEffect
             val n = AudibleCatalog.sequenceLabel(candidate, found.first.asin)
             number = n
             // The library's copy: the same book, or another edition with that number.
             mine = LibraryMatcher.match(candidate)
-                ?: n?.toDoubleOrNull()?.let { num -> inSeries.firstOrNull { it.seriesSequence == num } }
+                ?: n?.toDoubleOrNull()?.let { num -> seriesName?.let { Services.books.booksInSeries(it) }?.firstOrNull { it.seriesSequence == num } }
             next = candidate
         } finally {
             looked = true
@@ -184,73 +203,96 @@ fun NextInSeriesCard(book: Book) {
     }
     val n = next
     when {
-        !looked -> LoadingBlock(92.dp)
+        // A placeholder only for a book the server knows is in a series (most aren't
+        // in one: a placeholder would come and go on every page).
+        !looked -> if (book.series != null) LoadingBlock(92.dp)
         n != null -> Surface(
             color = MaterialTheme.colorScheme.surfaceContainer,
             shape = RoundedCornerShape(20.dp),
-            modifier = Modifier.fillMaxWidth().clickable { mine?.let { nav.openBook(it.id) } ?: nav.openAudible(n) },
+            modifier = Modifier.fillMaxWidth(),
         ) {
-            Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                AudibleCover(n.thumbUrl, 64.dp)
-                Column(Modifier.weight(1f).padding(start = 14.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("Next in $name", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(n.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    val status = if (mine != null) "In your library" else coming(n) ?: "Not in your library"
-                    Text(listOfNotNull(number?.let { "Book $it" }, status).joinToString(" · "), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    Modifier.fillMaxWidth().clickable { mine?.let { nav.openBook(it.id) } ?: nav.openAudible(n) },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    AudibleCover(n.thumbUrl, 64.dp)
+                    Column(Modifier.weight(1f).padding(start = 14.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("Next in ${seriesName ?: "Series"}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(n.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        val status = if (mine != null) "In your library" else coming(n) ?: "Not in your library"
+                        Text(listOfNotNull(number?.let { "Book $it" }, status).joinToString(" · "), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+                    }
+                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                // Not here: straight to Shelfarr from the card.
+                if (mine == null) com.bennybar.kitzi.ui.services.SendToShelfarr(n.title, n.authors.firstOrNull(), compact = true)
             }
         }
     }
 }
 
 /**
- * Under a series' books: its books on Audible that aren't in the library (or are
- * coming soon), each opening its Audible page.
+ * A series' books as a ladder: every book in order, yours and the ones Audible has
+ * that aren't here (or are coming), each of those opening its Audible page, with
+ * Send to Shelfarr on the ones already out. Your books alone until Audible answers.
  */
 @Composable
-fun MissingSeriesBooks(series: String, books: List<Book>) {
+fun SeriesLadder(
+    series: String,
+    books: List<Book>,
+    progress: Map<String, com.bennybar.kitzi.data.db.MediaProgressEntity>,
+    onOpenBook: (String) -> Unit,
+) {
     val nav = LocalKitziNav.current
-    var missing by remember(series) { mutableStateOf<List<Pair<AudibleBook, String?>>?>(null) }
+    var missing by remember(series) { mutableStateOf<List<SeriesRung.Missing>?>(null) }
     var done by remember(series) { mutableStateOf(false) }
+    val today = remember { LocalDate.now() }
     LaunchedEffect(series, books.size) {
-        if (books.isEmpty()) return@LaunchedEffect
+        if (books.isEmpty() || missing != null) return@LaunchedEffect
         try {
             val found = runCatching { AudibleCatalog.seriesFor(series, books) }.getOrNull() ?: return@LaunchedEffect
             val all = runCatching { AudibleCatalog.seriesBooks(found.first, found.second) }.getOrNull() ?: return@LaunchedEffect
-            val owned = books.mapNotNull { it.seriesSequence }.toSet()
-            val inLibrary = LibraryMatcher.matchAll(all)
-            val seen = HashSet<Double>()
-            // Not already here: by ASIN or title, or by its number in the series
-            // (another edition of a book that's here; a box set of books that are).
-            missing = all.filter { b ->
-                if (b.asin in inLibrary) return@filter false
-                val ns = AudibleCatalog.numbers(AudibleCatalog.sequenceLabel(b, found.first.asin))
-                if (ns.isEmpty()) return@filter true
-                if (ns.all { it in owned }) return@filter false
-                // One edition per number: the most-rated (they come first).
-                if (ns.size == 1) seen.add(ns[0]) else true
-            }.map { b ->
-                val seq = AudibleCatalog.sequenceLabel(b, found.first.asin)?.let { if (it.contains("-")) "Books $it" else "Book $it" }
-                b to listOfNotNull(seq, coming(b)).joinToString(" · ").ifEmpty { null }
-            }
+            missing = AudibleCatalog.missingFromSeries(
+                all, found.first.asin, LibraryMatcher.matchAll(all).keys, books.mapNotNull { it.seriesSequence }.toSet(), today,
+            )
         } finally {
             done = true
         }
     }
     val m = missing
-    if (done && m == null) return
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text("Not in your library", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
-        when {
-            m == null -> { LoadingRow(); LoadingRow() }
-            m.isEmpty() -> Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Verified, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
-                Text("You have every book in this series", style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 6.dp))
-            }
-            else -> m.forEach { (b, note) ->
-                AudibleRow(b, false, note = note) { nav.openAudible(b) }
+    if (m != null) {
+        val out = m.count { it.book.releaseDay?.isAfter(today) != true }
+        val coming = m.size - out
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                if (m.isEmpty()) Icons.Default.Verified else Icons.AutoMirrored.Filled.LibraryBooks, null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp),
+            )
+            Text(
+                if (m.isEmpty()) "You have every book in this series"
+                else listOfNotNull("You have ${books.size} of ${books.size + out}", "$coming coming".takeIf { coming > 0 }).joinToString(" · "),
+                style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 6.dp),
+            )
+        }
+    } else if (!done) {
+        LoadingRow()
+    }
+    AudibleCatalog.ladder(books, m.orEmpty()).forEach { rung ->
+        when (rung) {
+            is SeriesRung.Mine -> com.bennybar.kitzi.ui.library.BookCard(rung.book, progress = progress[rung.book.id]) { onOpenBook(rung.book.id) }
+            is SeriesRung.Missing -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                val b = rung.book
+                // "Book 4 · Not in your library", or "Books 1-3 · Coming 12 Mar 2027".
+                val seq = b.seriesRefs.firstNotNullOfOrNull { it.sequence }?.let { if (it.contains("-")) "Books $it" else "Book $it" }
+                AudibleRow(b, false, note = listOfNotNull(seq, coming(b) ?: "Not in your library").joinToString(" · ")) { nav.openAudible(b) }
+                // Out already: straight to Shelfarr from here.
+                if (b.releaseDay?.isAfter(today) != true) {
+                    Box(Modifier.padding(horizontal = 16.dp)) {
+                        com.bennybar.kitzi.ui.services.SendToShelfarr(b.title, b.authors.firstOrNull(), compact = true)
+                    }
+                }
             }
         }
     }

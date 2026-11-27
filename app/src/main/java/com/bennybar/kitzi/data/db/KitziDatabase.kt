@@ -19,7 +19,8 @@ import java.io.File
     // v3: series names are stored with the "#N" suffix stripped, so the cache must
     // be rebuilt from the server for existing rows to be re-parsed.
     // v4: books.asin, and the audible table (each book's Audible match).
-    version = 4,
+    // v5: books.hasCover and books.chapterCount (Library Health).
+    version = 5,
     exportSchema = false,
 )
 abstract class KitziDatabase : RoomDatabase() {
@@ -38,6 +39,13 @@ abstract class KitziDatabase : RoomDatabase() {
                         "`stars` REAL NOT NULL, `count` INTEGER NOT NULL, `at` INTEGER NOT NULL, `language` TEXT, " +
                         "PRIMARY KEY(`itemId`))"
                 )
+            }
+        }
+
+        val MIGRATION_4_5 = object : androidx.room.migration.Migration(4, 5) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE books ADD COLUMN hasCover INTEGER")
+                db.execSQL("ALTER TABLE books ADD COLUMN chapterCount INTEGER")
             }
         }
 
@@ -70,7 +78,7 @@ abstract class KitziDatabase : RoomDatabase() {
                     // throws on open — caught in testing — instead of silently wiping
                     // every download.
                     .fallbackToDestructiveMigrationFrom(dropAllTables = true, 1, 2)
-                    .addMigrations(MIGRATION_3_4)
+                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5)
                     .build()
                 open = Open(libraryId, db)
                 return db

@@ -24,4 +24,20 @@ class PositionRulesTest {
         assertEquals(1 to 20.0, WearPlayer.locate(120.0, tracks))
         assertEquals(1 to 60.0, WearPlayer.locate(160.0, tracks)) // past the end: the last track
     }
+
+    // A long jump in an HLS stream opens a new stream; a skip, or any jump in a file, seeks in place.
+    @Test fun longJumpOnlyInHlsOver45s() {
+        assertEquals(true, WearPlayer.isLongJump("https://abs/hls/s1/output.m3u8", 100.0, 3_700.0))
+        assertEquals(true, WearPlayer.isLongJump("https://abs/hls/s1/output.m3u8", 3_700.0, 100.0))
+        assertEquals(false, WearPlayer.isLongJump("https://abs/hls/s1/output.m3u8", 100.0, 130.0))
+        assertEquals(false, WearPlayer.isLongJump("https://abs/hls/s1/output.m3u8", 100.0, 145.0))
+        assertEquals(false, WearPlayer.isLongJump("file:///books/x/track0.m4b", 100.0, 3_700.0))
+    }
+
+    // The server prepares the stream at ITS position: it's told the start first unless it already has it.
+    @Test fun serverToldStartWhenElsewhereOrSilent() {
+        assertEquals(false, WearPlayer.serverNeedsStart(1_000.0, 1_004.0))
+        assertEquals(true, WearPlayer.serverNeedsStart(1_000.0, 1_010.0))
+        assertEquals(true, WearPlayer.serverNeedsStart(null, 1_000.0))
+    }
 }

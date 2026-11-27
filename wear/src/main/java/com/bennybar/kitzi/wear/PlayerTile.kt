@@ -1,6 +1,9 @@
 package com.bennybar.kitzi.wear
 
+import android.content.ComponentName
 import android.content.Context
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
 import androidx.wear.protolayout.ActionBuilders
 import androidx.wear.protolayout.ColorBuilders.argb
 import androidx.wear.protolayout.DimensionBuilders.dp
@@ -18,7 +21,10 @@ import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.guava.await
 import kotlinx.coroutines.guava.future
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * The Tile: the book (loaded, else the latest on the shelf), how far you are, and
@@ -31,15 +37,30 @@ class PlayerTile : TileService() {
         val k = Kitzi.init(this@PlayerTile)
         if (requestParams.currentState.lastClickableId == TOGGLE && k.store.signedIn) {
             val p = k.player
+            // Playing needs the media service (a foreground service, so it isn't cut
+            // off once the tile is gone): connecting a controller starts it, as the app does.
+            val controller = if (p.wantsPlay.value) null else runCatching {
+                MediaController.Builder(this@PlayerTile, SessionToken(this@PlayerTile, ComponentName(this@PlayerTile, PlaybackService::class.java)))
+                    .buildAsync().await()
+            }.getOrNull()
             when {
-                p.nowPlaying.value != null -> p.togglePlay()
+                p.nowPlaying.value != null -> {
+                    p.togglePlay()
+                    // A resume goes on in the background (it can wait on the server for
+                    // a while): the controller holds the service until it's playing.
+                    if (controller != null) withTimeoutOrNull(20_000) { p.wantsPlay.first { it } }
+                }
                 else -> k.shelf.value.firstOrNull()?.let { p.play(it) }
             }
             delay(800) // let the player settle, so the tile shows the new state
+            controller?.release()
         }
+        val playing = k.player.wantsPlay.value
         TileBuilders.Tile.Builder()
             .setResourcesVersion(RESOURCES)
-            .setFreshnessIntervalMillis(15 * 60_000L)
+            // Paused, nothing on it changes by itself (play, pause and stop ask for a
+            // redraw): only a playing book's progress needs the system to come back.
+            .setFreshnessIntervalMillis(if (playing) 15 * 60_000L else 0L)
             .setTileTimeline(TimelineBuilders.Timeline.fromLayoutElement(layout(k)))
             .build()
     }
@@ -56,6 +77,7 @@ class PlayerTile : TileService() {
         val np = k.player.nowPlaying.value
         val book = np?.book ?: k.shelf.value.firstOrNull()
         val playing = k.player.wantsPlay.value
+        drawn = shown(k)
         val open = ModifiersBuilders.Clickable.Builder()
             .setId("open")
             .setOnClick(
@@ -71,9 +93,7 @@ class PlayerTile : TileService() {
         if (book == null) {
             column.addContent(text(if (k.store.signedIn) "Nothing in progress" else "Sign in on the watch", 14f, WHITE))
         } else {
-            val pos = if (np != null) k.player.positionSec() ?: book.currentTimeSec else book.currentTimeSec
-            val total = np?.totalSec ?: book.durationSec
-            val pct = if (total > 0) "${(pos / total * 100).toInt()}%" else ""
+            val pct = drawn?.second?.let { "$it%" } ?: ""
             column.addContent(
                 LayoutElementBuilders.Box.Builder()
                     .setModifiers(ModifiersBuilders.Modifiers.Builder().setClickable(open).build())
@@ -126,8 +146,20 @@ class PlayerTile : TileService() {
         private const val DARK = 0xFF1B1B1F.toInt()
         private const val ACCENT = 0xFFB4C5FF.toInt()
 
-        /** Asks the system to redraw the tile (playback started, paused or stopped). */
+        /** What the tile last drew: the book, how far through (%), and play/pause. */
+        @Volatile private var drawn: Triple<String?, Int?, Boolean>? = null
+
+        private fun shown(k: Kitzi): Triple<String?, Int?, Boolean> {
+            val np = k.player.nowPlaying.value
+            val book = np?.book ?: k.shelf.value.firstOrNull()
+            val pos = if (np != null) k.player.positionSec() ?: 0.0 else book?.currentTimeSec ?: 0.0
+            val total = np?.totalSec ?: book?.durationSec ?: 0.0
+            return Triple(book?.id, if (total > 0) (pos / total * 100).toInt() else null, k.player.wantsPlay.value)
+        }
+
+        /** Asks the system to redraw the tile (playback started, paused or stopped), when it would show something else. */
         fun refresh(context: Context) {
+            if (shown(Kitzi.init(context)) == drawn) return
             runCatching { getUpdater(context).requestUpdate(PlayerTile::class.java) }
         }
     }

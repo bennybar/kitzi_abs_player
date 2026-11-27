@@ -61,7 +61,7 @@ sealed interface AudibleListRoute {
     data class Series(val asin: String, val title: String) : AudibleListRoute
 }
 
-/** Where the Audible screens go: a library book, an Audible book, a genre, a list, Find Book. */
+/** Where the screens go: a library book, an Audible book, a genre, a list, Find Book, a narrator. */
 class KitziNav(
     val openBook: (String) -> Unit,
     val openAudible: (AudibleBook) -> Unit,
@@ -69,6 +69,7 @@ class KitziNav(
     val openList: (AudibleListRoute) -> Unit,
     val findBook: (String) -> Unit,
     val openAchew: () -> Unit = {},
+    val openNarrator: (String) -> Unit = {},
 )
 
 val LocalKitziNav = compositionLocalOf { KitziNav({}, {}, {}, {}, {}) }

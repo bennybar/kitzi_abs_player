@@ -61,10 +61,7 @@ private fun KitziApp(k: Kitzi) {
             LoginScreen(k)
             return@AppScaffold
         }
-        LaunchedEffect(Unit) {
-            k.flushPending()
-            k.refreshShelf()
-        }
+        LaunchedEffect(Unit) { k.refreshIfStale() }
         SwipeDismissableNavHost(navController = nav, startDestination = "home") {
             composable("home") {
                 HomeScreen(

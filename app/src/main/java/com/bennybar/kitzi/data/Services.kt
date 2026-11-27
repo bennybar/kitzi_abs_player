@@ -46,6 +46,9 @@ object Services {
 
     private lateinit var appContext: Context
 
+    /** Opens What Next? (the action of "Finished … · What next?"); set by the app's UI. */
+    var openWhatNext: () -> Unit = {}
+
     fun init(context: Context) {
         if (initialized) return
         synchronized(this) {
@@ -125,7 +128,12 @@ object Services {
                     runCatching { downloads.delete(finishedId) }
                 }
             }
-            queue.peekNext(finishedId)?.let { next ->
+            val next = queue.peekNext(finishedId)
+            if (next == null) {
+                // Nothing queued: an offer of what to listen to next.
+                val title = playback.nowPlaying.value?.takeIf { it.itemId == finishedId }?.title
+                com.bennybar.kitzi.ui.common.Snackbars.show(title?.let { "Finished $it" } ?: "Finished", "What next?") { openWhatNext() }
+            } else {
                 CoroutineScope(Dispatchers.Main).launch {
                     // Only drop it from the queue once it actually started. A book the
                     // server refused used to be removed anyway, so playback stopped

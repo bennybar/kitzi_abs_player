@@ -253,6 +253,43 @@ class BooksRepository(
         dao.booksByAuthor(author).map { it.toBook(session.baseUrl.orEmpty()) }
     }
 
+    /** Narrators with how many books each reads, most first. */
+    suspend fun narrators(): List<Pair<String, Int>> = withContext(Dispatchers.IO) {
+        allAudiobooks().flatMap { it.narrators.distinct() }.groupingBy { it }.eachCount().toList()
+            .sortedWith(compareByDescending<Pair<String, Int>> { it.second }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.first })
+    }
+
+    suspend fun booksByNarrator(name: String): List<Book> =
+        allAudiobooks().filter { name in it.narrators }.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.title })
+
+    /** Every book's progress, by id. */
+    suspend fun allProgress(): Map<String, MediaProgressEntity> = withContext(Dispatchers.IO) {
+        dao.allProgress().associateBy { it.itemId }
+    }
+
+    /** Audible's stars for the books whose rating is known (looked up as books are seen, or by the "Highest rated" sort). */
+    suspend fun audibleRatings(): Map<String, com.bennybar.kitzi.data.db.AudibleEntity> = withContext(Dispatchers.IO) {
+        runCatching { KitziDatabase.forLibrary(context, libraryId).audibleDao().rated() }.getOrDefault(emptyList()).associateBy { it.itemId }
+    }
+
+    /**
+     * The books each smart shelf shows, in its order, by shelf id. [downloaded]: the
+     * ids on this device. The library is read once for all of them.
+     */
+    suspend fun smartShelfBooks(shelves: List<SmartShelf>, downloaded: Set<String>): Map<String, List<Book>> {
+        if (shelves.isEmpty()) return emptyMap()
+        val books = allAudiobooks()
+        val progress = allProgress()
+        val ratings = audibleRatings().mapValues { it.value.stars }
+        val now = System.currentTimeMillis()
+        return shelves.associate { it.id to it.books(books, progress, ratings, downloaded, now) }
+    }
+
+    /** A page of the user's listening sessions (`/api/me/listening-sessions`), or null when it can't be had. */
+    suspend fun listeningSessions(page: Int): JsonObject? = withContext(Dispatchers.IO) {
+        runCatching { api.listeningSessions(page) }.getOrNull()
+    }
+
     suspend fun authors(): List<Pair<String, Int>> = withContext(Dispatchers.IO) {
         dao.authorsWithCounts().map { it.name to it.bookCount }
     }
@@ -708,6 +745,70 @@ class BooksRepository(
         val code = runCatching { api.send("/api/items/$itemId/media", "PATCH", body).first }.getOrNull()
         code in 200..299
     }
+
+    /**
+     * The server's own "Quick Match" from Audible: fills what the book is missing
+     * (cover, description, narrators, series…) and keeps what it already has.
+     * Null, or why it couldn't.
+     */
+    suspend fun quickMatch(itemId: String, title: String, author: String?, asin: String?): String? = withContext(Dispatchers.IO) {
+        val body = kotlinx.serialization.json.buildJsonObject {
+            put("provider", kotlinx.serialization.json.JsonPrimitive("audible"))
+            put("title", kotlinx.serialization.json.JsonPrimitive(title))
+            put("overrideCover", kotlinx.serialization.json.JsonPrimitive(false))
+            put("overrideDetails", kotlinx.serialization.json.JsonPrimitive(false))
+            author?.let { put("author", kotlinx.serialization.json.JsonPrimitive(it)) }
+            asin?.let { put("asin", kotlinx.serialization.json.JsonPrimitive(it)) }
+        }.toString()
+        val (code, answer) = runCatching { api.send("/api/items/$itemId/match", "POST", body) }.getOrNull()
+            ?: return@withContext "Couldn't reach the server."
+        when (code) {
+            in 200..299 -> {
+                // Answered but found nothing to use.
+                val o = runCatching { kotlinx.serialization.json.Json.parseToJsonElement(answer.orEmpty()) }.getOrNull().obj()
+                if (o?.get("updated").bool() == false) o?.get("warning").str() else null
+            }
+            403 -> "Your account isn't allowed to edit books on this server."
+            else -> "The server couldn't match it ($code)."
+        }
+    }
+
+    /** The book's series on the server now, with their ids (null: it couldn't be asked). */
+    suspend fun serverSeries(itemId: String): List<Pair<String?, com.bennybar.kitzi.data.audible.SeriesSync.Entry>>? =
+        withContext(Dispatchers.IO) {
+            val meta = runCatching { api.item(itemId) }.getOrNull()?.get("media").obj()?.get("metadata").obj() ?: return@withContext null
+            meta["series"].arr().orEmpty().mapNotNull { el ->
+                val s = el.obj() ?: return@mapNotNull null
+                s["name"].str()?.let { s["id"].str() to com.bennybar.kitzi.data.audible.SeriesSync.Entry(it, s["sequence"].str()) }
+            }
+        }
+
+    /**
+     * Replaces the book's series on the server: (id, series) each, the id only for
+     * one the server already has under that name. Null, or why it couldn't.
+     */
+    suspend fun saveSeries(itemId: String, series: List<Pair<String?, com.bennybar.kitzi.data.audible.SeriesSync.Entry>>): String? =
+        withContext(Dispatchers.IO) {
+            val arr = kotlinx.serialization.json.buildJsonArray {
+                series.forEach { (id, e) ->
+                    add(kotlinx.serialization.json.buildJsonObject {
+                        put("name", kotlinx.serialization.json.JsonPrimitive(e.name))
+                        put("sequence", kotlinx.serialization.json.JsonPrimitive(e.sequence.orEmpty()))
+                        id?.let { put("id", kotlinx.serialization.json.JsonPrimitive(it)) }
+                    })
+                }
+            }
+            val body = kotlinx.serialization.json.buildJsonObject {
+                put("metadata", kotlinx.serialization.json.buildJsonObject { put("series", arr) })
+            }.toString()
+            val code = runCatching { api.send("/api/items/$itemId/media", "PATCH", body).first }.getOrNull()
+                ?: return@withContext "Couldn't reach the server."
+            when (code) {
+                in 200..299 -> null
+                403 -> "Your account isn't allowed to edit books on this server."
+                else -> "The server didn't take it ($code)."
+            }
+        }
 
     /** The book's chapter list from the server item metadata (empty offline / none). */
     suspend fun chapters(itemId: String): List<com.bennybar.kitzi.playback.Chapter> = withContext(Dispatchers.IO) {
@@ -1281,7 +1382,7 @@ class BooksRepository(
          * the next launch then sweeps the whole library once. 1: audiobooks with an
          * attached ebook are kept (issue #52).
          */
-        const val MAPPER_VERSION = 2 // 2: books carry the server's ASIN
+        const val MAPPER_VERSION = 3 // 2: books carry the server's ASIN; 3: whether they have a cover, chapter count
         const val KEY_MAPPER_VERSION = "kitzi_book_mapper_version"
         /** The automatic (launch) full sweep runs at most this often. */
         const val AUTO_SWEEP_MAX_AGE_MS = 12 * 3600 * 1000L

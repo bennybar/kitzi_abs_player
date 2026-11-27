@@ -120,6 +120,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         Services.init(this)
+        // A tapped notification; not again when the activity is re-created.
+        if (savedInstanceState == null) tappedNotification.value = intent?.takeIf { it.hasExtra(com.bennybar.kitzi.data.Notifier.EXTRA_OPEN) }
         // Anonymous daily-active-user ping, when the app is actually opened: not when
         // Android re-creates the activity, and not on background process starts.
         if (savedInstanceState == null) com.bennybar.kitzi.data.Analytics.logAppOpen()
@@ -165,8 +167,15 @@ class MainActivity : ComponentActivity() {
      * background, and a binding made only at creation was never renewed — back in
      * the app, play did nothing until the app was force-closed.
      */
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        if (intent.hasExtra(com.bennybar.kitzi.data.Notifier.EXTRA_OPEN)) tappedNotification.value = intent
+    }
+
     override fun onStart() {
         super.onStart()
+        // Back in the app: new releases and Shelfarr arrivals, if they're due.
+        com.bennybar.kitzi.data.Radar.checkSoon()
         val existing = controllerFuture
         val connected = existing != null && (!existing.isDone ||
             runCatching { existing.get().isConnected }.getOrDefault(false))
@@ -182,6 +191,9 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
     }
 }
+
+/** The intent of a tapped notification, until App() opens what it's about. */
+private val tappedNotification = mutableStateOf<android.content.Intent?>(null)
 
 /**
  * How much bottom space the floating bottom bar (mini-player + nav) occupies over
@@ -215,6 +227,14 @@ private sealed interface Overlay {
     data object ShelfarrSettings : Overlay
     data object AchewSettings : Overlay
     data object AchewWeb : Overlay
+    data object Narrators : Overlay
+    data class Narrator(val name: String) : Overlay
+    data object WhatNext : Overlay
+    data object YearInReview : Overlay
+    data object SmartShelves : Overlay
+    data object LibraryHealth : Overlay
+    data class SmartShelf(val id: String) : Overlay
+    data object Releases : Overlay
 }
 
 private fun Overlay.key(): String = when (this) {
@@ -229,6 +249,14 @@ private fun Overlay.key(): String = when (this) {
     Overlay.ShelfarrSettings -> "shelfarr-settings"
     Overlay.AchewSettings -> "achew-settings"
     Overlay.AchewWeb -> "achew"
+    Overlay.Narrators -> "narrators"
+    is Overlay.Narrator -> "narrator:$name"
+    Overlay.WhatNext -> "whatnext"
+    Overlay.YearInReview -> "yearreview"
+    Overlay.SmartShelves -> "smartshelves"
+    Overlay.LibraryHealth -> "libraryhealth"
+    is Overlay.SmartShelf -> "smartshelf:$id"
+    Overlay.Releases -> "releases"
     is Overlay.AudibleList -> when (val r = route) {
         is com.bennybar.kitzi.ui.audible.AudibleListRoute.Author -> "alist:author|${r.name}"
         is com.bennybar.kitzi.ui.audible.AudibleListRoute.Narrator -> "alist:narrator|${r.name}"
@@ -246,6 +274,14 @@ private fun overlayFrom(s: String): Overlay? = when {
     s == "shelfarr-settings" -> Overlay.ShelfarrSettings
     s == "achew-settings" -> Overlay.AchewSettings
     s == "achew" -> Overlay.AchewWeb
+    s == "narrators" -> Overlay.Narrators
+    s.startsWith("narrator:") -> Overlay.Narrator(s.removePrefix("narrator:"))
+    s == "whatnext" -> Overlay.WhatNext
+    s == "yearreview" -> Overlay.YearInReview
+    s == "smartshelves" -> Overlay.SmartShelves
+    s == "libraryhealth" -> Overlay.LibraryHealth
+    s == "releases" -> Overlay.Releases
+    s.startsWith("smartshelf:") -> Overlay.SmartShelf(s.removePrefix("smartshelf:"))
     s.startsWith("audible:") -> Overlay.Audible(s.removePrefix("audible:"))
     s.startsWith("genre:") -> s.removePrefix("genre:").split("|", limit = 2).takeIf { it.size == 2 }?.let { Overlay.Genre(it[0], it[1]) }
     s.startsWith("alist:") -> s.removePrefix("alist:").split("|", limit = 3).let { p ->
@@ -555,7 +591,30 @@ private fun App() {
                 openList = { pushOverlay(Overlay.AudibleList(it)) },
                 findBook = { pushOverlay(Overlay.FindBook(it)) },
                 openAchew = { pushOverlay(Overlay.AchewWeb) },
+                openNarrator = { pushOverlay(Overlay.Narrator(it)) },
             )
+        }
+        // The "Finished … · What next?" snackbar's action, from wherever the book ended.
+        LaunchedEffect(Unit) { Services.openWhatNext = { pushOverlay(Overlay.WhatNext) } }
+        // A tapped notification: a find's Audible page, the New Releases list, or a
+        // Shelfarr arrival's book in the library.
+        val tapped by tappedNotification
+        LaunchedEffect(tapped) {
+            val i = tapped ?: return@LaunchedEffect
+            tappedNotification.value = null
+            playerCard = false
+            when (i.getStringExtra(com.bennybar.kitzi.data.Notifier.EXTRA_OPEN)) {
+                "audible" -> i.getStringExtra(com.bennybar.kitzi.data.Notifier.EXTRA_ASIN)?.let { pushOverlay(Overlay.Audible(it)) }
+                "releases" -> pushOverlay(Overlay.Releases)
+                "book" -> {
+                    val title = i.getStringExtra(com.bennybar.kitzi.data.Notifier.EXTRA_TITLE) ?: return@LaunchedEffect
+                    val book = com.bennybar.kitzi.data.services.Shelfarr.matching(
+                        Services.books.allAudiobooks(), title, i.getStringExtra(com.bennybar.kitzi.data.Notifier.EXTRA_AUTHOR),
+                    )
+                    if (book != null) pushOverlay(Overlay.BookDetail(book.id))
+                    else com.bennybar.kitzi.ui.common.Snackbars.show("$title hasn't reached the library yet. Pull to refresh in a moment.")
+                }
+            }
         }
         Box(Modifier.fillMaxSize()) {
             CompositionLocalProvider(
@@ -581,7 +640,7 @@ private fun App() {
 
                             Overlay.Series -> SeriesScreen(onOpenBook = openBook, onBack = popOverlay)
 
-                            Overlay.Stats -> StatsScreen(onBack = popOverlay)
+                            Overlay.Stats -> StatsScreen(onBack = popOverlay, onOpenYearInReview = { pushOverlay(Overlay.YearInReview) })
 
                             Overlay.Profile -> com.bennybar.kitzi.ui.profile.ProfileScreen(
                                 onBack = popOverlay,
@@ -598,6 +657,18 @@ private fun App() {
                             Overlay.ShelfarrSettings -> com.bennybar.kitzi.ui.services.ShelfarrSettingsScreen(onBack = popOverlay)
                             Overlay.AchewSettings -> com.bennybar.kitzi.ui.services.AchewSettingsScreen(onBack = popOverlay)
                             Overlay.AchewWeb -> com.bennybar.kitzi.ui.services.AchewWebScreen(onBack = popOverlay)
+                            Overlay.Narrators -> com.bennybar.kitzi.ui.browse.NarratorsScreen(onBack = popOverlay)
+                            is Overlay.Narrator -> com.bennybar.kitzi.ui.browse.NarratorScreen(ov.name, onBack = popOverlay)
+                            Overlay.WhatNext -> com.bennybar.kitzi.ui.library.WhatNextScreen(onBack = popOverlay)
+                            Overlay.YearInReview -> com.bennybar.kitzi.ui.stats.YearInReviewScreen(onBack = popOverlay)
+                            Overlay.LibraryHealth -> com.bennybar.kitzi.ui.settings.LibraryHealthScreen(onBack = popOverlay)
+                            Overlay.SmartShelves -> com.bennybar.kitzi.ui.settings.SmartShelvesScreen(
+                                onBack = popOverlay, onEdit = { pushOverlay(Overlay.SmartShelf(it)) },
+                            )
+                            is Overlay.SmartShelf -> com.bennybar.kitzi.ui.settings.SmartShelfEditorScreen(ov.id, onBack = popOverlay)
+                            Overlay.Releases -> com.bennybar.kitzi.ui.browse.ReleasesScreen(
+                                onBack = popOverlay, onOpen = { pushOverlay(Overlay.Audible(it)) },
+                            )
 
                             null -> when (tb) {
                                 Tab.BOOKS -> LibraryScreen(
@@ -605,6 +676,9 @@ private fun App() {
                                     onOpenSeries = { pushOverlay(Overlay.Series) },
                                     onOpenStats = { pushOverlay(Overlay.Stats) },
                                     onOpenProfile = { pushOverlay(Overlay.Profile) },
+                                    onOpenNarrators = { pushOverlay(Overlay.Narrators) },
+                                    onOpenWhatNext = { pushOverlay(Overlay.WhatNext) },
+                                    onOpenReleases = { pushOverlay(Overlay.Releases) },
                                 )
                                 Tab.SERIES -> SeriesScreen(onOpenBook = openBook, onBack = { tab = Tab.BOOKS })
                                 Tab.AUTHORS -> AuthorsScreen(onOpenBook = openBook)
@@ -618,6 +692,10 @@ private fun App() {
                                     onOpenStats = { pushOverlay(Overlay.Stats) },
                                     onOpenShelfarr = { pushOverlay(Overlay.ShelfarrSettings) },
                                     onOpenAchew = { pushOverlay(Overlay.AchewSettings) },
+                                    onOpenYearInReview = { pushOverlay(Overlay.YearInReview) },
+                                    onOpenSmartShelves = { pushOverlay(Overlay.SmartShelves) },
+                                    onOpenLibraryHealth = { pushOverlay(Overlay.LibraryHealth) },
+                                    onOpenReleases = { pushOverlay(Overlay.Releases) },
                                 )
                             }
                         }

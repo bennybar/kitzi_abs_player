@@ -16,7 +16,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material3.SegmentedButton
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.BatteryStd
@@ -28,6 +30,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FormatSize
+import androidx.compose.material.icons.filled.HealthAndSafety
 import androidx.compose.material.icons.filled.Gradient
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.LibraryBooks
@@ -42,6 +45,7 @@ import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Inbox
+import androidx.compose.material.icons.filled.NewReleases
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -70,6 +74,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.bennybar.kitzi.data.Library
+import com.bennybar.kitzi.data.Radar
+import com.bennybar.kitzi.data.sync.RadarWorker
 import com.bennybar.kitzi.data.Services
 import com.bennybar.kitzi.ui.UiPrefsState
 import com.bennybar.kitzi.ui.common.KitziSearchField
@@ -88,6 +94,10 @@ fun SettingsScreen(
     onOpenStats: () -> Unit = {},
     onOpenShelfarr: () -> Unit = {},
     onOpenAchew: () -> Unit = {},
+    onOpenYearInReview: () -> Unit = {},
+    onOpenSmartShelves: () -> Unit = {},
+    onOpenLibraryHealth: () -> Unit = {},
+    onOpenReleases: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -122,10 +132,51 @@ fun SettingsScreen(
         )
         KitziSearchField(search, { search = it }, "Search settings", Modifier.padding(bottom = 12.dp))
 
+        // ---------- Notifications ----------
+        if (matches("notifications", "new releases", "radar", "shelfarr", "ready", "authors", "narrators")) {
+            Section("Notifications")
+            val askPermission = androidx.activity.compose.rememberLauncherForActivityResult(
+                androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
+            ) {}
+            // Android 13+ asks before an app may notify.
+            fun askToNotify() {
+                if (android.os.Build.VERSION.SDK_INT >= 33 &&
+                    context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+                ) askPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            }
+            var radarOn by remember { mutableStateOf(prefs.getBoolean(Radar.KEY_ON, false)) }
+            ToggleRow(Icons.Default.NewReleases, "New releases",
+                "New and coming books from your authors, the series you listen to, and narrators you follow", radarOn) {
+                radarOn = it
+                prefs.putBoolean(Radar.KEY_ON, it)
+                RadarWorker.schedule(context)
+                if (it) { askToNotify(); Radar.checkSoon(force = true) }
+            }
+            if (radarOn) ActionRow(Icons.Default.NewReleases, "New releases", "", onClick = onOpenReleases)
+            if (com.bennybar.kitzi.data.services.Shelfarr.configured) {
+                var shelfarrOn by remember { mutableStateOf(prefs.getBoolean(Radar.KEY_SHELFARR, false)) }
+                ToggleRow(Icons.Default.Inbox, "Shelfarr requests ready", "When a book you requested arrives in your library", shelfarrOn) {
+                    shelfarrOn = it
+                    prefs.putBoolean(Radar.KEY_SHELFARR, it)
+                    RadarWorker.schedule(context)
+                    if (it) { askToNotify(); Radar.checkSoon() }
+                }
+            }
+            Text(
+                "Checked a few times a day in the background (Android decides exactly when), and when you open Kitzi.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+            )
+            HorizontalDivider()
+        }
+
         // ---------- Library ----------
-        if (matches("library", "active library", "cleanup", "resync", "deleted")) {
+        if (matches("library", "active library", "cleanup", "resync", "deleted", "year", "review", "health")) {
             Section("Library")
             ActionRow(Icons.Default.BarChart, "Listening stats", "Streaks, top books and daily listening", onClick = onOpenStats)
+            ActionRow(Icons.Default.AutoAwesome, "Year in review", "", onClick = onOpenYearInReview)
+            ActionRow(Icons.Default.HealthAndSafety, "Library health", "", onClick = onOpenLibraryHealth)
             if (libraries.size > 1) {
                 DropdownRow(
                     icon = Icons.Default.LibraryBooks,
@@ -187,13 +238,19 @@ fun SettingsScreen(
         }
 
         // ---------- Appearance ----------
-        if (matches("appearance", "theme", "dark", "series", "author", "player", "font", "letter", "audible", "rating", "shelves", "home", "play button", "shape", "expressive", "similar", "enjoyed", "reviews", "missing", "because", "finished", "next in series")) {
+        if (matches("appearance", "theme", "dark", "series", "author", "player", "font", "letter", "audible", "rating", "shelves", "home", "play button", "shape", "expressive", "similar", "enjoyed", "reviews", "missing", "because", "finished", "next in series", "smart")) {
             Section("Appearance")
             TogglePref("ui_show_series_tab", false, "Show Series tab", "Enable the Series view")
             TogglePref(
                 "ui_server_home_shelves", false,
                 "Server home shelves",
                 "Show the shelves your server suggests (Discover, Listen Again, …) on the home screen instead of Kitzi's own",
+            )
+            val smartShelves by UiPrefsState.smartShelves
+            ActionRow(
+                Icons.Default.FilterList, "Smart Shelves", "Saved filters shown as rows on the home screen",
+                trailing = { Text(if (smartShelves.isEmpty()) "None" else "${smartShelves.size}") },
+                onClick = onOpenSmartShelves,
             )
             TogglePref("ui_author_view_enabled", true, "Authors tab", "Show a dedicated Authors tab in the main navigation")
             TogglePref("ui_full_player_as_tab", true, "Full player as tab", "Show the full player as a bottom navigation tab instead of a popup card")
@@ -586,6 +643,7 @@ fun HeadersDialog(onDismiss: () -> Unit) {
 @Composable
 private fun BackupDialog(onDismiss: () -> Unit) {
     val prefs = Services.prefs
+    val context = LocalContext.current
     var json by remember { mutableStateOf("") }
     var restored by remember { mutableStateOf(false) }
     AlertDialog(
@@ -603,6 +661,8 @@ private fun BackupDialog(onDismiss: () -> Unit) {
                             if (restored) {
                                 ThemeState.load(prefs)
                                 com.bennybar.kitzi.ui.UiPrefsState.load(prefs)
+                                // Restored new-release / Shelfarr notifications start (or stop) checking.
+                                RadarWorker.schedule(context)
                             }
                         },
                         enabled = json.isNotBlank(), modifier = Modifier.weight(1f),

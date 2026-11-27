@@ -112,6 +112,15 @@ class Store(context: Context) {
             ?.let { runCatching { json.decodeFromString(BOOKS, it) }.getOrNull() }.orEmpty()
         set(v) = prefs.edit { putString("shelf", json.encodeToString(BOOKS, v)) }
 
+    /**
+     * The streaming session open on the server, until it's closed. An HLS stream
+     * keeps hundreds of MB there: one the watch couldn't close (no signal, the app
+     * ended) is closed the next time it plays.
+     */
+    var openStream: String?
+        get() = prefs.getString("open_stream", null)
+        set(v) = prefs.edit { putString("open_stream", v) }
+
     var lastBookId: String?
         get() = prefs.getString("last_book", null)
         set(v) = prefs.edit { putString("last_book", v) }

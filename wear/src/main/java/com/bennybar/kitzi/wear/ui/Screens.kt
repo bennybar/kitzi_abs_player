@@ -7,6 +7,8 @@ import android.media.AudioManager
 import android.view.inputmethod.EditorInfo
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
@@ -44,6 +46,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.StrokeCap
@@ -56,6 +59,9 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
 import androidx.wear.compose.material3.Button
@@ -425,6 +431,8 @@ fun PlayerScreen(k: Kitzi, onMore: () -> Unit = {}) {
     val playing by k.player.wantsPlay.collectAsState()
     val buffering by k.player.buffering.collectAsState()
     val loading by k.player.loading.collectAsState()
+    val jumping by k.player.jumping.collectAsState()
+    val recoveries by k.player.recoveries.collectAsState()
     val view = LocalView.current
     val status by k.player.status.collectAsState()
     val book = np ?: run {
@@ -432,18 +440,46 @@ fun PlayerScreen(k: Kitzi, onMore: () -> Unit = {}) {
         return
     }
     val scope = rememberCoroutineScope()
+    // Read only by the rings and the times (PlayerTime): the rest of the face isn't
+    // redrawn with every tick.
     var position by remember { mutableDoubleStateOf(0.0) }
     var chapter by remember { mutableStateOf<String?>(null) }
     var bounds by remember { mutableStateOf<Triple<Int, Double, Double>?>(null) }
     var syncing by remember { mutableStateOf(false) }
-    LaunchedEffect(book.book.id) {
-        while (true) {
-            position = k.player.positionSec() ?: 0.0
-            chapter = k.player.chapterTitle()
-            bounds = k.player.chapterBounds()
-            delay(1000)
+    /** Play as tapped, until the player catches up (a resume can wait a few seconds for the server). */
+    var intended by remember { mutableStateOf<Boolean?>(null) }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    // Once a second while playing and on screen; paused, once (nothing moves).
+    LaunchedEffect(book, playing) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            do {
+                position = k.player.positionSec() ?: 0.0
+                chapter = k.player.chapterTitle()
+                bounds = k.player.chapterBounds()
+                delay(1000)
+            } while (playing)
         }
     }
+    val skip = { delta: Double ->
+        haptic(view)
+        k.player.skip(delta)
+        position = k.player.positionSec() ?: position
+        bounds = k.player.chapterBounds()
+        chapter = k.player.chapterTitle()
+    }
+    // What it's waiting on, shown in place of the chapter (with a ring around Play)
+    // only after a moment: a quick resume or skip doesn't flash it.
+    val note = when {
+        loading || jumping -> "Opening…"
+        buffering -> if (recoveries > 0) "Reconnecting…" else "Buffering…"
+        else -> null
+    }
+    var showWait by remember { mutableStateOf(false) }
+    LaunchedEffect(note != null) {
+        if (note != null) delay(400)
+        showWait = note != null
+    }
+    val waitAlpha by animateFloatAsState(if (showWait) 1f else 0f, tween(200), label = "wait")
 
     // The crown / bezel changes the volume, as in every Wear OS media app.
     val context = LocalContext.current
@@ -474,21 +510,24 @@ fun PlayerScreen(k: Kitzi, onMore: () -> Unit = {}) {
         // The book's progress around the edge of the screen.
         // The book's progress around the edge, drawn directly: the stock indicator
         // stayed empty for a paused book.
-        val fraction = if (total > 0) (position / total).toFloat().coerceIn(0f, 1f) else 0f
+        // Read while drawing: a tick redraws the rings, nothing else.
+        val fraction = { if (total > 0) (position / total).toFloat().coerceIn(0f, 1f) else 0f }
         val track = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f)
         val fill = MaterialTheme.colorScheme.primary
         // Inside it, a thinner ring for the chapter.
-        val chapterFraction = bounds?.let { (_, start, end) -> ((position - start) / (end - start).coerceAtLeast(0.001)).toFloat().coerceIn(0f, 1f) }
+        val chapterFraction = { bounds?.let { (_, start, end) -> ((position - start) / (end - start).coerceAtLeast(0.001)).toFloat().coerceIn(0f, 1f) } }
         val chapterFill = MaterialTheme.colorScheme.tertiary
         Canvas(Modifier.fillMaxSize().padding(4.dp)) {
             val stroke = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round)
             drawArc(track, 0f, 360f, useCenter = false, style = stroke)
+            val fraction = fraction()
             if (fraction > 0f) drawArc(fill, -90f, 360f * fraction, useCenter = false, style = stroke)
         }
-        if (chapterFraction != null) {
+        if (bounds != null) {
             Canvas(Modifier.fillMaxSize().padding(11.dp)) {
                 val thin = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
                 drawArc(track, 0f, 360f, useCenter = false, style = thin)
+                val chapterFraction = chapterFraction() ?: 0f
                 if (chapterFraction > 0f) drawArc(chapterFill, -90f, 360f * chapterFraction, useCenter = false, style = thin)
             }
         }
@@ -498,28 +537,39 @@ fun PlayerScreen(k: Kitzi, onMore: () -> Unit = {}) {
             Text(book.book.title, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.titleSmall, textAlign = TextAlign.Center,
                 modifier = Modifier.padding(horizontal = 26.dp))
-            chapter?.let {
-                Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            // One line either way, so the face doesn't shift when the note comes and goes.
+            Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 18.dp)) {
+                Text(chapter ?: " ", maxLines = 1, overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(horizontal = 18.dp))
+                    modifier = Modifier.alpha(1f - waitAlpha))
+                Text(note ?: "", maxLines = 1, style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary, modifier = Modifier.alpha(waitAlpha))
             }
             Spacer(Modifier.height(6.dp))
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                IconButton(onClick = { haptic(view); k.player.skip(-30.0) }) { Icon(Icons.Default.Replay30, "Back 30 seconds") }
-                FilledIconButton(onClick = { haptic(view); k.player.togglePlay() }, modifier = Modifier.size(56.dp)) {
-                    // Waiting on the network: a spinner, and Pause still works.
-                    if (buffering || loading) CircularProgressIndicator(Modifier.size(30.dp))
-                    else Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, if (playing) "Pause" else "Play",
-                        modifier = Modifier.size(32.dp))
+                IconButton(onClick = { skip(-30.0) }) { Icon(Icons.Default.Replay30, "Back 30 seconds") }
+                Box(contentAlignment = Alignment.Center) {
+                    val shown = intended ?: playing
+                    FilledIconButton(
+                        onClick = {
+                            haptic(view)
+                            if (playing) k.player.pause()
+                            else {
+                                intended = true
+                                scope.launch { k.player.resumeLoaded(); intended = null }
+                            }
+                        },
+                        modifier = Modifier.size(56.dp),
+                    ) {
+                        Icon(if (shown) Icons.Default.Pause else Icons.Default.PlayArrow, if (shown) "Pause" else "Play",
+                            modifier = Modifier.size(32.dp))
+                    }
+                    // Waiting on the network: a ring around it, and Pause still works.
+                    if (waitAlpha > 0f) CircularProgressIndicator(Modifier.size(56.dp).alpha(waitAlpha))
                 }
-                IconButton(onClick = { haptic(view); k.player.skip(30.0) }) { Icon(Icons.Default.Forward30, "Forward 30 seconds") }
+                IconButton(onClick = { skip(30.0) }) { Icon(Icons.Default.Forward30, "Forward 30 seconds") }
             }
-            // Within the chapter when there are chapters (the outer ring has the book).
-            val b = bounds
-            Text(
-                if (b != null) "${clock(position - b.second)} / ${clock(b.third - b.second)}" else "${clock(position)} / ${clock(total)}",
-                style = MaterialTheme.typography.bodySmall,
-            )
+            PlayerTime({ position }, bounds, total)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 IconButton(onClick = {
                     audio.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_SAME, AudioManager.FLAG_SHOW_UI)
@@ -547,6 +597,19 @@ fun PlayerScreen(k: Kitzi, onMore: () -> Unit = {}) {
             )
         }
     }
+}
+
+/**
+ * The player's times, within the chapter when there are chapters (the outer ring
+ * has the book): the only text that follows the position, so only it recomposes.
+ */
+@Composable
+private fun PlayerTime(position: () -> Double, bounds: Triple<Int, Double, Double>?, total: Double) {
+    val p = position()
+    Text(
+        if (bounds != null) "${clock(p - bounds.second)} / ${clock(bounds.third - bounds.second)}" else "${clock(p)} / ${clock(total)}",
+        style = MaterialTheme.typography.bodySmall,
+    )
 }
 
 // ---- settings --------------------------------------------------------------------

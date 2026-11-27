@@ -237,14 +237,15 @@ fun SeriesScreen(onOpenBook: (String) -> Unit, onBack: () -> Unit) {
                                     if (booksFor != group.name) {
                                         com.bennybar.kitzi.ui.common.KitziLoading(Modifier.size(32.dp).align(Alignment.CenterHorizontally))
                                     }
-                                    books.takeIf { booksFor == group.name }.orEmpty().forEach { book ->
-                                        BookCard(book, progress = progressById[book.id]) { onOpenBook(book.id) }
-                                    }
-                                    // The series' books on Audible that aren't here.
+                                    // The whole series in order: yours and the ones that aren't here.
                                     if (tab == SeriesTab.SERIES && booksFor == group.name && books.isNotEmpty() &&
                                         com.bennybar.kitzi.ui.UiPrefsState.seriesMissing.value
                                     ) {
-                                        com.bennybar.kitzi.ui.audible.MissingSeriesBooks(group.name, books)
+                                        com.bennybar.kitzi.ui.audible.SeriesLadder(group.name, books, progressById, onOpenBook)
+                                    } else {
+                                        books.takeIf { booksFor == group.name }.orEmpty().forEach { book ->
+                                            BookCard(book, progress = progressById[book.id]) { onOpenBook(book.id) }
+                                        }
                                     }
                                 }
                             }

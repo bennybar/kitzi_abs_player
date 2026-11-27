@@ -2,6 +2,7 @@ package com.bennybar.kitzi.ui.settings
 
 import com.bennybar.kitzi.data.legacy.FlutterPrefs
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
@@ -10,6 +11,7 @@ import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
 
 /**
  * Export/import of the user's preferences as JSON.
@@ -50,6 +52,8 @@ object SettingsBackup {
         "pause_cancels_sleep_timer",
         "sync_progress_before_play",
         "detailed_play_history_enabled",
+        "notify_new_releases",
+        "notify_shelfarr_ready",
     )
 
     private val intKeys = listOf(
@@ -72,6 +76,12 @@ object SettingsBackup {
         "ui_progress_primary",
         "ui_player_cover_size",
         "downloads_base_subfolder",
+        // A JSON list, kept as text (as on iOS), so it travels like any string.
+        "ui_smart_shelves",
+    )
+
+    private val stringSetKeys = listOf(
+        "radar_narrators",
     )
 
     fun export(prefs: FlutterPrefs): String = json.encodeToString(
@@ -81,6 +91,7 @@ object SettingsBackup {
             intKeys.forEach { if (prefs.contains(it)) put(it, prefs.getInt(it, 0)) }
             doubleKeys.forEach { if (prefs.contains(it)) put(it, prefs.getDouble(it, 0.0)) }
             stringKeys.forEach { prefs.getString(it)?.let { v -> put(it, v) } }
+            stringSetKeys.forEach { if (prefs.contains(it)) putJsonArray(it) { prefs.getStringSet(it).sorted().forEach { v -> add(JsonPrimitive(v)) } } }
         },
     )
 
@@ -89,6 +100,11 @@ object SettingsBackup {
         val root = runCatching { json.parseToJsonElement(text).jsonObject }.getOrNull() ?: return false
 
         root.forEach { (key, value) ->
+            if (key in stringSetKeys) {
+                (value as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content }
+                    ?.let { prefs.putStringSet(key, it.toSet()) }
+                return@forEach
+            }
             val primitive = value as? JsonPrimitive ?: return@forEach
             when (key) {
                 in booleanKeys -> primitive.booleanOrNull?.let { prefs.putBoolean(key, it) }

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Long-press the launcher icon. The last book is added at run time
+     (ShortcutActivity.pushBookShortcut). -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="resume"
+        android:icon="@drawable/ic_shortcut_play"
+        android:shortcutShortLabel="@string/shortcut_resume_short"
+        android:shortcutLongLabel="@string/shortcut_resume">
+        <intent
+            android:action="com.bennybar.kitzi.action.RESUME"
+            android:targetPackage="com.bennybar.kitzi"
+            android:targetClass="com.bennybar.kitzi.ShortcutActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="bookmark"
+        android:icon="@drawable/ic_shortcut_bookmark"
+        android:shortcutShortLabel="@string/shortcut_bookmark"
+        android:shortcutLongLabel="@string/shortcut_bookmark">
+        <intent
+            android:action="com.bennybar.kitzi.action.ADD_BOOKMARK"
+            android:targetPackage="com.bennybar.kitzi"
+            android:targetClass="com.bennybar.kitzi.ShortcutActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="sleep"
+        android:icon="@drawable/ic_shortcut_sleep"
+        android:shortcutShortLabel="@string/shortcut_sleep_short"
+        android:shortcutLongLabel="@string/shortcut_sleep">
+        <intent
+            android:action="com.bennybar.kitzi.action.SLEEP_TIMER"
+            android:targetPackage="com.bennybar.kitzi"
+            android:targetClass="com.bennybar.kitzi.ShortcutActivity" />
+    </shortcut>
+</shortcuts>

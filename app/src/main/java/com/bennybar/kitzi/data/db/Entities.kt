@@ -48,6 +48,9 @@ data class BookEntity(
     val genres: String?,
     /** The server's Audible ASIN (metadata.asin), when it has one. */
     val asin: String? = null,
+    /** False when the server has no cover for it; null when the list didn't say. */
+    val hasCover: Boolean? = null,
+    val chapterCount: Int? = null,
 )
 
 /**

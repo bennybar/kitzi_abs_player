@@ -1,4 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Kitzi ABS</string>
+    <string name="shortcut_resume_short">Resume</string>
+    <string name="shortcut_resume">Resume Listening</string>
+    <string name="shortcut_bookmark">Add Bookmark</string>
+    <string name="shortcut_sleep_short">Sleep Timer</string>
+    <string name="shortcut_sleep">Sleep Timer: 30 min</string>
 </resources>

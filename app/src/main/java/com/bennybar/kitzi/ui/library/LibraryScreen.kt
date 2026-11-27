@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -40,6 +41,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.NewReleases
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.BarChart
@@ -49,6 +51,7 @@ import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.LibraryBooks
 import androidx.compose.material.icons.filled.LocalFireDepartment
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.TravelExplore
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -107,6 +110,9 @@ fun LibraryScreen(
     onOpenSeries: () -> Unit,
     onOpenStats: () -> Unit,
     onOpenProfile: () -> Unit = {},
+    onOpenNarrators: () -> Unit = {},
+    onOpenWhatNext: () -> Unit = {},
+    onOpenReleases: () -> Unit = {},
     vm: LibraryViewModel = viewModel(),
 ) {
     val books by vm.items.collectAsStateWithLifecycle()
@@ -126,6 +132,11 @@ fun LibraryScreen(
     var downloadedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     LaunchedEffect(refreshing, books.size) {
         downloadedIds = com.bennybar.kitzi.data.Services.downloads.downloadedItemIds().toSet()
+    }
+    // Your own shelves (Settings › Smart Shelves), each with the books it finds.
+    val smartShelves by com.bennybar.kitzi.ui.UiPrefsState.smartShelves
+    val smartBooks by produceState(emptyMap<String, List<Book>>(), smartShelves, progressById, downloadedIds, refreshing) {
+        value = com.bennybar.kitzi.data.Services.books.smartShelfBooks(smartShelves, downloadedIds)
     }
 
     // Keep the library fresh while the user is looking at it: re-check the server
@@ -364,8 +375,27 @@ fun LibraryScreen(
                             SectionHeader(Icons.Default.AutoAwesome, "Recently Added", Modifier.padding(horizontal = 16.dp))
                             Shelf(recentlyAdded, onOpenBook)
                         }
+                        smartShelves.forEach { shelf ->
+                            val shelfBooks = smartBooks[shelf.id].orEmpty()
+                            if (shelfBooks.isNotEmpty()) {
+                                SectionHeader(Icons.Default.FilterList, shelf.name, Modifier.padding(horizontal = 16.dp))
+                                Shelf(shelfBooks, onOpenBook, progressById.takeIf { shelf.status == "inProgress" })
+                            }
+                        }
                         if (com.bennybar.kitzi.ui.UiPrefsState.becauseFinished.value) {
                             com.bennybar.kitzi.ui.audible.BecauseYouFinishedRow(progressById)
+                        }
+                        SectionHeader(Icons.Default.GridView, "Browse", Modifier.padding(horizontal = 16.dp))
+                        Row(
+                            Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            BrowseTile(Icons.Default.AutoAwesome, "What Next?", Modifier.weight(1f), onOpenWhatNext)
+                            if (com.bennybar.kitzi.data.Services.prefs.getBoolean(com.bennybar.kitzi.data.Radar.KEY_ON, false)) {
+                                val finds by com.bennybar.kitzi.data.Radar.finds.collectAsStateWithLifecycle()
+                                BrowseTile(Icons.Default.NewReleases, "New Releases", Modifier.weight(1f), onOpenReleases, finds.size.takeIf { it > 0 })
+                            }
+                            BrowseTile(Icons.Default.Mic, "By Narrator", Modifier.weight(1f), onOpenNarrators)
                         }
                     }
                 }
@@ -699,6 +729,32 @@ private fun SummaryBlock(
                     onClick = onLibrary,
                 )
             }
+        }
+    }
+}
+
+/** A Browse entry on Home: an icon and a title (and how many, if given). */
+@Composable
+private fun BrowseTile(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    modifier: Modifier,
+    onClick: () -> Unit,
+    count: Int? = null,
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = RoundedCornerShape(18.dp),
+        modifier = modifier,
+        onClick = onClick,
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+                Spacer(Modifier.weight(1f))
+                count?.let { Text("$it", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            }
+            Text(title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }

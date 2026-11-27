@@ -86,6 +86,8 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
     // polled once a second).
     val isPlaying by controller.isPlaying.collectAsStateWithLifecycle()
     val preparing by controller.preparing.collectAsStateWithLifecycle()
+    val voiceBoost by controller.voiceBoost.collectAsStateWithLifecycle()
+    val skipSilence by controller.skipSilence.collectAsStateWithLifecycle()
     var speed by remember { mutableStateOf(1.0) }
     var scrubbing by remember { mutableStateOf<Float?>(null) }
     var showSleep by remember { mutableStateOf(false) }
@@ -611,8 +613,12 @@ fun PlayerScreen(contentPadding: androidx.compose.foundation.layout.PaddingValue
         PlayerMoreSheet(
             gradientEnabled = gradientEnabled,
             chapterized = chapterizedBar,
+            voiceBoost = voiceBoost,
+            skipSilence = skipSilence,
             onPlayHistory = { showMore = false; showHistory = true },
             onBookmarks = { showMore = false; showBookmarks = true },
+            onVoiceBoost = controller::setVoiceBoost,
+            onSkipSilence = controller::setSkipSilence,
             onToggleGradient = {
                 gradientEnabled = !gradientEnabled
                 prefs.putBoolean("ui_player_gradient_background", gradientEnabled)

@@ -16,6 +16,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -37,7 +38,7 @@ import com.bennybar.kitzi.ui.common.ScreenHeader
 import kotlin.math.roundToInt
 
 @Composable
-fun StatsScreen(onBack: () -> Unit = {}) {
+fun StatsScreen(onBack: () -> Unit = {}, onOpenYearInReview: () -> Unit = {}) {
     var stats by remember { mutableStateOf<ListeningStats?>(null) }
     var detailed by remember { mutableStateOf<com.bennybar.kitzi.data.DetailedStats?>(null) }
     var loaded by remember { mutableStateOf(false) }
@@ -81,6 +82,23 @@ fun StatsScreen(onBack: () -> Unit = {}) {
             title = "Listening",
             onBack = onBack,
         )
+
+        androidx.compose.material3.Surface(
+            color = MaterialTheme.colorScheme.primaryContainer,
+            shape = RoundedCornerShape(20.dp),
+            onClick = onOpenYearInReview,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                androidx.compose.material3.Icon(Icons.Default.AutoAwesome, null)
+                Text(
+                    "${java.time.LocalDate.now().year} in Review",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                    modifier = Modifier.padding(start = 12.dp),
+                )
+            }
+        }
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             StatTile("Total", humanDuration(s.totalSec), Modifier.weight(1f))

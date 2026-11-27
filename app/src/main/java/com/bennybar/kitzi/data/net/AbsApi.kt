@@ -219,6 +219,13 @@ class AbsApi(
         return parse(body) as? JsonObject
     }
 
+    /** A page of the user's listening sessions, newest first (every device's). */
+    fun listeningSessions(page: Int): JsonObject? {
+        val (code, body) = get("/api/me/listening-sessions?itemsPerPage=100&page=$page")
+        if (code != 200) return null
+        return parse(body) as? JsonObject
+    }
+
     fun listeningStats(): JsonObject? {
         val (code, body) = get("/api/me/listening-stats")
         if (code != 200) return null

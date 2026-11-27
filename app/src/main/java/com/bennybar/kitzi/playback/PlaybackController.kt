@@ -71,6 +71,15 @@ class PlaybackController(
     private val _isPlaying = MutableStateFlow(false)
     val isPlaying: StateFlow<Boolean> = _isPlaying.asStateFlow()
 
+    /** Per book: louder, limited audio; and running fast through silences. */
+    private val _voiceBoost = MutableStateFlow(false)
+    val voiceBoost: StateFlow<Boolean> = _voiceBoost.asStateFlow()
+    private val _skipSilence = MutableStateFlow(false)
+    val skipSilence: StateFlow<Boolean> = _skipSilence.asStateFlow()
+
+    /** Voice Boost's effect on the player's audio session; only exists while it's on. */
+    private var enhancer: android.media.audiofx.LoudnessEnhancer? = null
+
     /**
      * Whether the position has moved since it was last saved: something played, or a
      * seek. Only then is it saved and reported. Loading a book used to report (and
@@ -170,6 +179,9 @@ class PlaybackController(
         this.player = player
         player.addListener(PlayerEvents())
         player.setPlaybackParameters(PlaybackParameters(savedSpeed()))
+        // A recreated service: the loaded book's effects carry over to its new player.
+        player.skipSilenceEnabled = _skipSilence.value
+        applyVoiceBoost()
         playerReady.complete(Unit)
     }
 
@@ -186,6 +198,8 @@ class PlaybackController(
         // The final report (with its listening time) and the session close, in order,
         // like a pause — it used to save the position but never send the interval.
         syncThenClose()
+        enhancer?.release()
+        enhancer = null
         if (_nowPlaying.value != null && detachedAtSec == null) {
             detachedAtSec = pos ?: prefs.getDouble(progressKey(_nowPlaying.value!!.itemId), 0.0)
         }
@@ -318,6 +332,34 @@ class PlaybackController(
     }
 
     private fun itemSpeedKey(itemId: String) = "playback_speed:$itemId"
+
+    fun setVoiceBoost(on: Boolean) {
+        _voiceBoost.value = on
+        _nowPlaying.value?.let { if (on) prefs.putBoolean("voice_boost:${it.itemId}", true) else prefs.remove("voice_boost:${it.itemId}") }
+        applyVoiceBoost()
+    }
+
+    fun setSkipSilence(on: Boolean) {
+        _skipSilence.value = on
+        _nowPlaying.value?.let { if (on) prefs.putBoolean("skip_silence:${it.itemId}", true) else prefs.remove("skip_silence:${it.itemId}") }
+        player.skipSilenceEnabled = on
+    }
+
+    /**
+     * +6 dB with the platform's limiter, on the player's audio session — so it holds
+     * across tracks; a new session (or player) gets a new effect.
+     */
+    private fun applyVoiceBoost() {
+        enhancer?.release()
+        enhancer = null
+        if (!_voiceBoost.value || player.audioSessionId == androidx.media3.common.C.AUDIO_SESSION_ID_UNSET) return
+        enhancer = runCatching {
+            android.media.audiofx.LoudnessEnhancer(player.audioSessionId).apply {
+                setTargetGain(VOICE_BOOST_MB)
+                enabled = true
+            }
+        }.onFailure { Log.w(TAG, "voice boost unavailable", it) }.getOrNull()
+    }
 
     private fun savedSpeed(): Float =
         prefs.getDouble(KEY_SPEED, 1.0).coerceIn(MIN_SPEED, MAX_SPEED).toFloat()
@@ -573,6 +615,7 @@ class PlaybackController(
         _nowPlaying.value = np
         // Remembered so the player can offer "Resume last book" on a cold start.
         prefs.putString(KEY_LAST_ITEM, itemId)
+        com.bennybar.kitzi.ShortcutActivity.pushBookShortcut(context, itemId, np.title)
         accrual.reset()
         lastSyncedSec = -1.0
 
@@ -605,6 +648,13 @@ class PlaybackController(
         player.setPlaybackParameters(
             PlaybackParameters(prefs.getDouble(itemSpeedKey(itemId), savedSpeed().toDouble()).coerceIn(MIN_SPEED, MAX_SPEED).toFloat())
         )
+        _skipSilence.value = prefs.getBoolean("skip_silence:$itemId", false)
+        player.skipSilenceEnabled = _skipSilence.value
+        val boost = prefs.getBoolean("voice_boost:$itemId", false)
+        if (boost != _voiceBoost.value) {
+            _voiceBoost.value = boost
+            applyVoiceBoost()
+        }
         // A streamed book loaded paused (the last book, auto-loaded on launch) isn't
         // prepared, and its server session is given back now: preparing buffered
         // about a minute of audio for a book the user may never play, and the first
@@ -717,7 +767,8 @@ class PlaybackController(
 
     /**
      * While playing: the position is saved on the device every [PING_MS] (no radio),
-     * and reported to the server every [NET_SYNC_MS]. A report every 26 s kept the
+     * and reported to the server every minute for a downloaded book, 90 s for a
+     * stream (PlaybackMath.reportIntervalMs). A report every 26 s kept the
      * cellular radio awake for a third of the time; the final position still goes
      * out on pause, stop and book switch. After failures (server unreachable) the
      * reports back off, and a tick never starts one while another is still running —
@@ -730,7 +781,7 @@ class PlaybackController(
                 delay(PING_MS)
                 if (!player.isPlaying) continue
                 val now = android.os.SystemClock.elapsedRealtime()
-                val interval = NET_SYNC_MS shl failedSyncs.coerceAtMost(MAX_BACKOFF_STEPS)
+                val interval = PlaybackMath.reportIntervalMs(_nowPlaying.value?.isLocal == true, failedSyncs)
                 if (now - lastNetSyncAt >= interval && !syncMutex.isLocked) {
                     lastNetSyncAt = now
                     syncNow()
@@ -1039,6 +1090,7 @@ class PlaybackController(
     suspend fun closeBook() {
         stopAndAwait()
         prefs.remove(KEY_LAST_ITEM)
+        com.bennybar.kitzi.ShortcutActivity.removeBookShortcut(context)
     }
 
     private inner class PlayerEvents : Player.Listener {
@@ -1115,6 +1167,8 @@ class PlaybackController(
         override fun onMediaItemTransition(item: MediaItem?, reason: Int) {
             if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) syncNow()
         }
+
+        override fun onAudioSessionIdChanged(audioSessionId: Int) = applyVoiceBoost()
     }
 
     private fun hydrateDurations() {
@@ -1150,9 +1204,6 @@ class PlaybackController(
     companion object {
         private const val TAG = "PlaybackController"
         private const val PING_MS = 30_000L
-        private const val NET_SYNC_MS = 90_000L
-        /** Backoff doubles the report interval up to 8x (12 minutes). */
-        private const val MAX_BACKOFF_STEPS = 3
         private const val SEEK_SYNC_DEBOUNCE_MS = 2_500L
         /** A seek further than this counts as a jump (see positionBeforeLastJump). */
         private const val JUMP_MIN_SEC = 5.0
@@ -1165,6 +1216,8 @@ class PlaybackController(
         private const val QUICK_RESUME_MAX_PAUSE_MS = 10 * 60 * 1000L
         /** A saved position this close to the end counts as "finished": start over. */
         private const val RESTART_WITHIN_SEC = 5.0
+        /** Voice Boost's gain, in millibels: +6 dB, iOS's 2x. */
+        private const val VOICE_BOOST_MB = 600
 
         private const val KEY_SEEK_FORWARD = "ui_seek_forward_seconds"
         private const val KEY_SEEK_BACKWARD = "ui_seek_backward_seconds"

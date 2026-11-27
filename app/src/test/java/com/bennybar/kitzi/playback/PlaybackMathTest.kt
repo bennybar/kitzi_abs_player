@@ -143,4 +143,14 @@ class PlaybackMathTest {
         val partial = tracks.mapIndexed { i, t -> if (i == 1) t.copy(durationSec = null) else t }
         assertTrue(PlaybackMath.chaptersFromTracks(partial).isEmpty())
     }
+
+    @Test
+    fun `a downloaded book reports every minute, a stream every 90 s, both backing off to 8x`() {
+        assertEquals(60_000L, PlaybackMath.reportIntervalMs(isLocal = true, failedSyncs = 0))
+        assertEquals(90_000L, PlaybackMath.reportIntervalMs(isLocal = false, failedSyncs = 0))
+        assertEquals(120_000L, PlaybackMath.reportIntervalMs(isLocal = true, failedSyncs = 1))
+        assertEquals(480_000L, PlaybackMath.reportIntervalMs(isLocal = true, failedSyncs = 3))
+        assertEquals(480_000L, PlaybackMath.reportIntervalMs(isLocal = true, failedSyncs = 10))
+        assertEquals(720_000L, PlaybackMath.reportIntervalMs(isLocal = false, failedSyncs = 10))
+    }
 }

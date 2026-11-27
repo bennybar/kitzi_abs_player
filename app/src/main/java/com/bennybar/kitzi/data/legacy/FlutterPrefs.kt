@@ -53,6 +53,10 @@ class FlutterPrefs(context: Context) {
     fun putDouble(key: String, value: Double) =
         prefs.edit { putString(k(key), DOUBLE_PREFIX + value.toString()) }
 
+    fun getStringSet(key: String): Set<String> = prefs.getStringSet(k(key), null)?.toSet().orEmpty()
+
+    fun putStringSet(key: String, value: Set<String>) = prefs.edit { putStringSet(k(key), value) }
+
     fun remove(key: String) = prefs.edit { remove(k(key)) }
 
     fun contains(key: String): Boolean = prefs.contains(k(key))

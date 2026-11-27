@@ -36,6 +36,9 @@ data class Book(
     val genres: List<String>,
     /** The server's Audible ASIN, when it has one. */
     val asin: String? = null,
+    /** False when the server has no cover for it; null when the list didn't say. */
+    val hasCover: Boolean? = null,
+    val chapterCount: Int? = null,
 )
 
 // --- lenient JSON helpers; ABS field names and types vary across versions ---
@@ -129,6 +132,8 @@ object BookMapper {
                 ?: meta?.get("publishedDate").str()?.take(4)?.toIntOrNull(),
             genres = meta?.get("genres").arr().orEmpty().mapNotNull { it.str() },
             asin = meta?.get("asin").str()?.trim()?.uppercase()?.takeIf { it.isNotEmpty() },
+            hasCover = media?.get("coverPath")?.let { it.str() != null },
+            chapterCount = media?.get("numChapters").int() ?: media?.get("chapters").arr()?.size?.takeIf { it > 0 },
         )
     }
 
@@ -246,6 +251,8 @@ fun Book.toEntity(coverPath: String? = null): BookEntity = BookEntity(
     publishYear = publishYear,
     genres = genres.takeIf { it.isNotEmpty() }?.let { kotlinx.serialization.json.Json.encodeToString(it) },
     asin = asin,
+    hasCover = hasCover,
+    chapterCount = chapterCount,
 )
 
 fun BookEntity.toBook(baseUrl: String): Book {
@@ -278,5 +285,7 @@ fun BookEntity.toBook(baseUrl: String): Book {
         publishYear = publishYear,
         genres = list(genres),
         asin = asin,
+        hasCover = hasCover,
+        chapterCount = chapterCount,
     )
 }

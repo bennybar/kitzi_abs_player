@@ -39,7 +39,21 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity>
+
+        <!-- Runs the launcher shortcuts without opening the app. Its own task: the
+             system starts static shortcuts with CLEAR_TASK, which would otherwise
+             close the app. -->
+        <activity
+            android:name=".ShortcutActivity"
+            android:exported="false"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.NoDisplay" />
 
         <!-- WorkManager declares this service with no foregroundServiceType, so a
              download worker calling setForeground(dataSync) is rejected at runtime.
@@ -61,6 +75,17 @@
             android:name=".playback.CoverProvider"
             android:authorities="${applicationId}.covers"
             android:exported="true" />
+
+        <!-- Images shared from the app (the Year in Review card), granted per share. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/shared_files" />
+        </provider>
 
         <!-- Media buttons (a Bluetooth / headset play) when the app isn't running, and
              Android 13+'s media resumption card. Media3 only offers resumption when

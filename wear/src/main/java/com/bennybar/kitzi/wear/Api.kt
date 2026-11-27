@@ -188,13 +188,21 @@ class Api(private val store: Store) {
 
     // ---- playback ------------------------------------------------------------------
 
-    fun openSession(itemId: String): StreamSession? {
+    /**
+     * [hls]: the server repackages the book as an HLS stream (a playlist of short
+     * segments) instead of handing out the original files. Starting a file needs
+     * its whole index first (10 MB for a 16-hour M4B), which on the watch's
+     * cellular link took minutes; an HLS stream starts after one segment.
+     */
+    fun openSession(itemId: String, hls: Boolean = false): StreamSession? {
         val body = buildJsonObject {
             put("deviceInfo", buildJsonObject {
                 put("clientVersion", "kitzi-wear-${BuildConfig.VERSION_NAME}")
                 put("deviceName", "Wear OS watch")
             })
             put("supportedMimeTypes", buildJsonArray { MIME_TYPES.forEach { add(it) } })
+            put("forceDirectPlay", false)
+            put("forceTranscode", hls)
         }
         val root = post("/api/items/$itemId/play", body) as? JsonObject ?: return null
         val id = root.str("id") ?: return null
@@ -226,9 +234,9 @@ class Api(private val store: Store) {
     fun addBookmark(itemId: String, timeSec: Double, title: String): Boolean =
         send("POST", "/api/me/item/$itemId/bookmark", buildJsonObject { put("time", timeSec); put("title", title) }) == true
 
-    fun closeSession(sessionId: String) {
-        send("POST", "/api/session/$sessionId/close", buildJsonObject { })
-    }
+    /** True when the server answered (closed, or it no longer has the session). */
+    fun closeSession(sessionId: String): Boolean =
+        send("POST", "/api/session/$sessionId/close", buildJsonObject { }) != null
 
     /** Saves the position (not listening time) without a session. */
     fun saveProgress(r: Report): Boolean = send(

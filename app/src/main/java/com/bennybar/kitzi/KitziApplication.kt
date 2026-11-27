@@ -39,6 +39,8 @@ class KitziApplication : Application(), ImageLoaderFactory {
         // Auto), which cost a request each and inflated the daily-user count.
         // Periodic background library refresh (twice a day).
         com.bennybar.kitzi.data.sync.LibrarySyncWorker.schedule(this)
+        com.bennybar.kitzi.data.Notifier.createChannels(this)
+        com.bennybar.kitzi.data.sync.RadarWorker.schedule(this)
     }
 
     /**

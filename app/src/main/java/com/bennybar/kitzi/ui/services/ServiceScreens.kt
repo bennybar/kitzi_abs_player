@@ -387,60 +387,65 @@ private fun Line(label: String, value: String) {
 
 private fun date(ms: Long): String = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(ms))
 
-// MARK: Send to Shelfarr (on an Audible book's page)
+// MARK: Send to Shelfarr (an Audible book's page, Next in Series, a series' missing books)
 
 /**
- * On an Audible book's page, when Shelfarr is set up and the book isn't in the
- * library: Send to Shelfarr (or the request's status, once there's one).
+ * For a book that isn't in the library, when Shelfarr is set up: Send to Shelfarr
+ * (or the request's status, once there's one). [compact]: a smaller button, for
+ * under a card or a row.
  */
 @Composable
-fun SendToShelfarr(title: String, author: String?) {
+fun SendToShelfarr(title: String, author: String?, compact: Boolean = false) {
     if (!Shelfarr.configured) return
     val requests by Shelfarr.requests.collectAsState()
     var busy by remember { mutableStateOf(false) }
     var matches by remember { mutableStateOf<List<ShelfarrBook>?>(null) }
     val scope = rememberCoroutineScope()
-    LaunchedEffect(Unit) { runCatching { Shelfarr.refresh() } }
+    // Only when nothing's loaded yet: a series lists many of these at once.
+    LaunchedEffect(Unit) { if (Shelfarr.requests.value.isEmpty()) runCatching { Shelfarr.refresh() } }
     val norm = remember(title) { com.bennybar.kitzi.data.audible.AudibleMatch.norm(title) }
     val existing = requests.firstOrNull { com.bennybar.kitzi.data.audible.AudibleMatch.similar(com.bennybar.kitzi.data.audible.AudibleMatch.norm(it.title), norm) }
     if (existing != null) {
-        Text("Requested on Shelfarr · ${existing.statusLabel}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+        Text(
+            "Requested on Shelfarr · ${existing.statusLabel}",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = if (compact) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium,
+        )
         return
     }
-    Button(
-        enabled = !busy,
-        modifier = Modifier.fillMaxWidth(),
-        onClick = {
-            scope.launch {
-                busy = true
-                val t = com.bennybar.kitzi.data.audible.AudibleMatch.titleVariants(title).firstOrNull() ?: title
-                runCatching {
-                    var found = Shelfarr.search(listOfNotNull(t, author).joinToString(" "))
-                    if (found.isEmpty() && author != null) found = Shelfarr.search(t)
-                    found
-                }.onSuccess { found ->
-                    if (found.isEmpty()) Snackbars.show("Shelfarr didn't find $title")
-                    else {
-                        // The likeliest first: same title, then same author.
-                        val nt = com.bennybar.kitzi.data.audible.AudibleMatch.norm(t)
-                        val na = author?.let(com.bennybar.kitzi.data.audible.AudibleMatch::norm)
-                        fun score(m: ShelfarrBook): Int {
-                            var s = if (com.bennybar.kitzi.data.audible.AudibleMatch.similar(com.bennybar.kitzi.data.audible.AudibleMatch.norm(m.title), nt)) 2 else 0
-                            val ma = m.author?.let(com.bennybar.kitzi.data.audible.AudibleMatch::norm)
-                            if (na != null && ma != null && (ma.contains(na) || na.contains(ma))) s += 1
-                            return s
-                        }
-                        matches = found.sortedByDescending(::score)
+    val find: () -> Unit = {
+        scope.launch {
+            busy = true
+            val t = com.bennybar.kitzi.data.audible.AudibleMatch.titleVariants(title).firstOrNull() ?: title
+            runCatching {
+                var found = Shelfarr.search(listOfNotNull(t, author).joinToString(" "))
+                if (found.isEmpty() && author != null) found = Shelfarr.search(t)
+                found
+            }.onSuccess { found ->
+                if (found.isEmpty()) Snackbars.show("Shelfarr didn't find $title")
+                else {
+                    // The likeliest first: same title, then same author.
+                    val nt = com.bennybar.kitzi.data.audible.AudibleMatch.norm(t)
+                    val na = author?.let(com.bennybar.kitzi.data.audible.AudibleMatch::norm)
+                    fun score(m: ShelfarrBook): Int {
+                        var s = if (com.bennybar.kitzi.data.audible.AudibleMatch.similar(com.bennybar.kitzi.data.audible.AudibleMatch.norm(m.title), nt)) 2 else 0
+                        val ma = m.author?.let(com.bennybar.kitzi.data.audible.AudibleMatch::norm)
+                        if (na != null && ma != null && (ma.contains(na) || na.contains(ma))) s += 1
+                        return s
                     }
-                }.onFailure { Snackbars.show(it.message ?: "Couldn't reach Shelfarr") }
-                busy = false
-            }
-        },
-    ) {
-        if (busy) KitziLoading(Modifier.size(22.dp), color = androidx.compose.material3.LocalContentColor.current)
-        else Icon(Icons.Default.Inbox, null)
+                    matches = found.sortedByDescending(::score)
+                }
+            }.onFailure { Snackbars.show(it.message ?: "Couldn't reach Shelfarr") }
+            busy = false
+        }
+    }
+    val label: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {
+        if (busy) KitziLoading(Modifier.size(if (compact) 18.dp else 22.dp), color = androidx.compose.material3.LocalContentColor.current)
+        else Icon(Icons.Default.Inbox, null, Modifier.size(if (compact) 18.dp else 24.dp))
         Text("Send to Shelfarr", modifier = Modifier.padding(start = 8.dp))
     }
+    if (compact) FilledTonalButton(onClick = find, enabled = !busy, modifier = Modifier.fillMaxWidth(), content = label)
+    else Button(onClick = find, enabled = !busy, modifier = Modifier.fillMaxWidth(), content = label)
     matches?.let { list ->
         AlertDialog(
             onDismissRequest = { matches = null },

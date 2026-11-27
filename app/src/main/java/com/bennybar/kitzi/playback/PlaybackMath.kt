@@ -166,6 +166,13 @@ object PlaybackMath {
     }
 
     /**
+     * Time between progress reports while playing: a downloaded book every minute, a
+     * stream every 90 s; doubled for each report in a row that failed, up to 8x.
+     */
+    fun reportIntervalMs(isLocal: Boolean, failedSyncs: Int): Long =
+        (if (isLocal) 60_000L else 90_000L) shl failedSyncs.coerceIn(0, 3)
+
+    /**
      * One chapter per track, for books the server gives no chapters for.
      * Requires known durations: with unknown ones every chapter would start at
      * the same place.

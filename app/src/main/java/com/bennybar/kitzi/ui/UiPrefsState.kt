@@ -33,6 +33,8 @@ object UiPrefsState {
     /** Shelfarr's tab, and Achew's Fix Chapters on book pages (each once connected). */
     val showShelfarrTab = mutableStateOf(false)
     val achewEnabled = mutableStateOf(false)
+    /** Saved filters shown as rows on Home (Settings › Smart Shelves), in order. */
+    val smartShelves = mutableStateOf<List<com.bennybar.kitzi.data.SmartShelf>>(emptyList())
 
     fun load(prefs: FlutterPrefs) {
         showAuthorsTab.value = prefs.getBoolean(K_AUTHORS, true)
@@ -51,6 +53,12 @@ object UiPrefsState {
         becauseFinished.value = prefs.getBoolean(K_BECAUSE, true)
         showShelfarrTab.value = prefs.getBoolean(K_SHELFARR_TAB, false)
         achewEnabled.value = prefs.getBoolean(K_ACHEW, false)
+        smartShelves.value = com.bennybar.kitzi.data.SmartShelf.decode(prefs.getString(K_SMART_SHELVES))
+    }
+
+    fun setSmartShelves(prefs: FlutterPrefs, shelves: List<com.bennybar.kitzi.data.SmartShelf>) {
+        prefs.putString(K_SMART_SHELVES, com.bennybar.kitzi.data.SmartShelf.encode(shelves))
+        smartShelves.value = shelves
     }
 
     /** Called by the Settings toggles: updates both the live state and the pref. */
@@ -99,4 +107,5 @@ object UiPrefsState {
     const val K_BECAUSE = "ui_because_finished_enabled"
     const val K_SHELFARR_TAB = "ui_shelfarr_tab"
     const val K_ACHEW = "ui_achew_enabled"
+    const val K_SMART_SHELVES = "ui_smart_shelves"
 }
