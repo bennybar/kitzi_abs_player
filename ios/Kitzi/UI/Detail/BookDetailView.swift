@@ -47,6 +47,9 @@ struct BookDetailView: View {
     @State private var chapters: [Chapter] = []
     @State private var showChapters = false
     @State private var showAudibleChapters = false
+    #if DEBUG
+    @State private var debugScroll = ScrollPosition(edge: .top)
+    #endif
     /// Audible's series for the book, to confirm before saving them to the server.
     @State private var seriesChange: SeriesSync.Change?
     @State private var showTitle = false
@@ -278,6 +281,16 @@ struct BookDetailView: View {
             .padding(.bottom, 80)
         }
         // Past the cover and the title under it: the title goes to the bar.
+        #if DEBUG
+        // Test hook (simulator screenshots): KITZI_TEST_BOTTOM scrolls to the end
+        // (or to that many points down) once the Audible sections are in.
+        .scrollPosition($debugScroll)
+        .task {
+            guard let v = ProcessInfo.processInfo.environment["KITZI_TEST_BOTTOM"] else { return }
+            try? await Task.sleep(for: .seconds(8))
+            if let y = Double(v), y > 1 { debugScroll.scrollTo(y: y) } else { debugScroll.scrollTo(edge: .bottom) }
+        }
+        #endif
         .onScrollGeometryChange(for: Bool.self, of: { $0.contentOffset.y > $0.containerSize.width + 20 }) { _, past in
             showTitle = past
         }

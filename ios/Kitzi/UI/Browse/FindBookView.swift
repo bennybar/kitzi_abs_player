@@ -420,8 +420,6 @@ struct AudibleBookView: View {
     init(book: AudibleBook) { initial = book }
     @Environment(LibraryStore.self) private var library
     @State private var expanded = false
-    @State private var shelfarrMatches: [ShelfarrBook]?
-    @State private var shelfarrBusy = false
 
     var body: some View {
         ScrollView {
@@ -462,16 +460,6 @@ struct AudibleBookView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task { if Shelfarr.shared.configured { try? await Shelfarr.shared.refresh() } }
         .task(id: initial.asin) { if full == nil, let f = try? await AudibleCatalog.product(initial.asin) { full = f } }
-        .confirmationDialog("Which book should Shelfarr get?", isPresented: Binding(get: { shelfarrMatches != nil }, set: { if !$0 { shelfarrMatches = nil } }),
-                            titleVisibility: .visible, presenting: shelfarrMatches) { matches in
-            ForEach(matches.prefix(6)) { m in
-                Button([m.title, m.author, m.year.map(String.init)].compactMap { $0 }.joined(separator: " · ")) {
-                    Task { await request(m) }
-                }
-            }
-        } message: { _ in
-            Text("Shelfarr will search for the audiobook and download it to your library.")
-        }
     }
 
     /// An author or narrator line: one person opens their books; several, a menu.
@@ -512,68 +500,7 @@ struct AudibleBookView: View {
                 .buttonStyle(.glassProminent)
             }
             // Already in the library: nothing to send.
-            if Shelfarr.shared.configured && library.match(book) == nil {
-                if let r = existingRequest {
-                    Label("Requested on Shelfarr · \(r.status.capitalized)", systemImage: "tray.and.arrow.down")
-                        .font(.subheadline).foregroundStyle(.secondary)
-                } else {
-                    shelfarrButton.buttonStyle(.glassProminent)
-                }
-            }
-        }
-    }
-
-    private var shelfarrButton: some View {
-        Button { Task { await findOnShelfarr() } } label: {
-            HStack(spacing: 8) {
-                if shelfarrBusy { ProgressView() } else { Image(systemName: "tray.and.arrow.down.fill") }
-                Text("Send to Shelfarr")
-            }
-            .font(.headline).frame(maxWidth: .infinity).frame(height: 50)
-        }
-        .disabled(shelfarrBusy)
-    }
-
-    /// A request already on Shelfarr for this title.
-    private var existingRequest: ShelfarrRequest? {
-        let t = AudibleRating.norm(book.title)
-        return Shelfarr.shared.requests.first { AudibleRating.similar(AudibleRating.norm($0.title), t) }
-    }
-
-    private func findOnShelfarr() async {
-        shelfarrBusy = true
-        defer { shelfarrBusy = false }
-        let title = AudibleRating.titleVariants(book.title).first ?? book.title
-        let author = book.authors.first
-        do {
-            var found = try await Shelfarr.shared.search([title, author].compactMap { $0 }.joined(separator: " "))
-            if found.isEmpty, author != nil { found = try await Shelfarr.shared.search(title) }
-            if found.isEmpty {
-                Toast.show("Shelfarr didn't find \(book.title)")
-            } else {
-                // The likeliest first: same title, then same author.
-                let t = AudibleRating.norm(title), a = author.map(AudibleRating.norm)
-                shelfarrMatches = found.sorted { score($0, t, a) > score($1, t, a) }
-            }
-        } catch {
-            Toast.show(error.localizedDescription)
-        }
-    }
-
-    private func score(_ m: ShelfarrBook, _ title: String, _ author: String?) -> Int {
-        var s = AudibleRating.similar(AudibleRating.norm(m.title), title) ? 2 : 0
-        if let author, let ma = m.author.map(AudibleRating.norm), ma.contains(author) || author.contains(ma) { s += 1 }
-        return s
-    }
-
-    private func request(_ m: ShelfarrBook) async {
-        do {
-            try await Shelfarr.shared.request(m)
-            Haptics.success()
-            Toast.show("Sent \(m.title) to Shelfarr")
-        } catch {
-            Haptics.failure()
-            Toast.show(error.localizedDescription)
+            if library.match(book) == nil { ShelfarrSendButton(book: book) }
         }
     }
 
@@ -753,6 +680,98 @@ struct AudibleCarouselCover: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                     .opacity(Double(max(fullness * 1.6 - 0.6, 0)))
             }
+        }
+    }
+}
+
+/// "Send to Shelfarr" for an Audible book: Shelfarr is searched for it, you pick
+/// the right result, and it's requested. "Requested on Shelfarr · Status" once it
+/// is. Nothing when Shelfarr isn't set up. `compact`: a small button (on a card).
+struct ShelfarrSendButton: View {
+    let book: AudibleBook
+    var compact = false
+    @State private var matches: [ShelfarrBook]?
+    @State private var busy = false
+
+    var body: some View {
+        Group {
+            if Shelfarr.shared.configured {
+                if let r = existingRequest {
+                    Label("Requested on Shelfarr · \(r.status.capitalized)", systemImage: "tray.and.arrow.down")
+                        .font(compact ? .caption : .subheadline).foregroundStyle(.secondary)
+                } else if compact {
+                    button.font(.subheadline.weight(.semibold)).buttonStyle(.glass)
+                } else {
+                    button.font(.headline).frame(height: 50).buttonStyle(.glassProminent)
+                }
+            }
+        }
+        .task { if Shelfarr.shared.configured, Shelfarr.shared.requests.isEmpty { try? await Shelfarr.shared.refresh() } }
+        .confirmationDialog("Which book should Shelfarr get?", isPresented: Binding(get: { matches != nil }, set: { if !$0 { matches = nil } }),
+                            titleVisibility: .visible, presenting: matches) { matches in
+            ForEach(matches.prefix(6)) { m in
+                Button([m.title, m.author, m.year.map(String.init)].compactMap { $0 }.joined(separator: " · ")) {
+                    Task { await request(m) }
+                }
+            }
+        } message: { _ in
+            Text("Shelfarr will search for the audiobook and download it to your library.")
+        }
+    }
+
+    private var button: some View {
+        Button { Task { await find() } } label: {
+            HStack(spacing: 8) {
+                if busy { ProgressView() } else { Image(systemName: "tray.and.arrow.down.fill") }
+                Text("Send to Shelfarr")
+            }
+            .frame(maxWidth: .infinity)
+            .frame(minHeight: compact ? 34 : 50)
+        }
+        .disabled(busy)
+    }
+
+    /// A request already on Shelfarr for this title.
+    private var existingRequest: ShelfarrRequest? {
+        let t = AudibleRating.norm(book.title)
+        return Shelfarr.shared.requests.first { AudibleRating.similar(AudibleRating.norm($0.title), t) }
+    }
+
+    private func find() async {
+        busy = true
+        defer { busy = false }
+        let title = AudibleRating.titleVariants(book.title).first ?? book.title
+        let author = book.authors.first
+        do {
+            var found = try await Shelfarr.shared.search([title, author].compactMap { $0 }.joined(separator: " "))
+            if found.isEmpty, author != nil { found = try await Shelfarr.shared.search(title) }
+            if found.isEmpty {
+                Toast.show("Shelfarr didn't find \(book.title)")
+            } else {
+                // The likeliest first: same title, then same author.
+                let t = AudibleRating.norm(title), a = author.map(AudibleRating.norm)
+                matches = found.sorted { score($0, t, a) > score($1, t, a) }
+            }
+        } catch {
+            Toast.show(error.localizedDescription)
+        }
+    }
+
+    private func score(_ m: ShelfarrBook, _ title: String, _ author: String?) -> Int {
+        var s = AudibleRating.similar(AudibleRating.norm(m.title), title) ? 2 : 0
+        if let author, let ma = m.author.map(AudibleRating.norm), ma.contains(author) || author.contains(ma) { s += 1 }
+        return s
+    }
+
+    private func request(_ m: ShelfarrBook) async {
+        do {
+            try await Shelfarr.shared.request(m)
+            Haptics.success()
+            Toast.show("Sent \(m.title) to Shelfarr")
+            try? await Shelfarr.shared.refresh()
+        } catch {
+            Haptics.failure()
+            Toast.show(error.localizedDescription)
         }
     }
 }

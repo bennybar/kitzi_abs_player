@@ -537,14 +537,21 @@ struct NextInSeriesCard: View {
                 LoadingBlock(height: 92)
             } else if let next {
                 let mine = library.match(next) ?? ownedByNumber
-                Group {
-                    if let mine {
-                        NavigationLink(value: mine) { card(next, status: "In your library") }
-                    } else {
-                        NavigationLink(value: next) { card(next, status: coming(next) ?? "Not in your library") }
+                VStack(spacing: 12) {
+                    Group {
+                        if let mine {
+                            NavigationLink(value: mine) { card(next, status: "In your library") }
+                        } else {
+                            NavigationLink(value: next) { card(next, status: coming(next) ?? "Not in your library") }
+                        }
                     }
+                    .buttonStyle(.plain)
+                    // Not here: straight to Shelfarr from the card.
+                    if mine == nil { ShelfarrSendButton(book: next, compact: true) }
                 }
-                .buttonStyle(.plain)
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
             }
         }
         .padding(.bottom, looked && next == nil ? 0 : 18)
@@ -609,9 +616,7 @@ struct NextInSeriesCard: View {
             Spacer(minLength: 0)
             Image(systemName: "chevron.right").font(.subheadline.weight(.semibold)).foregroundStyle(.tertiary)
         }
-        .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .contentShape(Rectangle())
     }
 }
