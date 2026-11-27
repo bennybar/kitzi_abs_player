@@ -89,9 +89,13 @@ final class PlayQueue {
     }
     func clear() { items = []; save() }
     func popNext() -> Book? {
-        guard !items.isEmpty else { return nil }
-        let id = items.removeFirst(); save()
-        return LibraryStore.shared.byId[id]
+        // Entries the library no longer has (another library's, a removed book)
+        // are passed over, not played as "nothing".
+        defer { save() }
+        while !items.isEmpty {
+            if let b = LibraryStore.shared.byId[items.removeFirst()] { return b }
+        }
+        return nil
     }
     private func save() { Store.set(items, "play_queue") }
 }

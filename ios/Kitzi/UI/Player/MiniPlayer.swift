@@ -45,7 +45,7 @@ struct MiniPlayer: View {
                 }
                 .buttonStyle(.plain)
 
-                Button { player.togglePlay() } label: {
+                Button { Haptics.tap(); player.togglePlay() } label: {
                     ZStack {
                         Circle()
                             .trim(from: 0, to: fraction)
@@ -65,7 +65,6 @@ struct MiniPlayer: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .sensoryFeedback(.impact(weight: .light), trigger: player.isPlaying)
                 .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
             }
             .padding(.horizontal, 12)

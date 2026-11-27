@@ -2,14 +2,10 @@ import SwiftUI
 
 /// Home, laid out like Apple Books: today's listening, the shelves as Material 3
 /// Expressive carousels under iOS "Title ›" headers, then the whole library as a
-/// cover grid or a native list (sort, filter, search).
+/// Browse card (All Books and Search have their own screens).
 struct HomeView: View {
     @Environment(LibraryStore.self) private var library
     @Environment(AppSettings.self) private var settings
-    @State private var sort: BookSort = BookSort(rawValue: Store.string("library_sort") ?? "") ?? .addedDesc
-    @State private var filter: BookFilter = .all
-    @State private var search = ""
-    @State private var serverResults: [Book] = []
     @State private var path = NavigationPath()
     @State private var loaded = false
     @Namespace private var zoom
@@ -19,64 +15,23 @@ struct HomeView: View {
             ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 26) {
-                    if search.isEmpty {
-                        topCard.padding(.horizontal, 20)
-                        // The first sync: shelves' shapes instead of an empty page.
-                        if library.books.isEmpty && library.syncing {
-                            ForEach(0..<2, id: \.self) { _ in
-                                VStack(alignment: .leading, spacing: 12) {
-                                    Capsule().fill(.quaternary).frame(width: 150, height: 20)
-                                    LoadingBlock(height: CarouselSize.cover, radius: 28)
-                                }
-                                .padding(.horizontal, 16)
+                    topCard.padding(.horizontal, 20)
+                    // The first sync: shelves' shapes instead of an empty page.
+                    if library.books.isEmpty && library.syncing {
+                        ForEach(0..<2, id: \.self) { _ in
+                            VStack(alignment: .leading, spacing: 12) {
+                                Capsule().fill(.quaternary).frame(width: 150, height: 20)
+                                LoadingBlock(height: CarouselSize.cover, radius: 28)
                             }
+                            .padding(.horizontal, 16)
                         }
-                        shelves
+                    }
+                    shelves
+                    VStack(alignment: .leading, spacing: 0) {
                         if settings.becauseFinished { BecauseYouFinishedRow { path.append($0) } }
+                        browseCard
                     }
-                    if search.isEmpty {
-                        browseCard.id("allbooks")
-                    } else {
-                    // Filtered once per render (it sorts the whole library), and again
-                    // as Audible ratings arrive for the "Highest rated" sort.
-                    let _ = sort == .ratingDesc ? AudibleRating.shared.fillDone : 0
-                    let list = library.filtered(sort: sort, filter: filter, search: search)
-                    libraryHeader(count: list.count).id("allbooks")
-                    if sort == .ratingDesc { RatingFillBanner() }
-                    if list.isEmpty && library.books.isEmpty { emptyState }
-                    if settings.gridLayout {
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 16)], spacing: 20) {
-                            ForEach(list) { b in
-                                Button { path.append(BookFrom(book: b, source: "all-\(b.id)")) } label: {
-                                    CoverTile(book: b, size: nil, progress: library.progress[b.id], zoomID: "all-\(b.id)")
-                                }
-                                    .buttonStyle(.plain)
-                                    .bookContextMenu(b)
-                            }
-                        }
-                        .padding(.horizontal, 20)
-                    } else {
-                        LazyVStack(spacing: 0) {
-                            ForEach(list) { b in
-                                Button { path.append(BookFrom(book: b, source: "all-\(b.id)")) } label: {
-                                    ListBookRow(book: b, zoomID: "all-\(b.id)", showRating: sort == .ratingDesc).padding(.vertical, 8)
-                                }
-                                    .buttonStyle(.plain)
-                                    .bookContextMenu(b)
-                                Divider().padding(.leading, 64)
-                            }
-                        }
-                        .padding(.horizontal, 20)
-                    }
-                    }
-                    // Not in the local cache yet (just added on the server): server search.
-                    let extra = serverResults.filter { library.byId[$0.id] == nil }
-                    if !search.isEmpty && !extra.isEmpty {
-                        Text("On the Server").font(.title3.bold()).padding(.horizontal, 20)
-                        ForEach(extra) { b in
-                            Button { path.append(b) } label: { ListBookRow(book: b) }.buttonStyle(.plain).padding(.horizontal, 20)
-                        }
-                    }
+                    .id("allbooks")
                 }
                 .padding(.vertical, 8)
                 .padding(.bottom, 90)
@@ -101,7 +56,9 @@ struct HomeView: View {
             .navigationDestination(for: AllBooksRoute.self) { AllBooksView(filter: $0.filter) }
             .navigationDestination(for: BrowseRoute.self) { r in
                 switch r {
-                case .genres: GenresView(path: $path)
+                // (The stack's environment doesn't reach its destinations: without
+                // this, covers there have no source to zoom from.)
+                case .genres: GenresView(path: $path).environment(\.coverZoom, zoom)
                 case .authors: AuthorsView()
                 case .series: SeriesView()
                 }
@@ -110,12 +67,6 @@ struct HomeView: View {
                 BookListView(title: r.title, books: r.books)
             }
             .kitziDestinations()
-            // Search has its own tab (it was hidden here until you pulled down).
-            .task(id: search) {
-                guard search.count >= 3 else { serverResults = []; return }
-                try? await Task.sleep(for: .milliseconds(400))
-                serverResults = await library.searchServer(search)
-            }
             .refreshable { await refresh(full: true) }
             .task {
                 guard !loaded else { return }
@@ -200,7 +151,7 @@ struct HomeView: View {
     @ViewBuilder private var topCard: some View {
         switch settings.homeTop {
         case "resume":
-            ResumeCard(play: { b in Task { if await Player.shared.play(b) == nil { openPlayer() } } },
+            ResumeCard(play: { b in Task { if let why = await Player.shared.play(b) { Haptics.failure(); Toast.show(why) } else { openPlayer() } } },
                        open: { b in path.append(BookFrom(book: b, source: "resume-\(b.id)")) })
         case "stats": StatsStrip()
         default: GoalCard()
@@ -289,7 +240,7 @@ struct HomeView: View {
             ForEach(server.filter { settings.showNextInSeries || $0.id != "continue-series" }) { s in
                 let listening = s.id == "continue-listening"
                 let key = ["continue-listening": "continue", "recently-added": "recent", "continue-series": "series"][s.id] ?? "other"
-                shelfSection(s.label, listening ? continueBooks(s.books) : s.books, key: key, hero: listening, showProgress: listening)
+                shelfSection(s.label, listening ? continueBooks(s.books) : s.books, key: key, hero: listening, showProgress: listening, zoomKey: s.id)
             }
         } else {
             shelfSection("Continue", continueBooks(library.continueListening), key: "continue", hero: true, showProgress: true)
@@ -308,21 +259,21 @@ struct HomeView: View {
 
     @ViewBuilder
     private func shelfSection(_ title: String, _ books: [Book], key: String, hero: Bool, showProgress: Bool,
-                              caption: ((Book) -> String?)? = nil) -> some View {
+                              zoomKey: String? = nil, caption: ((Book) -> String?)? = nil) -> some View {
         if settings.carouselOff.contains(key) {
             // Carousel turned off in Settings: a plain row of covers.
             CoverShelf(title: title, books: books, showProgress: showProgress, path: $path, big: hero)
         } else if !books.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
                 ShelfHeader(title: title) { path.append(ShelfRoute(title: title, books: books)) }
-                carousel(books, key: key, hero: hero, showProgress: showProgress, caption: caption)
+                // The server's other shelves share a key ("other"): each zooms under its own id.
+                carousel(books, key: zoomKey ?? key, hero: hero, showProgress: showProgress, caption: caption)
             }
         }
     }
 
     private func carousel(_ books: [Book], key: String, hero: Bool, showProgress: Bool, caption: ((Book) -> String?)?) -> some View {
-        let speed = max(Store.double("playback_speed") ?? 1, 0.1)
-        return KeylineCarousel(
+        KeylineCarousel(
             items: books,
             height: CarouselSize.cover,
             keylines: { w in
@@ -335,49 +286,13 @@ struct HomeView: View {
             menuBook: { $0 }
         ) { b, fullness in
             let p = library.progress[b.id]
-            let left = p.flatMap { p -> String? in
-                guard showProgress, !p.isFinished else { return nil }
-                let d = p.durationSec > 0 ? p.durationSec : (b.durationSec ?? 0)
-                let l = max(d - p.currentTimeSec, 0) / speed
-                return l > 0 ? "\(Format.hm(l)) left" : nil
-            }
+            let left = showProgress ? library.timeLeft(b).map { "\(Format.hm($0)) left" } : nil
             CarouselCover(book: b, caption: left ?? caption?(b) ?? b.author,
                           progress: showProgress ? p?.progress : nil, fullness: fullness, hero: hero)
                 .coverZoomSource("\(key)-\(b.id)", zoom, radius: 28)
         }
     }
 
-    // MARK: library
-
-    private func libraryHeader(count: Int) -> some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(filter == .all ? "All Books" : filter.label).font(.title2.bold())
-            Text("\(count)").font(.subheadline).foregroundStyle(.secondary)
-            Spacer()
-            Menu {
-                Picker("Show", selection: $filter) { ForEach(BookFilter.allCases) { Text($0.label).tag($0) } }
-                Picker("Sort", selection: $sort) { ForEach(BookSort.allCases) { Text($0.label).tag($0) } }
-                Divider()
-                Toggle(isOn: Binding(get: { settings.gridLayout }, set: { settings.gridLayout = $0 })) {
-                    Label("Show as Grid", systemImage: "square.grid.2x2")
-                }
-            } label: {
-                Label(sort.label, systemImage: "line.3.horizontal.decrease")
-                    .font(.subheadline.weight(.semibold))
-            }
-        }
-        .padding(.horizontal, 20)
-        .onChange(of: sort) { _, v in Store.set(v.rawValue, "library_sort") }
-        .task(id: sort) { if sort == .ratingDesc { await AudibleRating.shared.fill(library.books) } }
-    }
-
-    private var emptyState: some View {
-        VStack(spacing: 10) {
-            if library.syncing { ProgressView() }
-            Text(library.syncing ? "Loading your library…" : "No books yet").foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity).padding(.top, 40)
-    }
 }
 
 /// A plain list of books (an author's, a series', a shelf's "See All").

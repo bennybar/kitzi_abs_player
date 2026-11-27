@@ -290,7 +290,7 @@ struct AudibleReviewsCard: View {
                     }
                     if !showAll, reviews.count > 2 {
                         Divider()
-                        Button("Show \(reviews.count - 2) More Reviews") { withAnimation(.snappy) { showAll = true } }
+                        Button("Show \(reviews.count - 2) More Reviews") { withAnimation(.kitzi) { showAll = true } }
                             .font(.subheadline.weight(.semibold))
                     }
                 }
@@ -302,7 +302,7 @@ struct AudibleReviewsCard: View {
         // Its own gap below, only when there's something (pages stack it with no
         // spacing, so an empty one leaves no double gap).
         .padding(.bottom, reviews?.isEmpty == true ? 0 : 18)
-        .animation(.snappy, value: reviews == nil)
+        .animation(.kitzi, value: reviews == nil)
         .task(id: asin) {
             reviews = (try? await AudibleCatalog.reviews(asin: asin)) ?? []
         }
@@ -321,7 +321,7 @@ struct AudibleReviewsCard: View {
             .font(.caption).foregroundStyle(.secondary)
         }
         .contentShape(Rectangle())
-        .onTapGesture { withAnimation(.snappy) { if open { expanded.remove(r.id) } else { expanded.insert(r.id) } } }
+        .onTapGesture { withAnimation(.kitzi) { if open { expanded.remove(r.id) } else { expanded.insert(r.id) } } }
     }
 }
 
@@ -431,7 +431,7 @@ struct LibraryBookReviews: View {
             }
         }
         .padding(.bottom, matched ? 0 : 18) // the card inside brings its own
-        .animation(.snappy, value: matched)
+        .animation(.kitzi, value: matched)
         .task(id: book.id) {
             asin = nil
             matched = false
@@ -535,7 +535,7 @@ struct NextInSeriesCard: View {
             }
         }
         .padding(.bottom, looked && next == nil ? 0 : 18)
-        .animation(.snappy, value: looked)
+        .animation(.kitzi, value: looked)
         .task(id: book.id) {
             next = nil
             looked = false
@@ -553,7 +553,7 @@ struct NextInSeriesCard: View {
             #if DEBUG
             print("KITZITEST next series=\(found.ref.title) current=\(current) next=\(candidate?.title ?? "-") #\(number ?? "-") owned=\(candidate.flatMap { library.match($0)?.title } ?? "no")")
             #endif
-            withAnimation(.snappy) { next = candidate }
+            withAnimation(.kitzi) { next = candidate }
         }
     }
 
@@ -632,6 +632,9 @@ struct BecauseYouFinishedRow: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        // Its own gap below, only when there's something (Home stacks it with
+        // the next section with no spacing, so an empty one leaves no double gap).
+        .padding(.bottom, finished != nil && !similar.isEmpty ? 26 : 0)
         .task(id: lastFinished?.id) {
             guard let b = lastFinished else { similar = []; finished = nil; return }
             guard let asin = await AudibleRating.shared.asin(for: b),
@@ -640,7 +643,10 @@ struct BecauseYouFinishedRow: View {
             #if DEBUG
             print("KITZITEST because finished=\(b.title) similar=\(found.count) notOwned=\(fresh.count) first=\(fresh.first?.title ?? "-")")
             #endif
-            withAnimation(.snappy) { finished = b; similar = fresh }
+            // Not animated: a whole row arriving in Home's lazy stack would slide
+            // everything under it.
+            finished = b
+            similar = fresh
         }
     }
 }

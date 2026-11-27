@@ -588,7 +588,7 @@ struct AudibleBookView: View {
                 Text("About").font(.headline)
                 Text(text).font(.body).lineLimit(expanded ? nil : 6)
                 if text.count > 300 {
-                    Button(expanded ? "Less" : "More") { withAnimation(.snappy) { expanded.toggle() } }
+                    Button(expanded ? "Less" : "More") { withAnimation(.kitzi) { expanded.toggle() } }
                         .font(.subheadline.weight(.semibold))
                 }
             }
@@ -690,7 +690,7 @@ struct SimilarBooksRow: View {
         .task(id: book.id) {
             similar = []
             loaded = false
-            defer { withAnimation(.snappy) { loaded = true } }
+            defer { withAnimation(.kitzi) { loaded = true } }
             guard let asin = await AudibleRating.shared.asin(for: book),
                   let found = try? await AudibleCatalog.similar(asin: asin, language: await AudibleRating.shared.language(for: book)) else { return }
             similar = found

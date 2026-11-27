@@ -250,7 +250,7 @@ struct BookDetailView: View {
         }
         // Past the cover and the title under it: the title goes to the bar.
         .onScrollGeometryChange(for: Bool.self, of: { $0.contentOffset.y > $0.containerSize.width + 20 }) { _, past in
-            withAnimation(.easeInOut(duration: 0.2)) { showTitle = past }
+            showTitle = past
         }
         .ignoresSafeArea(edges: .top)
     }
@@ -290,13 +290,12 @@ struct BookDetailView: View {
     private var bigPlayButton: some View {
         let p = progress
         let started = (p?.progress ?? 0) > 0 && p?.isFinished != true
-        let total = (p?.durationSec ?? 0) > 0 ? p!.durationSec : (b.durationSec ?? 0)
         return Button { Task { await play() } } label: {
             VStack(spacing: 6) {
                 HStack(spacing: 8) {
                     Image(systemName: isLoaded && player.isPlaying ? "waveform" : "play.fill")
                     Text(started ? "Resume" : "Play")
-                    if started { Text("· \(Format.hm(max(total - (p?.currentTimeSec ?? 0), 0))) left").opacity(0.8) }
+                    if started, let left = library.timeLeft(b) { Text("· \(Format.hm(left)) left").opacity(0.8) }
                 }
                 .font(.headline)
                 if started {
@@ -407,7 +406,7 @@ struct BookDetailView: View {
                     .lineLimit(descriptionExpanded ? nil : 6)
                 if text.count > 300 {
                     Button(descriptionExpanded ? "Less" : "More") {
-                        withAnimation(.snappy) { descriptionExpanded.toggle() }
+                        withAnimation(.kitzi) { descriptionExpanded.toggle() }
                     }
                     .font(.subheadline.weight(.semibold))
                 }

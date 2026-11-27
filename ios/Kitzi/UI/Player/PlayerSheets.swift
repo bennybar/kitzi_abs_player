@@ -77,7 +77,8 @@ struct PlayerSpeedSheet: View {
                     }
                 }
             }
-            Text("Remembered for this book.").font(.footnote).foregroundStyle(.secondary)
+            Text("Remembered for this book, and used for books you haven't set a speed for.")
+                .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 24)
@@ -287,7 +288,10 @@ struct PlayerMoreSheet: View {
                 Button { open(.bookmarks) } label: { row("Bookmarks", "bookmark") }
                 Button { open(.history) } label: { row("Play History", "clock.arrow.circlepath") }
                 Toggle(isOn: $settings.playerGradient) { row("Gradient Background", "circle.lefthalf.filled") }
-                Toggle(isOn: $settings.chapterTicks) { row("Chapter Indicators", "line.3.horizontal.decrease") }
+                // Only where they're drawn: on a bar that shows the whole book.
+                if settings.primaryProgress == "book" {
+                    Toggle(isOn: $settings.chapterTicks) { row("Chapter Indicators", "line.3.horizontal.decrease") }
+                }
                 Button(role: .destructive) {
                     open(nil)
                     Task { await player.closeBook() }
@@ -323,6 +327,7 @@ struct PlayerMoreSheet: View {
         open(nil)
         Task {
             if await library.setFinished(id, true) {
+                Haptics.success()
                 Toast.show("Marked as finished", action: "Undo") {
                     Task {
                         if !(await LibraryStore.shared.restoreProgress(before, id)) {
@@ -331,6 +336,7 @@ struct PlayerMoreSheet: View {
                     }
                 }
             } else {
+                Haptics.failure()
                 Toast.show("Couldn't update the server")
             }
         }

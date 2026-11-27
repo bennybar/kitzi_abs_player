@@ -8,8 +8,9 @@ struct ProfileView: View {
     @State private var accountType: String?
     @State private var loading = true
 
-    private var finishedCount: Int { library.progress.values.filter(\.isFinished).count }
-    private var inProgressCount: Int { library.progress.values.filter { !$0.isFinished && $0.progress > 0 }.count }
+    // This library's books, as Home and Stats count them.
+    private var finishedCount: Int { library.count(.finished) }
+    private var inProgressCount: Int { library.count(.inProgress) }
 
     var body: some View {
         List {

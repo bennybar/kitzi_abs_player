@@ -387,14 +387,4 @@ final class API {
     func addBookmark(_ itemId: String, time: Double, title: String) async -> Bool {
         (try? await ok("/api/me/item/\(itemId)/bookmark", method: "POST", body: ["time": (time * 1000).rounded() / 1000, "title": title])) ?? false
     }
-
-    func renameBookmark(_ itemId: String, time: Double, title: String) async -> Bool {
-        (try? await ok("/api/me/item/\(itemId)/bookmark", method: "PATCH", body: ["time": time, "title": title])) ?? false
-    }
-
-    func deleteBookmark(_ itemId: String, time: Double) async -> Bool {
-        let key = time.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(time)) : String(time)
-        guard let (code, _) = try? await send("/api/me/item/\(itemId)/bookmark/\(key)", method: "DELETE") else { return false }
-        return (200..<300).contains(code) || code == 404
-    }
 }

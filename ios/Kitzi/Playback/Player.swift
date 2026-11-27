@@ -65,7 +65,6 @@ final class Player {
     private(set) var speed: Double = Store.double("playback_speed") ?? 1
     /// Where the last jump (seek of more than a few seconds) started, for "Last position".
     private(set) var positionBeforeLastJump: Double?
-    private(set) var lastError: String?
     /// Bumped on every user seek (the end-of-chapter sleep timer re-targets on it).
     private(set) var seekGeneration = 0
     private(set) var online = true
@@ -82,13 +81,18 @@ final class Player {
     private var pausedAt: Date?
     /// Moved since the last save (played or seeked): only then is it reported.
     private var dirty = false
-    /// Loaded without playing (cold start) or after a long pause: check the server on resume.
-    private var needsServerCheck = false
     private var wasPlayingBeforeInterruption = false
+    /// When the system (not the user) last paused it: an interruption's own pause
+    /// can be seen before its notification arrives.
+    private var systemPausedAt: CFTimeInterval?
+    /// The book played to its end and is still loaded: Play starts it again.
+    private var ended = false
     /// A server check (has this book moved on elsewhere?) is in flight: until it
     /// answers, nothing is saved or reported, so a stale position can't overwrite
     /// newer progress.
     private var serverCheckPending = false
+    /// Numbers the checks: one overtaken by a new load (or abandoned by stop) does nothing.
+    private var serverCheck = 0
     /// The id unsent listening time is persisted under (see UnsentListening).
     private var unsentId = UUID().uuidString
     /// Every load gets a number; work started for an older load is dropped.
@@ -141,6 +145,14 @@ final class Player {
         }
     }
 
+    /// The item's first seek. Built outside the main actor: AVFoundation calls
+    /// the completion on its own queue.
+    nonisolated private static func seek(_ av: AVPlayer, to sec: Double) {
+        av.seek(to: CMTime(seconds: sec, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero) { _ in
+            Task { @MainActor in Player.shared.firstSeekLanded(sec) }
+        }
+    }
+
     /// Built outside the main actor: iOS calls the artwork closure on its own queue.
     nonisolated private static func makeArtwork(_ img: UIImage) -> MPMediaItemArtwork {
         MPMediaItemArtwork(boundsSize: img.size) { _ in img }
@@ -169,24 +181,25 @@ final class Player {
         return av.currentTime().seconds >= item.duration.seconds - 0.6
     }
 
+    private func firstSeekLanded(_ sec: Double) {
+        if pendingSeek == sec { pendingSeek = nil }
+    }
+
     private func itemStatusChanged(item: ObjectIdentifier, _ status: AVPlayerItem.Status) {
         guard let current = av.currentItem, ObjectIdentifier(current) == item else { return }
         switch status {
         case .readyToPlay:
             itemReady = true
-            if let s = pendingSeek {
-                pendingSeek = nil
-                av.seek(to: CMTime(seconds: s, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
-            }
+            // pendingSeek stays set until the seek lands: read before that, the
+            // position would be the track's start.
+            if let s = pendingSeek { Self.seek(av, to: s) }
         case .failed:
             itemReady = false
             let wasPlaying = isPlaying
             av.pause()
             if wasPlaying { markPaused(intentional: false) }
-            needsServerCheck = true
             // The next play reloads the book from scratch (fresh session and URLs).
             av.replaceCurrentItem(with: nil)
-            lastError = "Playback failed. Tap play to try again."
             Toast.show("Playback failed — tap play to try again")
         default: break
         }
@@ -206,6 +219,7 @@ final class Player {
                 if type == .began {
                     // Only a book that was playing resumes after the call/Siri/alarm.
                     self.wasPlayingBeforeInterruption = self.isPlaying
+                        || (self.systemPausedAt.map { CACurrentMediaTime() - $0 < 3 } ?? false)
                     if self.isPlaying { self.markPaused(intentional: false) }
                 } else if opts?.contains(.shouldResume) == true, self.wasPlayingBeforeInterruption {
                     self.wasPlayingBeforeInterruption = false
@@ -229,8 +243,8 @@ final class Player {
         c.skipForwardCommand.addTarget { [weak self] _ in self?.skip(Double(AppSettings.shared.seekForwardSec)); return .success }
         c.skipBackwardCommand.addTarget { [weak self] _ in self?.skip(-Double(AppSettings.shared.seekBackSec)); return .success }
         // Car and headphone next/previous buttons arrive as "track" commands: they
-        // skip the configured seconds, as on Android (chapter skip stays on the
-        // player's own buttons; the lock screen shows the ± seconds buttons).
+        // skip the configured seconds (chapter skip stays on the player's own
+        // buttons; the lock screen shows the ± seconds buttons).
         c.nextTrackCommand.addTarget { [weak self] _ in self?.skip(Double(AppSettings.shared.seekForwardSec)); return .success }
         c.previousTrackCommand.addTarget { [weak self] _ in self?.skip(-Double(AppSettings.shared.seekBackSec)); return .success }
         c.changePlaybackPositionCommand.addTarget { [weak self] e in
@@ -298,7 +312,6 @@ final class Player {
         loadGeneration += 1
         let gen = loadGeneration
         preparing = true
-        lastError = nil
         defer { if gen == loadGeneration { preparing = false } }
 
         // Resolve the new book BEFORE stopping the current one: if it can't be
@@ -311,8 +324,7 @@ final class Player {
             if AppSettings.shared.syncBeforePlay { await syncWithTimeout(book.id, seconds: 4) }
             await api.ensureFreshToken()
             guard let s = await api.openSession(book.id), !s.tracks.isEmpty else {
-                if gen == loadGeneration { lastError = "Couldn't start this book. Check your connection — downloaded books always play offline." }
-                return lastError
+                return gen == loadGeneration ? "Couldn't start this book. Check your connection — downloaded books always play offline." : nil
             }
             guard gen == loadGeneration else { if let id = s.id { await api.closeSession(id) }; return nil }
             np = NowPlaying(book: book, tracks: s.tracks, chapters: s.chapters.isEmpty ? Self.trackChapters(s.tracks) : s.chapters,
@@ -341,21 +353,20 @@ final class Player {
         localSession?.startSec = start
         unsentId = localSession?.id ?? UUID().uuidString
         serverCheckPending = false
+        serverCheck += 1
         speed = Store.double("playback_speed:\(book.id)") ?? Store.double("playback_speed") ?? 1
         load(trackAt: start)
         loadArtwork(book)
         startSyncLoop()
         if np.isLocal { Task { _ = await Downloads.shared.refreshChapters(book.id) } }
         if startPlaying {
-            needsServerCheck = false
             // A downloaded book starts at once and the server is checked meanwhile
             // (a streamed one was synced just before its session opened).
-            if np.isLocal && AppSettings.shared.syncBeforePlay { beginServerCheck(book.id, generation: gen) }
+            if np.isLocal && AppSettings.shared.syncBeforePlay { beginServerCheck(book.id) }
             startAudio()
         } else {
             // Auto-loaded (cold start): the server is checked on the first play, and
             // a streamed book's session isn't held open meanwhile.
-            needsServerCheck = true
             if let sid = sessionId { sessionId = nil; await api.closeSession(sid) }
         }
         updateNowPlayingInfo()
@@ -395,31 +406,57 @@ final class Player {
         timer.cancel()
     }
 
-    /// If the server has a newer position (listened elsewhere) and nothing moved
-    /// here since the load, go there.
     /// Checks whether the book moved on elsewhere (another device) since this
     /// device last saved it, and goes there if so. Until the server answers,
-    /// nothing is saved or reported (see serverCheckPending). The jump is skipped
-    /// only if the user moved the position during the check itself.
-    private func beginServerCheck(_ id: String, generation gen: Int) {
+    /// nothing is saved or reported (see serverCheckPending): a few seconds at
+    /// most, and what moved meanwhile is saved when it ends. The jump is skipped
+    /// if the user moved the position during the check itself.
+    private func beginServerCheck(_ id: String) {
+        // No network: nothing to ask, so nothing to hold back.
+        guard online else { return }
         serverCheckPending = true
-        let baseline = localPosition(id)?.savedAt ?? 0
+        serverCheck += 1
+        let token = serverCheck
+        let mine = localPosition(id)
         let seeksAtStart = seekGeneration
         Task {
-            var answer: Progress?? = nil // nil = no answer (offline)
-            for attempt in 0..<4 {
-                do { answer = .some(try await library.syncProgressFor(id)); break } catch {}
-                guard gen == loadGeneration, seekGeneration == seeksAtStart else { break }
+            var answer: Progress?? = nil // nil = no answer
+            for attempt in 0..<3 {
+                answer = await progressWithin(id, seconds: 5)
+                if answer != nil { break }
+                guard token == serverCheck, seekGeneration == seeksAtStart, attempt < 2 else { break }
                 try? await Task.sleep(for: .seconds(Double(2 << attempt)))
             }
-            guard gen == loadGeneration else { return }
+            // A newer load or check owns the flag now.
+            guard token == serverCheck else { return }
             serverCheckPending = false
+            // The server's row is this device's own last report (the server stamps
+            // it on arrival, a moment after it was saved here, so its time alone
+            // always looks "newer"): only a row that differs is someone else's.
+            let own = { (s: Progress) in mine.map { !$0.pending && abs(s.currentTimeSec - $0.sec) <= 3 } ?? false }
             if case let .some(server?) = answer, seekGeneration == seeksAtStart, !server.isFinished,
-               server.lastUpdate > baseline, abs(server.currentTimeSec - position) > 3 {
+               server.lastUpdate > (mine?.savedAt ?? 0), !own(server), abs(server.currentTimeSec - position) > 3 {
                 seek(to: server.currentTimeSec, report: false, isJump: false)
                 Toast.show("Continued from \(Format.clock(server.currentTimeSec)) — listened elsewhere")
+            } else if dirty, !isPlaying, let np = nowPlaying {
+                // Paused or moved while the check was out: saved now.
+                refreshPosition()
+                saveLocal(np.book.id, position, finished: false)
+                Task { await report() }
             }
         }
+    }
+
+    /// The server's row for the book (inner nil: it has none), or nil when it
+    /// didn't answer in time.
+    private func progressWithin(_ id: String, seconds: Double) async -> Progress?? {
+        let fetch = Task { () -> Progress?? in
+            do { return .some(try await self.library.syncProgressFor(id)) } catch { return nil }
+        }
+        let timer = Task { try? await Task.sleep(for: .seconds(seconds)); fetch.cancel() }
+        let r = await fetch.value
+        timer.cancel()
+        return r
     }
 
     private func load(trackAt sec: Double) {
@@ -467,10 +504,14 @@ final class Player {
     private func bookEnded() {
         guard let np = nowPlaying else { return }
         isPlaying = false
+        ended = true
         accrue(stopping: true)
         position = np.totalSec
         dirty = true
+        let gen = loadGeneration
         Task {
+            // Another book loaded meanwhile: this one's end is no longer the player's.
+            guard gen == loadGeneration else { return }
             await report(finished: true)
             // A session sync lets the server decide "finished" from its thresholds:
             // say it explicitly too.
@@ -481,6 +522,9 @@ final class Player {
                 }
             }
             library.recordLocal(np.book.id, sec: np.totalSec, total: np.totalSec, finished: true)
+            // The queue, the download and the session are the loaded book's: not
+            // touched if the user started another while the report was out.
+            guard gen == loadGeneration else { return }
             let next = PlayQueue.shared.popNext()
             if AppSettings.shared.autoDeleteOnFinish && np.isLocal {
                 await stop(keepLast: next == nil)
@@ -501,8 +545,17 @@ final class Player {
 
     func resume(skipRewind: Bool = false) {
         guard let np = nowPlaying else {
-            if let id = Store.string(Store.lastItemKey), let b = library.byId[id] { Task { await play(b) } }
+            if let id = Store.string(Store.lastItemKey), let b = library.byId[id] {
+                Task { if let why = await play(b) { Haptics.failure(); Toast.show(why) } }
+            }
             return
+        }
+        // Played to its end and still loaded: again from the top (its item sits at
+        // its end, where "playing" makes no sound).
+        if ended {
+            ended = false
+            pausedAt = nil
+            load(trackAt: 0)
         }
         // A failed item, or HLS URLs that died with a closed session: load afresh.
         // The position is NOT re-saved here — the pause already saved it with its
@@ -521,11 +574,10 @@ final class Player {
             if r > 0 { seek(to: max(position - r, 0), report: false, isJump: false) }
         }
         pausedAt = nil
-        needsServerCheck = false
         let gen = loadGeneration
         // Every resume checks the server (another device may have moved on during
         // the pause, however short).
-        if AppSettings.shared.syncBeforePlay { beginServerCheck(np.book.id, generation: gen) }
+        if AppSettings.shared.syncBeforePlay { beginServerCheck(np.book.id) }
         startAudio()
         guard !np.isLocal else { return }
         Task {
@@ -550,7 +602,6 @@ final class Player {
         av.playImmediately(atRate: Float(speed))
         isPlaying = true
         dirty = true
-        lastError = nil
         updateNowPlayingInfo()
     }
 
@@ -558,7 +609,7 @@ final class Player {
     /// server positions, then play.
     private func reload(_ book: Book) async {
         pausedAt = nil
-        await stop(keepLast: true)
+        await stop(keepLast: true, keepSleep: true)
         await play(book)
     }
 
@@ -572,6 +623,7 @@ final class Player {
         refreshPosition()
         guard isPlaying else { return }
         isPlaying = false
+        systemPausedAt = intentional ? nil : CACurrentMediaTime()
         accrue(stopping: true)
         pausedAt = Date()
         dirty = true
@@ -599,14 +651,17 @@ final class Player {
     func skip(_ delta: Double) {
         refreshPosition()
         guard let np = nowPlaying else { return }
-        seek(to: min(max(position + delta, 0), np.totalSec), report: false, isJump: false)
+        seek(to: position + delta, report: false, isJump: false)
         scheduleSeekReport()
     }
 
     /// Seek in BOOK coordinates (across tracks).
     func seek(to sec: Double, report: Bool = true, isJump: Bool = true) {
         guard let np = nowPlaying else { return }
-        let target = min(max(sec, 0), np.totalSec)
+        // Never onto the very end: that finishes the book at once (the queue
+        // moves on, a download may be deleted), which a slip of the scrubber
+        // shouldn't do. The last seconds still play out and finish it.
+        let target = min(max(sec, 0), max(np.totalSec - 10, 0))
         if isJump && abs(target - position) > 5 { positionBeforeLastJump = position }
         let (i, off) = Self.locate(target, np.tracks)
         if i != trackIndex || av.currentItem == nil {
@@ -618,6 +673,7 @@ final class Player {
             av.seek(to: CMTime(seconds: off, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
         }
         position = target
+        ended = false
         dirty = true
         seekGeneration += 1
         updateNowPlayingInfo()
@@ -657,11 +713,17 @@ final class Player {
     }
 
     /// Stops the book: final report, session closed, audio released.
-    func stop(keepLast: Bool = false) async {
+    func stop(keepLast: Bool = false, keepSleep: Bool = false) async {
         guard nowPlaying != nil else { return }
         av.pause()
         if isPlaying { isPlaying = false; accrue(stopping: true) }
         seekReport?.cancel()
+        // A server check still out holds the report back: its answer first (a
+        // few seconds at most), so what was listened isn't dropped with the book.
+        for _ in 0..<60 where serverCheckPending { try? await Task.sleep(for: .milliseconds(100)) }
+        serverCheckPending = false
+        serverCheck += 1
+        guard nowPlaying != nil else { return }
         await report()
         if let sid = sessionId { sessionId = nil; await api.closeSession(sid) }
         persistUnsent()
@@ -669,12 +731,13 @@ final class Player {
         av.replaceCurrentItem(with: nil)
         itemKVO = nil
         nowPlaying = nil
+        ended = false
         localSession = nil
         listenedSec = 0
         pausedAt = nil
         if !keepLast { Store.set(nil, Store.lastItemKey) }
         updateNowPlayingInfo()
-        SleepTimer.shared.cancel()
+        if !keepSleep { SleepTimer.shared.cancel() }
         // Let other apps' audio resume.
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
@@ -693,8 +756,14 @@ final class Player {
         audibleSince = nil
         dirty = false
         serverCheckPending = false
+        serverCheck += 1
         updateNowPlayingInfo()
     }
+
+    #if DEBUG
+    /// Test hook: as if it had been paused for an hour.
+    func debugPausedLongAgo() { pausedAt = Date(timeIntervalSinceNow: -3600) }
+    #endif
 
     /// "Close book": stop and forget it as the last book.
     func closeBook() async { await stop(keepLast: false) }

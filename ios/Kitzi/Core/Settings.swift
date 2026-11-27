@@ -29,7 +29,6 @@ final class AppSettings {
     var audibleReviews: Bool { didSet { d.set(audibleReviews, forKey: "ui_audible_reviews_enabled") } }
     var becauseFinished: Bool { didSet { d.set(becauseFinished, forKey: "ui_because_finished_enabled") } }
     var chapterTicks: Bool { didSet { d.set(chapterTicks, forKey: "ui_progress_bar_chapterized") } }
-    var letterRail: Bool { didSet { d.set(letterRail, forKey: "ui_letter_scroll_enabled") } }
     var gridLayout: Bool { didSet { d.set(gridLayout, forKey: "ui_library_grid") } }
     /// Home shelves shown as a plain row of covers instead of a carousel
     /// ("continue", "recent", "series", "other").
@@ -80,7 +79,6 @@ final class AppSettings {
         audibleReviews = b("ui_audible_reviews_enabled", true)
         becauseFinished = b("ui_because_finished_enabled", true)
         chapterTicks = b("ui_progress_bar_chapterized", true)
-        letterRail = b("ui_letter_scroll_enabled", false)
         gridLayout = b("ui_library_grid", false)
         carouselOff = Set(d.stringArray(forKey: "ui_carousel_off") ?? [])
         authorsList = b("ui_authors_list", false)

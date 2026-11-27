@@ -11,7 +11,6 @@ enum PlayerSheetKind: String, Identifiable {
 /// title, rating, scrubber with chapter ticks, transport, and action tiles.
 struct PlayerView: View {
     @State private var bookmarkAdded = 0
-    @State private var glyphTaps = 0
     @Environment(\.dismiss) private var dismiss
     @Environment(Player.self) private var player
     @Environment(LibraryStore.self) private var library
@@ -159,17 +158,19 @@ struct PlayerView: View {
                 HStack {
                     if settings.resumeFromHistory, let back = player.positionBeforeLastJump, abs(back - player.position) > 5 {
                         glassPill("arrow.uturn.backward", "Back to \(Format.clock(back))") { jumpBack(back) }
-                            .transition(.scale.combined(with: .opacity))
+                            .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
                     }
                     Spacer()
                 }
                 .padding(12)
-                .animation(.spring(response: 0.35), value: player.positionBeforeLastJump)
+                .animation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.35), value: player.positionBeforeLastJump)
             }
             // Paused: the art steps back a little; playing, it springs forward (as in
             // Apple Music). It stays put with Reduce Motion.
             .scaleEffect(player.isPlaying || player.preparing || reduceMotion ? 1 : 0.88)
-            .animation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.45, dampingFraction: 0.68), value: player.isPlaying)
+            // (Keyed to what the scale reads: a load that ends paused animates too.)
+            .animation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.45, dampingFraction: 0.68),
+                       value: player.isPlaying || player.preparing)
     }
 
     private func glassPill(_ icon: String, _ title: String, _ action: @escaping () -> Void) -> some View {
@@ -267,7 +268,7 @@ struct PlayerView: View {
                 .padding(.vertical, 10)
                 .contentShape(Rectangle())
                 .padding(.vertical, -10)
-                .animation(.spring(response: 0.25), value: scrub == nil)
+                .animation(reduceMotion ? nil : .spring(response: 0.25), value: scrub == nil)
                 // A tick each time the scrub crosses into another chapter.
                 .sensoryFeedback(.selection, trigger: scrub.flatMap { s in np.chapters.lastIndex { $0.startSec <= start + s } })
                 .gesture(
@@ -326,7 +327,7 @@ struct PlayerView: View {
             if settings.expressivePlayButton {
                 PlayPauseButton(size: 76)
             } else {
-                Button { player.togglePlay() } label: {
+                Button { Haptics.tap(); player.togglePlay() } label: {
                     ZStack {
                         if player.preparing { ProgressView().controlSize(.large) } else {
                             Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
@@ -338,7 +339,6 @@ struct PlayerView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .sensoryFeedback(.impact(weight: .light), trigger: player.isPlaying)
                 .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
             }
             Spacer()
@@ -357,14 +357,13 @@ struct PlayerView: View {
     }
 
     private func glyph(_ icon: String, _ label: String, _ size: CGFloat, _ action: @escaping () -> Void) -> some View {
-        Button { glyphTaps += 1; action() } label: {
+        Button { Haptics.tap(); action() } label: {
             Image(systemName: icon)
                 .font(.system(size: size, weight: .medium))
                 .frame(width: 50, height: 50)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .sensoryFeedback(.impact(weight: .light), trigger: glyphTaps)
         .accessibilityLabel(label)
     }
 

@@ -37,7 +37,7 @@ struct PlayPauseButton: View {
 
     var body: some View {
         let morph = settings.expressivePlayButton
-        Button { player.togglePlay() } label: {
+        Button { Haptics.tap(); player.togglePlay() } label: {
             ZStack {
                 if player.preparing {
                     ProgressView().controlSize(size > 60 ? .large : .regular).tint(.white)
@@ -61,7 +61,6 @@ struct PlayPauseButton: View {
         .buttonStyle(.plain)
         // No bouncy morph with Reduce Motion.
         .animation(reduceMotion ? .easeInOut(duration: 0.15) : .spring(response: 0.5, dampingFraction: 0.6), value: player.isPlaying)
-        .sensoryFeedback(.impact(weight: .light), trigger: player.isPlaying)
         .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
     }
 }
@@ -298,6 +297,12 @@ struct LoadingRow: View {
 
 /// A tap in the hand for something that finished (or failed): the actions
 /// that otherwise only show a toast.
+extension Animation {
+    /// The app's quick animation for things that expand, collapse or arrive: a
+    /// short fade with Reduce Motion, else snappy.
+    static var kitzi: Animation { UIAccessibility.isReduceMotionEnabled ? .easeInOut(duration: 0.15) : .snappy }
+}
+
 enum Haptics {
     static func success() { UINotificationFeedbackGenerator().notificationOccurred(.success) }
     static func failure() { UINotificationFeedbackGenerator().notificationOccurred(.error) }

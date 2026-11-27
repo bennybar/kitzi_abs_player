@@ -19,6 +19,7 @@ struct QueueView: View {
                         Button {
                             Task {
                                 if let error = await player.play(b) {
+                                    Haptics.failure()
                                     Toast.show(error)
                                 } else {
                                     queue.remove(b.id)

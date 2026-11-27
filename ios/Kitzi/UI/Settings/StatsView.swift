@@ -41,7 +41,7 @@ struct StatsView: View {
                     }
                     GridRow {
                         tile("Books finished", "\(library.finishedCount)", "book.closed.fill", tint: .green)
-                        tile("In progress", "\(library.continueListening.count)", "play.fill")
+                        tile("In progress", "\(library.count(.inProgress))", "play.fill")
                     }
                 }
 

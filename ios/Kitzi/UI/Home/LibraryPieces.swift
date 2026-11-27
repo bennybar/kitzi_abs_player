@@ -102,6 +102,7 @@ struct CoverTile: View {
     var progress: Progress?
     var zoomID: String? = nil
     @Environment(\.coverZoom) private var zoom
+    @Environment(LibraryStore.self) private var library
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -111,9 +112,9 @@ struct CoverTile: View {
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .coverZoomSource(zoomID ?? "", zoomID == nil ? nil : zoom, radius: 10)
                 .shadow(color: .black.opacity(0.18), radius: 6, y: 3)
-            if let p = progress, p.progress > 0 {
+            // In progress only: a finished book shows its title again.
+            if let p = progress, let left = library.timeLeft(book) {
                 ProgressView(value: p.progress).tint(.accentColor).frame(width: size)
-                let left = max((p.durationSec > 0 ? p.durationSec : (book.durationSec ?? 0)) - p.currentTimeSec, 0)
                 Text("\(Format.hm(left)) left").font(.caption).foregroundStyle(.secondary)
             } else {
                 Text(book.title).font(.footnote.weight(.medium)).lineLimit(1).frame(width: size, alignment: .leading)
@@ -243,8 +244,6 @@ struct ResumeCard: View {
     var body: some View {
         if let b = player.nowPlaying?.book ?? library.continueListening.first {
             let p = library.progress[b.id]
-            let total = (p?.durationSec ?? 0) > 0 ? p!.durationSec : (b.durationSec ?? 0)
-            let left = max(total - (p?.currentTimeSec ?? 0), 0)
             HStack(spacing: 14) {
                 Button { open(b) } label: {
                     HStack(spacing: 14) {
@@ -256,7 +255,9 @@ struct ResumeCard: View {
                             Text("CONTINUE LISTENING").font(.caption2.weight(.bold)).foregroundStyle(.secondary)
                             Text(b.title).font(.headline).lineLimit(2)
                             ProgressView(value: p?.progress ?? 0).tint(.accentColor)
-                            Text("\(Format.hm(left)) left").font(.caption).foregroundStyle(.secondary)
+                            if let left = library.timeLeft(b) {
+                                Text("\(Format.hm(left)) left").font(.caption).foregroundStyle(.secondary)
+                            }
                         }
                         Spacer(minLength: 0)
                     }

@@ -349,8 +349,8 @@ final class LibraryStore {
         return AuthorInfo(name: a.str("name") ?? name, description: a.str("description"), imageURL: image)
     }
 
-    /// Books finished, from progress.
-    var finishedCount: Int { progress.values.filter(\.isFinished).count }
+    /// Books finished in this library.
+    var finishedCount: Int { count(.finished) }
 
     /// Server collections, then any `collection` metadata grouping not among them.
     func collections() async -> [SeriesRow] {
@@ -434,27 +434,41 @@ final class LibraryStore {
         (0..<7).reduce(0) { $0 + (perDaySec[Self.dayKey(Calendar.current.date(byAdding: .day, value: -$1, to: Date())!)] ?? 0) }
     }
 
-    /// Time left in the books in progress, at the current speed.
+    /// Time left in the books in progress, each at its own speed.
     var leftInProgressSec: Double {
-        let speed = max(Store.double("playback_speed") ?? 1, 0.1)
-        return continueListening.reduce(0) { sum, b in
-            let p = progress[b.id]
-            let d = (p?.durationSec ?? 0) > 0 ? p!.durationSec : (b.durationSec ?? 0)
-            return sum + max(d - (p?.currentTimeSec ?? 0), 0)
-        } / speed
+        continueListening.reduce(0) { $0 + (timeLeft($1) ?? 0) }
+    }
+
+    /// Listening time left in a started, unfinished book, at the speed it plays
+    /// at (its own, else the last one chosen). Nil when not started or finished.
+    /// Every "… left" in the app comes from here.
+    func timeLeft(_ b: Book) -> Double? {
+        guard let p = progress[b.id], p.progress > 0, !p.isFinished else { return nil }
+        let d = p.durationSec > 0 ? p.durationSec : (b.durationSec ?? 0)
+        let speed = max(Store.double("playback_speed:\(b.id)") ?? Store.double("playback_speed") ?? 1, 0.1)
+        let left = max(d - p.currentTimeSec, 0) / speed
+        return left > 0 ? left : nil
     }
 
     // MARK: finished
 
     /// Mark (un)finished on the server, then here. Stops the book first if playing.
     func setFinished(_ id: String, _ finished: Bool) async -> Bool {
-        if Player.shared.nowPlaying?.book.id == id { await Player.shared.stop() }
+        // The loaded book stops first (its own reports would undo the mark). Kept
+        // as the last book until the server agrees, so a failure puts it back.
+        let wasLoaded = Player.shared.nowPlaying?.book.id == id
+        if wasLoaded { await Player.shared.stop(keepLast: true) }
         let existing = progress[id]
         let duration = (existing?.durationSec ?? 0) > 0 ? existing!.durationSec : (byId[id]?.durationSec ?? 0)
         // Through the player's serial write queue: no older report can land after it.
         let api = self.api
         guard await Player.shared.serialWrite({ await api.setFinished(id, finished: finished, durationSec: duration > 0 ? duration : nil) })
-        else { return false }
+        else {
+            // Nothing changed: the book is loaded again where it was, paused.
+            if wasLoaded, let b = byId[id] { await Player.shared.play(b, startPlaying: false) }
+            return false
+        }
+        if wasLoaded { Store.set(nil, Store.lastItemKey) }
         let pos = finished ? duration : 0
         progress[id] = Progress(itemId: id, progress: finished ? 1 : 0, isFinished: finished, currentTimeSec: pos,
                                 durationSec: duration, lastUpdate: Format.nowMs)
@@ -522,31 +536,38 @@ final class LibraryStore {
     /// True when the server has it already; false = saved here and queued.
     @discardableResult
     func bookmarkOp(_ op: BookmarkOp) async -> Bool {
-        let sent = pendingOps.isEmpty ? await send(op) : false
+        let sent = pendingOps.isEmpty ? await send(op) == true : false
         if sent { saveCached(op.itemId, apply(cached(op.itemId), op)) } else { pendingOps.append(op) }
         return sent
     }
 
-    private func send(_ op: BookmarkOp) async -> Bool {
+    /// True: done. False: the server refused it. Nil: the server couldn't be
+    /// reached (no network, or it's down or behind a VPN that's off).
+    private func send(_ op: BookmarkOp) async -> Bool? {
+        let path = "/api/me/item/\(op.itemId)/bookmark"
+        let answer: (Int, Data)?
         switch op.kind {
-        case "add": await api.addBookmark(op.itemId, time: op.timeSec, title: op.title)
-        case "rename": await api.renameBookmark(op.itemId, time: op.timeSec, title: op.title)
-        default: await api.deleteBookmark(op.itemId, time: op.timeSec)
+        case "add": answer = try? await api.send(path, method: "POST", body: ["time": op.timeSec, "title": op.title])
+        case "rename": answer = try? await api.send(path, method: "PATCH", body: ["time": op.timeSec, "title": op.title])
+        default:
+            let key = op.timeSec.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(op.timeSec)) : String(op.timeSec)
+            answer = try? await api.send("\(path)/\(key)", method: "DELETE")
         }
+        guard let (code, _) = answer, code < 500 else { return nil }
+        // Deleting one that's already gone is done.
+        return (200..<300).contains(code) || (op.kind == "delete" && code == 404)
     }
 
-    /// Sends queued edits, oldest first. Offline: stop and try later. Online but
-    /// refused (a rename of a bookmark deleted elsewhere): drop that edit — kept,
-    /// it would block every later one forever.
+    /// Sends queued edits, oldest first. Server not reached: stop and try later
+    /// (the edits stay). Refused (a rename of a bookmark deleted elsewhere): drop
+    /// that edit — kept, it would block every later one forever.
     func flushPendingBookmarks() async {
-        var ops = pendingOps
-        while let op = ops.first {
-            if await send(op) {
-                saveCached(op.itemId, apply(cached(op.itemId), op))
-            } else if !Player.shared.online {
-                return
-            }
-            ops.removeFirst()
+        while let op = pendingOps.first {
+            guard let done = await send(op) else { return }
+            if done { saveCached(op.itemId, apply(cached(op.itemId), op)) }
+            // Read again: an edit made meanwhile was added at the end.
+            var ops = pendingOps
+            if !ops.isEmpty { ops.removeFirst() }
             pendingOps = ops
         }
     }

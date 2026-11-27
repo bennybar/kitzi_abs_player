@@ -24,6 +24,8 @@ struct SettingsView: View {
         "smart_rewind_enabled", "sync_progress_before_play", "pause_cancels_sleep_timer", "ui_dual_progress_enabled",
         "ui_resume_from_history_enabled", "detailed_play_history_enabled", "ui_progress_primary", "ui_seek_backward_seconds",
         "ui_seek_forward_seconds", "shake_extends_sleep", "playback_speed",
+        "ui_queue_tab_enabled", "ui_shelfarr_tab", "ui_achew_enabled", "ui_carousel_off", "ui_authors_list",
+        "ui_next_in_series", "ui_full_screen_player", "ui_home_top", "ui_home_gradient",
     ]
     private let seekOptions = [5, 10, 15, 30, 45, 60, 90]
 
@@ -144,7 +146,11 @@ struct SettingsView: View {
                         Text("The player covers the whole screen; pull down to close it")
                     }
                     Toggle("Gradient background in player", isOn: $s.playerGradient)
-                    Toggle("Chapter indicators", isOn: $s.chapterTicks)
+                    Toggle(isOn: $s.chapterTicks) {
+                        Text("Chapter indicators")
+                        Text("Marks on the player's bar when it shows the whole book (Primary progress: Book)")
+                    }
+                    .disabled(s.primaryProgress != "book")
                     Toggle(isOn: $s.audibleLink) {
                         Text("Tap ratings to open Audible")
                         Text("Open the book's Audible page when you tap its star rating")

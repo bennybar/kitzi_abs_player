@@ -18,6 +18,9 @@ struct RootView: View {
                 LoginView()
             }
         }
+        // The sign-in ended (expired): the book mustn't play on behind the login
+        // screen, where nothing can stop it. Its place is saved for afterwards.
+        .onChange(of: session.signedIn) { _, signedIn in if !signedIn { Player.shared.pause() } }
         .overlay(alignment: .bottom) { ToastView().padding(.bottom, 120) }
         .environment(session)
         .environment(settings)
@@ -71,7 +74,8 @@ struct MainView: View {
         }
         .tabBarMinimizeBehavior(.onScrollDown)
         // Only with a book: an accessory that's merely empty still shows its glass bar.
-        .tabViewBottomAccessory(isEnabled: player.nowPlaying != nil || Store.string(Store.lastItemKey) != nil) {
+        .tabViewBottomAccessory(isEnabled: player.nowPlaying != nil
+                                || (Store.string(Store.lastItemKey).map { LibraryStore.shared.byId[$0] != nil } ?? false)) {
             MiniPlayer(zoom: playerZoom) { showPlayer = true }
         }
         // A full-height sheet, or (setting) the whole screen, zooming out of the
@@ -111,6 +115,7 @@ struct MainView: View {
                 player.pause()
                 return
             }
+            if ProcessInfo.processInfo.environment["KITZI_TEST_OPEN"] == "playertest" { await PlayerTests.run(); return }
             // KITZI_TEST_OPEN=coldresume: let the launch auto-load the last book, wait
             // 25 s (the test moves it on the server), then resume 8 s and pause.
             if ProcessInfo.processInfo.environment["KITZI_TEST_OPEN"] == "coldresume" {

@@ -37,9 +37,12 @@ struct DownloadsView: View {
                                 Text(book(id)?.title ?? "Book").font(.subheadline.weight(.semibold)).lineLimit(1)
                                 switch state {
                                 case .running(let f):
+                                    // Animated: the bar glides and the digits roll, not jump.
                                     ProgressView(value: f).tint(.accentColor)
+                                        .animation(.easeOut(duration: 0.3), value: f)
                                     Text("\(Int(f * 100))%").font(.caption).foregroundStyle(.secondary)
                                         .contentTransition(.numericText(value: f))
+                                        .animation(.easeOut(duration: 0.3), value: Int(f * 100))
                                 case .queued:
                                     ProgressView().progressViewStyle(.linear)
                                     Text(settings.wifiOnlyDownloads ? "Waiting (Wi-Fi only)" : "Waiting to download")
