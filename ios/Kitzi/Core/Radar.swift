@@ -267,7 +267,7 @@ enum Notifier {
 @Observable
 final class NotificationRoute {
     static let shared = NotificationRoute()
-    enum Target: Equatable { case audible(String), book(title: String, author: String?), releases }
+    enum Target: Equatable { case audible(String), book(title: String, author: String?), releases, whatNext }
     var pending: Target?
 
     func handle(_ info: [AnyHashable: Any]) {

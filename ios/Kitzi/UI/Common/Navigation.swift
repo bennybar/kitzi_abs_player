@@ -23,6 +23,7 @@ private struct KitziDestinations: ViewModifier {
             .navigationDestination(for: NarratorRoute.self) { NarratorView(name: $0.name) }
             .navigationDestination(for: AudibleASIN.self) { AudibleASINView(asin: $0.asin) }
             .navigationDestination(for: ReleasesRoute.self) { _ in ReleasesView() }
+            .navigationDestination(for: WhatNextRoute.self) { _ in WhatNextView() }
             .navigationDestination(for: SeriesRoute.self) { r in
                 BookListView(title: r.name, books: library.series().first { $0.name == r.name }?.books
                     ?? library.books.filter { $0.series == r.name }, series: r.name)

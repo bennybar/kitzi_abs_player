@@ -25,7 +25,7 @@ struct SettingsView: View {
         "ui_resume_from_history_enabled", "detailed_play_history_enabled", "ui_progress_primary", "ui_seek_backward_seconds",
         "ui_seek_forward_seconds", "shake_extends_sleep", "playback_speed",
         "ui_queue_tab_enabled", "ui_shelfarr_tab", "ui_achew_enabled", "ui_carousel_off", "ui_authors_list",
-        "ui_next_in_series", "ui_full_screen_player", "ui_home_top", "ui_home_gradient",
+        "ui_next_in_series", "ui_full_screen_player", "ui_home_top", "ui_home_gradient", "ui_smart_shelves",
     ]
     private let seekOptions = [5, 10, 15, 30, 45, 60, 90]
 
@@ -136,8 +136,11 @@ struct SettingsView: View {
                         Text("Resume").tag("resume")
                         Text("Stats").tag("stats")
                     }
+                    NavigationLink { SmartShelvesView() } label: {
+                        LabeledContent("Smart Shelves", value: s.smartShelves.isEmpty ? "None" : "\(s.smartShelves.count)")
+                    }
                     ForEach([("continue", "Continue Listening"), ("recent", "Recently Added"),
-                             ("series", "Next in Series"), ("other", "Other Server Shelves")], id: \.0) { key, label in
+                             ("series", "Next in Series"), ("other", "Other Server Shelves"), ("smart", "Smart Shelves")], id: \.0) { key, label in
                         Picker(label, selection: Binding(
                             get: { key == "series" && !s.showNextInSeries ? "off" : (s.carouselOff.contains(key) ? "row" : "carousel") },
                             set: { v in

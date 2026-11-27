@@ -195,6 +195,7 @@ struct MainView: View {
                     switch box.target {
                     case .audible(let asin): AudibleASINView(asin: asin)
                     case .releases: ReleasesView()
+                    case .whatNext: WhatNextView()
                     case .book(let title, let author):
                         if let b = Self.libraryBook(title: title, author: author) { BookDetailView(book: b) }
                         else { ContentUnavailableView("Not in your library yet", systemImage: "books.vertical",

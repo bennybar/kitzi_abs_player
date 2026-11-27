@@ -336,40 +336,64 @@ struct AudibleReviewsCard: View {
 
 // MARK: series
 
-/// On a series' page: its books on Audible that aren't in the library (or
-/// coming soon), each opening its Audible page (Send to Shelfarr is there).
-struct MissingSeriesBooks: View {
+/// A series' page as a ladder: every book in order, yours and the ones Audible
+/// has that aren't here (or are coming), each of those with its Audible page
+/// and Send to Shelfarr. Your books alone until Audible answers.
+struct SeriesLadder: View {
     let series: String
     let books: [Book]
     @Environment(LibraryStore.self) private var library
-    @State private var missing: [AudibleBook]?
+    @State private var missing: [(book: AudibleBook, number: Double?)]?
     @State private var done = false
 
+    private enum Rung: Identifiable {
+        case mine(Book), missing(AudibleBook, Double?)
+        var id: String {
+            switch self { case .mine(let b): "m-" + b.id; case .missing(let b, _): "a-" + b.asin }
+        }
+        var number: Double {
+            switch self { case .mine(let b): b.seriesSequence ?? 9999; case .missing(_, let n): n ?? 9999 }
+        }
+    }
+
+    private var rungs: [Rung] {
+        // Stable: yours before Audible's at the same number, yours in their own order.
+        let all = books.map(Rung.mine) + (missing ?? []).map { Rung.missing($0.book, $0.number) }
+        return all.enumerated().sorted { ($0.element.number, $0.offset) < ($1.element.number, $1.offset) }.map(\.element)
+    }
+
     var body: some View {
-        Section {
+        Group {
             if let missing {
-                if missing.isEmpty {
-                    Label("You have every book in this series", systemImage: "checkmark.seal")
-                        .font(.subheadline).foregroundStyle(.secondary)
-                } else {
-                    ForEach(missing) { b in
+                let out = missing.filter { ($0.book.releaseDay ?? .distantPast) <= Date() }.count
+                let coming = missing.count - out
+                Label(missing.isEmpty ? "You have every book in this series"
+                      : ["You have \(books.count) of \(books.count + out)", coming > 0 ? "\(coming) coming" : nil].compactMap { $0 }.joined(separator: " · "),
+                      systemImage: missing.isEmpty ? "checkmark.seal" : "books.vertical")
+                    .font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                    .listRowSeparator(.hidden)
+            } else if !done {
+                LoadingRow()
+            }
+            ForEach(rungs) { r in
+                switch r {
+                case .mine(let b):
+                    ZoomBookLink(book: b, source: "list-\(b.id)") { ListBookRow(book: b, zoomID: "list-\(b.id)") }
+                        .bookContextMenu(b)
+                case .missing(let b, _):
+                    VStack(alignment: .leading, spacing: 8) {
                         NavigationLink(value: b) {
                             VStack(alignment: .leading, spacing: 4) {
                                 AudibleRow(book: b)
-                                if let line = line(b) {
-                                    Text(line).font(.caption.weight(.semibold)).foregroundStyle(Color.accentColor)
-                                        .padding(.leading, 76)
-                                }
+                                Text(line(b)).font(.caption.weight(.semibold)).foregroundStyle(Color.accentColor)
+                                    .padding(.leading, 76)
                             }
                         }
+                        // Out already: straight to Shelfarr from here.
+                        if (b.releaseDay ?? .distantPast) <= Date() { ShelfarrSendButton(book: b, compact: true) }
                     }
                 }
-            } else if !done {
-                LoadingRow()
-                LoadingRow()
             }
-        } header: {
-            if missing != nil || !done { Text("Not in Your Library") }
         }
         .task(id: series) {
             guard missing == nil else { return }
@@ -380,25 +404,27 @@ struct MissingSeriesBooks: View {
             // (another edition of a book that's here; a box set of books that are).
             let owned = Set(books.compactMap(\.seriesSequence))
             var seen = Set<Double>()
-            missing = all.filter { b in
-                guard library.match(b) == nil else { return false }
+            // Audible dates what it has no date for in the far future (1 Jan 2200).
+            let horizon = Calendar.current.date(byAdding: .year, value: 5, to: Date()) ?? .distantFuture
+            let list = all.compactMap { b -> (book: AudibleBook, number: Double?)? in
+                guard library.match(b) == nil, (b.releaseDay ?? .distantPast) < horizon else { return nil }
                 let ns = AudibleCatalog.numbers(b.seriesRefs.first { $0.asin == found.ref.asin }?.sequence)
-                guard !ns.isEmpty else { return true }
-                if ns.allSatisfy(owned.contains) { return false }
+                guard !ns.isEmpty else { return (b, nil) }
+                if ns.allSatisfy(owned.contains) { return nil }
                 // One edition per number: the most-rated (they come first).
-                if ns.count == 1 { return seen.insert(ns[0]).inserted }
-                return true
+                if ns.count == 1, !seen.insert(ns[0]).inserted { return nil }
+                return (b, ns[0])
             }
+            withAnimation(.kitzi) { missing = list }
         }
     }
 
-    /// "Book 4 · Coming 12 Mar 2027".
-    private func line(_ b: AudibleBook) -> String? {
+    /// "Book 4 · Not in your library", or "Books 1-3 · Coming 12 Mar 2027".
+    private func line(_ b: AudibleBook) -> String {
         let n = b.seriesRefs.compactMap(\.sequence).first.map { $0.contains("-") ? "Books \($0)" : "Book \($0)" }
-        var coming: String?
-        if let d = b.releaseDay, d > Date() { coming = "Coming \(d.formatted(date: .abbreviated, time: .omitted))" }
-        let parts = [n, coming].compactMap { $0 }
-        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+        var status = "Not in your library"
+        if let d = b.releaseDay, d > Date() { status = "Coming \(d.formatted(date: .abbreviated, time: .omitted))" }
+        return [n, status].compactMap { $0 }.joined(separator: " · ")
     }
 }
 
@@ -581,7 +607,9 @@ struct NextInSeriesCard: View {
             }
             guard let all = try? await AudibleCatalog.seriesBooks(found.ref, language: found.language) else { return }
             // The first single book numbered after this one (not a box set).
+            let horizon = Calendar.current.date(byAdding: .year, value: 5, to: Date()) ?? .distantFuture
             let candidate = all.first { b in
+                guard (b.releaseDay ?? .distantPast) < horizon else { return false } // (a placeholder date: 2200)
                 let ns = AudibleCatalog.numbers(b.seriesRefs.first { $0.asin == found.ref.asin }?.sequence)
                 return ns.count == 1 && ns[0] > current
             }

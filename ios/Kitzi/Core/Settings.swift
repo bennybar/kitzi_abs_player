@@ -37,6 +37,11 @@ final class AppSettings {
     /// Home shelves shown as a plain row of covers instead of a carousel
     /// ("continue", "recent", "series", "other").
     var carouselOff: Set<String> { didSet { d.set(Array(carouselOff), forKey: "ui_carousel_off") } }
+    /// Saved filters shown as rows on Home, in order.
+    /// (Kept as JSON text, so the settings backup carries it.)
+    var smartShelves: [SmartShelf] {
+        didSet { d.set((try? JSONEncoder().encode(smartShelves)).flatMap { String(data: $0, encoding: .utf8) }, forKey: "ui_smart_shelves") }
+    }
     var authorsList: Bool { didSet { d.set(authorsList, forKey: "ui_authors_list") } }
     var showNextInSeries: Bool { didSet { d.set(showNextInSeries, forKey: "ui_next_in_series") } }
     var fullScreenPlayer: Bool { didSet { d.set(fullScreenPlayer, forKey: "ui_full_screen_player") } }
@@ -87,6 +92,7 @@ final class AppSettings {
         chapterTicks = b("ui_progress_bar_chapterized", true)
         gridLayout = b("ui_library_grid", false)
         carouselOff = Set(d.stringArray(forKey: "ui_carousel_off") ?? [])
+        smartShelves = d.string(forKey: "ui_smart_shelves").flatMap { try? JSONDecoder().decode([SmartShelf].self, from: Data($0.utf8)) } ?? []
         authorsList = b("ui_authors_list", false)
         showNextInSeries = b("ui_next_in_series", true)
         fullScreenPlayer = b("ui_full_screen_player", false)

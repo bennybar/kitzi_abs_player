@@ -9,6 +9,10 @@ struct DownloadsView: View {
     @Namespace private var zoom
     @State private var removing: String?
     @State private var cancelling: String?
+    @State private var confirmRemoveFinished = false
+    /// Biggest first (to free space), or by title.
+    @AppStorage("downloads_by_size") private var bySize = false
+    @State private var freeBytes: Int64?
 
     private func book(_ id: String) -> Book? { library.byId[id] ?? downloads.downloaded(id)?.book }
 
@@ -21,11 +25,42 @@ struct DownloadsView: View {
     }
 
     private var done: [Book] {
-        downloads.downloadedIds.compactMap(book).sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+        let all = downloads.downloadedIds.compactMap(book)
+        return bySize ? all.sorted { downloads.bytes($0.id) > downloads.bytes($1.id) }
+            : all.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+    }
+
+    /// Finished and still taking space (not the one that's loaded).
+    private func finished(_ books: [Book]) -> [Book] {
+        books.filter { library.progress[$0.id]?.isFinished == true && Player.shared.nowPlaying?.book.id != $0.id }
     }
 
     var body: some View {
+        let done = self.done
+        let finished = finished(done)
+        let finishedBytes = finished.reduce(Int64(0)) { $0 + downloads.bytes($1.id) }
         List {
+            if !done.isEmpty {
+                Section {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(Format.size(downloads.totalBytes)).font(.title2.weight(.bold))
+                            Text("in \(done.count) \(done.count == 1 ? "book" : "books")").foregroundStyle(.secondary)
+                            Spacer()
+                            if let free = freeBytes { Text("\(Format.size(free)) free").font(.subheadline).foregroundStyle(.secondary) }
+                        }
+                        if !finished.isEmpty {
+                            // The quick win: books you've finished that are still here.
+                            Button { confirmRemoveFinished = true } label: {
+                                Label("Free up \(Format.size(finishedBytes)): remove \(finished.count) finished", systemImage: "checkmark.circle")
+                                    .font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.glass)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
             if !active.isEmpty {
                 Section("In Progress") {
                     ForEach(active, id: \.0) { id, state in
@@ -79,7 +114,9 @@ struct DownloadsView: View {
                 } else {
                     ForEach(done) { b in
                         ZoomBookLink(book: b, source: "dl-\(b.id)") {
-                            BookRow(book: b, zoomID: "dl-\(b.id)", detail: Format.size(downloads.bytes(b.id)), showDownloaded: false)
+                            BookRow(book: b, zoomID: "dl-\(b.id)",
+                                    detail: Format.size(downloads.bytes(b.id)) + (library.progress[b.id]?.isFinished == true ? " · Finished" : ""),
+                                    showDownloaded: false)
                         }
                         .swipeActions {
                             Button { removing = b.id } label: { Label("Remove", systemImage: "trash") }.tint(.red)
@@ -90,8 +127,6 @@ struct DownloadsView: View {
                 if !done.isEmpty { Text("On This Device") }
             } footer: {
                 VStack(alignment: .leading, spacing: 4) {
-                    // Nothing downloaded: no "Using Zero KB."
-                    if downloads.totalBytes > 0 { Text("Using \(Format.size(downloads.totalBytes)).") }
                     Text(settings.wifiOnlyDownloads ? "Downloads use Wi-Fi only (change in Settings)." : "Downloads use Wi-Fi or cellular (change in Settings).")
                 }
             }
@@ -107,6 +142,10 @@ struct DownloadsView: View {
                 // In a menu: a big red button at the top was too easy to hit and too loud.
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
+                        Picker("Sort", selection: $bySize) {
+                            Label("By Title", systemImage: "textformat").tag(false)
+                            Label("Biggest First", systemImage: "internaldrive").tag(true)
+                        }
                         Button("Remove All Downloads", systemImage: "trash", role: .destructive) { confirmRemoveAll = true }
                     } label: { Image(systemName: "ellipsis").accessibilityLabel("More") }
                 }
@@ -121,6 +160,15 @@ struct DownloadsView: View {
         .confirmationDialog("Cancel download?", isPresented: Binding(get: { cancelling != nil }, set: { if !$0 { cancelling = nil } }),
                             titleVisibility: .visible, presenting: cancelling) { id in
             Button("Cancel download", role: .destructive) { downloads.cancel(id) }
+        }
+        .task(id: downloads.downloadedIds.count) {
+            freeBytes = (try? URL.documentsDirectory.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]))?
+                .volumeAvailableCapacityForImportantUsage
+        }
+        .confirmationDialog("Remove finished books?", isPresented: $confirmRemoveFinished, titleVisibility: .visible) {
+            Button("Remove \(finished.count) Finished", role: .destructive) { for b in finished { downloads.delete(b.id) } }
+        } message: {
+            Text("Their files are deleted from this device (\(Format.size(finishedBytes))). You can still stream them, and your place is kept.")
         }
         .confirmationDialog("Remove all downloads?", isPresented: $confirmRemoveAll, titleVisibility: .visible) {
             Button("Remove all", role: .destructive) { downloads.deleteAll() }

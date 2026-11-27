@@ -561,8 +561,13 @@ final class Player {
                 sessionId = nil
                 await api.closeSession(sid)
             }
-            // The queue carries on with the next book.
-            if let next { await play(next) }
+            // The queue carries on with the next book; with nothing queued, an
+            // offer of what to listen to next.
+            if let next {
+                await play(next)
+            } else {
+                Toast.show("Finished \(np.book.title)", action: "What next?") { NotificationRoute.shared.pending = .whatNext }
+            }
         }
         updateNowPlayingInfo()
     }

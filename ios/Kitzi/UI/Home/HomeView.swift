@@ -133,6 +133,14 @@ struct HomeView: View {
                 if ProcessInfo.processInfo.environment["KITZI_TEST_OPEN"] == "narrators" {
                     path.append(BrowseRoute.narrators)
                 }
+                if ProcessInfo.processInfo.environment["KITZI_TEST_OPEN"] == "whatnext" { path.append(WhatNextRoute()) }
+                if ProcessInfo.processInfo.environment["KITZI_TEST_OPEN"] == "smart" {
+                    for s in SmartShelf.presets {
+                        let found = library.books(s)
+                        print("KITZITEST smart \(s.name) count=\(found.count) first=\(found.prefix(3).map(\.title).joined(separator: " | "))")
+                    }
+                    if settings.smartShelves.isEmpty { settings.smartShelves = [SmartShelf.presets[0], SmartShelf.presets[2]] }
+                }
                 if ProcessInfo.processInfo.environment["KITZI_TEST_OPEN"] == "genres" {
                     path.append(BrowseRoute.genres)
                 }
@@ -209,6 +217,7 @@ struct HomeView: View {
                 out.append(BrowseTile(title: f == .all ? "All Books" : f.label, icon: Self.icon(f), count: count) { path.append(AllBooksRoute(filter: f)) })
             }
         }
+        out.append(BrowseTile(title: "What Next?", icon: "sparkles", count: nil) { path.append(WhatNextRoute()) })
         if settings.radar {
             let n = Radar.shared.finds.count
             out.append(BrowseTile(title: "New Releases", icon: "dot.radiowaves.left.and.right", count: n > 0 ? n : nil) { path.append(ReleasesRoute()) })
@@ -267,6 +276,10 @@ struct HomeView: View {
                 shelfSection("Next in Series", library.continueSeries, key: "series", hero: false, showProgress: false) { $0.seriesLabel }
             }
         }
+        // Your own: saved filters (Settings › Home Shelves › Smart Shelves).
+        ForEach(settings.smartShelves) { s in
+            shelfSection(s.name, library.books(s), key: "smart", hero: false, showProgress: s.status == "inProgress", zoomKey: "smart-\(s.id)")
+        }
     }
 
     /// With the Resume card on top, Continue doesn't repeat the card's book.
@@ -323,11 +336,15 @@ struct BookListView: View {
     @Namespace private var zoom
     var body: some View {
         List {
-            ForEach(books) { b in
-                ZoomBookLink(book: b, source: "list-\(b.id)") { ListBookRow(book: b, zoomID: "list-\(b.id)") }
-                    .bookContextMenu(b)
+            if let series, settings.seriesMissing {
+                // The whole series in order: yours and the ones that aren't here.
+                SeriesLadder(series: series, books: books)
+            } else {
+                ForEach(books) { b in
+                    ZoomBookLink(book: b, source: "list-\(b.id)") { ListBookRow(book: b, zoomID: "list-\(b.id)") }
+                        .bookContextMenu(b)
+                }
             }
-            if let series, settings.seriesMissing { MissingSeriesBooks(series: series, books: books) }
         }
         .listStyle(.plain)
         .environment(\.coverZoom, zoom)
