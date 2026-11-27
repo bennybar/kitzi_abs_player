@@ -16,12 +16,26 @@ struct AllBooksView: View {
     @Namespace private var zoom
     @State private var search = ""
 
+    /// The sorted list, worked out when what it depends on changes (it sorted the
+    /// whole library on every redraw, e.g. every progress report while playing).
+    @State private var list: [Book] = []
+
+    private struct Inputs: Equatable {
+        var sort: BookSort; var filter: BookFilter; var search: String
+        var books: Int; var progressVersion: Int; var ratings: Int
+    }
+
     var body: some View {
-        // Re-sorted as Audible ratings arrive.
-        let _ = sort == .ratingDesc ? AudibleRating.shared.fillDone : 0
-        let list = library.filtered(sort: sort, filter: filter, search: search)
+        // Re-sorted as Audible ratings arrive; and when the books or (for the
+        // filters and sorts that read it) the progress change.
+        let inputs = Inputs(sort: sort, filter: filter, search: search, books: library.booksVersion,
+                            progressVersion: filter == .all ? 0 : library.progressVersion,
+                            ratings: sort == .ratingDesc ? AudibleRating.shared.fillDone : 0)
         Group {
             if settings.gridLayout { grid(list) } else { listView(list) }
+        }
+        .onChange(of: inputs, initial: true) { _, _ in
+            list = library.filtered(sort: sort, filter: filter, search: search)
         }
         .safeAreaInset(edge: .top) { if sort == .ratingDesc { RatingFillBanner() } }
         .task(id: sort) { if sort == .ratingDesc { await AudibleRating.shared.fill(library.books) } }

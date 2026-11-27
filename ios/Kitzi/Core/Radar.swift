@@ -55,14 +55,20 @@ final class Radar {
 
     // MARK: checking
 
-    /// Both checks, if they're on and due (the radar at most every 6 hours, or when `force`).
+    /// Both checks, if they're on and due: Shelfarr at most every 3 minutes, the
+    /// radar at most every 12 hours (24 from a background refresh, whose time is
+    /// short), or now when `force`.
     @MainActor
-    func checkAll(force: Bool = false) async {
+    func checkAll(force: Bool = false, background: Bool = false) async {
         guard Session.shared.signedIn else { return }
-        if AppSettings.shared.notifyShelfarr { await checkShelfarr() }
+        let now = Date().timeIntervalSince1970
+        if AppSettings.shared.notifyShelfarr, force || now - (Store.double("shelfarr_checked_at") ?? 0) > 180 {
+            Store.set(now, "shelfarr_checked_at")
+            await checkShelfarr()
+        }
         if AppSettings.shared.radar {
             let last = Store.double("radar_checked_at") ?? 0
-            if force || Date().timeIntervalSince1970 - last > 6 * 3600 { await checkReleases() }
+            if force || now - last > (background ? 24 : 12) * 3600 { await checkReleases() }
         }
     }
 
@@ -80,9 +86,14 @@ final class Radar {
               let until = Calendar.current.date(byAdding: .month, value: 6, to: now) else { return }
         // The library's language (most of its Audible matches'): an author's newest
         // list is often their old books re-released in translation.
-        var langs: [String: Int] = [:]
-        for b in library.books { if let l = AudibleRating.shared.knownLanguage(b.id) { langs[l.lowercased(), default: 0] += 1 } }
-        let language = langs.max { $0.value < $1.value }?.key ?? "english"
+        // (Worked out once and kept: it reads every book's saved match.)
+        var language = Store.string("radar_language") ?? ""
+        if language.isEmpty {
+            var langs: [String: Int] = [:]
+            for b in library.books { if let l = AudibleRating.shared.knownLanguage(b.id) { langs[l.lowercased(), default: 0] += 1 } }
+            language = langs.max { $0.value < $1.value }?.key ?? "english"
+            if langs.values.reduce(0, +) >= 20 { Store.set(language, "radar_language") }
+        }
         let inWindow = { (b: AudibleBook) -> Bool in
             guard let d = b.releaseDay, b.language.map({ $0.lowercased() == language }) ?? true else { return false }
             return d >= from && d <= until
@@ -101,12 +112,28 @@ final class Radar {
         for b in library.books { if let a = b.authors.first ?? b.author { authorWeight[a, default: 0] += 1 } }
         for b in library.continueListening { if let a = b.authors.first ?? b.author { authorWeight[a, default: 0] += 100 } }
         let authors = authorWeight.sorted { $0.value > $1.value }.prefix(40).map(\.key)
-        for a in authors {
-            guard let list = try? await AudibleCatalog.newest(author: a) else { incomplete = true; continue }
-            // Only the author's own books (a search also finds books "with" them),
-            // and not anthologies they have one story in.
-            for b in list where b.authors.count <= 3 && b.authors.contains(where: { $0.localizedCaseInsensitiveCompare(a) == .orderedSame }) {
-                add(b, "New from \(a)")
+        // Five at a time (one after another, 40 took most of a background refresh's time).
+        for chunk in stride(from: 0, to: authors.count, by: 5).map({ Array(authors[$0..<min($0 + 5, authors.count)]) }) {
+            if Task.isCancelled { return } // out of time: not marked checked, so it runs again
+            let lists = await withTaskGroup(of: (String, [AudibleBook]?).self) { g in
+                for a in chunk { g.addTask { (a, try? await AudibleCatalog.newest(author: a)) } }
+                var out: [(String, [AudibleBook]?)] = []
+                for await r in g { out.append(r) }
+                return out
+            }
+            for (a, list) in lists {
+                guard let list else {
+                    incomplete = true
+                    #if DEBUG
+                    print("KITZITEST radar couldn't ask about \(a)")
+                    #endif
+                    continue
+                }
+                // Only the author's own books (a search also finds books "with" them),
+                // and not anthologies they have one story in.
+                for b in list where b.authors.count <= 3 && b.authors.contains(where: { $0.localizedCaseInsensitiveCompare(a) == .orderedSame }) {
+                    add(b, "New from \(a)")
+                }
             }
         }
         for n in followedNarrators.sorted() {
@@ -119,6 +146,7 @@ final class Radar {
         let recent = Set(library.progress.values.filter { $0.progress > 0 }.map(\.itemId))
         let series = library.series().filter { s in s.books.contains { recent.contains($0.id) } }.prefix(25)
         for s in series {
+            if Task.isCancelled { return }
             guard let found = try? await AudibleCatalog.series(named: s.name, books: s.books),
                   let all = try? await AudibleCatalog.seriesBooks(found.ref, language: found.language) else { continue }
             let owned = s.books.compactMap(\.seriesSequence).max() ?? 0
@@ -129,6 +157,7 @@ final class Radar {
             }
         }
 
+        if Task.isCancelled { return }
         // What's new since last time is notified; a coming book once more on release day.
         let known = Dictionary(uniqueKeysWithValues: finds.map { ($0.asin, $0) })
         var fresh: [Find] = []

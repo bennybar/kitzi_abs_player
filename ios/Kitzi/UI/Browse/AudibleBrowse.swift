@@ -260,9 +260,13 @@ struct AudibleGenreView: View {
         .navigationTitle(genre.name)
         .navigationBarTitleDisplayMode(.inline)
         .task(id: list) {
-            books = nil
+            // The previous list stays until the new one is here (cached ones came
+            // after a flash of placeholders).
             failed = false
-            do { books = try await AudibleCatalog.genreBooks(genre.id, list) } catch { failed = true }
+            do {
+                let fresh = try await AudibleCatalog.genreBooks(genre.id, list)
+                withAnimation(.kitzi) { books = fresh }
+            } catch { failed = true }
         }
         .task { subgenres = (try? await AudibleCatalog.genres(parent: genre.id)) ?? [] }
     }

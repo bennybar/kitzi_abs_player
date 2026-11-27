@@ -47,7 +47,6 @@ struct HomeView: View {
             }
             .kitziBackground()
             .navigationTitle("Library")
-            .navigationDestination(for: Book.self) { BookDetailView(book: $0) }
             .navigationDestination(for: BookFrom.self) { r in
                 BookDetailView(book: r.book).navigationTransition(.zoom(sourceID: r.source, in: zoom))
             }

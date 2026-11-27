@@ -74,6 +74,8 @@ struct NarratorView: View {
                     }
                 } label: {
                     Label(following ? "Following" : "Follow", systemImage: following ? "bell.fill" : "bell")
+                        .contentTransition(.symbolEffect(.replace))
+                        .symbolEffect(.bounce, value: following)
                 }
             }
         }

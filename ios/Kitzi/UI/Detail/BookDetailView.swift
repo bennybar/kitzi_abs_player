@@ -88,7 +88,14 @@ struct BookDetailView: View {
             Button("Save") { Task { await rename() } }
             Button("Cancel", role: .cancel) {}
         }
-        .task(id: book.id) { bookmarks = await library.bookmarks(book.id) }
+        .task(id: book.id) {
+            // What's saved here at once (the card no longer jumps into place), the
+            // server's after the zoom in has finished (it parses all of /api/me).
+            bookmarks = library.localBookmarks(book.id)
+            try? await Task.sleep(for: .milliseconds(450))
+            let fresh = await library.bookmarks(book.id)
+            if fresh != bookmarks { withAnimation(.kitzi) { bookmarks = fresh } }
+        }
         .task(id: "\(book.id)#\(chaptersVersion)") {
             // The downloaded copy's chapters work offline, and catch up with the
             // server when it can be reached; else just ask the server.
@@ -107,7 +114,7 @@ struct BookDetailView: View {
             }
         }
         .sheet(isPresented: $showMoreInfo) { BookMoreInfoSheet(book: b) }
-        .sheet(isPresented: $showFinishBy) { FinishBySheet(book: b).presentationDetents([.medium]) }
+        .sheet(isPresented: $showFinishBy) { FinishBySheet(book: b).presentationDetents([.medium, .large]) }
         #if DEBUG
         .task { if ProcessInfo.processInfo.environment["KITZI_TEST_FINISHBY"] != nil { try? await Task.sleep(for: .seconds(2)); showFinishBy = true } }
         #endif
@@ -201,7 +208,7 @@ struct BookDetailView: View {
             VStack(spacing: 18) {
                 Color.clear
                     .aspectRatio(1, contentMode: .fit)
-                    .overlay { CoverImage(book: b, width: 900) }
+                    .overlay { CoverImage(book: b, width: 1200) }
                     .clipped()
                     .overlay(alignment: .bottom) {
                         LinearGradient(colors: [.clear, Color(.systemBackground)], startPoint: .top, endPoint: .bottom)
@@ -247,7 +254,7 @@ struct BookDetailView: View {
                         }
                     }
                     iconActions
-                    if let d = b.description.map(Self.stripHTML), !d.isEmpty { descriptionCard(d) }
+                    if let d = b.description.map(Self.stripHTMLCached), !d.isEmpty { descriptionCard(d) }
                     detailsCard
                     // No spacing here: each Audible section brings its own gap when
                     // it has something, so empty ones leave no hole.
@@ -300,7 +307,7 @@ struct BookDetailView: View {
         }
         guard p.progress > 0 else { return nil }
         let at = Date(timeIntervalSince1970: Double(p.lastUpdate) / 1000)
-        let ago = at.timeIntervalSinceNow > -60 ? "just now" : RelativeDateTimeFormatter().localizedString(for: at, relativeTo: Date())
+        let ago = at.timeIntervalSinceNow > -60 ? "just now" : Self.relative.localizedString(for: at, relativeTo: Date())
         return "\(Int(p.progress * 100))% · last listened \(ago)"
     }
 
@@ -311,6 +318,8 @@ struct BookDetailView: View {
             VStack(spacing: 6) {
                 HStack(spacing: 8) {
                     Image(systemName: isLoaded && player.isPlaying ? "waveform" : "play.fill")
+                        .contentTransition(.symbolEffect(.replace))
+                        .symbolEffect(.variableColor.iterative, isActive: isLoaded && player.isPlaying && !UIAccessibility.isReduceMotionEnabled)
                     Text(started ? "Resume" : "Play")
                     if started, let left = library.timeLeft(b) { Text("· \(Format.hm(left)) left").opacity(0.8) }
                 }
@@ -320,6 +329,7 @@ struct BookDetailView: View {
                 }
             }
             .frame(maxWidth: .infinity).frame(height: started ? 58 : 50)
+            .animation(.kitzi, value: started)
         }
         .buttonStyle(.glassProminent)
         .disabled(player.preparing)
@@ -448,18 +458,20 @@ struct BookDetailView: View {
                         }
                         .buttonStyle(.plain)
                     }
-                    if !chapters.isEmpty {
+                    // The count the library already knows shows at once; the list loads behind it.
+                    if let count = chapters.isEmpty ? b.chapterCount.flatMap({ $0 > 1 ? $0 : nil }) : chapters.count {
                         Button { showChapters = true } label: {
                             HStack(alignment: .firstTextBaseline, spacing: 12) {
                                 Image(systemName: "list.bullet").foregroundStyle(Color.accentColor).frame(width: 22)
                                 Text("Chapters").foregroundStyle(.secondary).frame(width: 84, alignment: .leading)
-                                Text("\(chapters.count)").foregroundStyle(Color.accentColor).frame(maxWidth: .infinity, alignment: .leading)
+                                Text("\(count)").foregroundStyle(Color.accentColor).frame(maxWidth: .infinity, alignment: .leading)
                                 Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
                             }
                             .font(.subheadline)
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .disabled(chapters.isEmpty) // (the list is still loading)
                     }
                     if let y = b.publishYear { detailRow("calendar", "Year", String(y)) }
                     if let p = b.publisher { detailRow("building.2", "Publisher", p) }
@@ -588,6 +600,16 @@ struct BookDetailView: View {
         if cal.isDateInTomorrow(d) { return "tomorrow" }
         let days = cal.dateComponents([.day], from: cal.startOfDay(for: Date()), to: cal.startOfDay(for: d)).day ?? 0
         return days < 7 ? d.formatted(.dateTime.weekday(.wide)) : d.formatted(.dateTime.month(.abbreviated).day())
+    }
+
+    private static let relative = RelativeDateTimeFormatter()
+    /// The last description stripped (the page redraws often, e.g. on download progress).
+    private static var stripped: (raw: String, text: String)?
+    static func stripHTMLCached(_ s: String) -> String {
+        if let c = stripped, c.raw == s { return c.text }
+        let t = stripHTML(s)
+        stripped = (s, t)
+        return t
     }
 
     static func stripHTML(_ s: String) -> String {
@@ -728,6 +750,7 @@ struct FinishBySheet: View {
                 }
                 Section("Finish By") {
                     DatePicker("Day", selection: $target, in: Date()..., displayedComponents: .date)
+                        .onChange(of: target) { _, _ in Haptics.tap() }
                     if library.dailyPaceSec < 5 * 60 {
                         Text("A few days of listening first: there isn't enough yet to work out your pace.").foregroundStyle(.secondary)
                     } else if let s = library.speedToFinish(book, by: target) {
@@ -749,6 +772,7 @@ struct FinishBySheet: View {
                     }
                 }
             }
+            .animation(.kitzi, value: target)
             .navigationTitle("At Your Pace")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }

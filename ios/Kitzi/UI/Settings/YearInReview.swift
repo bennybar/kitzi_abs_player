@@ -111,6 +111,8 @@ struct YearInReviewView: View {
     @State private var review: YearReview?
     @State private var failed = false
     @State private var card: Image?
+    /// The month bars grow in once the year is shown.
+    @State private var grown = false
 
     var body: some View {
         ScrollView {
@@ -128,6 +130,8 @@ struct YearInReviewView: View {
                 }
                 .padding(16)
                 .padding(.bottom, 80)
+                // Another year chosen: this one dims until the new one is in.
+                .opacity(r.year == year ? 1 : 0.4)
             } else if failed {
                 ContentUnavailableView("Couldn't load \(String(year))", systemImage: "wifi.exclamationmark",
                                        description: Text("Your listening history comes from the server. Check your connection."))
@@ -154,12 +158,22 @@ struct YearInReviewView: View {
             }
         }
         .task(id: year) {
-            review = nil
+            // The previous year stays (dimmed) until the new one is in: no blank page.
             failed = false
             card = nil
-            guard let r = await YearReview.load(year: year, library: library) else { failed = true; return }
-            review = r
-            // The card as an image, to share.
+            guard let r = await YearReview.load(year: year, library: library) else { review = nil; failed = true; return }
+            grown = UIAccessibility.isReduceMotionEnabled
+            withAnimation(.kitzi) { review = r }
+            if !grown {
+                try? await Task.sleep(for: .milliseconds(150))
+                withAnimation(.spring(response: 0.6, dampingFraction: 0.85)) { grown = true }
+            }
+            // The card as an image, to share: after its cover is in memory (the
+            // renderer draws once, and a cover still loading came out grey), and
+            // after the page has appeared.
+            if let url = r.books.first?.book?.coverURL() { _ = await ImageLoader.shared.image(url) }
+            try? await Task.sleep(for: .milliseconds(400))
+            guard !Task.isCancelled else { return }
             let renderer = ImageRenderer(content: YearCard(review: r).frame(width: 360).padding(12).background(Color(.systemBackground)))
             renderer.scale = 3
             if let ui = renderer.uiImage { card = Image(uiImage: ui) }
@@ -171,11 +185,13 @@ struct YearInReviewView: View {
         return VStack(alignment: .leading, spacing: 10) {
             Text("By Month").font(.headline)
             Chart(Array(r.perMonthSec.enumerated()), id: \.offset) { i, sec in
-                BarMark(x: .value("Month", symbols[i]), y: .value("Hours", sec / 3600))
+                BarMark(x: .value("Month", symbols[i]), y: .value("Hours", grown ? sec / 3600 : 0))
                     .foregroundStyle(Color.accentColor.gradient)
                     .cornerRadius(4)
             }
             .chartYAxisLabel("hours")
+            // Fixed scale, so the bars grow instead of the axis jumping.
+            .chartYScale(domain: 0...max((r.perMonthSec.max() ?? 0) / 3600, 1))
             .frame(height: 170)
         }
         .padding(16)
@@ -236,7 +252,7 @@ struct YearInReviewView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Finished in \(String(r.year))").font(.headline)
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
+                LazyHStack(spacing: 10) {
                     ForEach(r.finished) { b in
                         NavigationLink(value: b) {
                             CoverImage(book: b).frame(width: 84, height: 84)
@@ -263,6 +279,7 @@ struct YearCard: View {
                 Text("Nothing listened yet").font(.title.bold()).foregroundStyle(.white)
             } else {
                 Text("\(Int((r.totalSec / 3600).rounded())) hours").font(.system(size: 44, weight: .heavy)).foregroundStyle(.white)
+                    .contentTransition(.numericText())
                 HStack(spacing: 18) {
                     stat("\(r.finished.count)", "finished")
                     stat("\(r.days)", "days")

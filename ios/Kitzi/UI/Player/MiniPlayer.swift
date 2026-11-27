@@ -14,17 +14,15 @@ struct MiniPlayer: View {
         return Store.string(Store.lastItemKey).flatMap { library.byId[$0] }
     }
 
+    /// From the coarse values (chapter, minutes left): it redraws when they change,
+    /// not at every position tick.
     private var subtitle: String {
         guard let np = player.nowPlaying else { return book?.author ?? "Tap play to resume" }
-        let left = max(np.totalSec - player.position, 0) / max(player.speed, 0.1)
-        if let c = player.currentChapter() { return "\(c.title) · \(Format.hm(left)) left" }
-        return "\(Format.hm(left)) left"
+        let left = Format.hm(Double((player.minutesLeft ?? 0) * 60))
+        if let i = player.chapterIndex, np.chapters.indices.contains(i) { return "\(np.chapters[i].title) · \(left) left" }
+        return "\(left) left"
     }
 
-    private var fraction: Double {
-        guard let np = player.nowPlaying, np.totalSec > 0 else { return 0 }
-        return min(max(player.position / np.totalSec, 0), 1)
-    }
 
     var body: some View {
         if let book {
@@ -47,10 +45,7 @@ struct MiniPlayer: View {
 
                 Button { Haptics.tap(); player.togglePlay() } label: {
                     ZStack {
-                        Circle()
-                            .trim(from: 0, to: fraction)
-                            .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
-                            .rotationEffect(.degrees(-90))
+                        MiniProgressRing()
                         Circle().stroke(Color.primary.opacity(0.15), lineWidth: 2.5)
                         if player.preparing {
                             ProgressView().controlSize(.small)
@@ -69,5 +64,18 @@ struct MiniPlayer: View {
             }
             .padding(.horizontal, 12)
         }
+    }
+}
+
+/// The mini-player's progress ring: its own view, so only it follows the position.
+private struct MiniProgressRing: View {
+    @Environment(Player.self) private var player
+
+    var body: some View {
+        let total = player.nowPlaying?.totalSec ?? 0
+        Circle()
+            .trim(from: 0, to: total > 0 ? min(max(player.position / total, 0), 1) : 0)
+            .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+            .rotationEffect(.degrees(-90))
     }
 }

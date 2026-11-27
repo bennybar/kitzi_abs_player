@@ -48,7 +48,7 @@ extension Dictionary where Key == String, Value == Any {
 }
 
 enum JSONUtil {
-    static func parse(_ data: Data?) -> Any? {
+    nonisolated static func parse(_ data: Data?) -> Any? {
         guard let data, !data.isEmpty else { return nil }
         return try? JSONSerialization.jsonObject(with: data)
     }

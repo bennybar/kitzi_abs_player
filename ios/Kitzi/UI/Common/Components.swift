@@ -74,7 +74,7 @@ struct ToastView: View {
                 Text(t.text).font(.subheadline).lineLimit(2)
                 if let action = t.action {
                     Spacer(minLength: 4)
-                    Button(action) { t.run?(); withAnimation { toast.current = nil } }
+                    Button(action) { t.run?(); withAnimation(.kitzi) { toast.current = nil } }
                         .font(.subheadline.weight(.semibold))
                 }
             }
@@ -188,9 +188,12 @@ struct StarsView: View {
     var body: some View {
         // A ZStack with a placeholder, not an empty Group: SwiftUI never runs the
         // .task of a view with nothing in it, so the lookup never started.
+        // The saved rating shows in the first frame (it used to appear a moment later
+        // and push the page down).
+        let r0 = rating ?? AudibleRating.shared.cached(book.id)
         ZStack(alignment: .leading) {
             Color.clear.frame(width: 1, height: 1)
-            if let r = rating {
+            if let r = r0 {
                 Button {
                     if settings.audibleLink, let u = URL(string: "https://www.audible.com/pd/\(r.asin)") { UIApplication.shared.open(u) }
                 } label: {
@@ -208,8 +211,9 @@ struct StarsView: View {
             }
         }
         .task(id: book.id) {
-            rating = nil
-            rating = await AudibleRating.shared.rating(for: book)
+            // (Not cleared first: the saved one stays while a fresher one is looked up.)
+            let fresh = await AudibleRating.shared.rating(for: book)
+            if fresh?.stars != rating?.stars || fresh?.count != rating?.count { withAnimation(.kitzi) { rating = fresh } }
         }
     }
 }

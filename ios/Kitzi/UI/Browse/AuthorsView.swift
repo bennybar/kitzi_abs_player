@@ -112,7 +112,8 @@ private struct AuthorAvatar: View {
             }
             .frame(width: size, height: size)
             .clipShape(Circle())
-            .glassEffect(.regular, in: Circle())
+            // Glass only behind the initials (a photo covers it: it cost every row).
+            .glassEffect(author.imageURL == nil ? .regular : .identity, in: Circle())
     }
 
     private var initials: String {

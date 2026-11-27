@@ -316,7 +316,7 @@ struct ShelfarrRequestView: View {
                         .font(.subheadline)
                         .lineLimit(expanded ? nil : 6)
                         .contentShape(Rectangle())
-                        .onTapGesture { withAnimation { expanded.toggle() } }
+                        .onTapGesture { withAnimation(.kitzi) { expanded.toggle() } }
                 }
             }
 

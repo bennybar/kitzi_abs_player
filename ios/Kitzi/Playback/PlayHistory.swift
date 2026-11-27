@@ -26,6 +26,21 @@ final class PlayHistory {
         } else {
             sessions.append(Session(itemId: itemId, day: day, sec: listened))
         }
+        // On disk at most every 5 minutes, and when the app leaves (flush).
+        guard write == nil else { return }
+        write = Task {
+            try? await Task.sleep(for: .seconds(300))
+            guard !Task.isCancelled else { return }
+            flush()
+        }
+    }
+
+    private var write: Task<Void, Never>?
+
+    func flush() {
+        guard write != nil else { return }
+        write?.cancel()
+        write = nil
         try? JSONEncoder().encode(sessions).write(to: file, options: .atomic)
     }
 
@@ -127,7 +142,7 @@ enum BackgroundTasks {
                     await Player.shared.flushPending()
                     await LibraryStore.shared.refreshNewest()
                     await LibraryStore.shared.syncProgress()
-                    await Radar.shared.checkAll()
+                    await Radar.shared.checkAll(background: true)
                 }
                 t.setTaskCompleted(success: true)
             }
@@ -159,11 +174,11 @@ final class Toast {
     static func show(_ text: String, action: String? = nil, run: (() -> Void)? = nil) {
         let t = Toast.shared
         let item = Item(text: text, action: action, run: run)
-        withAnimation(.spring) { t.current = item }
+        withAnimation(UIAccessibility.isReduceMotionEnabled ? .easeInOut(duration: 0.15) : .spring) { t.current = item }
         t.hide?.cancel()
         t.hide = Task {
             try? await Task.sleep(for: .seconds(action == nil ? 3 : 5))
-            if t.current?.id == item.id { withAnimation(.spring) { t.current = nil } }
+            if t.current?.id == item.id { withAnimation(UIAccessibility.isReduceMotionEnabled ? .easeInOut(duration: 0.15) : .spring) { t.current = nil } }
         }
     }
 }

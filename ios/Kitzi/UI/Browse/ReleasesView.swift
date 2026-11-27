@@ -31,6 +31,7 @@ struct ReleasesView: View {
             }
         }
         .kitziBackground(grouped: true)
+        .animation(.kitzi, value: finds)
         .navigationTitle("New Releases")
         .refreshable { await radar.checkReleases() }
         .overlay(alignment: .top) { if radar.checking && !finds.isEmpty { ProgressView().padding(8) } }
@@ -71,9 +72,10 @@ struct AudibleASINView: View {
                 ContentUnavailableView("Couldn't reach Audible", systemImage: "wifi.exclamationmark",
                                        description: Text("Check your connection and try again."))
             } else {
-                ProgressView()
+                LoadingBlock(height: 320, radius: 28).padding()
             }
         }
+        .animation(.kitzi, value: book == nil)
         .task {
             guard book == nil else { return }
             if let b = try? await AudibleCatalog.product(asin) { book = b } else { failed = true }

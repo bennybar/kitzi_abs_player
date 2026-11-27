@@ -67,7 +67,9 @@ final class PhoneLink: NSObject {
     private func startPushing() {
         Task {
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(30))
+                // Only while the watch app is open does a push go anywhere: otherwise
+                // wake rarely (opening it asks for the state itself).
+                try? await Task.sleep(for: .seconds(WCSession.default.isReachable ? 30 : 300))
                 if Player.shared.isPlaying { pushState() }
             }
         }

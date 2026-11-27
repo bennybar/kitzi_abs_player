@@ -1,6 +1,7 @@
 import CoreMotion
 import Foundation
 import Observation
+import UIKit
 
 /// Sleep timer: a duration, or the end of the current chapter. In the last minute
 /// of a duration timer a shake adds five minutes (easier than finding the screen
@@ -15,6 +16,9 @@ final class SleepTimer {
     private(set) var remainingSec: Double = 0
 
     private var task: Task<Void, Never>?
+    /// The chapter end being waited for (fixed at the start, re-fixed after a seek).
+    @ObservationIgnored private var chapterEnd: Double?
+    @ObservationIgnored private var seenSeeks = 0
     private let motion = CMMotionManager()
     private var shaking = false
 
@@ -28,9 +32,11 @@ final class SleepTimer {
     /// False when the book has no chapters.
     @discardableResult
     func startEndOfChapter() -> Bool {
-        guard Player.shared.currentChapter() != nil else { return false }
+        guard let end = Player.shared.currentChapter()?.endSec else { return false }
         cancel()
         mode = .endOfChapter
+        chapterEnd = end
+        seenSeeks = Player.shared.seekGeneration
         run()
         return true
     }
@@ -43,9 +49,17 @@ final class SleepTimer {
         }
     }
 
+    /// Back in the foreground: counts on screen again at once.
+    func wake() {
+        guard mode != .off else { return }
+        task?.cancel()
+        run()
+    }
+
     func cancel() {
         task?.cancel(); task = nil
         mode = .off
+        chapterEnd = nil
         remainingSec = 0
         stopShake()
     }
@@ -55,8 +69,6 @@ final class SleepTimer {
         // The chapter end is fixed when the timer starts (and re-fixed only after a
         // seek): re-reading the "current" chapter near its end could already see the
         // next one, and the timer would play through it.
-        var targetEnd = Player.shared.currentChapter()?.endSec
-        var seenSeeks = Player.shared.seekGeneration
         task = Task {
             while !Task.isCancelled {
                 let p = Player.shared
@@ -77,9 +89,9 @@ final class SleepTimer {
                     p.refreshPosition()
                     if p.seekGeneration != seenSeeks {
                         seenSeeks = p.seekGeneration
-                        targetEnd = p.currentChapter()?.endSec
+                        chapterEnd = p.currentChapter()?.endSec
                     }
-                    guard let end = targetEnd else { cancel(); return }
+                    guard let end = chapterEnd else { cancel(); return }
                     remainingSec = max((end - p.position) / max(p.speed, 0.1), 0)
                     if end - p.position <= 0.6 {
                         p.pause(); cancel()
@@ -87,7 +99,17 @@ final class SleepTimer {
                         return
                     }
                 }
-                try? await Task.sleep(for: .milliseconds(remainingSec < 5 ? 250 : 1000))
+                // On screen: a second at a time (the countdown). In the background
+                // nothing shows it: sleep to a minute before the end (the shake
+                // window), or a few seconds before the chapter ends (positions run
+                // at the playing speed; Skip Silence can run faster, and a lock-screen
+                // skip can move it, so at most two minutes at a time), then count closely.
+                var wait = remainingSec < 5 ? 0.25 : 1
+                if UIApplication.shared.applicationState != .active, remainingSec > 70 {
+                    if case .duration = mode { wait = remainingSec - 60 }
+                    else { wait = min(remainingSec * (p.skipSilence ? 0.3 : 1) - 3, 120) }
+                }
+                try? await Task.sleep(for: .seconds(wait))
             }
         }
     }

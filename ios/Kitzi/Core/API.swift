@@ -63,25 +63,41 @@ final class API {
     /// header (smoothed). Positions saved here are stamped in SERVER time, so
     /// "which write is newer" compares like with like even when the phone's or
     /// the server's clock is off.
-    static func learnServerClock(_ resp: URLResponse?) {
-        guard let h = (resp as? HTTPURLResponse)?.value(forHTTPHeaderField: "Date") else { return }
+    private static let httpDate: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.timeZone = TimeZone(identifier: "GMT")
         f.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
-        guard let d = f.date(from: h) else { return }
+        return f
+    }()
+    private static let dayFormat: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.locale = Locale(identifier: "en_US_POSIX"); return f
+    }()
+    private static let weekdayFormat: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "EEEE"; f.locale = Locale(identifier: "en_US_POSIX"); return f
+    }()
+
+    static func learnServerClock(_ resp: URLResponse?) {
+        guard let h = (resp as? HTTPURLResponse)?.value(forHTTPHeaderField: "Date") else { return }
+        guard let d = httpDate.date(from: h) else { return }
         // The header has 1 s resolution: +500 ms centres it.
         let sample = (d.timeIntervalSince1970 * 1000 + 500) - Double(Format.phoneNowMs)
         let prev = Store.double("server_clock_offset_ms")
         // Smoothed; a big jump (clock changed) is taken at once.
         let next = prev.map { abs(sample - $0) > 120_000 ? sample : $0 * 0.8 + sample * 0.2 } ?? sample
-        Store.set(next, "server_clock_offset_ms")
+        // Saved only when it moved (every response asked for a write).
+        if abs(next - (prev ?? .infinity)) >= 250 { Store.set(next, "server_clock_offset_ms") }
     }
 
     func getJSON(_ path: String, allow404: Bool = false) async throws -> Any? {
         let (code, data) = try await send(path)
         if allow404 && code == 404 { return nil }
         guard code == 200 else { throw HTTPError(code: code) }
+        // A big answer (a page of the library, /api/me) is parsed off the main
+        // thread: parsed on it, it hitched scrolling and the zoom into a book.
+        if data.count > 64 * 1024 {
+            return await Task.detached { ParsedJSON(value: JSONUtil.parse(data)) }.value.value
+        }
         return JSONUtil.parse(data)
     }
 
@@ -380,8 +396,7 @@ final class API {
     /// Listening time for a downloaded book as a "local" session (cumulative total).
     func syncLocalSession(id: String, book: Book, startedAt: Int64, startSec: Double, report r: Report, totalListened: Double) async -> Bool {
         let day = Date()
-        let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"; df.locale = Locale(identifier: "en_US_POSIX")
-        let wf = DateFormatter(); wf.dateFormat = "EEEE"; wf.locale = Locale(identifier: "en_US_POSIX")
+        let df = Self.dayFormat, wf = Self.weekdayFormat
         var body: JSON = [
             "id": id, "libraryItemId": book.id, "mediaType": "book", "displayTitle": book.title,
             "playMethod": 3, "startTime": startSec, "currentTime": r.currentSec, "timeListening": totalListened,
@@ -408,3 +423,6 @@ final class API {
         (try? await ok("/api/me/item/\(itemId)/bookmark", method: "POST", body: ["time": (time * 1000).rounded() / 1000, "title": title])) ?? false
     }
 }
+
+/// Parsed JSON handed back from a background parse (plain property-list values).
+nonisolated private struct ParsedJSON: @unchecked Sendable { let value: Any? }

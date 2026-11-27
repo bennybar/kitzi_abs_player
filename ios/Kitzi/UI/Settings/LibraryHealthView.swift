@@ -50,8 +50,12 @@ struct LibraryHealthView: View {
     @State private var chaptersFor: Book?
     @State private var confirmAll: Issue?
 
+    /// The books with each issue: worked out when the library changes, not on
+    /// every redraw (a Fix All redraws twice per book).
+    @State private var found: [(Issue, [Book])] = []
+
     var body: some View {
-        let groups = Issue.allCases.map { i in (i, library.books.filter { i.applies($0) && !done.contains(key($0, i)) }) }
+        let groups = found.map { i, books in (i, books.filter { !done.contains(key($0, i)) }) }
         List {
             if groups.allSatisfy({ $0.1.isEmpty }) {
                 ContentUnavailableView("All in order", systemImage: "checkmark.seal",
@@ -79,6 +83,10 @@ struct LibraryHealthView: View {
         }
         .kitziBackground(grouped: true)
         .navigationTitle("Library Health")
+        .animation(.kitzi, value: done)
+        .onChange(of: library.booksVersion, initial: true) { _, _ in
+            found = Issue.allCases.map { i in (i, library.books.filter { i.applies($0) }) }
+        }
         .refreshable { await library.syncAll() }
         .sheet(item: $chaptersFor) { b in
             AudibleChaptersSheet(book: b, current: []) { _ in done.insert(key(b, .chapters)) }
@@ -108,7 +116,7 @@ struct LibraryHealthView: View {
             }
             Spacer(minLength: 6)
             if working.contains(key(b, issue)) {
-                ProgressView()
+                ProgressView().transition(.opacity)
             } else {
                 Button(issue.fix) { Task { await fix(b, issue) } }
                     .font(.caption.weight(.semibold))

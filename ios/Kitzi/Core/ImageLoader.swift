@@ -15,9 +15,37 @@ final class ImageLoader {
         return d
     }()
 
-    init() { memory.countLimit = 300 }
+    /// The largest copy of each cover in memory, by the cover without its size:
+    /// a page asking for a bigger size shows that one at once, not a blank.
+    private var best: [String: (width: CGFloat, image: UIImage)] = [:]
+
+    init() {
+        memory.countLimit = 400
+        // Decoded covers are big (a 1200 px one is about 6 MB): bounded by bytes too.
+        memory.totalCostLimit = 120 * 1024 * 1024
+    }
 
     func cached(_ url: URL) -> UIImage? { memory.object(forKey: url.absoluteString as NSString) }
+
+    /// The exact cover if it's in memory, else the largest other size of it.
+    func cachedAny(_ url: URL) -> UIImage? {
+        cached(url) ?? best[Self.family(url)]?.image
+    }
+
+    /// The cover's address without its size (and timestamp kept: a new cover is a new family).
+    private static func family(_ url: URL) -> String {
+        guard var c = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url.absoluteString }
+        c.queryItems = c.queryItems?.filter { $0.name != "width" }
+        return c.string ?? url.absoluteString
+    }
+
+    private func remember(_ img: UIImage, for url: URL) {
+        let cost = Int(img.size.width * img.scale * img.size.height * img.scale * 4)
+        memory.setObject(img, forKey: url.absoluteString as NSString, cost: cost)
+        let f = Self.family(url)
+        if (best[f]?.width ?? 0) < img.size.width * img.scale { best[f] = (img.size.width * img.scale, img) }
+        if best.count > 500 { best.removeAll() }
+    }
 
     func image(_ url: URL) async -> UIImage? {
         let key = url.absoluteString as NSString
@@ -39,7 +67,7 @@ final class ImageLoader {
         inflight[url] = t
         let img = await t.value
         inflight[url] = nil
-        if let img { memory.setObject(img, forKey: key) }
+        if let img { remember(img, for: url) }
         return img
     }
 
@@ -47,6 +75,7 @@ final class ImageLoader {
         try? FileManager.default.removeItem(at: dir)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         memory.removeAllObjects()
+        best.removeAll()
     }
 
     var diskBytes: Int64 {
@@ -73,6 +102,10 @@ struct CoverImage: View {
     }
 
     var body: some View {
+        // What's in memory shows in the first frame (it used to flash the
+        // placeholder until the task ran), and another size of the same cover
+        // stands in while this size loads.
+        let image = image ?? resolved.flatMap { ImageLoader.shared.cachedAny($0) }
         // Takes exactly the space it's offered: the picture fills it (cropped), but
         // never reports its own pixel size to the layout.
         Color.clear
@@ -101,8 +134,12 @@ struct CoverImage: View {
             .clipped()
         .task(id: resolved) {
             guard let u = resolved else { return }
-            if let c = ImageLoader.shared.cached(u) { image = c; return }
-            image = await ImageLoader.shared.image(u)
+            if let c = ImageLoader.shared.cached(u) { self.image = c; return }
+            let hadOne = ImageLoader.shared.cachedAny(u) != nil
+            let loaded = await ImageLoader.shared.image(u)
+            // From the network with nothing shown yet: faded in, not popped.
+            if hadOne || UIAccessibility.isReduceMotionEnabled { self.image = loaded }
+            else { withAnimation(.easeOut(duration: 0.2)) { self.image = loaded } }
         }
     }
 }

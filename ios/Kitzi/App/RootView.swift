@@ -93,7 +93,17 @@ struct MainView: View {
             PlayerView()
                 .navigationTransition(.zoom(sourceID: "np", in: playerZoom))
         }
-        .environment(\.openPlayer, OpenPlayerAction { showPlayer = true })
+        // From a notification's sheet: the sheet goes first (one presenter at a time).
+        .environment(\.openPlayer, OpenPlayerAction {
+            if NotificationRoute.shared.pending != nil {
+                NotificationRoute.shared.pending = nil
+                Task { try? await Task.sleep(for: .milliseconds(450)); showPlayer = true }
+            } else {
+                showPlayer = true
+            }
+        })
+        // A notification tapped while the player is up: the player makes way.
+        .onChange(of: NotificationRoute.shared.pending) { _, p in if p != nil, showPlayer { showPlayer = false } }
         .task {
             #if DEBUG
             // Test hook (simulator screenshots): KITZI_TEST_OPEN=player plays the first
@@ -153,10 +163,13 @@ struct MainView: View {
             case .background:
                 // With background time, so the report finishes after the app leaves.
                 player.appBackgrounded()
+                library.flushWrites()
                 BackgroundTasks.scheduleRefresh()
             case .active:
                 // Back in the app: listening on another device shows up at once.
                 player.appForegrounded()
+                // The countdown on screen again (the timer slept while nothing showed it).
+                SleepTimer.shared.wake()
                 Task {
                     await library.quietRefresh()
                     await Radar.shared.checkAll()

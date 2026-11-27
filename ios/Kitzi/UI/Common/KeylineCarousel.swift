@@ -5,7 +5,7 @@ import UIKit
 /// medium → small) and change width as they move between them, the cover masked
 /// to the item so a narrow item shows the middle of the art. Hero mode starts
 /// with one big item and smaller ones peeking; multi-browse keeps several large.
-struct KeylineCarousel<Item, Content: View>: View {
+struct KeylineCarousel<Item: Identifiable, Content: View>: View {
     let items: [Item]
     var height: CGFloat
     /// Item widths from the leading edge (e.g. large, large, medium, small).
@@ -27,10 +27,11 @@ struct KeylineCarousel<Item, Content: View>: View {
             let width = geo.size.width - 32
             let k = keylines(width)
             let stride = (k.first ?? 100) + spacing
-            let maxOffset = CGFloat(max(items.count - (k.count - 1), 0))
+            // Every item can reach the first (big) keyline, the last one included.
+            let maxOffset = CGFloat(max(items.count - 1, 0))
             let current = min(max(scrollX / stride, -0.35), maxOffset + 0.35)
             ZStack(alignment: .topLeading) {
-                ForEach(Array(items.enumerated()), id: \.offset) { i, item in
+                ForEach(Array(items.enumerated()), id: \.element.id) { i, item in
                     let f = frame(CGFloat(i) - current, k)
                     if f.width > 1 && f.x < width + 40 && f.x + f.width > -40 {
                         content(item, min(max((f.width - (k.last ?? 0)) / max((k.first ?? 1) - (k.last ?? 0), 1), 0), 1))
@@ -59,7 +60,7 @@ struct KeylineCarousel<Item, Content: View>: View {
                         // scrolls with the content, so the drawn x plus the scroll):
                         // taps, the long-press menu and VoiceOver all land on the book.
                         // Inside the ScrollView, so swiping still scrolls.
-                        ForEach(Array(items.enumerated()), id: \.offset) { i, item in
+                        ForEach(Array(items.enumerated()), id: \.element.id) { i, item in
                             let f = frame(CGFloat(i) - current, k)
                             if f.width > 1 && f.x < width + 40 && f.x + f.width > -40 {
                                 let hit = Color.clear

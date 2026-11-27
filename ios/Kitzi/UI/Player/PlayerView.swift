@@ -20,8 +20,6 @@ struct PlayerView: View {
     @Environment(SleepTimer.self) private var sleep
 
     @State private var sheet: PlayerSheetKind?
-    /// While dragging the scrubber: the target, in the scrubber's own scope.
-    @State private var scrub: Double?
     @State private var confirmCancelDownload = false
     @State private var confirmRemoveDownload = false
 
@@ -80,7 +78,7 @@ struct PlayerView: View {
             // An overlay on a plain colour, so the blurred art can never size the layout.
             Color.black
                 .overlay {
-                    CoverImage(book: b, width: 300)
+                    CoverImage(book: b)
                         .blur(radius: 70)
                         .scaleEffect(1.4)
                 }
@@ -110,7 +108,7 @@ struct PlayerView: View {
             Spacer(minLength: 10)
             infoBlock(np)
             Spacer(minLength: 12)
-            scrubber(np)
+            PlayerScrubber(np: np, tint: tint)
             transport.padding(.top, 8)
             Spacer(minLength: 8)
             bar(np)
@@ -122,8 +120,8 @@ struct PlayerView: View {
         HStack {
             glassIcon("chevron.down", "Close player") { dismiss() }
             Spacer()
-            if let c = player.currentChapter(), np.chapters.count > 1 {
-                Text("Chapter \(c.index + 1) of \(np.chapters.count)")
+            if let i = player.chapterIndex, np.chapters.count > 1 {
+                Text("Chapter \(i + 1) of \(np.chapters.count)")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
@@ -154,40 +152,13 @@ struct PlayerView: View {
             .overlay(alignment: .topTrailing) {
                 glassIcon("bookmark", "Add bookmark") { addBookmark(np) }.padding(12)
             }
-            .overlay(alignment: .bottom) {
-                HStack {
-                    if settings.resumeFromHistory, let back = player.positionBeforeLastJump, abs(back - player.position) > 5 {
-                        glassPill("arrow.uturn.backward", "Back to \(Format.clock(back))") { jumpBack(back) }
-                            .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
-                    }
-                    Spacer()
-                }
-                .padding(12)
-                .animation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.35), value: player.positionBeforeLastJump)
-            }
+            .overlay(alignment: .bottom) { BackToPill().padding(12) }
             // Paused: the art steps back a little; playing, it springs forward (as in
             // Apple Music). It stays put with Reduce Motion.
             .scaleEffect(player.isPlaying || player.preparing || reduceMotion ? 1 : 0.88)
             // (Keyed to what the scale reads: a load that ends paused animates too.)
             .animation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.45, dampingFraction: 0.68),
                        value: player.isPlaying || player.preparing)
-    }
-
-    private func glassPill(_ icon: String, _ title: String, _ action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Label(title, systemImage: icon)
-                .font(.subheadline.weight(.semibold))
-                .padding(.horizontal, 14).padding(.vertical, 9)
-                .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .glassEffect(.regular.interactive(), in: Capsule())
-    }
-
-    /// Back to where you were before the last jump (scrub, chapter, bookmark).
-    /// The jump is a jump too, so the pill then offers the way back again.
-    private func jumpBack(_ t: Double) {
-        player.seek(to: t)
     }
 
     private func addBookmark(_ np: NowPlaying) {
@@ -218,7 +189,7 @@ struct PlayerView: View {
             HStack(spacing: 10) {
                 StarsView(book: np.book).font(.caption)
                 // The book's length is already under the scrubber when both bars show.
-                if !(settings.dualProgress && chapterScope(np) != nil) { lengthChip(np) }
+                if !(settings.dualProgress && hasChapterScope(np)) { lengthChip(np) }
             }
             .padding(.top, 2)
         }
@@ -238,13 +209,196 @@ struct PlayerView: View {
 
     // MARK: scrubber
 
+    /// The bar shows the chapter (primary progress "chapter", and there are chapters).
+    private func hasChapterScope(_ np: NowPlaying) -> Bool {
+        settings.primaryProgress == "chapter" && np.chapters.count > 1 && player.chapterIndex != nil
+    }
+
+    // MARK: transport (native glyphs, as in Apple Music)
+
+    private var transport: some View {
+        HStack {
+            glyph("backward.end.fill", "Previous chapter", 22) { player.previousChapter() }
+            Spacer()
+            glyph("gobackward.\(validSkip(settings.seekBackSec))", "Back \(settings.seekBackSec) seconds", 30) {
+                player.skip(-Double(settings.seekBackSec))
+            }
+            Spacer()
+            if settings.expressivePlayButton {
+                PlayPauseButton(size: 76)
+            } else {
+                Button { Haptics.tap(); player.togglePlay() } label: {
+                    ZStack {
+                        if player.preparing { ProgressView().controlSize(.large) } else {
+                            Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                                .font(.system(size: 50, weight: .regular))
+                                .contentTransition(.symbolEffect(.replace))
+                        }
+                    }
+                    .frame(width: 76, height: 76)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
+            }
+            Spacer()
+            glyph("goforward.\(validSkip(settings.seekForwardSec))", "Forward \(settings.seekForwardSec) seconds", 30) {
+                player.skip(Double(settings.seekForwardSec))
+            }
+            Spacer()
+            glyph("forward.end.fill", "Next chapter", 22) { player.nextChapter() }
+        }
+        .foregroundStyle(.primary)
+    }
+
+    /// SF Symbols only has gobackward/goforward for some intervals.
+    private func validSkip(_ s: Int) -> String {
+        [5, 10, 15, 30, 45, 60, 75, 90].contains(s) ? String(s) : "plus"
+    }
+
+    private func glyph(_ icon: String, _ label: String, _ size: CGFloat, _ action: @escaping () -> Void) -> some View {
+        Button { Haptics.tap(); action() } label: {
+            Image(systemName: icon)
+                .font(.system(size: size, weight: .medium))
+                .frame(width: 50, height: 50)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+    }
+
+    // MARK: the bottom bar (one Liquid Glass capsule, icons)
+
+    private func bar(_ np: NowPlaying) -> some View {
+        let id = np.book.id
+        let dl = downloads.state(id)
+        return GlassEffectContainer {
+            HStack(spacing: 0) {
+                barButton(text: playerSpeedLabel(player.speed), highlighted: player.speed != 1, label: "Speed") { sheet = .speed }
+                // Its own view: the countdown ticks every second, the bar doesn't need to.
+                SleepBarButton(tint: tint) { sheet = .sleep }
+                barButton(icon: "list.bullet", label: "Chapters", enabled: np.chapters.count > 1) { sheet = .chapters }
+                barButton(icon: "bookmark.square", label: "Bookmarks") { sheet = .bookmarks }
+                switch dl {
+                case .queued, .running, .waiting:
+                    barButton(icon: "arrow.down.circle.dotted", text: downloadLabel(dl), highlighted: true, label: "Cancel download") {
+                        confirmCancelDownload = true
+                    }
+                case .done:
+                    barButton(icon: "arrow.down.circle.fill", highlighted: true, label: "Downloaded") { confirmRemoveDownload = true }
+                case .failed:
+                    barButton(icon: "exclamationmark.arrow.circlepath", label: "Retry download") { Task { await downloads.start(id) } }
+                case .none:
+                    barButton(icon: "arrow.down.circle", label: "Download") {
+                        Task {
+                            if !(await downloads.start(id)) {
+                                Toast.show("Nothing to download: the server lists no audio files for this book")
+                            }
+                        }
+                    }
+                }
+                barButton(icon: "ellipsis", label: "More") { sheet = .more }
+            }
+            .frame(height: 56)
+            .padding(.horizontal, 6)
+            .glassEffect(.regular, in: Capsule())
+        }
+        .confirmationDialog("Cancel the download?", isPresented: $confirmCancelDownload, titleVisibility: .visible) {
+            Button("Cancel download", role: .destructive) { downloads.cancel(id) }
+            Button("Keep downloading", role: .cancel) {}
+        }
+        .confirmationDialog("Remove download?", isPresented: $confirmRemoveDownload, titleVisibility: .visible) {
+            Button("Remove download", role: .destructive) { downloads.delete(id) }
+            Button("Keep", role: .cancel) {}
+        } message: {
+            Text("The downloaded files are deleted from this device. You can still stream the book.")
+        }
+    }
+
+    private func barButton(icon: String? = nil, text: String? = nil, highlighted: Bool = false, label: String,
+                           enabled: Bool = true, _ action: @escaping () -> Void) -> some View {
+        PlayerBarButton(icon: icon, text: text, highlighted: highlighted, label: label, enabled: enabled, tint: tint, action: action)
+    }
+
+    private func downloadLabel(_ s: Downloads.State) -> String {
+        switch s {
+        case .running(let f): return "\(Int(f * 100))%"
+        case .waiting: return "Wi-Fi"
+        default: return "Waiting"
+        }
+    }
+
+    // MARK: sheets
+
+    private func sheetView(_ kind: PlayerSheetKind) -> some View {
+        Group {
+            switch kind {
+            case .chapters: PlayerChaptersSheet()
+            case .speed: PlayerSpeedSheet()
+            case .sleep: PlayerSleepSheet()
+            case .bookmarks: PlayerBookmarksSheet()
+            case .history: PlayerHistorySheet()
+            case .info: PlayerBookInfoSheet()
+            case .more: PlayerMoreSheet { next in switchSheet(to: next) }
+            }
+        }
+        // Frosted enough that the busy cover behind doesn't wash out the text.
+        .presentationBackground(.thickMaterial)
+        // The phone's own light/dark mode (the player itself is dark with its
+        // gradient, but its sheets are their own surfaces, as in Apple Music).
+        .environment(\.colorScheme, systemScheme)
+    }
+
+    /// From one sheet to another: close, then open the next once the first is gone.
+    private func switchSheet(to next: PlayerSheetKind?) {
+        sheet = nil
+        guard let next else { return }
+        Task {
+            try? await Task.sleep(for: .milliseconds(400))
+            sheet = next
+        }
+    }
+}
+
+/// "1×", "1.25×", "1.5×".
+func playerSpeedLabel(_ v: Double) -> String {
+    var s = String(format: "%.2f", v)
+    while s.hasSuffix("0") { s.removeLast() }
+    if s.hasSuffix(".") { s.removeLast() }
+    return s + "×"
+}
+
+
+/// The system AirPlay / Bluetooth route picker.
+struct AirPlayButton: UIViewRepresentable {
+    func makeUIView(context: Context) -> AVRoutePickerView {
+        let v = AVRoutePickerView()
+        v.tintColor = .label
+        v.activeTintColor = UIColor.tintColor
+        v.prioritizesVideoDevices = false
+        return v
+    }
+    func updateUIView(_ uiView: AVRoutePickerView, context: Context) {}
+}
+
+/// The scrubber, the times under it and the book bar: its own view, so the
+/// position ticks (twice a second) redraw only this, not the whole player.
+struct PlayerScrubber: View {
+    let np: NowPlaying
+    let tint: Color
+    @Environment(Player.self) private var player
+    @Environment(AppSettings.self) private var settings
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// While dragging: the target, in the scrubber's own scope.
+    @State private var scrub: Double?
+
     /// Chapter scope when the primary progress is the chapter (and there are chapters).
     private func chapterScope(_ np: NowPlaying) -> ChapterInfo? {
         guard settings.primaryProgress == "chapter", np.chapters.count > 1 else { return nil }
         return player.currentChapter()
     }
 
-    private func scrubber(_ np: NowPlaying) -> some View {
+    var body: some View {
         let chapter = chapterScope(np)
         let start = chapter?.startSec ?? 0
         let length = max(chapter?.durationSec ?? np.totalSec, 0.001)
@@ -313,111 +467,48 @@ struct PlayerView: View {
             }
         }
     }
+}
 
-    // MARK: transport (native glyphs, as in Apple Music)
+/// "Back to 1:02:03" after a jump: shown while the place is more than 5 s away.
+private struct BackToPill: View {
+    @Environment(Player.self) private var player
+    @Environment(AppSettings.self) private var settings
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var transport: some View {
+    var body: some View {
+        let back = settings.resumeFromHistory ? player.positionBeforeLastJump : nil
+        let shown = back.map { abs($0 - player.position) > 5 } ?? false
         HStack {
-            glyph("backward.end.fill", "Previous chapter", 22) { player.previousChapter() }
-            Spacer()
-            glyph("gobackward.\(validSkip(settings.seekBackSec))", "Back \(settings.seekBackSec) seconds", 30) {
-                player.skip(-Double(settings.seekBackSec))
-            }
-            Spacer()
-            if settings.expressivePlayButton {
-                PlayPauseButton(size: 76)
-            } else {
-                Button { Haptics.tap(); player.togglePlay() } label: {
-                    ZStack {
-                        if player.preparing { ProgressView().controlSize(.large) } else {
-                            Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                                .font(.system(size: 50, weight: .regular))
-                                .contentTransition(.symbolEffect(.replace))
-                        }
-                    }
-                    .frame(width: 76, height: 76)
-                    .contentShape(Rectangle())
+            if shown, let back {
+                Button { player.seek(to: back) } label: {
+                    Label("Back to \(Format.clock(back))", systemImage: "arrow.uturn.backward")
+                        .font(.subheadline.weight(.semibold))
+                        .padding(.horizontal, 14).padding(.vertical, 9)
+                        .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
+                .glassEffect(.regular.interactive(), in: Capsule())
+                .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
             }
             Spacer()
-            glyph("goforward.\(validSkip(settings.seekForwardSec))", "Forward \(settings.seekForwardSec) seconds", 30) {
-                player.skip(Double(settings.seekForwardSec))
-            }
-            Spacer()
-            glyph("forward.end.fill", "Next chapter", 22) { player.nextChapter() }
         }
-        .foregroundStyle(.primary)
+        // Keyed on what it reads: it appears and goes away animated either way.
+        .animation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.35), value: shown)
     }
+}
 
-    /// SF Symbols only has gobackward/goforward for some intervals.
-    private func validSkip(_ s: Int) -> String {
-        [5, 10, 15, 30, 45, 60, 75, 90].contains(s) ? String(s) : "plus"
-    }
+/// One of the player's bar buttons: an icon and/or a short text.
+struct PlayerBarButton: View {
+    var icon: String? = nil
+    var text: String? = nil
+    var highlighted = false
+    var label: String
+    var enabled = true
+    var tint: Color
+    var action: () -> Void
+    @Environment(AppSettings.self) private var settings
 
-    private func glyph(_ icon: String, _ label: String, _ size: CGFloat, _ action: @escaping () -> Void) -> some View {
-        Button { Haptics.tap(); action() } label: {
-            Image(systemName: icon)
-                .font(.system(size: size, weight: .medium))
-                .frame(width: 50, height: 50)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(label)
-    }
-
-    // MARK: the bottom bar (one Liquid Glass capsule, icons)
-
-    private func bar(_ np: NowPlaying) -> some View {
-        let id = np.book.id
-        let dl = downloads.state(id)
-        return GlassEffectContainer {
-            HStack(spacing: 0) {
-                barButton(text: playerSpeedLabel(player.speed), highlighted: player.speed != 1, label: "Speed") { sheet = .speed }
-                barButton(icon: sleep.mode == .off ? "moon.zzz" : "moon.zzz.fill",
-                          text: sleep.mode == .off ? nil : Format.clock(sleep.remainingSec),
-                          highlighted: sleep.mode != .off, label: "Sleep timer") { sheet = .sleep }
-                barButton(icon: "list.bullet", label: "Chapters", enabled: np.chapters.count > 1) { sheet = .chapters }
-                barButton(icon: "bookmark.square", label: "Bookmarks") { sheet = .bookmarks }
-                switch dl {
-                case .queued, .running, .waiting:
-                    barButton(icon: "arrow.down.circle.dotted", text: downloadLabel(dl), highlighted: true, label: "Cancel download") {
-                        confirmCancelDownload = true
-                    }
-                case .done:
-                    barButton(icon: "arrow.down.circle.fill", highlighted: true, label: "Downloaded") { confirmRemoveDownload = true }
-                case .failed:
-                    barButton(icon: "exclamationmark.arrow.circlepath", label: "Retry download") { Task { await downloads.start(id) } }
-                case .none:
-                    barButton(icon: "arrow.down.circle", label: "Download") {
-                        Task {
-                            if !(await downloads.start(id)) {
-                                Toast.show("Nothing to download: the server lists no audio files for this book")
-                            }
-                        }
-                    }
-                }
-                barButton(icon: "ellipsis", label: "More") { sheet = .more }
-            }
-            .frame(height: 56)
-            .padding(.horizontal, 6)
-            .glassEffect(.regular, in: Capsule())
-        }
-        .confirmationDialog("Cancel the download?", isPresented: $confirmCancelDownload, titleVisibility: .visible) {
-            Button("Cancel download", role: .destructive) { downloads.cancel(id) }
-            Button("Keep downloading", role: .cancel) {}
-        }
-        .confirmationDialog("Remove download?", isPresented: $confirmRemoveDownload, titleVisibility: .visible) {
-            Button("Remove download", role: .destructive) { downloads.delete(id) }
-            Button("Keep", role: .cancel) {}
-        } message: {
-            Text("The downloaded files are deleted from this device. You can still stream the book.")
-        }
-    }
-
-    private func barButton(icon: String? = nil, text: String? = nil, highlighted: Bool = false, label: String,
-                           enabled: Bool = true, _ action: @escaping () -> Void) -> some View {
+    var body: some View {
         Button(action: action) {
             VStack(spacing: 2) {
                 if let icon { Image(systemName: icon).font(.system(size: 19, weight: .semibold)) }
@@ -439,64 +530,17 @@ struct PlayerView: View {
         .opacity(enabled ? 1 : 0.35)
         .accessibilityLabel(label)
     }
-
-    private func downloadLabel(_ s: Downloads.State) -> String {
-        switch s {
-        case .running(let f): return "\(Int(f * 100))%"
-        case .waiting: return "Wi-Fi"
-        default: return "Waiting"
-        }
-    }
-
-    // MARK: sheets
-
-    private func sheetView(_ kind: PlayerSheetKind) -> some View {
-        Group {
-            switch kind {
-            case .chapters: PlayerChaptersSheet()
-            case .speed: PlayerSpeedSheet()
-            case .sleep: PlayerSleepSheet()
-            case .bookmarks: PlayerBookmarksSheet()
-            case .history: PlayerHistorySheet()
-            case .info: PlayerBookInfoSheet()
-            case .more: PlayerMoreSheet { next in switchSheet(to: next) }
-            }
-        }
-        // Frosted enough that the busy cover behind doesn't wash out the text.
-        .presentationBackground(.thickMaterial)
-        // The phone's own light/dark mode (the player itself is dark with its
-        // gradient, but its sheets are their own surfaces, as in Apple Music).
-        .environment(\.colorScheme, systemScheme)
-    }
-
-    /// From one sheet to another: close, then open the next once the first is gone.
-    private func switchSheet(to next: PlayerSheetKind?) {
-        sheet = nil
-        guard let next else { return }
-        Task {
-            try? await Task.sleep(for: .milliseconds(400))
-            sheet = next
-        }
-    }
 }
 
-/// "1×", "1.25×", "1.5×".
-func playerSpeedLabel(_ v: Double) -> String {
-    var s = String(format: "%.2f", v)
-    while s.hasSuffix("0") { s.removeLast() }
-    if s.hasSuffix(".") { s.removeLast() }
-    return s + "×"
-}
+/// The sleep timer's bar button, with its countdown.
+private struct SleepBarButton: View {
+    let tint: Color
+    let action: () -> Void
+    @Environment(SleepTimer.self) private var sleep
 
-
-/// The system AirPlay / Bluetooth route picker.
-struct AirPlayButton: UIViewRepresentable {
-    func makeUIView(context: Context) -> AVRoutePickerView {
-        let v = AVRoutePickerView()
-        v.tintColor = .label
-        v.activeTintColor = UIColor.tintColor
-        v.prioritizesVideoDevices = false
-        return v
+    var body: some View {
+        PlayerBarButton(icon: sleep.mode == .off ? "moon.zzz" : "moon.zzz.fill",
+                        text: sleep.mode == .off ? nil : Format.clock(sleep.remainingSec),
+                        highlighted: sleep.mode != .off, label: "Sleep timer", tint: tint, action: action)
     }
-    func updateUIView(_ uiView: AVRoutePickerView, context: Context) {}
 }

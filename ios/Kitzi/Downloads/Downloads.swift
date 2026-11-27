@@ -20,7 +20,11 @@ final class Downloads {
 
     /// `.waiting`: Wi-Fi only is on and there's no Wi-Fi right now.
     enum State: Equatable { case none, queued, running(Double), waiting(Double), failed, done }
-    private(set) var states: [String: State] = [:]
+    private(set) var states: [String: State] = [:] {
+        // A finished book's size is read from disk once (lists asked on every redraw).
+        didSet { sizes = sizes.filter { states[$0.key] == .done } }
+    }
+    @ObservationIgnored private var sizes: [String: Int64] = [:]
 
     /// A book being downloaded: its tracks, and bytes per task for the progress.
     struct Plan: Codable {
@@ -141,9 +145,12 @@ final class Downloads {
     var downloadedIds: [String] { states.filter { $0.value == .done }.map(\.key) }
 
     func bytes(_ id: String) -> Int64 {
+        if let s = sizes[id] { return s }
         let dir = Self.booksDir.appendingPathComponent(id)
         let files = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.fileSizeKey])) ?? []
-        return files.reduce(0) { $0 + Int64((try? $1.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) }
+        let total = files.reduce(0) { $0 + Int64((try? $1.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) }
+        if states[id] == .done { sizes[id] = total }
+        return total
     }
 
     var totalBytes: Int64 { downloadedIds.reduce(0) { $0 + bytes($1) } }
@@ -499,11 +506,12 @@ final class LiveActivity {
         let state = DownloadActivityAttributes.ContentState(
             title: s.waiting ? "\(s.title) · waiting for Wi-Fi" : s.title,
             fraction: s.fraction, queued: s.queued, done: false, failed: false)
+        // Every 5 s, or sooner for 3% more or a change of title/queue: each update
+        // re-renders the Live Activity (and they're budgeted). Checked before
+        // looking the activity up, which ran on every progress callback.
+        let moved = lastState.map { abs(state.fraction - $0.fraction) >= 0.03 || state.title != $0.title || state.queued != $0.queued } ?? true
+        if activityId != nil, !(Date().timeIntervalSince(lastUpdate) > 5 || (moved && Date().timeIntervalSince(lastUpdate) > 1)) { return }
         if let id = activityId, Activity<DownloadActivityAttributes>.activities.contains(where: { $0.id == id }) {
-            // Every 5 s, or sooner for 3% more or a change of title/queue: each
-            // update re-renders the Live Activity (and they're budgeted).
-            let moved = lastState.map { abs(state.fraction - $0.fraction) >= 0.03 || state.title != $0.title || state.queued != $0.queued } ?? true
-            guard Date().timeIntervalSince(lastUpdate) > 5 || (moved && Date().timeIntervalSince(lastUpdate) > 1) else { return }
             lastUpdate = Date()
             lastState = state
             let stale = staleDate

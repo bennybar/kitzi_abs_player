@@ -266,7 +266,10 @@ struct ResumeCard: View {
                 .buttonStyle(.plain)
                 .bookContextMenu(b)
                 Button { play(b) } label: {
-                    Image(systemName: player.isPlaying && player.nowPlaying?.book.id == b.id ? "waveform" : "play.fill")
+                    let playing = player.isPlaying && player.nowPlaying?.book.id == b.id
+                    Image(systemName: playing ? "waveform" : "play.fill")
+                        .contentTransition(.symbolEffect(.replace))
+                        .symbolEffect(.variableColor.iterative, isActive: playing && !UIAccessibility.isReduceMotionEnabled)
                         .font(.title2).frame(width: 54, height: 54)
                 }
                 .buttonStyle(.glassProminent)

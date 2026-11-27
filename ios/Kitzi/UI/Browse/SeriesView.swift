@@ -26,6 +26,7 @@ struct SeriesView: View {
     }
 
     var body: some View {
+        let rows = rows // once per render (it was worked out three times)
         List {
             Section {
                 Picker("Show", selection: $kind) {
@@ -97,7 +98,8 @@ struct FannedCovers: View {
                     .frame(width: 54, height: 54)
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     .shadow(radius: i == 0 ? 3 : 1)
-                    .brightness(i == 0 ? 0 : -0.15)
+                    // A plain dimming layer (a brightness filter per cover cost more in scrolling).
+                    .overlay { if i > 0 { Color.black.opacity(0.22) } }
                     .rotationEffect(.degrees(Double(i) * 6))
                     .offset(x: CGFloat(i) * 12)
             }

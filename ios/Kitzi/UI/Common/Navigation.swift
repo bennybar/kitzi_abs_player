@@ -14,6 +14,8 @@ private struct KitziDestinations: ViewModifier {
 
     func body(content: Content) -> some View {
         content
+            // A book from any tab's lists (its own zoom when the list has one: ZoomBookLink).
+            .navigationDestination(for: Book.self) { BookDetailView(book: $0) }
             .navigationDestination(for: String.self) { name in AuthorDetailView(name: name) }
             .navigationDestination(for: AudibleBook.self) { AudibleBookView(book: $0) }
             .navigationDestination(for: AudibleGenre.self) { AudibleGenreView(genre: $0) }
@@ -61,7 +63,7 @@ struct AuthorDetailView: View {
                         Text(d.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression))
                             .font(.subheadline)
                             .lineLimit(expanded ? nil : 5)
-                        Button(expanded ? "Less" : "More") { withAnimation { expanded.toggle() } }.font(.subheadline)
+                        Button(expanded ? "Less" : "More") { withAnimation(.kitzi) { expanded.toggle() } }.font(.subheadline)
                     }
                 }
                 .frame(maxWidth: .infinity)

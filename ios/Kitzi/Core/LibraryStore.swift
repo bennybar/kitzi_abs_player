@@ -11,11 +11,17 @@ final class LibraryStore {
 
     private(set) var libraries: [LibraryInfo] = []
     private(set) var libraryId: String?
-    private(set) var books: [Book] = [] { didSet { matchIndex = nil } }
+    private(set) var books: [Book] = [] { didSet { matchIndex = nil; booksVersion &+= 1 } }
+    /// Bumped on every change of the books / of the progress: what's worked out from
+    /// them (sorted lists, shelves) is kept until these move.
+    private(set) var booksVersion = 0
+    private(set) var progressVersion = 0
+    @ObservationIgnored private var continueSeriesCache: (books: Int, progress: Int, list: [Book])?
+    @ObservationIgnored private var countsCache: (books: Int, progress: Int, counts: [BookFilter: Int])?
     /// For matching Audible books to the library (see `match`): built once per library change.
     @ObservationIgnored private var matchIndex: (byAsin: [String: Book], byTitle: [String: [Book]])?
     private(set) var byId: [String: Book] = [:]
-    private(set) var progress: [String: Progress] = [:]
+    private(set) var progress: [String: Progress] = [:] { didSet { progressVersion &+= 1 } }
     var syncing = false
     /// Whether the last full sync reached the server.
     private(set) var lastSyncReachedServer = true
@@ -40,15 +46,41 @@ final class LibraryStore {
         if let d = try? Data(contentsOf: file("progress", lib)), let p = try? JSONDecoder().decode([String: Progress].self, from: d) { progress = p }
     }
 
+    /// Encoded and written off the main thread (the whole library: it hitched).
     private func saveBooks() {
         guard let lib = libraryId else { return }
-        try? JSONEncoder().encode(books).write(to: file("books", lib), options: .atomic)
+        let books = self.books, url = file("books", lib)
+        Task.detached(priority: .utility) { try? JSONEncoder().encode(books).write(to: url, options: .atomic) }
     }
 
+    /// Written at most every 5 minutes (every report changes it while playing),
+    /// and at once when the app leaves the foreground (flushWrites).
     private func saveProgress() {
-        guard let lib = libraryId else { return }
-        try? JSONEncoder().encode(progress).write(to: file("progress", lib), options: .atomic)
+        guard progressWrite == nil else { return }
+        let wait = max(300 - Date().timeIntervalSince(lastProgressWrite), 0)
+        progressWrite = Task {
+            try? await Task.sleep(for: .seconds(wait))
+            guard !Task.isCancelled else { return }
+            writeProgress()
+        }
     }
+
+    private func writeProgress() {
+        progressWrite?.cancel()
+        progressWrite = nil
+        lastProgressWrite = Date()
+        guard let lib = libraryId else { return }
+        let progress = self.progress, url = file("progress", lib)
+        Task.detached(priority: .utility) { try? JSONEncoder().encode(progress).write(to: url, options: .atomic) }
+    }
+
+    /// Anything waiting to be written, now (the app is leaving the foreground).
+    func flushWrites() {
+        if progressWrite != nil { writeProgress() }
+        PlayHistory.shared.flush()
+    }
+    @ObservationIgnored private var progressWrite: Task<Void, Never>?
+    @ObservationIgnored private var lastProgressWrite = Date.distantPast
 
     private func setBooks(_ list: [Book]) {
         books = list.filter(\.isAudioBook)
@@ -141,8 +173,11 @@ final class LibraryStore {
             if let r = try? await api.libraryItems(library: lib, page: 1, limit: 50, sort: sort, desc: true) { fetched += r.items }
         }
         guard !fetched.isEmpty, libraryId == lib else { return }
+        let books = fetched.compactMap(Book.from)
+        // Nothing new or edited (the usual case): no re-sort, no rewrite of the library file.
+        guard books.contains(where: { byId[$0.id] != $0 }) else { return }
         var merged = byId
-        for b in fetched.compactMap(Book.from) { merged[b.id] = b }
+        for b in books { merged[b.id] = b }
         setBooks(merged.values.sorted { ($0.addedAt ?? 0) > ($1.addedAt ?? 0) })
         saveBooks()
     }
@@ -187,8 +222,11 @@ final class LibraryStore {
         // otherwise the server's reset (elsewhere) stands.
         for (id, p) in progress where next[id] == nil && Downloads.shared.isDownloaded(id)
             && Player.shared.localPosition(id)?.pending == true { next[id] = p }
-        progress = next
-        saveProgress()
+        // Unchanged (the usual case): nothing redraws and nothing is written.
+        if next != progress {
+            progress = next
+            saveProgress()
+        }
         cacheBookmarks(me)
     }
 
@@ -227,6 +265,15 @@ final class LibraryStore {
 
     /// The next book in each series you've finished one of (not one you've started).
     var continueSeries: [Book] {
+        // Read for observation, then the cached list while neither moved.
+        let (bv, pv) = (booksVersion, progressVersion)
+        if let c = continueSeriesCache, c.books == bv, c.progress == pv { return c.list }
+        let list = computeContinueSeries()
+        continueSeriesCache = (bv, pv, list)
+        return list
+    }
+
+    private func computeContinueSeries() -> [Book] {
         let groups = Dictionary(grouping: books.filter { $0.series != nil }) { $0.series!.lowercased().trimmingCharacters(in: .whitespaces) }
         var picks: [(Int64, Book)] = []
         for (_, members) in groups {
@@ -248,6 +295,19 @@ final class LibraryStore {
 
     /// How many books a filter has (no sorting: Home asks for every filter on each redraw).
     func count(_ filter: BookFilter) -> Int {
+        // Home asks for every filter on each redraw: counted once per change.
+        let (bv, pv) = (booksVersion, progressVersion)
+        if filter != .downloaded, let c = countsCache, c.books == bv, c.progress == pv, let n = c.counts[filter] { return n }
+        let n = countNow(filter)
+        if filter != .downloaded {
+            var counts = (countsCache?.books == bv && countsCache?.progress == pv) ? countsCache!.counts : [:]
+            counts[filter] = n
+            countsCache = (bv, pv, counts)
+        }
+        return n
+    }
+
+    private func countNow(_ filter: BookFilter) -> Int {
         switch filter {
         case .all: books.count
         case .inProgress: books.count { b in progress[b.id].map { !$0.isFinished && $0.progress > 0 } ?? false }
@@ -305,9 +365,17 @@ final class LibraryStore {
     struct SeriesRow: Identifiable { var name: String; var books: [Book]; var id: String { name } }
 
     func series(minBooks: Int = 1) -> [SeriesRow] {
+        let bv = booksVersion
+        if let c = seriesCache, c.books == bv { return c.rows.filter { $0.books.count >= minBooks } }
+        let rows = computeSeries()
+        seriesCache = (bv, rows)
+        return rows.filter { $0.books.count >= minBooks }
+    }
+    @ObservationIgnored private var seriesCache: (books: Int, rows: [SeriesRow])?
+
+    private func computeSeries() -> [SeriesRow] {
         Dictionary(grouping: books.filter { $0.series != nil }) { $0.series!.trimmingCharacters(in: .whitespaces) }
             .map { SeriesRow(name: $0.key, books: $0.value.sorted { ($0.seriesSequence ?? .infinity) < ($1.seriesSequence ?? .infinity) }) }
-            .filter { $0.books.count >= minBooks }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
@@ -403,10 +471,10 @@ final class LibraryStore {
         Store.set(days, "stats_per_day")
     }
 
-    static func dayKey(_ d: Date) -> String {
-        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.locale = Locale(identifier: "en_US_POSIX")
-        return f.string(from: d)
-    }
+    static func dayKey(_ d: Date) -> String { dayFormat.string(from: d) }
+    private static let dayFormat: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.locale = Locale(identifier: "en_US_POSIX"); return f
+    }()
 
     var todaySec: Double { perDaySec[Self.dayKey(Date())] ?? 0 }
 
@@ -563,6 +631,11 @@ final class LibraryStore {
         case "rename": return list.map { $0.timeSec == op.timeSec ? Bookmark(itemId: $0.itemId, timeSec: $0.timeSec, title: op.title, createdAt: $0.createdAt) : $0 }
         default: return list.filter { $0.timeSec != op.timeSec }
         }
+    }
+
+    /// What's known here (no network): the saved list with the edits not sent yet.
+    func localBookmarks(_ id: String) -> [Bookmark] {
+        pendingOps.filter { $0.itemId == id }.reduce(cached(id)) { apply($0, $1) }.sorted { $0.timeSec < $1.timeSec }
     }
 
     func bookmarks(_ id: String) async -> [Bookmark] {

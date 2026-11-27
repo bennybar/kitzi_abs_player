@@ -140,7 +140,9 @@ enum AudibleCatalog {
                         .init(name: "image_sizes", value: "252,500"), .init(name: "response_groups", value: listGroups)]
         if let author { c.queryItems?.append(.init(name: "author", value: author)) }
         if let narrator { c.queryItems?.append(.init(name: "narrator", value: narrator)) }
-        return mainLanguage(try await get(c.url!, ttl: 6 * 3600).objs("products").compactMap(AudibleBook.init))
+        // Kept 20 hours: the radar asks again after 12 (or 24), and a new book
+        // can wait that long.
+        return mainLanguage(try await get(c.url!, ttl: 20 * 3600).objs("products").compactMap(AudibleBook.init))
     }
 
     /// "Listeners also enjoyed": Audible's similar books, in the book's own
@@ -341,6 +343,8 @@ struct AudibleImage: View {
     }()
 
     var body: some View {
+        // In memory: shown in the first frame, not after the task (it flashed).
+        let image = image ?? url.flatMap { Self.memory.object(forKey: $0 as NSURL) }
         ZStack {
             Rectangle().fill(.quaternary)
             if let image {
@@ -351,11 +355,12 @@ struct AudibleImage: View {
         }
         .task(id: url) {
             guard let url else { return }
-            if let m = Self.memory.object(forKey: url as NSURL) { image = m; return }
+            if let m = Self.memory.object(forKey: url as NSURL) { self.image = m; return }
             guard let (data, _) = try? await Self.session.data(from: url),
                   let img = await UIImage(data: data)?.byPreparingForDisplay() else { return }
             Self.memory.setObject(img, forKey: url as NSURL)
-            image = img
+            if UIAccessibility.isReduceMotionEnabled { self.image = img }
+            else { withAnimation(.easeOut(duration: 0.2)) { self.image = img } }
         }
     }
 }
@@ -663,6 +668,8 @@ struct AudibleBookView: View {
 struct SimilarBooksRow: View {
     let book: Book
     @State private var similar: [AudibleBook] = []
+    /// Which of them are in the library (matched once, not on every scroll frame).
+    @State private var owned: Set<String> = []
     @State private var opened: AudibleBook?
     @State private var loaded = false
     @Environment(LibraryStore.self) private var library
@@ -688,7 +695,7 @@ struct SimilarBooksRow: View {
                     onTap: { opened = $0 },
                     label: { $0.title }
                 ) { s, fullness in
-                    AudibleCarouselCover(book: s, inLibrary: library.match(s) != nil, fullness: fullness)
+                    AudibleCarouselCover(book: s, inLibrary: owned.contains(s.asin), fullness: fullness)
                 }
                 .padding(.horizontal, -16)
             }
@@ -703,6 +710,7 @@ struct SimilarBooksRow: View {
             defer { withAnimation(.kitzi) { loaded = true } }
             guard let asin = await AudibleRating.shared.asin(for: book),
                   let found = try? await AudibleCatalog.similar(asin: asin, language: await AudibleRating.shared.language(for: book)) else { return }
+            owned = Set(found.filter { library.match($0) != nil }.map(\.asin))
             similar = found
         }
     }

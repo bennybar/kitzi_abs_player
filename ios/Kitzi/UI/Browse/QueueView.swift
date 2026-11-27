@@ -35,7 +35,7 @@ struct QueueView: View {
                         }
                         .swipeActions(edge: .leading) {
                             if queue.books.first?.id != b.id {
-                                Button { withAnimation { queue.addNext(b.id) } } label: {
+                                Button { withAnimation(.kitzi) { queue.addNext(b.id) } } label: {
                                     Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
                                 }
                                 .tint(.accentColor)
@@ -64,7 +64,7 @@ struct QueueView: View {
         }
         .confirmationDialog("Remove from the queue?", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),
                             titleVisibility: .visible, presenting: removing) { b in
-            Button("Remove", role: .destructive) { withAnimation { queue.remove(b.id) } }
+            Button("Remove", role: .destructive) { withAnimation(.kitzi) { queue.remove(b.id) } }
         } message: { b in
             Text(b.title)
         }

@@ -11,7 +11,7 @@ struct PlayerChaptersSheet: View {
         NavigationStack {
             let chapters = player.nowPlaying?.chapters ?? []
             let total = player.nowPlaying?.totalSec ?? 0
-            let current = player.currentChapter()?.index ?? -1
+            let current = player.chapterIndex ?? -1
             ScrollViewReader { proxy in
                 List(chapters.indices, id: \.self) { i in
                     let c = chapters[i]
@@ -136,6 +136,7 @@ struct PlayerSleepSheet: View {
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 24)
+        .animation(.kitzi, value: sleep.mode == .off)
         .sensoryFeedback(.success, trigger: sleep.mode != .off) { _, on in on }
         .presentationDetents(dynamicType.isAccessibilitySize ? [.large] : [.height(380)])
     }

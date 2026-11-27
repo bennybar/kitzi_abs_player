@@ -61,7 +61,20 @@ final class Player {
     private(set) var isPlaying = false
     private(set) var preparing = false
     /// Book position, refreshed twice a second.
-    private(set) var position: Double = 0
+    private(set) var position: Double = 0 {
+        didSet {
+            // The coarse values views read instead of the position itself, so they
+            // redraw when these change, not twice a second.
+            let i = chapter(at: position)?.index
+            if i != chapterIndex { chapterIndex = i }
+            let m = nowPlaying.map { Int((max($0.totalSec - position, 0) / max(speed, 0.1)) / 60) }
+            if m != minutesLeft { minutesLeft = m }
+        }
+    }
+    /// The current chapter's index (changes only at a chapter change).
+    private(set) var chapterIndex: Int?
+    /// Whole minutes left in the book at the current speed (changes once a minute).
+    private(set) var minutesLeft: Int?
     private(set) var speed: Double = Store.double("playback_speed") ?? 1
     /// Per book: louder, soft-limited audio; and running fast through silences.
     private(set) var voiceBoost = false
@@ -295,7 +308,7 @@ final class Player {
     func loadArtwork(_ book: Book) {
         artwork = nil
         Task {
-            let url = Downloads.shared.localCover(book.id) ?? book.coverURL(width: 1000)
+            let url = Downloads.shared.localCover(book.id) ?? book.coverURL(width: 1200)
             guard let url, let img = await ImageLoader.shared.image(url), nowPlaying?.book.id == book.id else { return }
             let crop = CoverCrops.shared.crops[book.id]
             artwork = Self.makeArtwork(crop.map { CoverCrops.apply($0, to: img) } ?? img)
@@ -334,8 +347,14 @@ final class Player {
                             isLocal: false, serverDurationSec: s.durationSec)
             newSession = s.id
         }
-        if nowPlaying != nil { await stop(keepLast: true) }
-        guard gen == loadGeneration else { if let id = newSession { await api.closeSession(id) }; return nil }
+        // The old book stays on screen until the new one replaces it (the player
+        // used to blank to a spinner while the old one's last report went out).
+        if nowPlaying != nil { await stop(keepLast: true, replacing: true) }
+        guard gen == loadGeneration else {
+            if let id = newSession { await api.closeSession(id) }
+            if av.currentItem == nil { nowPlaying = nil }
+            return nil
+        }
 
         sessionId = newSession
         localSession = np.isLocal ? (UUID().uuidString, Format.nowMs, 0, 0) : nil
@@ -751,10 +770,13 @@ final class Player {
     func silence(_ fast: Bool) {
         guard isPlaying, av.rate > 0 else { return }
         av.rate = Float(fast && skipSilence ? max(speed * 3, 3) : speed)
+        // The lock screen counts at the normal rate: re-told where it is after a
+        // skipped silence, at most every 15 s.
+        if !fast, CACurrentMediaTime() - nowPlayingSyncedAt > 15 { refreshPosition(); updateNowPlayingInfo() }
     }
 
     /// Stops the book: final report, session closed, audio released.
-    func stop(keepLast: Bool = false, keepSleep: Bool = false) async {
+    func stop(keepLast: Bool = false, keepSleep: Bool = false, replacing: Bool = false) async {
         guard nowPlaying != nil else { return }
         av.pause()
         if isPlaying { isPlaying = false; accrue(stopping: true) }
@@ -771,7 +793,7 @@ final class Player {
         syncLoop?.cancel()
         av.replaceCurrentItem(with: nil)
         itemKVO = nil
-        nowPlaying = nil
+        if !replacing { nowPlaying = nil }
         ended = false
         localSession = nil
         listenedSec = 0
@@ -865,8 +887,11 @@ final class Player {
         syncLoop?.cancel()
         syncLoop = Task {
             while !Task.isCancelled {
-                // 30 s, widening up to 4 minutes while reports keep failing.
-                let wait = 30.0 * Double(min(1 << min(failedSyncs, 3), 8))
+                // A stream every 30 s (it's on the network anyway); a downloaded book
+                // every 3 minutes, so the radio can sleep (pause, seek, track change
+                // and leaving the app still report at once). Wider while reports fail.
+                let base = nowPlaying?.isLocal == true ? 180.0 : 30.0
+                let wait = base * Double(min(1 << min(failedSyncs, 3), 8))
                 try? await Task.sleep(for: .seconds(wait))
                 if isPlaying { await report() }
             }
@@ -966,7 +991,9 @@ final class Player {
     /// The app is going to the background: report now, with time to finish.
     func appBackgrounded() {
         refreshPosition()
-        tickEvery(2)
+        // Nothing is drawn: the position is read when needed (refreshPosition), and
+        // the lock screen's chapter title can follow a few seconds late.
+        tickEvery(10)
         if let np = nowPlaying, dirty || isPlaying, !serverCheckPending { saveLocal(np.book.id, position, finished: false) }
         accrue(stopping: !isPlaying)
         persistUnsent()
