@@ -122,10 +122,11 @@ final class LibraryStore {
         let last = Store.double("last_full_sync_\(lib)") ?? 0
         // Books cached before they carried their Audible ASIN: read the library
         // again once, so matching and ratings can use it.
-        let current = Store.double("library_schema") == 2
+        // 3: books know whether they have a cover and how many chapters (Library Health).
+        let current = Store.double("library_schema") == 3
         if books.isEmpty || !current || Date().timeIntervalSince1970 - last > 12 * 3600 {
             await syncAll()
-            if lastSyncReachedServer { Store.set(2.0, "library_schema") }
+            if lastSyncReachedServer { Store.set(3.0, "library_schema") }
         } else {
             await refreshNewest()
         }
@@ -437,6 +438,45 @@ final class LibraryStore {
     /// Time left in the books in progress, each at its own speed.
     var leftInProgressSec: Double {
         continueListening.reduce(0) { $0 + (timeLeft($1) ?? 0) }
+    }
+
+    /// Listening per day, averaged over the last 14 days (days off included).
+    var dailyPaceSec: Double {
+        (0..<14).reduce(0) { $0 + (perDaySec[Self.dayKey(Calendar.current.date(byAdding: .day, value: -$1, to: Date())!)] ?? 0) } / 14
+    }
+
+    /// When the book would be finished at the recent daily pace (nil: no pace yet,
+    /// or the book isn't in progress).
+    func finishEstimate(_ b: Book) -> Date? {
+        let pace = dailyPaceSec
+        guard pace >= 5 * 60, let left = timeLeft(b) else { return nil }
+        let days = Int((left / pace).rounded(.up))
+        return Calendar.current.date(byAdding: .day, value: max(days - 1, 0), to: Date())
+    }
+
+    /// The speed this book needs to be finished by `date` at the recent daily
+    /// pace (nil: no pace yet, or not in progress).
+    func speedToFinish(_ b: Book, by date: Date) -> Double? {
+        let pace = dailyPaceSec
+        guard pace >= 5 * 60, let p = progress[b.id], p.progress > 0, !p.isFinished else { return nil }
+        let d = p.durationSec > 0 ? p.durationSec : (b.durationSec ?? 0)
+        let content = max(d - p.currentTimeSec, 0)
+        let days = Double(max((Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: Date()),
+                                                                to: Calendar.current.startOfDay(for: date)).day ?? 0) + 1, 1))
+        return content / (pace * days)
+    }
+
+    /// Narrators with how many books each reads, most first.
+    var narrators: [(name: String, count: Int)] {
+        var counts: [String: Int] = [:]
+        for b in books { for n in Set(b.narrators) { counts[n, default: 0] += 1 } }
+        return counts.map { ($0.key, $0.value) }
+            .sorted { $0.1 != $1.1 ? $0.1 > $1.1 : $0.0.localizedCaseInsensitiveCompare($1.0) == .orderedAscending }
+    }
+
+    func booksByNarrator(_ name: String) -> [Book] {
+        books.filter { $0.narrators.contains(name) }
+            .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
     }
 
     /// Listening time left in a started, unfinished book, at the speed it plays

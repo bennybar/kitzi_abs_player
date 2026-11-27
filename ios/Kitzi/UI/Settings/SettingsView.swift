@@ -38,9 +38,11 @@ struct SettingsView: View {
     var body: some View {
         @Bindable var s = settings
         Form {
-            if show("library", "listening stats", "active library", "resync", "profile", "stats") {
+            if show("library", "listening stats", "active library", "resync", "profile", "stats", "health", "missing", "match", "year", "review") {
                 Section("Library") {
                     NavigationLink { StatsView() } label: { Label("Listening stats", systemImage: "chart.bar") }
+                    NavigationLink { YearInReviewView() } label: { Label("Year in review", systemImage: "sparkles") }
+                    NavigationLink { LibraryHealthView() } label: { Label("Library health", systemImage: "stethoscope") }
                     if library.libraries.count > 1 {
                         Picker(selection: Binding(
                             get: { library.libraryId ?? "" },

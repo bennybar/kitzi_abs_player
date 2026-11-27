@@ -61,8 +61,17 @@ struct HomeView: View {
                 case .genres: GenresView(path: $path).environment(\.coverZoom, zoom)
                 case .authors: AuthorsView()
                 case .series: SeriesView()
+                case .narrators: NarratorsView()
                 }
             }
+            #if DEBUG
+            .navigationDestination(for: DebugScreen.self) { s in
+                switch s {
+                case .yearReview: YearInReviewView()
+                case .health: LibraryHealthView()
+                }
+            }
+            #endif
             .navigationDestination(for: ShelfRoute.self) { r in
                 BookListView(title: r.title, books: r.books)
             }
@@ -119,6 +128,11 @@ struct HomeView: View {
                 }
                 if ProcessInfo.processInfo.environment["KITZI_TEST_OPEN"] == "byseries" {
                     path.append(BrowseRoute.series)
+                }
+                if ProcessInfo.processInfo.environment["KITZI_TEST_OPEN"] == "yearreview" { path.append(DebugScreen.yearReview) }
+                if ProcessInfo.processInfo.environment["KITZI_TEST_OPEN"] == "health" { path.append(DebugScreen.health) }
+                if ProcessInfo.processInfo.environment["KITZI_TEST_OPEN"] == "narrators" {
+                    path.append(BrowseRoute.narrators)
                 }
                 if ProcessInfo.processInfo.environment["KITZI_TEST_OPEN"] == "genres" {
                     path.append(BrowseRoute.genres)
@@ -198,6 +212,7 @@ struct HomeView: View {
         }
         out.append(BrowseTile(title: "By Genre", icon: "tag", count: nil) { path.append(BrowseRoute.genres) })
         out.append(BrowseTile(title: "By Series", icon: "books.vertical.circle", count: nil) { path.append(BrowseRoute.series) })
+        out.append(BrowseTile(title: "By Narrator", icon: "mic", count: nil) { path.append(BrowseRoute.narrators) })
         if !settings.showAuthorsTab {
             out.append(BrowseTile(title: "By Author", icon: "person.2", count: nil) { path.append(BrowseRoute.authors) })
         }
@@ -317,3 +332,8 @@ struct BookListView: View {
         .navigationTitle(title)
     }
 }
+
+#if DEBUG
+/// Test hook screens (simulator screenshots).
+enum DebugScreen: Hashable { case yearReview, health }
+#endif

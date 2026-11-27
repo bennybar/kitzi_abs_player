@@ -334,6 +334,26 @@ final class API {
         return (200..<300).contains(code)
     }
 
+    /// The server's own "Quick Match" from Audible: fills what the book is missing
+    /// (cover, description, narrators, series…) and keeps what it already has.
+    /// Nil, or why it couldn't.
+    func quickMatch(_ itemId: String, title: String, author: String?, asin: String?) async -> String? {
+        var body: JSON = ["provider": "audible", "title": title, "overrideCover": false, "overrideDetails": false]
+        if let author { body["author"] = author }
+        if let asin { body["asin"] = asin }
+        guard let (code, data) = try? await send("/api/items/\(itemId)/match", method: "POST", body: body) else {
+            return "Couldn't reach the server."
+        }
+        switch code {
+        case 200..<300:
+            // Answered but found nothing to use.
+            if let o = JSONUtil.parse(data) as? JSON, o["updated"] as? Bool == false, o.str("warning") != nil { return o.str("warning") }
+            return nil
+        case 403: return "Your account isn't allowed to edit books on this server."
+        default: return "The server couldn't match it (\(code))."
+        }
+    }
+
     /// True when the server answered (closed, or it no longer has the session).
     @discardableResult
     func closeSession(_ id: String) async -> Bool {

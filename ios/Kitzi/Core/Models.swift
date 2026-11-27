@@ -21,6 +21,10 @@ struct Book: Codable, Identifiable, Hashable {
     var isAudioBook: Bool = true
     /// Audible's id for it, when the server has one (its metadata match).
     var asin: String? = nil
+    /// Whether the server has a cover for it (nil: not known, an older cache).
+    var hasCover: Bool? = nil
+    /// How many chapters the server has for it (nil: not known).
+    var chapterCount: Int? = nil
 
     /// The cover through the server; covers go through the authenticated loader.
     func coverURL(width: Int = 600) -> URL? {
@@ -75,7 +79,9 @@ struct Book: Codable, Identifiable, Hashable {
             publisher: meta?.str("publisher"), publishYear: year,
             genres: (meta?.arr("genres") ?? []).compactMap { $0 as? String },
             isAudioBook: hasAudio,
-            asin: meta?.str("asin").map { $0.trimmingCharacters(in: .whitespaces).uppercased() }.flatMap { $0.isEmpty ? nil : $0 }
+            asin: meta?.str("asin").map { $0.trimmingCharacters(in: .whitespaces).uppercased() }.flatMap { $0.isEmpty ? nil : $0 },
+            hasCover: media.map { $0["coverPath"] != nil ? $0.str("coverPath") != nil : true },
+            chapterCount: media?.int("numChapters") ?? media.map { $0.arr("chapters") }.flatMap { $0.isEmpty ? nil : $0.count }
         )
     }
 

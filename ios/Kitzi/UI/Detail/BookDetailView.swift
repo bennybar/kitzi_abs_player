@@ -31,6 +31,7 @@ struct BookDetailView: View {
     @Environment(AppSettings.self) private var settings
 
     @State private var showAchew = false
+    @State private var showFinishBy = false
     @State private var achewReplacing: String?
     @State private var chaptersVersion = 0
     @State private var playError: String?
@@ -106,6 +107,10 @@ struct BookDetailView: View {
             }
         }
         .sheet(isPresented: $showMoreInfo) { BookMoreInfoSheet(book: b) }
+        .sheet(isPresented: $showFinishBy) { FinishBySheet(book: b).presentationDetents([.medium]) }
+        #if DEBUG
+        .task { if ProcessInfo.processInfo.environment["KITZI_TEST_FINISHBY"] != nil { try? await Task.sleep(for: .seconds(2)); showFinishBy = true } }
+        #endif
         .sheet(isPresented: $showAudibleChapters) {
             AudibleChaptersSheet(book: b, current: chapters) { new in
                 chapters = new
@@ -215,7 +220,11 @@ struct BookDetailView: View {
                     Text(b.title).font(.title2.bold()).multilineTextAlignment(.center)
                     authorLink.font(.headline)
                     if let n = b.narrators.first {
-                        Text("Narrated by \(n)").font(.subheadline).foregroundStyle(.secondary)
+                        NavigationLink(value: NarratorRoute(name: n)) {
+                            (Text("Narrated by ").foregroundStyle(.secondary) + Text(n).foregroundStyle(Color.accentColor))
+                                .font(.subheadline).multilineTextAlignment(.center)
+                        }
+                        .buttonStyle(.plain)
                     }
                     StarsView(book: b).font(.subheadline)
                     metaChips.padding(.top, 4)
@@ -227,6 +236,14 @@ struct BookDetailView: View {
                         bigPlayButton
                         if let line = progressLine {
                             Text(line).font(.footnote).foregroundStyle(.secondary)
+                        }
+                        if let done = library.finishEstimate(b) {
+                            Button { showFinishBy = true } label: {
+                                Label("At your pace, done \(Self.day(done))", systemImage: "flag.checkered")
+                                    .font(.footnote.weight(.medium))
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(Color.accentColor)
                         }
                     }
                     iconActions
@@ -564,6 +581,15 @@ struct BookDetailView: View {
     }
 
     /// Book descriptions arrive as HTML.
+    /// "today", "tomorrow", "Thursday", or "Dec 4" further out.
+    static func day(_ d: Date) -> String {
+        let cal = Calendar.current
+        if cal.isDateInToday(d) { return "today" }
+        if cal.isDateInTomorrow(d) { return "tomorrow" }
+        let days = cal.dateComponents([.day], from: cal.startOfDay(for: Date()), to: cal.startOfDay(for: d)).day ?? 0
+        return days < 7 ? d.formatted(.dateTime.weekday(.wide)) : d.formatted(.dateTime.month(.abbreviated).day())
+    }
+
     static func stripHTML(_ s: String) -> String {
         var t = s.replacingOccurrences(of: "<br\\s*/?>", with: "\n", options: .regularExpression)
         t = t.replacingOccurrences(of: "</p>", with: "\n\n")
@@ -671,5 +697,68 @@ struct BookChaptersSheet: View {
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }
         .presentationDetents([.medium, .large])
+    }
+}
+
+/// "At your pace": when the book will be done at the recent daily listening,
+/// and the speed it needs to be done by a chosen day.
+struct FinishBySheet: View {
+    let book: Book
+    @Environment(LibraryStore.self) private var library
+    @Environment(Player.self) private var player
+    @Environment(\.dismiss) private var dismiss
+    @State private var target = Calendar.current.date(byAdding: .day, value: 7, to: Date()) ?? Date()
+
+    private var currentSpeed: Double {
+        player.nowPlaying?.book.id == book.id ? player.speed
+            : (Store.double("playback_speed:\(book.id)") ?? Store.double("playback_speed") ?? 1)
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    LabeledContent("Your pace", value: "\(Format.hm(library.dailyPaceSec)) a day")
+                    if let left = library.timeLeft(book) { LabeledContent("Left at \(SpeedLabel.text(currentSpeed))", value: Format.hm(left)) }
+                    if let done = library.finishEstimate(book) {
+                        LabeledContent("Done", value: done.formatted(date: .abbreviated, time: .omitted))
+                    }
+                } footer: {
+                    Text("Your average over the last 14 days, days off included.")
+                }
+                Section("Finish By") {
+                    DatePicker("Day", selection: $target, in: Date()..., displayedComponents: .date)
+                    if library.dailyPaceSec < 5 * 60 {
+                        Text("A few days of listening first: there isn't enough yet to work out your pace.").foregroundStyle(.secondary)
+                    } else if let s = library.speedToFinish(book, by: target) {
+                        let speed = (max(s, 0.5) * 20).rounded(.up) / 20
+                        if speed > 3.5 {
+                            Text("Even at 3.5× that needs more than your usual listening.").foregroundStyle(.secondary)
+                        } else if speed <= currentSpeed + 0.001 {
+                            Text("You're on track at \(SpeedLabel.text(currentSpeed)).").foregroundStyle(.secondary)
+                        } else {
+                            Button {
+                                if player.nowPlaying?.book.id == book.id { player.setSpeed(speed) }
+                                else { Store.set(speed, "playback_speed:\(book.id)") }
+                                Haptics.success()
+                                dismiss()
+                            } label: {
+                                Label("Listen at \(SpeedLabel.text(speed))", systemImage: "speedometer")
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("At Your Pace")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+        }
+    }
+}
+
+enum SpeedLabel {
+    static func text(_ s: Double) -> String {
+        let t = s.truncatingRemainder(dividingBy: 1) == 0 ? String(format: "%.1f", s) : String(format: "%g", (s * 100).rounded() / 100)
+        return t + "×"
     }
 }

@@ -26,6 +26,14 @@ struct StatsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
+                NavigationLink { YearInReviewView() } label: {
+                    Label("\(String(Calendar.current.component(.year, from: Date()))) in Review", systemImage: "sparkles")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(16)
+                        .glassEffect(.regular.tint(Color.accentColor.opacity(0.25)).interactive(), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                }
+                .buttonStyle(.plain)
                 Grid(horizontalSpacing: 12, verticalSpacing: 12) {
                     GridRow {
                         tile("Today", Format.hm(library.todaySec), "clock")
