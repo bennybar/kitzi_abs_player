@@ -262,7 +262,8 @@ struct BookDetailView: View {
                         // Your own bookmarks come before Audible's sections; with
                         // none yet, the hint about them goes last.
                         if !bookmarks.isEmpty { bookmarksCard.padding(.bottom, 18) }
-                        if settings.seriesMissing, b.series != nil, b.seriesSequence != nil { NextInSeriesCard(book: b) }
+                        // (Also for a book the server has no series for: Audible's is used.)
+                        if settings.seriesMissing { NextInSeriesCard(book: b) }
                         if settings.audibleReviews { LibraryBookReviews(book: b) }
                         if settings.similarBooks { SimilarBooksRow(book: b) }
                         if bookmarks.isEmpty { bookmarksCard }

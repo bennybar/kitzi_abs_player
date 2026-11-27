@@ -524,12 +524,16 @@ struct NextInSeriesCard: View {
     @Environment(LibraryStore.self) private var library
     @State private var next: AudibleBook?
     @State private var number: String?
+    /// The series' name: the server's, else Audible's (a book the server has no series for).
+    @State private var seriesName: String?
     @State private var looked = false
 
     var body: some View {
         VStack(spacing: 0) {
             Color.clear.frame(height: 0)
-            if !looked {
+            // A placeholder only for a book the server knows is in a series (most
+            // aren't in one: a placeholder would come and go on every page).
+            if !looked, book.series != nil {
                 LoadingBlock(height: 92)
             } else if let next {
                 let mine = library.match(next) ?? ownedByNumber
@@ -549,10 +553,26 @@ struct NextInSeriesCard: View {
             next = nil
             looked = false
             defer { looked = true }
-            guard let name = book.series, let current = book.seriesSequence else { return }
-            let inSeries = library.books.filter { $0.series == name }.sorted { ($0.seriesSequence ?? 0) < ($1.seriesSequence ?? 0) }
-            guard let found = try? await AudibleCatalog.series(named: name, books: [book] + inSeries.filter { $0.id != book.id }),
-                  let all = try? await AudibleCatalog.seriesBooks(found.ref, language: found.language) else { return }
+            let found: (ref: AudibleBook.SeriesRef, language: String?)
+            let current: Double
+            if let name = book.series, let n = book.seriesSequence {
+                let inSeries = library.books.filter { $0.series == name }.sorted { ($0.seriesSequence ?? 0) < ($1.seriesSequence ?? 0) }
+                guard let f = try? await AudibleCatalog.series(named: name, books: [book] + inSeries.filter { $0.id != book.id }) else { return }
+                found = f
+                current = n
+                seriesName = name
+            } else {
+                // No series (or no number) on the server: Audible's own, from the
+                // book's Audible match.
+                guard let asin = await AudibleRating.shared.asin(for: book),
+                      let product = try? await AudibleCatalog.product(asin),
+                      let ref = product.seriesRefs.first,
+                      let n = AudibleCatalog.numbers(ref.sequence).first else { return }
+                found = (ref, product.language)
+                current = n
+                seriesName = ref.title
+            }
+            guard let all = try? await AudibleCatalog.seriesBooks(found.ref, language: found.language) else { return }
             // The first single book numbered after this one (not a box set).
             let candidate = all.first { b in
                 let ns = AudibleCatalog.numbers(b.seriesRefs.first { $0.asin == found.ref.asin }?.sequence)
@@ -568,7 +588,7 @@ struct NextInSeriesCard: View {
 
     /// The library's book with that number in this series (another edition).
     private var ownedByNumber: Book? {
-        guard let n = number.flatMap(Double.init), let name = book.series else { return nil }
+        guard let n = number.flatMap(Double.init), let name = book.series ?? seriesName else { return nil }
         return library.books.first { $0.series == name && $0.seriesSequence == n }
     }
 
@@ -581,7 +601,7 @@ struct NextInSeriesCard: View {
         HStack(spacing: 14) {
             AudibleCover(url: b.thumbURL, size: 64)
             VStack(alignment: .leading, spacing: 3) {
-                Text("Next in \(book.series ?? "Series")").font(.caption.weight(.semibold)).foregroundStyle(.secondary).lineLimit(1)
+                Text("Next in \(seriesName ?? book.series ?? "Series")").font(.caption.weight(.semibold)).foregroundStyle(.secondary).lineLimit(1)
                 Text(b.title).font(.headline).lineLimit(2)
                 Text([number.map { "Book \($0)" }, status].compactMap { $0 }.joined(separator: " · "))
                     .font(.subheadline).foregroundStyle(Color.accentColor)
