@@ -888,9 +888,9 @@ final class Player {
         syncLoop = Task {
             while !Task.isCancelled {
                 // A stream every 30 s (it's on the network anyway); a downloaded book
-                // every 3 minutes, so the radio can sleep (pause, seek, track change
-                // and leaving the app still report at once). Wider while reports fail.
-                let base = nowPlaying?.isLocal == true ? 180.0 : 30.0
+                // every minute, so the radio can rest (pause, seek, track change and
+                // leaving the app still report at once). Wider while reports fail.
+                let base = nowPlaying?.isLocal == true ? 60.0 : 30.0
                 let wait = base * Double(min(1 << min(failedSyncs, 3), 8))
                 try? await Task.sleep(for: .seconds(wait))
                 if isPlaying { await report() }
