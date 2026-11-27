@@ -117,6 +117,7 @@ struct MainView: View {
             }
             if ProcessInfo.processInfo.environment["KITZI_TEST_OPEN"] == "playertest" { await PlayerTests.run(); return }
             if ProcessInfo.processInfo.environment["KITZI_TEST_OPEN"] == "radartest" { await RadarTests.run(); return }
+            if ProcessInfo.processInfo.environment["KITZI_TEST_OPEN"] == "effectstest" { await EffectsTests.run(); return }
             if ProcessInfo.processInfo.environment["KITZI_TEST_OPEN"] == "radarnotify" { await RadarTests.notify(); return }
             // KITZI_TEST_OPEN=coldresume: let the launch auto-load the last book, wait
             // 25 s (the test moves it on the server), then resume 8 s and pause.

@@ -63,6 +63,9 @@ final class Player {
     /// Book position, refreshed twice a second.
     private(set) var position: Double = 0
     private(set) var speed: Double = Store.double("playback_speed") ?? 1
+    /// Per book: louder, soft-limited audio; and running fast through silences.
+    private(set) var voiceBoost = false
+    private(set) var skipSilence = false
     /// Where the last jump (seek of more than a few seconds) started, for "Last position".
     private(set) var positionBeforeLastJump: Double?
     /// Bumped on every user seek (the end-of-chapter sleep timer re-targets on it).
@@ -355,6 +358,10 @@ final class Player {
         serverCheckPending = false
         serverCheck += 1
         speed = Store.double("playback_speed:\(book.id)") ?? Store.double("playback_speed") ?? 1
+        voiceBoost = Store.bool("voice_boost:\(book.id)")
+        skipSilence = Store.bool("skip_silence:\(book.id)")
+        AudioEffects.shared.boost = voiceBoost
+        AudioEffects.shared.skipSilence = skipSilence
         load(trackAt: start)
         loadArtwork(book)
         startSyncLoop()
@@ -487,6 +494,8 @@ final class Player {
         itemReady = false
         pendingSeek = offset > 0.5 ? offset : nil
         itemKVO = Self.observeItem(item)
+        // The audio tap, only while an effect is on (and only files have a track to tap).
+        if (voiceBoost || skipSilence), !np.sessionScoped { Task { await AudioEffects.shared.attach(to: item) } }
         av.replaceCurrentItem(with: item)
     }
 
@@ -710,6 +719,38 @@ final class Player {
         if let id = nowPlaying?.book.id { Store.set(v, "playback_speed:\(id)") }
         if isPlaying { av.rate = Float(v) }
         updateNowPlayingInfo()
+    }
+
+    func setVoiceBoost(_ on: Bool) {
+        voiceBoost = on
+        AudioEffects.shared.boost = on
+        if let id = nowPlaying?.book.id { Store.set(on ? true : nil, "voice_boost:\(id)") }
+        effectsChanged()
+    }
+
+    func setSkipSilence(_ on: Bool) {
+        skipSilence = on
+        AudioEffects.shared.skipSilence = on
+        if let id = nowPlaying?.book.id { Store.set(on ? true : nil, "skip_silence:\(id)") }
+        if !on { silence(false) }
+        effectsChanged()
+    }
+
+    /// The tap goes on the playing item when the first effect turns on, and
+    /// comes off with the last.
+    private func effectsChanged() {
+        guard let item = av.currentItem, nowPlaying?.sessionScoped == false else { return }
+        if voiceBoost || skipSilence {
+            if item.audioMix == nil { Task { await AudioEffects.shared.attach(to: item) } }
+        } else {
+            item.audioMix = nil
+        }
+    }
+
+    /// From the audio tap: a silence began (run fast through it) or ended.
+    func silence(_ fast: Bool) {
+        guard isPlaying, av.rate > 0 else { return }
+        av.rate = Float(fast && skipSilence ? max(speed * 3, 3) : speed)
     }
 
     /// Stops the book: final report, session closed, audio released.

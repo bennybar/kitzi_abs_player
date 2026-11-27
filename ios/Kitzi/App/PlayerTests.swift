@@ -3,6 +3,45 @@ import Foundation
 
 /// A simulator run of the player's position rules (KITZI_TEST_OPEN=playertest):
 /// prints "KITZITEST …" lines, and puts the book back where it was.
+enum EffectsTests {
+    /// Streams the book with voice boost and skip silence on, and reports whether
+    /// the tap ran, whether silences were found, and how far playback got.
+    static func run() async {
+        let library = LibraryStore.shared, player = Player.shared
+        for _ in 0..<40 where library.continueListening.isEmpty { try? await Task.sleep(for: .milliseconds(500)) }
+        guard let b = library.continueListening.first else { print("KITZITEST effects skipped"); return }
+        let original = (try? await library.syncProgressFor(b.id))?.currentTimeSec ?? 0
+        if let why = await player.play(b) { print("KITZITEST effects play failed: \(why)"); return }
+        let speed = player.speed
+        player.setSpeed(1)
+        try? await Task.sleep(for: .seconds(4))
+        // Off: nothing tapped.
+        print("KITZITEST effects off buffers=\(AudioEffects.shared.debugBuffers) local=\(player.nowPlaying?.isLocal ?? false)")
+        player.setVoiceBoost(true)
+        player.setSkipSilence(true)
+        try? await Task.sleep(for: .seconds(2))
+        player.refreshPosition()
+        let p0 = player.position, t0 = Date(), b0 = AudioEffects.shared.debugBuffers
+        try? await Task.sleep(for: .seconds(30))
+        player.refreshPosition()
+        let fx = AudioEffects.shared
+        print("KITZITEST effects on buffers=\(fx.debugBuffers - b0) silences=\(fx.debugSilences) peakAfterBoost=\(String(format: "%.2f", fx.debugPeak)) advanced=\(String(format: "%.1f", player.position - p0))s in=\(String(format: "%.1f", Date().timeIntervalSince(t0)))s playing=\(player.isPlaying)")
+        // Off again: the tap comes off and it plays on.
+        player.setVoiceBoost(false)
+        player.setSkipSilence(false)
+        let b1 = fx.debugBuffers
+        try? await Task.sleep(for: .seconds(4))
+        player.refreshPosition()
+        print("KITZITEST effects off again buffers=\(fx.debugBuffers - b1) position=\(Int(player.position)) playing=\(player.isPlaying)")
+        player.setSpeed(speed)
+        player.pause()
+        player.seek(to: original, report: false)
+        await player.report()
+        await player.stop(keepLast: true)
+        print("KITZITEST done")
+    }
+}
+
 enum RadarTests {
     /// Posts one of the radar's finds as its notification (after asking permission).
     static func notify() async {

@@ -287,6 +287,11 @@ struct PlayerMoreSheet: View {
                 Button { confirmFinished = true } label: { row("Mark Finished", "checkmark.circle") }
                 Button { open(.bookmarks) } label: { row("Bookmarks", "bookmark") }
                 Button { open(.history) } label: { row("Play History", "clock.arrow.circlepath") }
+                // For this book. Files only: a stream the server repackages (HLS) can't be tapped.
+                if player.nowPlaying?.sessionScoped == false {
+                    Toggle(isOn: Binding(get: { player.voiceBoost }, set: { player.setVoiceBoost($0) })) { row("Voice Boost", "speaker.wave.3") }
+                    Toggle(isOn: Binding(get: { player.skipSilence }, set: { player.setSkipSilence($0) })) { row("Skip Silence", "forward.frame") }
+                }
                 Toggle(isOn: $settings.playerGradient) { row("Gradient Background", "circle.lefthalf.filled") }
                 // Only where they're drawn: on a bar that shows the whole book.
                 if settings.primaryProgress == "book" {
